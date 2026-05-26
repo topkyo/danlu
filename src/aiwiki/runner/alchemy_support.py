@@ -595,6 +595,24 @@ def primary_result_path(result: dict[str, Any]) -> str:
     return ""
 
 
+def lane_primitive_scope(
+    *,
+    primitive: str,
+    scope: str,
+) -> dict[str, str]:
+    requested_scope = scope
+    effective_scope = scope
+    scope_downgraded_from = ""
+    if primitive in {"compile", "lint", "nightly"} and scope != "all":
+        effective_scope = "all"
+        scope_downgraded_from = scope
+    return {
+        "requested_scope": requested_scope,
+        "effective_scope": effective_scope,
+        "scope_downgraded_from": scope_downgraded_from,
+    }
+
+
 def lane_receipt_plan_summary(plan: dict[str, Any]) -> dict[str, Any]:
     return {
         "lane": str(plan.get("lane") or ""),
@@ -617,3 +635,137 @@ def lane_receipt_result_summary(result: dict[str, Any]) -> dict[str, Any]:
     if "counts" in result and isinstance(result.get("counts"), dict):
         summary["counts"] = result["counts"]
     return summary
+
+
+def lane_primitive_receipt_payload(
+    *,
+    lane: str,
+    primitive: str,
+    plan: dict[str, Any],
+    result: dict[str, Any],
+    action_id: str,
+    applied_at: str,
+    receipt_path: str,
+    audit_path: str,
+    note: str,
+    requested_scope: str,
+    effective_scope: str,
+    scope_downgraded_from: str,
+) -> dict[str, Any]:
+    trace_ids = lane_receipt_trace_ids(plan)
+    trace_id = trace_ids[0] if trace_ids else ""
+    plan_scope_preview = plan.get("scope_preview")
+    scope_declared = plan_scope_preview if isinstance(plan_scope_preview, dict) else {}
+    return {
+        "version": 1,
+        "kind": "execution-receipt",
+        "generated_by": "aiwiki-alchemy-lane",
+        "applied_at": applied_at,
+        "operation": "alchemy-lane-primitive",
+        "action_id": action_id,
+        "trace_id": trace_id,
+        "trace_ids": trace_ids,
+        "title": f"Alchemy {lane} {primitive}",
+        "status": "applied",
+        "protocol": first_plan_protocol(plan),
+        "subject_kind": "alchemy_lane_primitive",
+        "subject_id": f"{lane}:{effective_scope}:{primitive}",
+        "apply_mode": f"alchemy-{lane}-{primitive}",
+        "note": note,
+        "primary_path": primary_result_path(result),
+        "secondary_path": "",
+        "receipt_path": receipt_path,
+        "lane": lane,
+        "scope": effective_scope,
+        "scope_requested": requested_scope,
+        "scope_downgraded_from": scope_downgraded_from,
+        "scope_declared": scope_declared,
+        "scope_enforced": True,
+        "scope_enforcement_reason": (
+            "primitive_global_only:downgraded_to_global"
+            if scope_downgraded_from
+            else "primitive_global_only:executed_globally"
+        ),
+        "primitive": primitive,
+        "revert_supported": False,
+        "audit_stream": "execution_receipts",
+        "audit_event": "execution_receipt_history_append",
+        "audit_path": audit_path,
+        "source_plan": lane_receipt_plan_summary(plan),
+        "result_summary": lane_receipt_result_summary(result),
+    }
+
+
+def alchemy_auto_runtime_event_payload(
+    *,
+    scope: str,
+    lanes: list[str],
+    primitives: list[str],
+    lane_results: list[dict[str, Any]],
+    applied_results: list[dict[str, Any]],
+    skipped: list[dict[str, Any]],
+    recorded_at: str,
+) -> dict[str, Any]:
+    trace_ids: set[str] = set()
+    for lane_result in lane_results:
+        plan = lane_result.get("plan")
+        if isinstance(plan, dict):
+            trace_ids.update(lane_receipt_trace_ids(plan))
+    sorted_trace_ids = sorted(trace_ids)
+    return {
+        "event_type": "alchemy-auto-scheduler",
+        "recorded_at": recorded_at,
+        "status": "completed",
+        "scope": scope,
+        "lanes": lanes,
+        "requested_primitives": primitives,
+        "applied_count": len(applied_results),
+        "skipped_count": len(skipped),
+        "skipped": skipped,
+        "trace_id": sorted_trace_ids[0] if sorted_trace_ids else "",
+        "trace_ids": sorted_trace_ids,
+        "subject_kind": "alchemy_auto_scheduler",
+        "subject_id": scope,
+    }
+
+
+def alchemy_lane_runtime_event_payload(
+    *,
+    event_type: str,
+    lane: str,
+    scope: str,
+    action_ids: list[str],
+    primitives: list[str],
+    plan: dict[str, Any],
+    status: str,
+    recorded_at: str,
+    primitive_results: list[dict[str, Any]] | None = None,
+    apply_result: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    trace_ids = lane_receipt_trace_ids(plan)
+    event: dict[str, Any] = {
+        "event_type": event_type,
+        "recorded_at": recorded_at,
+        "status": status,
+        "lane": lane,
+        "scope": scope,
+        "action_ids": action_ids,
+        "primitives": primitives,
+        "selected_count": int(plan.get("selected_count") or 0),
+        "trace_id": trace_ids[0] if trace_ids else "",
+        "trace_ids": trace_ids,
+        "subject_kind": "alchemy_lane",
+        "subject_id": f"{lane}:{scope}",
+    }
+    if primitive_results is not None:
+        event["primitive_count"] = len(primitive_results)
+        event["primitive_receipts"] = [
+            str(item.get("receipt_path") or "")
+            for item in primitive_results
+            if isinstance(item, dict) and item.get("receipt_path")
+        ]
+    if apply_result is not None:
+        event["action_batch_receipt"] = str(
+            apply_result.get("receipt_path") or apply_result.get("batch_receipt_path") or ""
+        )
+    return event

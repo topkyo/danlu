@@ -1100,6 +1100,54 @@ class DogfoodMaturityGateTests(unittest.TestCase):
 
         self.assertEqual(summary["status"], "warn")
         self.assertFalse(summary["semantic_path_observed"])
+        self.assertEqual(summary["semantic_path_report"]["evidence"], "missing")
+
+    def test_summarize_accepts_retained_semantic_path_without_new_review_delta(self) -> None:
+        receipts = [
+            _make_run_receipt(
+                generated_at="2026-05-13T00:00:00Z",
+                status="pass",
+                before_backlog=10,
+                after_backlog=9,
+                before_candidate=3,
+                after_candidate=2,
+                before_judgment_receipts=2,
+                after_judgment_receipts=2,
+                already_exists_count=1,
+            ),
+            _make_run_receipt(
+                generated_at="2026-05-14T00:00:00Z",
+                status="pass",
+                before_backlog=9,
+                after_backlog=8,
+                before_candidate=2,
+                after_candidate=1,
+                before_judgment_receipts=2,
+                after_judgment_receipts=2,
+                already_exists_count=1,
+            ),
+            _make_run_receipt(
+                generated_at="2026-05-15T00:00:00Z",
+                status="pass",
+                before_backlog=8,
+                after_backlog=7,
+                before_candidate=1,
+                after_candidate=0,
+                before_judgment_receipts=2,
+                after_judgment_receipts=2,
+                already_exists_count=1,
+            ),
+        ]
+        for receipt in receipts:
+            receipt["after"]["judgment_lane_report"]["exception_rate"] = 0.0
+        self._write_receipts(receipts)
+
+        summary = summarize_recent_run_receipts(self.root, recent=3)
+
+        self.assertEqual(summary["status"], "pass")
+        self.assertTrue(summary["semantic_path_observed"])
+        self.assertEqual(summary["semantic_path_report"]["evidence"], "latest_state")
+        self.assertEqual(summary["judgment_review_processed_delta"], 0)
 
     def test_summarize_fails_when_required_fields_are_missing(self) -> None:
         receipt = _make_run_receipt(

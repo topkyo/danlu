@@ -29,9 +29,10 @@ test("built main keeps drop+question auto run-ask markers", () => {
 
   expect(bundleSrc).toMatch(/function buildUniversalInputCommandSpec/);
   expect(bundleSrc).toMatch(/labelKey: "Universal Input"/);
-  expect(bundleSrc).toMatch(/return await this\.runPluginCommand\(commandLabel\(this\.t\.bind\(this\), spec\.labelKey, spec\.labelSubject\)/);
+  expect(bundleSrc).toMatch(/return await plugin\.runPluginCommand\(commandLabel\(plugin\.t\.bind\(plugin\), spec\.labelKey, spec\.labelSubject\)/);
   expect(bundleSrc).toMatch(/async runDroppedFilesWithAutoAsk\(/);
   expect(bundleSrc).toMatch(/async runDroppedPayloadsWithAutoAsk\(/);
+  expect(bundleSrc).toMatch(/async function runProductShellDroppedPayloadsWithAutoAsk/);
   expect(bundleSrc).toMatch(/function splitTextMaterialQuestion\(/);
   expect(bundleSrc).toMatch(/collectMaterialPathsFromPayload\(payload\)/);
   expect(bundleSrc).toMatch(/buildAutoAskQuestion\(normalizedQuestion, normalizedMaterialPaths\)/);

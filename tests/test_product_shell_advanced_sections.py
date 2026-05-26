@@ -70,26 +70,26 @@ class AdvancedSectionsPersistenceTests(unittest.TestCase):
         self.assertIn("advancedSectionsExpanded: { status: false, history: false }", text)
 
     def test_plugin_exposes_get_set_advanced_section_expanded(self) -> None:
-        text = (SRC / "plugin.js").read_text(encoding="utf-8")
-        self.assertIn("getAdvancedSectionExpanded(key)", text)
-        self.assertIn("async setAdvancedSectionExpanded(key, value)", text)
-        # setter 必须 await savePluginState
-        idx = text.index("async setAdvancedSectionExpanded(key, value)")
-        body = text[idx : idx + 800]
-        self.assertIn("savePluginState", body)
-        self.assertIn("advancedSectionsExpanded", body)
-        self.assertNotIn("devops", body)
-        self.assertIn('key !== "status" && key !== "history"', body)
+        plugin_text = (SRC / "plugin.js").read_text(encoding="utf-8")
+        state_text = (SRC / "plugin_state.js").read_text(encoding="utf-8")
+        self.assertIn("getAdvancedSectionExpanded(key)", plugin_text)
+        self.assertIn("async setAdvancedSectionExpanded(key, value)", plugin_text)
+        self.assertIn("getProductShellAdvancedSectionExpanded(this, key)", plugin_text)
+        self.assertIn("setProductShellAdvancedSectionExpanded(this, key, value)", plugin_text)
+        self.assertIn("savePluginState", state_text)
+        self.assertIn("advancedSectionsExpanded", state_text)
+        self.assertNotIn("devops", state_text)
+        self.assertIn('key !== "status" && key !== "history"', state_text)
 
     def test_legacy_settings_are_normalized_on_load(self) -> None:
-        text = (SRC / "plugin.js").read_text(encoding="utf-8")
-        load_start = text.index("async loadPluginState()")
-        load_body = text[load_start : load_start + 1800]
-        self.assertIn('delete this.settings.showHtmlShortcuts', load_body)
-        self.assertIn('delete this.settings.defaultAskMode', load_body)
-        self.assertIn('migratedAdvancedSectionsExpanded = {', load_body)
-        self.assertIn('status: Boolean(rawAdvancedSectionsExpanded.status)', load_body)
-        self.assertIn('history: Boolean(rawAdvancedSectionsExpanded.history)', load_body)
+        plugin_text = (SRC / "plugin.js").read_text(encoding="utf-8")
+        state_text = (SRC / "plugin_state.js").read_text(encoding="utf-8")
+        self.assertIn("loadProductShellPluginState(this)", plugin_text)
+        self.assertIn('delete plugin.settings.showHtmlShortcuts', state_text)
+        self.assertIn('delete plugin.settings.defaultAskMode', state_text)
+        self.assertIn('migratedAdvancedSectionsExpanded = {', state_text)
+        self.assertIn('status: Boolean(rawAdvancedSectionsExpanded.status)', state_text)
+        self.assertIn('history: Boolean(rawAdvancedSectionsExpanded.history)', state_text)
 
     def test_removed_advanced_settings_do_not_leave_visible_toggles(self) -> None:
         settings_text = (SRC / "settings.js").read_text(encoding="utf-8")

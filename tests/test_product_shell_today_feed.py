@@ -112,7 +112,9 @@ class ProductShellTodayFeedContractTests(unittest.TestCase):
 
     def test_r90_plugin_exposes_last_summary_refresh_label(self) -> None:
         plugin_js = (PLUGIN / "src/plugin.js").read_text(encoding="utf-8")
+        pending_runtime_js = (PLUGIN / "src/pending_runtime.js").read_text(encoding="utf-8")
         self.assertIn("getLastSummaryRefreshLabel", plugin_js)
+        self.assertIn("productShellLastSummaryRefreshLabel(this)", plugin_js)
         # 4 档相对时间 + 兜底
         for key in ["刚刚", "分钟前", "小时前", "天前", "未刷新"]:
-            self.assertIn(key, plugin_js)
+            self.assertIn(key, pending_runtime_js)

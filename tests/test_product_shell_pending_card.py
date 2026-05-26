@@ -70,10 +70,15 @@ class PendingSubmissionContractTests(unittest.TestCase):
 
     def test_reconcile_hooked_into_summary_updates(self) -> None:
         plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
+        run_pipeline_js = (SRC / "plugin_run_pipeline.js").read_text(encoding="utf-8")
         # processShellSummaryUpdates 必须在顶部调用 reconcile
         idx_proc = plugin_js.find("processShellSummaryUpdates(summary) {")
         self.assertGreater(idx_proc, 0)
         window = plugin_js[idx_proc : idx_proc + 400]
+        self.assertIn("processProductShellSummaryUpdates(this, summary)", window)
+        idx_impl = run_pipeline_js.find("function processProductShellSummaryUpdates(")
+        self.assertGreater(idx_impl, 0)
+        window = run_pipeline_js[idx_impl : idx_impl + 400]
         self.assertIn("reconcilePendingSubmissions", window)
 
     # ---- #1 empty-state CTA ----
@@ -102,13 +107,15 @@ class PendingSubmissionContractTests(unittest.TestCase):
     # ---- P1 round 2: reconcile robustness ----
     def test_reconcile_uses_timestamp_and_extra_fields(self) -> None:
         plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
+        pending_runtime_js = (SRC / "pending_runtime.js").read_text(encoding="utf-8")
         pending_state_js = (SRC / "pending_state.js").read_text(encoding="utf-8")
         idx = plugin_js.find("reconcilePendingSubmissions(summary) {")
         self.assertGreater(idx, 0)
         end = plugin_js.find("\n  }\n", idx)
         self.assertGreater(end, idx)
         body = pending_state_js[pending_state_js.find("reconcilePendingSubmissionList") :]
-        self.assertIn("reconcilePendingSubmissionList(this.pendingSubmissions, summary)", plugin_js[idx:end])
+        self.assertIn("reconcilePendingSubmissionsRuntime(this, summary)", plugin_js[idx:end])
+        self.assertIn("reconcilePendingSubmissionList(plugin.pendingSubmissions, summary)", pending_runtime_js)
         # 时间戳门槛
         for needle in ("created_at", "generated_at", "SKEW_MS", "candMs"):
             self.assertIn(needle, body, f"reconcile missing timestamp guard: {needle}")
@@ -120,10 +127,12 @@ class PendingSubmissionContractTests(unittest.TestCase):
 
     def test_reconcile_keeps_running_past_window(self) -> None:
         plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
+        pending_runtime_js = (SRC / "pending_runtime.js").read_text(encoding="utf-8")
         pending_state_js = (SRC / "pending_state.js").read_text(encoding="utf-8")
         idx = plugin_js.find("reconcilePendingSubmissions(summary) {")
         self.assertGreater(idx, 0)
-        self.assertIn("reconcilePendingSubmissionList(this.pendingSubmissions, summary)", plugin_js[idx : idx + 500])
+        self.assertIn("reconcilePendingSubmissionsRuntime(this, summary)", plugin_js[idx : idx + 500])
+        self.assertIn("reconcilePendingSubmissionList(plugin.pendingSubmissions, summary)", pending_runtime_js)
         body = pending_state_js[pending_state_js.find("reconcilePendingSubmissionList") :]
         self.assertIn("RECONCILE_WINDOW_MS", body)
         self.assertRegex(
@@ -134,13 +143,15 @@ class PendingSubmissionContractTests(unittest.TestCase):
     def test_pending_dedupe_on_double_submit(self) -> None:
         # 同 fingerprint 的 running 卡片不应重复入栈
         plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
+        pending_runtime_js = (SRC / "pending_runtime.js").read_text(encoding="utf-8")
         idx = plugin_js.find("pushPendingSubmission(displayText, opts")
         self.assertGreater(idx, 0)
         window = plugin_js[idx : idx + 1500]
-        self.assertIn("payloadFingerprint", window)
+        self.assertIn("pushPendingSubmissionRuntime(this, displayText, opts)", window)
+        self.assertIn("payloadFingerprint", pending_runtime_js)
         # 必须有 dup 检测分支
-        self.assertRegex(window, r"status === \"running\"")
-        self.assertIn("return dup.id", window)
+        self.assertRegex(pending_runtime_js, r"status === \"running\"")
+        self.assertIn("return duplicate.id", pending_runtime_js)
 
     def test_retry_resets_card_in_place(self) -> None:
         # 重试不应 remove 卡片；改回 running 状态原地循环
@@ -172,14 +183,16 @@ class PendingSubmissionContractTests(unittest.TestCase):
     # ---- R89 #1 持久化 ----
     def test_plugin_persists_pending_to_settings(self) -> None:
         plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
+        plugin_state_js = (SRC / "plugin_state.js").read_text(encoding="utf-8")
         # 序列化器
         self.assertIn("serializePendingSubmissions", plugin_js)
         # savePluginState 把 persistedPendingSubmissions 写进 settings
         save_idx = plugin_js.find("async savePluginState()")
         self.assertGreater(save_idx, 0)
         save_body = plugin_js[save_idx : save_idx + 500]
-        self.assertIn("persistedPendingSubmissions", save_body)
-        self.assertIn("serializePendingSubmissions", save_body)
+        self.assertIn("saveProductShellPluginState(this)", save_body)
+        self.assertIn("persistedPendingSubmissions", plugin_state_js)
+        self.assertIn("serializePendingSubmissions", plugin_state_js)
 
     def test_plugin_hydrates_pending_with_ttl(self) -> None:
         plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
@@ -198,11 +211,13 @@ class PendingSubmissionContractTests(unittest.TestCase):
 
     def test_loadstate_calls_hydrate(self) -> None:
         plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
+        plugin_state_js = (SRC / "plugin_state.js").read_text(encoding="utf-8")
         load_idx = plugin_js.find("async loadPluginState()")
         self.assertGreater(load_idx, 0)
         body = plugin_js[load_idx : load_idx + 5000]
-        self.assertIn("hydratePendingSubmissions", body)
-        self.assertIn("persistedPendingSubmissions", body)
+        self.assertIn("loadProductShellPluginState(this)", body)
+        self.assertIn("hydratePendingSubmissions", plugin_state_js)
+        self.assertIn("persistedPendingSubmissions", plugin_state_js)
 
     # ---- R89 #2 两段式语义 ----
     def test_plugin_exposes_received_state_helper(self) -> None:
@@ -231,6 +246,7 @@ class PendingSubmissionContractTests(unittest.TestCase):
 
     def test_reconcile_routes_target_to_markdone(self) -> None:
         plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
+        pending_runtime_js = (SRC / "pending_runtime.js").read_text(encoding="utf-8")
         pending_state_js = (SRC / "pending_state.js").read_text(encoding="utf-8")
         idx = plugin_js.find("reconcilePendingSubmissions(summary) {")
         self.assertGreater(idx, 0)
@@ -241,10 +257,12 @@ class PendingSubmissionContractTests(unittest.TestCase):
         self.assertIn('target = "outputs"', body)
         self.assertIn('target = "receipts"', body)
         # 命中后调 markDone（带 target）
-        self.assertIn("markPendingSubmissionDone", plugin_body)
+        self.assertIn("reconcilePendingSubmissionsRuntime(this, summary)", plugin_body)
+        self.assertIn("markPendingSubmissionDone", pending_runtime_js)
 
     def test_reconcile_recent_raw_inputs_reads_stored_path_and_marks_done_with_raw_target(self) -> None:
         plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
+        pending_runtime_js = (SRC / "pending_runtime.js").read_text(encoding="utf-8")
         pending_state_js = (SRC / "pending_state.js").read_text(encoding="utf-8")
         idx = plugin_js.find("reconcilePendingSubmissions(summary) {")
         self.assertGreater(idx, 0)
@@ -254,7 +272,8 @@ class PendingSubmissionContractTests(unittest.TestCase):
         self.assertIn("const rawCands = Array.isArray(summary.recent_raw_inputs)", body)
         self.assertIn("cand.stored_path", body)
         self.assertIn('target = "raw"', body)
-        self.assertIn("this.markPendingSubmissionDone(h.id, h.target, h.path)", plugin_body)
+        self.assertIn("reconcilePendingSubmissionsRuntime(this, summary)", plugin_body)
+        self.assertIn("plugin.markPendingSubmissionDone(hit.id, hit.target, hit.path)", pending_runtime_js)
 
     # ---- R89 #3 文案中文化 + Advanced 分隔 + 失败 hint ----
     def test_today_groups_use_chinese(self) -> None:
@@ -318,6 +337,7 @@ class PendingSubmissionContractTests(unittest.TestCase):
 
     def test_tda004_run_notes_path_reconciles_and_renders(self) -> None:
         plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
+        pending_runtime_js = (SRC / "pending_runtime.js").read_text(encoding="utf-8")
         pending_state_js = (SRC / "pending_state.js").read_text(encoding="utf-8")
         reconcile_idx = plugin_js.find("reconcilePendingSubmissions(summary) {")
         self.assertGreater(reconcile_idx, 0)
@@ -325,7 +345,8 @@ class PendingSubmissionContractTests(unittest.TestCase):
         pending_reconcile_body = pending_state_js[pending_state_js.find("reconcilePendingSubmissionList") :]
         self.assertIn("hitCand.run_notes_path", pending_reconcile_body)
         self.assertIn("hitCand.run_id", pending_reconcile_body)
-        self.assertIn("updatePendingSubmissionRunNotes", reconcile_body)
+        self.assertIn("reconcilePendingSubmissionsRuntime(this, summary)", reconcile_body)
+        self.assertIn("updatePendingSubmissionRunNotes", pending_runtime_js)
         render_today = (SRC / "render_today.js").read_text(encoding="utf-8")
         self.assertIn("furnace-run-notes-details", render_today)
         self.assertIn("furnace-run-notes-open-btn", render_today)
@@ -346,12 +367,14 @@ class PendingSubmissionContractTests(unittest.TestCase):
 
     def test_r90_reconcile_passes_path_to_markdone(self) -> None:
         plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
+        pending_runtime_js = (SRC / "pending_runtime.js").read_text(encoding="utf-8")
         idx = plugin_js.find("reconcilePendingSubmissions(summary) {")
         self.assertGreater(idx, 0)
         end = plugin_js.find("\n  }\n", idx)
         body = plugin_js[idx:end]
         # markDone 第三个参数为 path
-        self.assertRegex(body, r"markPendingSubmissionDone\(\s*[^,]+,\s*[^,]+,\s*[^)]+\)")
+        self.assertIn("reconcilePendingSubmissionsRuntime(this, summary)", body)
+        self.assertRegex(pending_runtime_js, r"markPendingSubmissionDone\(\s*[^,]+,\s*[^,]+,\s*[^)]+\)")
 
     def test_r90_running_card_has_refresh_button(self) -> None:
         text = (SRC / "render_today.js").read_text(encoding="utf-8")
@@ -411,10 +434,12 @@ class PendingSubmissionContractTests(unittest.TestCase):
 
     def test_r90_open_pending_done_target_helper(self) -> None:
         plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
+        lifecycle_js = (SRC / "plugin_lifecycle.js").read_text(encoding="utf-8")
         self.assertIn("async openPendingDoneTarget(", plugin_js)
+        self.assertIn("openProductShellPendingDoneTarget(this, target, reconcilePath)", plugin_js)
         # 退化路径覆盖 outputs / receipts / 兜底
-        idx = plugin_js.find("async openPendingDoneTarget(")
-        body = plugin_js[idx : idx + 2000]
+        idx = lifecycle_js.find("async function openProductShellPendingDoneTarget(")
+        body = lifecycle_js[idx : idx + 2000]
         self.assertIn("openOutputsHub", body)
         self.assertIn("openRecentRunsView", body)
         self.assertIn("openHomeNote", body)
@@ -425,18 +450,26 @@ class PendingSubmissionContractTests(unittest.TestCase):
     def test_r90_open_workspace_path_returns_boolean(self) -> None:
         """openWorkspacePath 必须显式返回 boolean，让退化判定可用。"""
         plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
+        lifecycle_js = (SRC / "plugin_lifecycle.js").read_text(encoding="utf-8")
         idx = plugin_js.find("async openWorkspacePath(relativePath)")
         self.assertGreater(idx, 0)
-        body = plugin_js[idx : idx + 2500]
+        self.assertIn("openProductShellWorkspacePath(this, relativePath)", plugin_js[idx : idx + 300])
+        body_idx = lifecycle_js.find("async function openProductShellWorkspacePath(")
+        body = lifecycle_js[body_idx : body_idx + 2500]
         # 至少 2 处 return false（失败路径）+ 2 处 return true（成功路径）
         self.assertGreaterEqual(body.count("return false"), 2)
         self.assertGreaterEqual(body.count("return true"), 2)
 
     def test_r90_refresh_command_falls_back_to_disk_summary(self) -> None:
         plugin_js = (SRC / "plugin.js").read_text(encoding="utf-8")
+        run_pipeline_js = (SRC / "plugin_run_pipeline.js").read_text(encoding="utf-8")
         idx = plugin_js.find("async refreshShellSummaryCommand()")
         self.assertGreater(idx, 0)
         body = plugin_js[idx : idx + 1000]
+        self.assertIn("refreshProductShellSummaryCommand(this)", body)
+        impl_idx = run_pipeline_js.find("async function refreshProductShellSummaryCommand(")
+        self.assertGreater(impl_idx, 0)
+        body = run_pipeline_js[impl_idx : impl_idx + 1000]
         # try/catch 包 runPluginCommand，并显式 fallback loadShellSummaryFromDisk
         self.assertIn("loadShellSummaryFromDisk", body)
         self.assertIn("try {", body)

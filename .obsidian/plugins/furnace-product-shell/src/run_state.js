@@ -148,6 +148,26 @@ function isProductShellDegradedRun(record, payload) {
   return productShellRunPayloadFallbackUsed(payload, record) || deliveryMode === "deterministic-fallback";
 }
 
+function buildProductShellRunResultContext(result) {
+  const payload = result && result.payload;
+  const primaryPath = extractPrimaryPath(payload);
+  const receiptPath = payload && typeof payload.receipt_path === "string" ? payload.receipt_path : "";
+  const rewriteProposalObjects = extractRewriteProposalObjects(payload);
+  const rewriteRecoveryActions = extractRewriteRecoveryActions(payload);
+  const rewriteProposalPaths = extractRewriteProposalPaths(payload);
+  const rewriteProposalSlugs = rewriteProposalObjects.length
+    ? rewriteProposalSlugsFromObjects(rewriteProposalObjects)
+    : extractRewriteProposalSlugs(rewriteProposalPaths);
+  return {
+    primaryPath,
+    receiptPath,
+    rewriteProposalObjects,
+    rewriteRecoveryActions,
+    rewriteProposalPaths,
+    rewriteProposalSlugs,
+  };
+}
+
 function buildProductShellBackgroundRunUpdates({ result, primaryPath }) {
   const payload = result && result.payload && typeof result.payload === "object" ? result.payload : {};
   return {
@@ -212,6 +232,80 @@ function buildProductShellCompletedRunUpdates({
   };
 }
 
+function buildProductShellCompletionRunEvents({
+  degradedRun,
+  primaryPath,
+  receiptPath,
+  rewriteProposalPaths = [],
+  rewriteProposalSummary = "",
+  fallbackSummary = "",
+  successSummary = "",
+}) {
+  const events = [{
+    stage: degradedRun ? "LLM timeout" : "Completed",
+    summary: degradedRun ? fallbackSummary : successSummary,
+    status: degradedRun ? "degraded" : "success",
+  }];
+  if (primaryPath || receiptPath) {
+    events.push({
+      stage: "Artifacts",
+      summary: [primaryPath, receiptPath].filter(Boolean).join(" · "),
+      status: "success",
+    });
+  }
+  if (Array.isArray(rewriteProposalPaths) && rewriteProposalPaths.length) {
+    events.push({
+      stage: "Rewrite proposals",
+      summary: rewriteProposalSummary,
+      status: "success",
+    });
+  }
+  return events;
+}
+
+function buildProductShellCompletedRunState({
+  record,
+  result,
+  llm,
+  runContext,
+  rewriteProposalSummary = "",
+  fallbackSummary = "",
+  successSummary = "",
+  degradedNotice = "",
+  successNotice = "",
+}) {
+  const context = runContext || buildProductShellRunResultContext(result);
+  const degradedRun = isProductShellDegradedRun(record, result && result.payload);
+  const events = buildProductShellCompletionRunEvents({
+    degradedRun,
+    primaryPath: context.primaryPath,
+    receiptPath: context.receiptPath,
+    rewriteProposalPaths: context.rewriteProposalPaths,
+    rewriteProposalSummary,
+    fallbackSummary,
+    successSummary,
+  });
+  const updates = buildProductShellCompletedRunUpdates({
+    record,
+    result,
+    llm,
+    primaryPath: context.primaryPath,
+    receiptPath: context.receiptPath,
+    rewriteProposalObjects: context.rewriteProposalObjects,
+    rewriteRecoveryActions: context.rewriteRecoveryActions,
+    rewriteProposalPaths: context.rewriteProposalPaths,
+    rewriteProposalSlugs: context.rewriteProposalSlugs,
+  });
+  const projectedRecord = { ...record, ...updates };
+  return {
+    degradedRun,
+    events,
+    updates,
+    llmHealthOverrides: isProductShellAskRun(record) ? buildProductShellLlmHealthOverrides(projectedRecord) : null,
+    noticeMessage: degradedRun ? degradedNotice : successNotice,
+  };
+}
+
 function buildProductShellFailedRunUpdates(error) {
   return {
     status: "failed",
@@ -222,6 +316,67 @@ function buildProductShellFailedRunUpdates(error) {
     stdoutRaw: trimDiagnosticText(error && error.stdout || ""),
     stderrRaw: trimDiagnosticText(error && error.stderr || ""),
     errorSummary: truncateText(error && error.message || "Command failed"),
+  };
+}
+
+function buildProductShellFailedRunState({
+  record,
+  error,
+  noticeMessage = "",
+}) {
+  const message = error && error.message || "Command failed";
+  const events = [{
+    stage: "Failed",
+    summary: truncateText(message, 180),
+    status: "failed",
+  }];
+  return {
+    events,
+    updates: buildProductShellFailedRunUpdates(error),
+    llmHealthOverrides: isProductShellAskRun(record) && llmBackendUnavailable(error)
+      ? buildProductShellFailedLlmHealthOverrides(record, error)
+      : null,
+    logDetails: {
+      stdoutRaw: error && error.stdout || "",
+      stderrRaw: error && error.stderr || "",
+    },
+    noticeMessage,
+  };
+}
+
+function buildProductShellLlmHealthOverrides(record) {
+  const usedFallback = Boolean(record && record.fallbackUsed)
+    || String(record && record.deliveryMode || "").trim() === "deterministic-fallback";
+  return {
+    status: usedFallback ? "degraded" : "healthy",
+    reason: usedFallback ? "LLM timed out or failed; only deterministic fallback is available." : "Recent run-ask succeeded.",
+    source: "run-ask",
+    fallbackCommand: usedFallback ? (record.fallbackCommand || "ask") : "",
+    backendRequested: record.backendRequested,
+    backendEffective: record.backendEffective,
+    modelSelected: record.modelSelected,
+    modelFinal: record.modelFinal,
+    fallbackStage: record.fallbackStage,
+    fallbackReason: record.fallbackReason,
+    contractValidated: record.contractValidated,
+  };
+}
+
+function buildProductShellFailedLlmHealthOverrides(record, error) {
+  return {
+    status: "degraded",
+    reason: truncateText(error && (error.message || error.stderr || error.stdout) || "LLM backend unavailable", 240),
+    source: "run-ask",
+    fallbackCommand: "ask",
+    backendRequested: record.backendRequested,
+    backendEffective: record.backendEffective,
+    modelSelected: record.modelSelected,
+    modelFinal: record.modelFinal,
+    fallbackStage: record.fallbackStage,
+    fallbackReason: record.fallbackReason,
+    contractValidated: record.contractValidated,
+    stderrSummary: truncateText(error && error.stderr || ""),
+    stderrRaw: trimDiagnosticText(error && (error.stderr || error.stdout) || ""),
   };
 }
 

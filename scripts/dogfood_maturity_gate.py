@@ -19,6 +19,8 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
+from aiwiki.dogfood_maturity import build_semantic_path_report  # noqa: E402
+
 DEFAULT_VAULT_ROOT = Path("/home/tim/danlu/炼丹炉")
 MATURITY_GATE_REL_DIR = Path("output") / "control" / "maturity-gate"
 PLANNER_LOG_REL_PATH = Path(".aiwiki") / "state" / "planner-log.jsonl"
@@ -1412,6 +1414,7 @@ def summarize_run_receipts(receipts: list[dict[str, Any]], *, recent: int = 3) -
     judgment_review_receipts_delta = _nested_int(
         last.get("after"), "judgment_review_receipt_counts", "total"
     ) - _nested_int(first.get("before"), "judgment_review_receipt_counts", "total")
+    latest_judgment_review_receipts_total = _nested_int(last.get("after"), "judgment_review_receipt_counts", "total")
     l3_generated_total = sum(_nested_int(item, "l3_generation", "generated_count") for item in receipts)
     l3_skipped_total = sum(_nested_int(item, "l3_generation", "skipped_count") for item in receipts)
     l3_already_exists_total = sum(
@@ -1440,7 +1443,12 @@ def summarize_run_receipts(receipts: list[dict[str, Any]], *, recent: int = 3) -
             "compounding_sample": None,
             "missing_evidence": ["knowledge_compounding_proof"],
         }
-    semantic_path_observed = judgment_review_receipts_delta > 0
+    semantic_path_report = build_semantic_path_report(
+        latest_compounding_proof=latest_compounding_proof,
+        judgment_review_receipts_delta=judgment_review_receipts_delta,
+        latest_judgment_review_receipts_total=latest_judgment_review_receipts_total,
+    )
+    semantic_path_observed = bool(semantic_path_report.get("observed"))
     if failed or prompt_hash_changed or missing_required_fields or deterministic_runs:
         status = "fail"
     elif len(receipts) < recent:
@@ -1495,6 +1503,7 @@ def summarize_run_receipts(receipts: list[dict[str, Any]], *, recent: int = 3) -
         "judgment_review_failure_rate": latest_judgment_lane.get("failure_rate", 0.0),
         "judgment_review_exception_rate": latest_judgment_lane.get("exception_rate", 0.0),
         "semantic_path_observed": semantic_path_observed,
+        "semantic_path_report": semantic_path_report,
         "days": days,
         "consecutive_days": consecutive_days,
         "missing_required_fields": missing_required_fields,
@@ -1503,7 +1512,6 @@ def summarize_run_receipts(receipts: list[dict[str, Any]], *, recent: int = 3) -
         "prompt_hash_changed_runs": [str(item.get("receipt_path") or "") for item in prompt_hash_changed],
         "operational_maturity": operational_maturity,
     }
-
 
 def _build_operational_maturity_report(
     receipts: list[dict[str, Any]],

@@ -234,6 +234,50 @@ test("run state helpers classify degraded ask runs and build completed updates",
   expect(updates.finishedAt).toBeTruthy();
 });
 
+test("run state helpers build command result context from payload artifacts", () => {
+  const context = loadRunStateContext();
+
+  const fromObjects = context.buildProductShellRunResultContext({
+    payload: {
+      path: "output/reports/a.md",
+      receipt_path: "output/control/receipt.json",
+      updated_rewrite_proposals: [
+        {
+          slug: "concept-a",
+          proposal_path: "wiki/rewrite-proposals/concept-a.md",
+          target_path: "wiki/concepts/concept-a.md",
+        },
+      ],
+      rewrite_recovery_actions: [{ slug: "concept-a", command: "review-rewrite concept-a --status accepted" }],
+    },
+  });
+
+  expect(fromObjects).toMatchObject({
+    primaryPath: "output/reports/a.md",
+    receiptPath: "output/control/receipt.json",
+    rewriteProposalPaths: ["wiki/rewrite-proposals/concept-a.md"],
+    rewriteProposalSlugs: ["concept-a"],
+  });
+  expect(fromObjects.rewriteProposalObjects).toHaveLength(1);
+  expect(fromObjects.rewriteRecoveryActions).toHaveLength(1);
+
+  const fromPaths = context.buildProductShellRunResultContext({
+    payload: {
+      output_path: "output/reports/b.md",
+      updated_rewrite_proposal_pages: ["wiki/rewrite-proposals/concept-b.md"],
+    },
+  });
+
+  expect(fromPaths).toMatchObject({
+    primaryPath: "output/reports/b.md",
+    receiptPath: "",
+    rewriteProposalObjects: [],
+    rewriteRecoveryActions: [],
+    rewriteProposalPaths: ["wiki/rewrite-proposals/concept-b.md"],
+    rewriteProposalSlugs: ["concept-b"],
+  });
+});
+
 test("run state helpers build background and failed updates", () => {
   const context = loadRunStateContext();
 
@@ -273,4 +317,192 @@ test("run state helpers build background and failed updates", () => {
     errorSummary: "backend unavailable",
   });
   expect(failed.finishedAt).toBeTruthy();
+});
+
+test("run state helpers build failed run state with optional llm health", () => {
+  const context = loadRunStateContext();
+  const askRecord = {
+    command: "run-ask",
+    backendRequested: "opencode-api",
+    backendEffective: "opencode-api",
+    modelSelected: "deepseek-v4-pro",
+    modelFinal: "deepseek-v4-pro",
+    fallbackStage: "",
+    fallbackReason: "",
+    contractValidated: false,
+  };
+  const error = {
+    code: "2",
+    message: "LLM backend timeout",
+    stdout: "out",
+    stderr: "backend unavailable",
+  };
+
+  const state = context.buildProductShellFailedRunState({
+    record: askRecord,
+    error,
+    noticeMessage: "Ask failed",
+  });
+
+  expect(state.events).toEqual([
+    { stage: "Failed", summary: "LLM backend timeout", status: "failed" },
+  ]);
+  expect(state.updates).toMatchObject({
+    status: "failed",
+    exitCode: 2,
+    stdoutRaw: "out",
+    stderrRaw: "backend unavailable",
+    errorSummary: "LLM backend timeout",
+  });
+  expect(state.llmHealthOverrides).toMatchObject({
+    status: "degraded",
+    source: "run-ask",
+    fallbackCommand: "ask",
+    stderrRaw: "backend unavailable",
+  });
+  expect(state.logDetails).toEqual({ stdoutRaw: "out", stderrRaw: "backend unavailable" });
+  expect(state.noticeMessage).toBe("Ask failed");
+
+  const nonAsk = context.buildProductShellFailedRunState({
+    record: { command: "compile" },
+    error,
+  });
+  expect(nonAsk.llmHealthOverrides).toBeNull();
+});
+
+test("run state helpers build completion timeline events", () => {
+  const context = loadRunStateContext();
+
+  expect(context.buildProductShellCompletionRunEvents({
+    degradedRun: true,
+    primaryPath: "output/reports/a.md",
+    receiptPath: "output/receipts/a.json",
+    rewriteProposalPaths: ["output/_proposals/rewrite/concept-a.md"],
+    rewriteProposalSummary: "1 rewrite proposal",
+    fallbackSummary: "timeout",
+    successSummary: "output/reports/a.md",
+  })).toEqual([
+    { stage: "LLM timeout", summary: "timeout", status: "degraded" },
+    { stage: "Artifacts", summary: "output/reports/a.md · output/receipts/a.json", status: "success" },
+    { stage: "Rewrite proposals", summary: "1 rewrite proposal", status: "success" },
+  ]);
+
+  expect(context.buildProductShellCompletionRunEvents({
+    degradedRun: false,
+    primaryPath: "",
+    receiptPath: "",
+    successSummary: "Command completed successfully.",
+  })).toEqual([
+    { stage: "Completed", summary: "Command completed successfully.", status: "success" },
+  ]);
+});
+
+test("run state helpers build completed run state including health and notice", () => {
+  const context = loadRunStateContext();
+  const record = context.createProductShellRunRecord({
+    label: "Ask: hello",
+    args: ["run-ask", "hello"],
+    llm: { backend: "opencode-api", model: "deepseek-v4-pro" },
+    protocol: "product",
+  });
+  const result = {
+    payload: {
+      path: "output/reports/a.md",
+      receipt_path: "output/receipts/a.json",
+      fallback_used: true,
+      delivery_mode: "deterministic-fallback",
+      backend_requested: "opencode-api",
+      backend_effective: "codex-cli",
+      model_selected: "deepseek-v4-pro",
+      model_final: "gpt-5.5",
+      fallback_stage: "primary",
+      fallback_reason: "timeout",
+      fallback_command: "ask",
+    },
+    stdout: "ok",
+    stderr: "",
+  };
+
+  const state = context.buildProductShellCompletedRunState({
+    record,
+    result,
+    llm: { backend: "opencode-api", model: "deepseek-v4-pro" },
+    rewriteProposalSummary: "",
+    fallbackSummary: "timeout",
+    successSummary: "output/reports/a.md",
+    degradedNotice: "degraded notice",
+    successNotice: "success notice",
+  });
+
+  expect(state.degradedRun).toBe(true);
+  expect(state.events[0]).toEqual({ stage: "LLM timeout", summary: "timeout", status: "degraded" });
+  expect(state.updates).toMatchObject({
+    status: "degraded",
+    resultPath: "output/reports/a.md",
+    receiptPath: "output/receipts/a.json",
+    backendEffective: "codex-cli",
+    modelFinal: "gpt-5.5",
+    fallbackUsed: true,
+  });
+  expect(state.llmHealthOverrides).toMatchObject({
+    status: "degraded",
+    fallbackCommand: "ask",
+    backendEffective: "codex-cli",
+    modelFinal: "gpt-5.5",
+  });
+  expect(state.noticeMessage).toBe("degraded notice");
+
+  const nonAsk = context.buildProductShellCompletedRunState({
+    record: { ...record, command: "compile" },
+    result: { payload: {}, stdout: "", stderr: "" },
+    llm: {},
+    successNotice: "compiled",
+  });
+  expect(nonAsk.llmHealthOverrides).toBeNull();
+  expect(nonAsk.noticeMessage).toBe("compiled");
+});
+
+test("run state helpers build llm health overrides", () => {
+  const context = loadRunStateContext();
+  const record = {
+    backendRequested: "opencode-api",
+    backendEffective: "codex-cli",
+    modelSelected: "deepseek-v4-pro",
+    modelFinal: "gpt-5.5",
+    fallbackStage: "primary",
+    fallbackReason: "timeout",
+    fallbackCommand: "ask",
+    fallbackUsed: true,
+    deliveryMode: "deterministic-fallback",
+    contractValidated: true,
+  };
+
+  expect(context.buildProductShellLlmHealthOverrides(record)).toMatchObject({
+    status: "degraded",
+    source: "run-ask",
+    fallbackCommand: "ask",
+    backendRequested: "opencode-api",
+    backendEffective: "codex-cli",
+    modelSelected: "deepseek-v4-pro",
+    modelFinal: "gpt-5.5",
+    fallbackStage: "primary",
+    fallbackReason: "timeout",
+    contractValidated: true,
+  });
+  expect(context.buildProductShellLlmHealthOverrides({ deliveryMode: "" })).toMatchObject({
+    status: "healthy",
+    reason: "Recent run-ask succeeded.",
+    fallbackCommand: "",
+  });
+  expect(context.buildProductShellFailedLlmHealthOverrides(record, {
+    message: "Backend unavailable",
+    stderr: "stderr detail",
+  })).toMatchObject({
+    status: "degraded",
+    reason: "Backend unavailable",
+    source: "run-ask",
+    fallbackCommand: "ask",
+    stderrSummary: "stderr detail",
+    stderrRaw: "stderr detail",
+  });
 });

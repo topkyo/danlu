@@ -84,10 +84,13 @@ describe("runReportSubgraphCommand", () => {
       path.resolve(__dirname, "../../plugin.js"),
       "utf8"
     );
-    expect(pluginSrc).toMatch(/runReportSubgraphCommand[\s\S]{0,800}output_path/);
-    expect(pluginSrc).toMatch(
-      /runReportSubgraphCommand[\s\S]{0,800}openWorkspacePath\(outputPath\)/
+    const actionsSrc = fs.readFileSync(
+      path.resolve(__dirname, "../../plugin_actions.js"),
+      "utf8"
     );
+    expect(pluginSrc).toMatch(/runProductShellReportSubgraphCommand\(this, \{ reportPath \}\)/);
+    expect(actionsSrc).toMatch(/runProductShellReportSubgraphCommand[\s\S]{0,800}output_path/);
+    expect(actionsSrc).toMatch(/runProductShellReportSubgraphCommand[\s\S]{0,800}openWorkspacePath\(outputPath\)/);
     // i18n contract: the command spec must use English base keys, not Chinese.
     const commandSpecsSrc = fs.readFileSync(
       path.resolve(__dirname, "../../command_specs.js"),
@@ -100,17 +103,17 @@ describe("runReportSubgraphCommand", () => {
   // Picker contract: openReportSubgraphPicker must surface recent_outputs reports
   // as candidates rather than relying on free-text only.
   test("plugin.js source surfaces recent reports as picker candidates", () => {
-    const pluginSrc = fs.readFileSync(
-      path.resolve(__dirname, "../../plugin.js"),
+    const actionsSrc = fs.readFileSync(
+      path.resolve(__dirname, "../../plugin_actions.js"),
       "utf8"
     );
-    expect(pluginSrc).toMatch(/collectReportCandidates\s*\(/);
-    expect(pluginSrc).toMatch(/recent_outputs/);
-    expect(pluginSrc).toMatch(/output\/reports\//);
-    expect(pluginSrc).toMatch(/openReportSubgraphPicker[\s\S]{0,1200}collectReportCandidates/);
-    expect(pluginSrc).toMatch(/artifact_quality/);
-    expect(pluginSrc).toMatch(/contains_llm_placeholder/);
-    expect(pluginSrc).toMatch(/"timeout_or_unavailable", "pending", "failed", "degraded"/);
+    expect(actionsSrc).toMatch(/collectProductShellReportCandidates\s*\(/);
+    expect(actionsSrc).toMatch(/recent_outputs/);
+    expect(actionsSrc).toMatch(/output\/reports\//);
+    expect(actionsSrc).toMatch(/openProductShellReportSubgraphPicker[\s\S]{0,1200}collectReportCandidates/);
+    expect(actionsSrc).toMatch(/artifact_quality/);
+    expect(actionsSrc).toMatch(/contains_llm_placeholder/);
+    expect(actionsSrc).toMatch(/"timeout_or_unavailable", "pending", "failed", "degraded"/);
     // Falls back to plain text input only when no candidates exist.
     const modalSpecsSrc = fs.readFileSync(
       path.resolve(__dirname, "../../modal_specs.js"),

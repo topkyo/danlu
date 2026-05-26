@@ -2005,6 +2005,180 @@ function reconcilePendingSubmissionList(pendingSubmissions, summary, now = Date.
   return { remaining, hits };
 }
 
+// --- src/pending_runtime.js ---
+
+// Runtime helpers for mutating plugin-owned pending submissions.
+
+function ensurePendingSubmissionRuntimeList(plugin) {
+  if (!plugin || typeof plugin !== "object") return [];
+  if (!Array.isArray(plugin.pendingSubmissions)) plugin.pendingSubmissions = [];
+  return plugin.pendingSubmissions;
+}
+
+function findPendingSubmissionRuntimeEntry(plugin, id) {
+  const pendingSubmissions = plugin && Array.isArray(plugin.pendingSubmissions)
+    ? plugin.pendingSubmissions
+    : [];
+  return pendingSubmissions.find((entry) => entry && entry.id === id) || null;
+}
+
+function removePendingSubmissionRuntimeEntry(plugin, id) {
+  if (!plugin || !Array.isArray(plugin.pendingSubmissions) || !plugin.pendingSubmissions.length) {
+    return false;
+  }
+  const before = plugin.pendingSubmissions.length;
+  plugin.pendingSubmissions = plugin.pendingSubmissions.filter((entry) => entry && entry.id !== id);
+  return plugin.pendingSubmissions.length !== before;
+}
+
+function commitPendingSubmissionRuntimeChange(plugin, opts = {}) {
+  if (!plugin || typeof plugin !== "object") return;
+  if (opts.save !== false && typeof plugin.savePluginState === "function") {
+    void plugin.savePluginState();
+  }
+  if (opts.refresh !== false && typeof plugin.refreshOpenViews === "function") {
+    plugin.refreshOpenViews();
+  }
+  if (opts.poller !== false && typeof plugin.updateLongRunningPoller === "function") {
+    plugin.updateLongRunningPoller();
+  }
+}
+
+function pushPendingSubmissionRuntime(plugin, displayText, opts = {}) {
+  const text = String(displayText || "").trim();
+  if (!text) return null;
+  const pendingSubmissions = ensurePendingSubmissionRuntimeList(plugin);
+  const fingerprint = text.slice(0, 80);
+  const duplicate = pendingSubmissions.find((entry) => entry && entry.status === "running" && entry.payloadFingerprint === fingerprint);
+  if (duplicate) return duplicate.id;
+  const id = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const entry = createPendingSubmissionEntry({
+    id,
+    displayText: text,
+    opts,
+    startedAt: new Date().toISOString(),
+  });
+  if (!entry) return null;
+  pendingSubmissions.unshift(entry);
+  if (pendingSubmissions.length > 8) pendingSubmissions.length = 8;
+  commitPendingSubmissionRuntimeChange(plugin);
+  return id;
+}
+
+function resetPendingSubmissionRuntimeForRetry(plugin, id) {
+  const entry = findPendingSubmissionRuntimeEntry(plugin, id);
+  if (!entry) return;
+  resetPendingSubmissionEntryForRetry(entry, new Date().toISOString());
+  commitPendingSubmissionRuntimeChange(plugin);
+}
+
+function markPendingSubmissionRuntimeReceived(plugin, id) {
+  const entry = findPendingSubmissionRuntimeEntry(plugin, id);
+  if (!entry) return;
+  if (!markPendingSubmissionEntryReceived(entry, new Date().toISOString())) return;
+  commitPendingSubmissionRuntimeChange(plugin);
+}
+
+function markPendingSubmissionRuntimeDone(plugin, id, reconcileTarget, reconcilePath) {
+  const entry = findPendingSubmissionRuntimeEntry(plugin, id);
+  if (!entry) return;
+  if (!markPendingSubmissionEntryDone(entry, reconcileTarget, reconcilePath, new Date().toISOString())) return;
+  commitPendingSubmissionRuntimeChange(plugin);
+}
+
+function markPendingSubmissionRuntimeFailed(plugin, id, error) {
+  const entry = findPendingSubmissionRuntimeEntry(plugin, id);
+  if (!entry) return;
+  markPendingSubmissionEntryFailed(
+    entry,
+    truncateText(String((error && error.message) || error || "失败"), 180),
+    new Date().toISOString()
+  );
+  commitPendingSubmissionRuntimeChange(plugin);
+}
+
+function updatePendingSubmissionRuntimeRetryArgs(plugin, id, retryArgs) {
+  const entry = findPendingSubmissionRuntimeEntry(plugin, id);
+  if (!entry) return;
+  entry.retryArgs = retryArgs && typeof retryArgs === "object" ? retryArgs : null;
+  if (retryArgs && typeof retryArgs === "object") {
+    updatePendingSubmissionRuntimeRunNotes(plugin, id, retryArgs.runNotesPath, retryArgs.runId, { save: false, refresh: false });
+    if (retryArgs.jobId) entry.jobId = String(retryArgs.jobId || "");
+  }
+  commitPendingSubmissionRuntimeChange(plugin);
+}
+
+function updatePendingSubmissionRuntimeRunNotes(plugin, id, runNotesPath, runId, opts = {}) {
+  const entry = findPendingSubmissionRuntimeEntry(plugin, id);
+  if (!entry) return;
+  updatePendingSubmissionEntryRunNotes(entry, runNotesPath, runId);
+  commitPendingSubmissionRuntimeChange(plugin, { save: opts.save, refresh: opts.refresh, poller: false });
+}
+
+function updatePendingSubmissionRuntimeArtifactMeta(plugin, id, meta, opts = {}) {
+  const entry = findPendingSubmissionRuntimeEntry(plugin, id);
+  if (!entry || !meta || typeof meta !== "object") return;
+  updatePendingSubmissionEntryArtifactMeta(entry, meta);
+  commitPendingSubmissionRuntimeChange(plugin, { save: opts.save, refresh: opts.refresh, poller: false });
+}
+
+function updateProductShellLongRunningPoller(plugin) {
+  if (pendingHasActiveLongRunning(plugin && plugin.pendingSubmissions)) {
+    plugin.startLongRunningPoller();
+  } else {
+    plugin.stopLongRunningPoller();
+  }
+}
+
+function startProductShellLongRunningPoller(plugin) {
+  if (!plugin || plugin.longRunningPollTimer) return;
+  plugin.longRunningPollTimer = window.setInterval(() => {
+    if (!pendingHasActiveLongRunning(plugin.pendingSubmissions)) {
+      plugin.stopLongRunningPoller();
+      return;
+    }
+    void plugin.refreshShellSummarySilently();
+  }, 15000);
+}
+
+function stopProductShellLongRunningPoller(plugin) {
+  if (!plugin || !plugin.longRunningPollTimer) return;
+  window.clearInterval(plugin.longRunningPollTimer);
+  plugin.longRunningPollTimer = null;
+}
+
+function productShellLastSummaryRefreshLabel(plugin) {
+  const ts = plugin && plugin.shellSummary && plugin.shellSummary.generated_at ? String(plugin.shellSummary.generated_at) : "";
+  if (!ts) return plugin.t("未刷新");
+  const ms = Date.parse(ts);
+  if (!Number.isFinite(ms)) return plugin.t("未刷新");
+  const diff = Math.max(0, Date.now() - ms);
+  if (diff < 60 * 1000) return plugin.t("刚刚");
+  const minutes = Math.floor(diff / (60 * 1000));
+  if (minutes < 60) return plugin.t("{n} 分钟前", { n: minutes });
+  const hours = Math.floor(diff / (60 * 60 * 1000));
+  if (hours < 24) return plugin.t("{n} 小时前", { n: hours });
+  const days = Math.floor(diff / (24 * 60 * 60 * 1000));
+  return plugin.t("{n} 天前", { n: days });
+}
+
+function reconcilePendingSubmissionsRuntime(plugin, summary) {
+  if (!plugin || !Array.isArray(plugin.pendingSubmissions) || !plugin.pendingSubmissions.length) return;
+  const { remaining, hits } = reconcilePendingSubmissionList(plugin.pendingSubmissions, summary);
+  if (remaining.length !== plugin.pendingSubmissions.length) {
+    plugin.pendingSubmissions = remaining;
+    plugin.refreshOpenViews();
+  }
+  for (const hit of hits) {
+    if (hit.runNotesPath || hit.runId) {
+      plugin.updatePendingSubmissionRunNotes(hit.id, hit.runNotesPath, hit.runId, { save: false, refresh: false });
+    }
+    plugin.updatePendingSubmissionArtifactMeta(hit.id, hit.meta || {}, { save: false, refresh: false });
+    plugin.markPendingSubmissionDone(hit.id, hit.target, hit.path);
+  }
+  updateProductShellLongRunningPoller(plugin);
+}
+
 // --- src/context_state.js ---
 
 "use strict";
@@ -7493,6 +7667,26 @@ function isProductShellDegradedRun(record, payload) {
   return productShellRunPayloadFallbackUsed(payload, record) || deliveryMode === "deterministic-fallback";
 }
 
+function buildProductShellRunResultContext(result) {
+  const payload = result && result.payload;
+  const primaryPath = extractPrimaryPath(payload);
+  const receiptPath = payload && typeof payload.receipt_path === "string" ? payload.receipt_path : "";
+  const rewriteProposalObjects = extractRewriteProposalObjects(payload);
+  const rewriteRecoveryActions = extractRewriteRecoveryActions(payload);
+  const rewriteProposalPaths = extractRewriteProposalPaths(payload);
+  const rewriteProposalSlugs = rewriteProposalObjects.length
+    ? rewriteProposalSlugsFromObjects(rewriteProposalObjects)
+    : extractRewriteProposalSlugs(rewriteProposalPaths);
+  return {
+    primaryPath,
+    receiptPath,
+    rewriteProposalObjects,
+    rewriteRecoveryActions,
+    rewriteProposalPaths,
+    rewriteProposalSlugs,
+  };
+}
+
 function buildProductShellBackgroundRunUpdates({ result, primaryPath }) {
   const payload = result && result.payload && typeof result.payload === "object" ? result.payload : {};
   return {
@@ -7557,6 +7751,80 @@ function buildProductShellCompletedRunUpdates({
   };
 }
 
+function buildProductShellCompletionRunEvents({
+  degradedRun,
+  primaryPath,
+  receiptPath,
+  rewriteProposalPaths = [],
+  rewriteProposalSummary = "",
+  fallbackSummary = "",
+  successSummary = "",
+}) {
+  const events = [{
+    stage: degradedRun ? "LLM timeout" : "Completed",
+    summary: degradedRun ? fallbackSummary : successSummary,
+    status: degradedRun ? "degraded" : "success",
+  }];
+  if (primaryPath || receiptPath) {
+    events.push({
+      stage: "Artifacts",
+      summary: [primaryPath, receiptPath].filter(Boolean).join(" · "),
+      status: "success",
+    });
+  }
+  if (Array.isArray(rewriteProposalPaths) && rewriteProposalPaths.length) {
+    events.push({
+      stage: "Rewrite proposals",
+      summary: rewriteProposalSummary,
+      status: "success",
+    });
+  }
+  return events;
+}
+
+function buildProductShellCompletedRunState({
+  record,
+  result,
+  llm,
+  runContext,
+  rewriteProposalSummary = "",
+  fallbackSummary = "",
+  successSummary = "",
+  degradedNotice = "",
+  successNotice = "",
+}) {
+  const context = runContext || buildProductShellRunResultContext(result);
+  const degradedRun = isProductShellDegradedRun(record, result && result.payload);
+  const events = buildProductShellCompletionRunEvents({
+    degradedRun,
+    primaryPath: context.primaryPath,
+    receiptPath: context.receiptPath,
+    rewriteProposalPaths: context.rewriteProposalPaths,
+    rewriteProposalSummary,
+    fallbackSummary,
+    successSummary,
+  });
+  const updates = buildProductShellCompletedRunUpdates({
+    record,
+    result,
+    llm,
+    primaryPath: context.primaryPath,
+    receiptPath: context.receiptPath,
+    rewriteProposalObjects: context.rewriteProposalObjects,
+    rewriteRecoveryActions: context.rewriteRecoveryActions,
+    rewriteProposalPaths: context.rewriteProposalPaths,
+    rewriteProposalSlugs: context.rewriteProposalSlugs,
+  });
+  const projectedRecord = { ...record, ...updates };
+  return {
+    degradedRun,
+    events,
+    updates,
+    llmHealthOverrides: isProductShellAskRun(record) ? buildProductShellLlmHealthOverrides(projectedRecord) : null,
+    noticeMessage: degradedRun ? degradedNotice : successNotice,
+  };
+}
+
 function buildProductShellFailedRunUpdates(error) {
   return {
     status: "failed",
@@ -7567,6 +7835,67 @@ function buildProductShellFailedRunUpdates(error) {
     stdoutRaw: trimDiagnosticText(error && error.stdout || ""),
     stderrRaw: trimDiagnosticText(error && error.stderr || ""),
     errorSummary: truncateText(error && error.message || "Command failed"),
+  };
+}
+
+function buildProductShellFailedRunState({
+  record,
+  error,
+  noticeMessage = "",
+}) {
+  const message = error && error.message || "Command failed";
+  const events = [{
+    stage: "Failed",
+    summary: truncateText(message, 180),
+    status: "failed",
+  }];
+  return {
+    events,
+    updates: buildProductShellFailedRunUpdates(error),
+    llmHealthOverrides: isProductShellAskRun(record) && llmBackendUnavailable(error)
+      ? buildProductShellFailedLlmHealthOverrides(record, error)
+      : null,
+    logDetails: {
+      stdoutRaw: error && error.stdout || "",
+      stderrRaw: error && error.stderr || "",
+    },
+    noticeMessage,
+  };
+}
+
+function buildProductShellLlmHealthOverrides(record) {
+  const usedFallback = Boolean(record && record.fallbackUsed)
+    || String(record && record.deliveryMode || "").trim() === "deterministic-fallback";
+  return {
+    status: usedFallback ? "degraded" : "healthy",
+    reason: usedFallback ? "LLM timed out or failed; only deterministic fallback is available." : "Recent run-ask succeeded.",
+    source: "run-ask",
+    fallbackCommand: usedFallback ? (record.fallbackCommand || "ask") : "",
+    backendRequested: record.backendRequested,
+    backendEffective: record.backendEffective,
+    modelSelected: record.modelSelected,
+    modelFinal: record.modelFinal,
+    fallbackStage: record.fallbackStage,
+    fallbackReason: record.fallbackReason,
+    contractValidated: record.contractValidated,
+  };
+}
+
+function buildProductShellFailedLlmHealthOverrides(record, error) {
+  return {
+    status: "degraded",
+    reason: truncateText(error && (error.message || error.stderr || error.stdout) || "LLM backend unavailable", 240),
+    source: "run-ask",
+    fallbackCommand: "ask",
+    backendRequested: record.backendRequested,
+    backendEffective: record.backendEffective,
+    modelSelected: record.modelSelected,
+    modelFinal: record.modelFinal,
+    fallbackStage: record.fallbackStage,
+    fallbackReason: record.fallbackReason,
+    contractValidated: record.contractValidated,
+    stderrSummary: truncateText(error && error.stderr || ""),
+    stderrRaw: trimDiagnosticText(error && (error.stderr || error.stdout) || ""),
   };
 }
 
@@ -7656,6 +7985,757 @@ function renderProductShellRunLog({ record, details = {}, t, repoRoot = "" }) {
     lines.push("", "## Standard error", "", "```text", stderrText, "```");
   }
   return { logPath, content: `${lines.join("\n")}\n` };
+}
+
+// --- src/run_log_persistence.js ---
+
+// Product Shell run-log persistence helpers.
+
+function resolveProductShellRunLogPath(repoRoot, relativePath) {
+  const normalized = String(relativePath || "").trim();
+  const root = String(repoRoot || "").trim();
+  if (!normalized || !root) {
+    return "";
+  }
+  return path.join(root, normalized);
+}
+
+function persistProductShellRunLog({ record, details = {}, t, repoRoot = "" }) {
+  const rendered = renderProductShellRunLog({
+    record,
+    details,
+    t,
+    repoRoot: repoRoot || ".",
+  });
+  if (!rendered) {
+    return "";
+  }
+  const absolutePath = resolveProductShellRunLogPath(repoRoot, rendered.logPath);
+  if (!absolutePath) {
+    return "";
+  }
+  record.logPath = rendered.logPath;
+  fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
+  fs.writeFileSync(absolutePath, rendered.content, "utf8");
+  return rendered.logPath;
+}
+
+// --- src/plugin_state.js ---
+
+// Product Shell plugin settings and persisted state helpers.
+
+async function loadProductShellPluginState(plugin) {
+  const data = (await plugin.loadData()) || {};
+  const rawSettings = data.settings && typeof data.settings === "object" ? data.settings : {};
+  plugin.rawPluginData = data;
+  plugin.settings = Object.assign({}, DEFAULT_SETTINGS, rawSettings);
+  if (plugin.settings.defaultAskFormat === "report") {
+    plugin.settings.defaultAskFormat = "note";
+  }
+  const legacyShowHtmlShortcutsMigrated = Object.prototype.hasOwnProperty.call(plugin.settings, "showHtmlShortcuts");
+  delete plugin.settings.showHtmlShortcuts;
+  const legacyDefaultAskModeMigrated = Object.prototype.hasOwnProperty.call(plugin.settings, "defaultAskMode");
+  delete plugin.settings.defaultAskMode;
+  const rawAdvancedSectionsExpanded = plugin.settings.advancedSectionsExpanded && typeof plugin.settings.advancedSectionsExpanded === "object"
+    ? plugin.settings.advancedSectionsExpanded
+    : {};
+  const migratedAdvancedSectionsExpanded = {
+    status: Boolean(rawAdvancedSectionsExpanded.status),
+    history: Boolean(rawAdvancedSectionsExpanded.history),
+  };
+  const advancedSectionsExpandedMigrated = JSON.stringify(plugin.settings.advancedSectionsExpanded || {}) !== JSON.stringify(migratedAdvancedSectionsExpanded);
+  plugin.settings.advancedSectionsExpanded = migratedAdvancedSectionsExpanded;
+  const legacyLlmSettingsMigrated = dropLegacyLlmSettings(plugin.settings);
+  plugin.settings.locale = normalizeLocale(plugin.settings.locale);
+  const migratedFeishuWebhookUrl = String(plugin.settings.feishuWebhookUrl || plugin.settings.feishu_webhook_url || "").trim();
+  const feishuWebhookUrlMigrated = plugin.settings.feishuWebhookUrl !== migratedFeishuWebhookUrl;
+  plugin.settings.feishuWebhookUrl = migratedFeishuWebhookUrl;
+  const migratedWecomWebhookUrl = String(plugin.settings.wecomWebhookUrl || plugin.settings.wecom_webhook_url || "").trim();
+  const wecomWebhookUrlMigrated = plugin.settings.wecomWebhookUrl !== migratedWecomWebhookUrl;
+  plugin.settings.wecomWebhookUrl = migratedWecomWebhookUrl;
+  const rawEnabledChannels = Array.isArray(rawSettings.enabledChannels)
+    ? rawSettings.enabledChannels
+    : rawSettings.enabled_channels;
+  const migratedEnabledChannels = normalizeEnabledChannels(rawEnabledChannels);
+  const enabledChannelsMigrated = JSON.stringify(plugin.settings.enabledChannels || []) !== JSON.stringify(migratedEnabledChannels);
+  plugin.settings.enabledChannels = migratedEnabledChannels;
+  const migratedLastViewedTimestamp = normalizeLastViewedTimestamp(plugin.settings.lastViewedTimestamp);
+  const lastViewedTimestampMigrated = plugin.settings.lastViewedTimestamp !== migratedLastViewedTimestamp;
+  plugin.settings.lastViewedTimestamp = migratedLastViewedTimestamp;
+  plugin.pendingSubmissions = plugin.hydratePendingSubmissions(plugin.settings.persistedPendingSubmissions);
+  const recentRuns = normalizeProductShellRecentRuns(data.recentRuns);
+  plugin.pluginState = { recentRuns };
+  plugin.trimRecentRuns();
+  const defaultAskFormatMigrated = rawSettings.defaultAskFormat === "report";
+  if (
+    feishuWebhookUrlMigrated
+    || wecomWebhookUrlMigrated
+    || enabledChannelsMigrated
+    || lastViewedTimestampMigrated
+    || legacyLlmSettingsMigrated
+    || defaultAskFormatMigrated
+    || legacyShowHtmlShortcutsMigrated
+    || legacyDefaultAskModeMigrated
+    || advancedSectionsExpandedMigrated
+  ) {
+    await plugin.savePluginState();
+  }
+}
+
+async function saveProductShellPluginState(plugin) {
+  await plugin.saveData({
+    settings: Object.assign({}, plugin.settings, {
+      persistedPendingSubmissions: plugin.serializePendingSubmissions(),
+    }),
+    recentRuns: plugin.pluginState.recentRuns,
+  });
+}
+
+function getProductShellAdvancedSectionExpanded(plugin, key) {
+  const state = plugin.settings && plugin.settings.advancedSectionsExpanded;
+  if (!state || typeof state !== "object") return false;
+  return Boolean(state[key]);
+}
+
+async function setProductShellAdvancedSectionExpanded(plugin, key, value) {
+  if (key !== "status" && key !== "history") {
+    return;
+  }
+  const current = plugin.settings && plugin.settings.advancedSectionsExpanded;
+  const next = {
+    status: Boolean(current && typeof current === "object" && current.status),
+    history: Boolean(current && typeof current === "object" && current.history),
+  };
+  next[key] = Boolean(value);
+  plugin.settings.advancedSectionsExpanded = next;
+  try {
+    await plugin.savePluginState();
+  } catch (error) {
+    // Persisting drawer state must not break UI interaction.
+  }
+}
+
+// --- src/plugin_lifecycle.js ---
+
+async function handleProductShellVaultChange(plugin, relativePath) {
+  if (!relativePath) {
+    return;
+  }
+  if (relativePath === ".obsidian/graph.json" && typeof plugin.maybeRepairEvidenceGraphFilter === "function") {
+    void plugin.maybeRepairEvidenceGraphFilter().catch(() => {});
+    return;
+  }
+  if (relativePath === SHELL_SUMMARY_PATH) {
+    await plugin.loadShellSummaryFromDisk();
+    return;
+  }
+  if (relativePath.startsWith("output/") || relativePath.startsWith("wiki/indexes/")) {
+    plugin.refreshOpenViews();
+  }
+}
+
+async function syncProductShellEvidenceGraphConfig(plugin, { quiet = true } = {}) {
+  if (!plugin.repoState.valid) {
+    return null;
+  }
+  try {
+    return await plugin.execLauncher(["sync-evidence-graph"]);
+  } catch (error) {
+    if (!quiet) {
+      console.error("[furnace-product-shell] sync-evidence-graph failed", error);
+    }
+    return null;
+  }
+}
+
+async function maybeRepairProductShellEvidenceGraphFilter(plugin) {
+  const adapter = plugin.app.vault.adapter;
+  const graphPath = ".obsidian/graph.json";
+  if (!(await adapter.exists(graphPath))) {
+    return;
+  }
+  try {
+    const raw = await adapter.read(graphPath);
+    const parsed = JSON.parse(raw);
+    const search = String(parsed.search || "").trim();
+    if (!search || search.includes("wiki/concepts")) {
+      await plugin.syncEvidenceGraphConfig({ quiet: true });
+    }
+  } catch {
+    await plugin.syncEvidenceGraphConfig({ quiet: true });
+  }
+}
+
+async function openProductShellEvidenceGraphView(plugin) {
+  await plugin.syncEvidenceGraphConfig({ quiet: false });
+  await plugin.openWorkspacePath("wiki/evidence-graph.md");
+  if (plugin.app.commands?.executeCommandById) {
+    await plugin.app.commands.executeCommandById("graph:open");
+  }
+}
+
+async function copyProductShellText(plugin, value) {
+  const text = String(value || "").trim();
+  if (!text) {
+    new Notice(plugin.t("Nothing to copy."));
+    return false;
+  }
+  if (clipboard && typeof clipboard.writeText === "function") {
+    clipboard.writeText(text);
+    new Notice(plugin.t("Copied to clipboard."));
+    return true;
+  }
+  if (window.navigator && window.navigator.clipboard && typeof window.navigator.clipboard.writeText === "function") {
+    await window.navigator.clipboard.writeText(text);
+    new Notice(plugin.t("Copied to clipboard."));
+    return true;
+  }
+  new Notice(plugin.t("Clipboard is not available in this environment."));
+  return false;
+}
+
+async function revealProductShellWorkspacePath(plugin, relativePath) {
+  const normalized = String(relativePath || "").trim();
+  const absolutePath = plugin.resolveAbsoluteWorkspacePath(normalized);
+  if (!normalized || !absolutePath || !fs.existsSync(absolutePath)) {
+    new Notice(plugin.t("Path not found: {path}", { path: normalized || relativePath || "" }));
+    return;
+  }
+  if (shell && typeof shell.showItemInFolder === "function") {
+    shell.showItemInFolder(absolutePath);
+    return;
+  }
+  if (shell && typeof shell.openPath === "function") {
+    await shell.openPath(path.dirname(absolutePath));
+    return;
+  }
+  new Notice(plugin.t("Unable to reveal {path}", { path: normalized }));
+}
+
+async function openProductShellHomeNote(plugin) {
+  await plugin.openWorkspacePath("HOME.md");
+}
+
+async function openProductShellOutputsHub(plugin) {
+  const links = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary.links || {} : {};
+  const preferredPath = String(links.output_packs_markdown || "docs/Outputs.md").trim();
+  await plugin.openWorkspacePath(preferredPath);
+}
+
+async function openProductShellPendingDoneTarget(plugin, target, reconcilePath) {
+  const normalizedPath = String(reconcilePath || "").trim();
+  const normalizedTarget = String(target || "").trim();
+  if (normalizedPath) {
+    let opened = false;
+    try {
+      opened = await plugin.openWorkspacePath(normalizedPath);
+    } catch (error) {
+      opened = false;
+    }
+    if (opened) return;
+  }
+  try {
+    if (normalizedTarget === "outputs" && typeof plugin.openOutputsHub === "function") {
+      await plugin.openOutputsHub();
+      new Notice(plugin.t("已打开输出汇总（找不到具体报告路径）"));
+      return;
+    }
+    if (normalizedTarget === "receipts" && typeof plugin.openRecentRunsView === "function") {
+      await plugin.openRecentRunsView();
+      new Notice(plugin.t("已打开运行记录（找不到具体回执路径）"));
+      return;
+    }
+    if (typeof plugin.openHomeNote === "function") {
+      await plugin.openHomeNote();
+      return;
+    }
+  } catch (error) {
+    // Last resort is a user-facing notice below.
+  }
+  new Notice(plugin.t("无法打开目标，可能尚未生成"));
+}
+
+async function readProductShellWorkspaceSnippet(plugin, relativePath, length = 420) {
+  const resolvedPath = resolveWorkspaceSnippetPath(plugin.repoState.root, relativePath);
+  if (!resolvedPath) return "";
+  try {
+    const raw = await fs.promises.readFile(resolvedPath, "utf8");
+    return workspaceSnippetFromMarkdown(raw, length);
+  } catch (error) {
+    return "";
+  }
+}
+
+function quoteProductShellFileToComposer(plugin, relativePath) {
+  const normalized = String(relativePath || "").trim();
+  if (!normalized) return false;
+  const textarea = document.querySelector(".furnace-universal-input-textarea");
+  if (!textarea) {
+    new Notice(plugin.t("找不到输入框，无法引用报告"));
+    return false;
+  }
+  const quoteLine = plugin.t("引用报告：{path}", { path: normalized });
+  const update = appendComposerReportQuote(textarea.value, quoteLine);
+  if (update.changed) {
+    textarea.value = update.value;
+  }
+  textarea.dispatchEvent(new Event("input", { bubbles: true }));
+  textarea.focus();
+  try { textarea.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (error) {}
+  return true;
+}
+
+async function openProductShellWorkspacePath(plugin, relativePath) {
+  const requestedPath = String(relativePath || "").trim();
+  const normalized = normalizeWorkspaceRelativePath(requestedPath);
+  if (!requestedPath) {
+    new Notice(plugin.t("No path to open."));
+    return false;
+  }
+  if (!normalized) {
+    new Notice(plugin.t("Unable to open {path}", { path: requestedPath }));
+    return false;
+  }
+  const abstractFile = plugin.app.vault.getAbstractFileByPath(normalized);
+  if (abstractFile && normalized.endsWith(".md")) {
+    const leaf = plugin.app.workspace.getLeaf(true);
+    await leaf.openFile(abstractFile);
+    return true;
+  }
+  if (!plugin.repoState.root) {
+    new Notice(plugin.t("Unable to open {path}", { path: normalized }));
+    return false;
+  }
+  const absolutePath = resolveWorkspaceSnippetPath(plugin.repoState.root, normalized);
+  if (!fs.existsSync(absolutePath)) {
+    new Notice(plugin.t("Path not found: {path}", { path: normalized }));
+    return false;
+  }
+  if (typeof plugin.app.vault.adapter.getResourcePath === "function") {
+    const resourcePath = plugin.app.vault.adapter.getResourcePath(normalized);
+    window.open(resourcePath, "_blank");
+    return true;
+  }
+  new Notice(plugin.t("Unable to open resource: {path}", { path: normalized }));
+  return false;
+}
+
+function updateProductShellStatusBar(plugin) {
+  if (!plugin.statusBarItem) {
+    return;
+  }
+  const runningCount = plugin.pluginState.recentRuns.filter((entry) => entry.status === "running").length;
+  if (!plugin.repoState.valid) {
+    plugin.statusBarItem.setText(plugin.t("Furnace shell unavailable"));
+    plugin.statusBarItem.setAttribute("aria-label", plugin.t("Missing runtime paths: {missing}", { missing: plugin.repoState.missingPaths.join(", ") }));
+    return;
+  }
+  const protocol = plugin.getActiveProtocol();
+  const llmHealth = plugin.currentLlmHealth();
+  const syncState = plugin.currentShellSyncState();
+  const llmSuffix = llmHealth.status === "degraded" ? plugin.t(" | llm degraded") : "";
+  const syncSuffix = syncState.status === "running" ? plugin.t(" | syncing") : "";
+  const suffix = runningCount ? plugin.t(" | running {count}", { count: runningCount }) : "";
+  plugin.statusBarItem.setText(`${plugin.t("Furnace")} ${protocol}${llmSuffix}${syncSuffix}${suffix}`);
+  plugin.statusBarItem.setAttribute("aria-label", plugin.t("Furnace Product Shell active protocol {protocol}", { protocol }));
+}
+
+async function loadProductShellSummaryFromDisk(plugin) {
+  if (!plugin.repoState.valid) {
+    plugin.shellSummary = null;
+    plugin.updateStatusBar();
+    plugin.refreshOpenViews();
+    return null;
+  }
+  let text = null;
+  const summaryFile = plugin.app.vault.getAbstractFileByPath(SHELL_SUMMARY_PATH);
+  if (summaryFile) {
+    try {
+      text = await plugin.app.vault.cachedRead(summaryFile);
+    } catch (error) {
+      console.error("[furnace-product-shell] vault read failed for shell summary, falling back to fs", error);
+      text = null;
+    }
+  }
+  if (text === null && plugin.repoState.root) {
+    const absPath = path.join(plugin.repoState.root, SHELL_SUMMARY_PATH);
+    try {
+      if (fs.existsSync(absPath)) {
+        text = fs.readFileSync(absPath, "utf8");
+      }
+    } catch (error) {
+      console.error("[furnace-product-shell] fs read failed for shell summary", error);
+      text = null;
+    }
+  }
+  if (text === null) {
+    plugin.shellSummary = null;
+    plugin.updateStatusBar();
+    plugin.refreshOpenViews();
+    return null;
+  }
+  try {
+    plugin.shellSummary = readJsonText(text);
+    plugin.processShellSummaryUpdates(plugin.shellSummary);
+  } catch (error) {
+    console.error("[furnace-product-shell] failed to parse shell summary", error);
+    plugin.shellSummary = null;
+  }
+  plugin.updateStatusBar();
+  plugin.refreshOpenViews();
+  return plugin.shellSummary;
+}
+
+// --- src/plugin_actions.js ---
+
+async function runProductShellUniversalInputCommand(plugin, { payload, title }) {
+  const normalizedPayload = String(payload || "").trim();
+  if (!normalizedPayload) {
+    new Notice(plugin.t("Universal input cannot be empty."));
+    return;
+  }
+  const spec = buildUniversalInputCommandSpec({ payload: normalizedPayload, title });
+  return await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
+}
+
+async function runProductShellAskCommand(plugin, { question, format, mode, protocol }) {
+  const spec = buildAskCommandSpec({ question, format, mode, protocol });
+  return await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
+}
+
+async function runProductShellDroppedPayloadsWithAutoAsk(plugin, { payloads, question, protocol }) {
+  const normalizedPayloads = Array.isArray(payloads)
+    ? payloads
+      .map((payload) => {
+        if (payload && typeof payload === "object") {
+          return {
+            path: String(payload.path || payload.source || payload.payload || "").trim(),
+            title: String(payload.title || payload.name || "").trim(),
+          };
+        }
+        return { path: String(payload || "").trim(), title: "" };
+      })
+      .filter((payload) => payload.path)
+    : [];
+  const normalizedQuestion = String(question || "").trim();
+  const materialPaths = [];
+  for (const payloadItem of normalizedPayloads) {
+    const payload = await plugin.runUniversalInputCommand({ payload: payloadItem.path, title: payloadItem.title });
+    collectMaterialPathsFromPayload(payload).forEach((item) => materialPaths.push(item));
+  }
+  const normalizedMaterialPaths = normalizeMaterialPaths(materialPaths);
+  const askQuestion = normalizedQuestion
+    ? buildAutoAskQuestion(normalizedQuestion, normalizedMaterialPaths)
+    : "";
+  let runNotesPath = "";
+  let runId = "";
+  let jobId = "";
+  let askFormat = "";
+  if (normalizedQuestion) {
+    askFormat = inferAutoAskFormat(normalizedQuestion, normalizedMaterialPaths);
+    const askPayload = await plugin.runAskCommand({
+      question: askQuestion,
+      format: askFormat,
+      mode: "run-ask",
+      protocol,
+    });
+    runNotesPath = String(askPayload && askPayload.run_notes_path || "");
+    runId = String(askPayload && askPayload.run_id || "");
+    jobId = String(askPayload && askPayload.job_id || "");
+  }
+  return {
+    materialPaths: normalizedMaterialPaths,
+    askQuestion,
+    askFormat,
+    runNotesPath,
+    runId,
+    jobId,
+  };
+}
+
+function completeProductShellPendingMaterialDrop(plugin, id, materialPaths) {
+  const paths = normalizeMaterialPaths(materialPaths);
+  const rawPath = paths.find((item) => item.startsWith("raw/inbox/")) || paths[0] || "";
+  if (id && rawPath) {
+    plugin.markPendingSubmissionDone(id, "raw", rawPath);
+    return true;
+  }
+  return false;
+}
+
+async function runProductShellDroppedFilesWithAutoAsk(plugin, { files, question, protocol }) {
+  const normalizedFiles = Array.isArray(files)
+    ? files
+      .map((file) => ({
+        path: String(file && (file.path || file.source) || "").trim(),
+        name: String(file && file.name || "").trim(),
+      }))
+      .filter((file) => file.path)
+    : [];
+  return await plugin.runDroppedPayloadsWithAutoAsk({
+    payloads: normalizedFiles.map((file) => ({ path: file.path, title: file.name })),
+    question,
+    protocol,
+  });
+}
+
+async function runProductShellReportSubgraphCommand(plugin, { reportPath }) {
+  const spec = buildReportSubgraphCommandSpec(reportPath);
+  if (!spec.normalized) {
+    new Notice(plugin.t("Report path cannot be empty."));
+    return;
+  }
+  const payload = await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
+  const outputPath = payload && typeof payload.output_path === "string" ? payload.output_path.trim() : "";
+  if (outputPath) {
+    await plugin.openWorkspacePath(outputPath);
+  }
+  return payload;
+}
+
+function collectProductShellReportCandidates(plugin) {
+  const summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : null;
+  if (!summary) return [];
+  const outputs = Array.isArray(summary.recent_outputs) ? summary.recent_outputs : [];
+  const seen = new Set();
+  const candidates = [];
+  for (const item of outputs) {
+    if (!item || typeof item !== "object") continue;
+    const candidatePath = String(item.path || "").trim();
+    if (!candidatePath || !candidatePath.startsWith("output/reports/")) continue;
+    const deliveryMode = String(item.delivery_mode || "").trim();
+    const llmStatus = String(item.llm_status || "").trim();
+    const backgroundStatus = String(item.background_status || "").trim();
+    const artifactQuality = String(item.artifact_quality || "").trim();
+    const containsPlaceholder = String(item.contains_llm_placeholder || "").trim().toLowerCase();
+    const rawTitle = String(item.title || "").trim();
+    if (deliveryMode === "deterministic-fallback" || deliveryMode === "llm-failed") continue;
+    if (["timeout_or_unavailable", "pending", "failed", "degraded"].includes(llmStatus)) continue;
+    if (["submitted", "running", "degraded"].includes(backgroundStatus)) continue;
+    if (["degraded", "placeholder"].includes(artifactQuality)) continue;
+    if (["1", "true", "yes"].includes(containsPlaceholder)) continue;
+    if (rawTitle.startsWith("LLM 未完成")) continue;
+    if (seen.has(candidatePath)) continue;
+    seen.add(candidatePath);
+    const title = rawTitle || candidatePath;
+    candidates.push({ value: candidatePath, label: `${title} — ${candidatePath}` });
+  }
+  return candidates;
+}
+
+function openProductShellReportSubgraphPicker(plugin) {
+  const candidates = plugin.collectReportCandidates();
+  plugin.openStructuredCommandModal(buildReportSubgraphModalSpec(plugin, candidates));
+}
+
+async function runProductShellDropUrlCommand(plugin, { url, title }) {
+  const spec = buildDropUrlCommandSpec({ url, title });
+  await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
+}
+
+async function runProductShellDropFileCommand(plugin, { mode, source, title, maxFiles }) {
+  const spec = buildDropFileCommandSpec({ mode, source, title, maxFiles });
+  await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
+}
+
+async function runProductShellDropImageCommand(plugin, { source, title, noVision }) {
+  const spec = buildDropImageCommandSpec({ source, title, noVision });
+  await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
+}
+
+async function runProductShellDropNoteCommand(plugin, { text, title, kind }) {
+  const spec = buildDropNoteCommandSpec({ text, title, kind });
+  await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
+}
+
+async function runProductShellCliAction(plugin, label, command, args = []) {
+  await plugin.runPluginCommand(label, [command, ...args], { refreshAfter: true });
+}
+
+async function runProductShellLauncherCommand(plugin, fullCommandStr, label = "Suggested Action") {
+  let trimmed = String(fullCommandStr || "").trim();
+  const prefixPattern = /^(?:PYTHONPATH=\S+\s+)?(?:python3?\s+-m\s+aiwiki\.cli\s+)?(?:--root\s+\S+\s+)?/;
+  trimmed = trimmed.replace(prefixPattern, "").trim();
+  if (!trimmed) {
+    new Notice(plugin.t("Cannot parse command: {command}", { command: truncateText(fullCommandStr, 80) }));
+    return;
+  }
+  const args = [];
+  let current = "";
+  let inQuote = false;
+  for (let i = 0; i < trimmed.length; i++) {
+    const ch = trimmed[i];
+    if (ch === '"') {
+      inQuote = !inQuote;
+    } else if (ch === " " && !inQuote) {
+      if (current) {
+        args.push(current);
+        current = "";
+      }
+    } else {
+      current += ch;
+    }
+  }
+  if (current) {
+    args.push(current);
+  }
+  await plugin.runPluginCommand(label, args, { refreshAfter: true });
+}
+
+// --- src/plugin_run_pipeline.js ---
+
+function createProductShellPluginRunRecord(plugin, label, args) {
+  const record = createProductShellRunRecord({
+    label,
+    args,
+    llm: plugin.currentLlmSelection(),
+    protocol: plugin.getActiveProtocol(),
+  });
+  plugin.pluginState.recentRuns.unshift(record);
+  plugin.trimRecentRuns();
+  plugin.persistRunLog(record);
+  plugin.updateStatusBar();
+  plugin.refreshOpenViews();
+  void plugin.savePluginState();
+  return record;
+}
+
+function updateProductShellPluginRunRecord(plugin, record, updates) {
+  Object.assign(record, updates);
+  plugin.trimRecentRuns();
+  plugin.persistRunLog(record);
+  plugin.updateStatusBar();
+  plugin.refreshOpenViews();
+  void plugin.savePluginState();
+}
+
+function latestProductShellPluginRun(plugin) {
+  return plugin.pluginState.recentRuns.length ? plugin.pluginState.recentRuns[0] : null;
+}
+
+async function rerunProductShellPluginRecord(plugin, record) {
+  const argv = record && Array.isArray(record.argv) ? record.argv.map((value) => String(value || "")) : [];
+  if (!argv.length) {
+    new Notice(plugin.t("Cannot re-run this entry because argv was not recorded."));
+    return null;
+  }
+  return await plugin.runPluginCommand(record.label || record.args || plugin.t("command"), argv, { refreshAfter: true });
+}
+
+async function runProductShellPluginCommand(plugin, label, args, options = {}) {
+  const record = plugin.createRunRecord(label, args);
+  appendRunEvent(record, "Executing", args.join(" "), "running");
+  if (options.longRunning) {
+    appendRunEvent(
+      record,
+      "Long report task",
+      plugin.t("Report generation can take several minutes; keep this card open and refresh status if needed."),
+      "running"
+    );
+  }
+  plugin.updateRunRecord(record, {});
+  try {
+    const result = await plugin.execLauncher(args);
+    const runContext = buildProductShellRunResultContext(result);
+    if (options.updateSummaryFromPayload && result.payload && result.payload.kind === "product-shell-summary") {
+      plugin.shellSummary = result.payload;
+      plugin.processShellSummaryUpdates(plugin.shellSummary);
+      plugin.updateStatusBar();
+      plugin.refreshOpenViews();
+    } else if (options.refreshAfter !== false) {
+      await plugin.refreshShellSummarySilently();
+    }
+    const llm = plugin.currentLlmSelection();
+    if (options.backgroundSubmit && result.payload && result.payload.kind === "run-ask-background-job") {
+      appendRunEvent(
+        record,
+        "Background job submitted",
+        result.payload.job_id || result.payload.path || plugin.t("Long report job accepted."),
+        "running"
+      );
+      plugin.updateRunRecord(record, buildProductShellBackgroundRunUpdates({ result, primaryPath: runContext.primaryPath }));
+      plugin.persistRunLog(record, { stdoutRaw: result.stdout, stderrRaw: result.stderr });
+      plugin.updateLongRunningPoller();
+      if (options.notice !== false) {
+        new Notice(plugin.t("Long report job accepted. The report card will update after background completion."));
+      }
+      return result.payload;
+    }
+    const completedState = buildProductShellCompletedRunState({
+      record,
+      result,
+      llm,
+      runContext,
+      rewriteProposalSummary: plugin.rewriteProposalSummary({ rewriteProposalPaths: runContext.rewriteProposalPaths }),
+      fallbackSummary: result.payload && (result.payload.primary_error || result.payload.fallback_reason)
+        || plugin.t("LLM timed out; deterministic fallback only."),
+      successSummary: runContext.primaryPath || runContext.receiptPath || plugin.t("Command completed successfully."),
+      degradedNotice: plugin.t("LLM timed out; deterministic fallback only. Open the artifact for local context, then retry or switch model."),
+      successNotice: `${plugin.t(label)} ${plugin.t("completed")}.`,
+    });
+    completedState.events.forEach((event) => appendRunEvent(record, event.stage, event.summary, event.status));
+    plugin.updateRunRecord(record, completedState.updates);
+    if (completedState.llmHealthOverrides) {
+      plugin.recordLlmHealthFromRun(record, completedState.llmHealthOverrides);
+    }
+    plugin.persistRunLog(record, { stdoutRaw: result.stdout, stderrRaw: result.stderr });
+    if (options.notice !== false) {
+      new Notice(completedState.noticeMessage);
+    }
+    return result.payload;
+  } catch (error) {
+    const failedState = buildProductShellFailedRunState({
+      record,
+      error,
+      noticeMessage: `${plugin.t(label)} ${plugin.t("failed: {message}", { message: truncateText(error.message || plugin.t("unknown error"), 120) })}`,
+    });
+    failedState.events.forEach((event) => appendRunEvent(record, event.stage, event.summary, event.status));
+    plugin.updateRunRecord(record, failedState.updates);
+    if (failedState.llmHealthOverrides) {
+      plugin.recordLlmHealthFromRun(record, failedState.llmHealthOverrides);
+    }
+    plugin.persistRunLog(record, failedState.logDetails);
+    new Notice(failedState.noticeMessage);
+    throw error;
+  }
+}
+
+async function refreshProductShellSummarySilently(plugin) {
+  try {
+    const result = await plugin.execLauncher(["shell-status"]);
+    if (result.payload && result.payload.kind === "product-shell-summary") {
+      plugin.shellSummary = result.payload;
+      plugin.processShellSummaryUpdates(plugin.shellSummary);
+      plugin.updateStatusBar();
+      plugin.refreshOpenViews();
+      return result.payload;
+    }
+  } catch (error) {
+    console.error("[furnace-product-shell] shell-status refresh failed", error);
+  }
+  return await plugin.loadShellSummaryFromDisk();
+}
+
+function processProductShellSummaryUpdates(plugin, summary) {
+  plugin.reconcilePendingSubmissions(summary);
+  const update = knownReportIdsUpdateFromSummary(summary, plugin.settings.lastKnownReportIds);
+  if (update.shouldSave) {
+    plugin.settings.lastKnownReportIds = update.ids;
+    void plugin.savePluginState();
+  }
+}
+
+async function refreshProductShellSummaryCommand(plugin) {
+  try {
+    await plugin.runPluginCommand(plugin.t("Refresh Furnace Shell"), ["shell-status"], {
+      refreshAfter: false,
+      updateSummaryFromPayload: true,
+      notice: false,
+    });
+  } catch (error) {
+    // Falling back to the disk summary still advances pending reconciliation.
+  }
+  await plugin.loadShellSummaryFromDisk();
 }
 
 // --- src/state/health-state.js ---
@@ -8098,88 +9178,19 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async loadPluginState() {
-    const data = (await this.loadData()) || {};
-    const rawSettings = data.settings && typeof data.settings === "object" ? data.settings : {};
-    this.rawPluginData = data;
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, rawSettings);
-    if (this.settings.defaultAskFormat === "report") {
-      this.settings.defaultAskFormat = "note";
-    }
-    const legacyShowHtmlShortcutsMigrated = Object.prototype.hasOwnProperty.call(this.settings, "showHtmlShortcuts");
-    delete this.settings.showHtmlShortcuts;
-    const legacyDefaultAskModeMigrated = Object.prototype.hasOwnProperty.call(this.settings, "defaultAskMode");
-    delete this.settings.defaultAskMode;
-    const rawAdvancedSectionsExpanded = this.settings.advancedSectionsExpanded && typeof this.settings.advancedSectionsExpanded === "object"
-      ? this.settings.advancedSectionsExpanded
-      : {};
-    const migratedAdvancedSectionsExpanded = {
-      status: Boolean(rawAdvancedSectionsExpanded.status),
-      history: Boolean(rawAdvancedSectionsExpanded.history),
-    };
-    const advancedSectionsExpandedMigrated = JSON.stringify(this.settings.advancedSectionsExpanded || {}) !== JSON.stringify(migratedAdvancedSectionsExpanded);
-    this.settings.advancedSectionsExpanded = migratedAdvancedSectionsExpanded;
-    const legacyLlmSettingsMigrated = dropLegacyLlmSettings(this.settings);
-    this.settings.locale = normalizeLocale(this.settings.locale);
-    const migratedFeishuWebhookUrl = String(this.settings.feishuWebhookUrl || this.settings.feishu_webhook_url || "").trim();
-    const feishuWebhookUrlMigrated = this.settings.feishuWebhookUrl !== migratedFeishuWebhookUrl;
-    this.settings.feishuWebhookUrl = migratedFeishuWebhookUrl;
-    const migratedWecomWebhookUrl = String(this.settings.wecomWebhookUrl || this.settings.wecom_webhook_url || "").trim();
-    const wecomWebhookUrlMigrated = this.settings.wecomWebhookUrl !== migratedWecomWebhookUrl;
-    this.settings.wecomWebhookUrl = migratedWecomWebhookUrl;
-    const rawEnabledChannels = Array.isArray(rawSettings.enabledChannels)
-      ? rawSettings.enabledChannels
-      : rawSettings.enabled_channels;
-    const migratedEnabledChannels = normalizeEnabledChannels(rawEnabledChannels);
-    const enabledChannelsMigrated = JSON.stringify(this.settings.enabledChannels || []) !== JSON.stringify(migratedEnabledChannels);
-    this.settings.enabledChannels = migratedEnabledChannels;
-    const migratedLastViewedTimestamp = normalizeLastViewedTimestamp(this.settings.lastViewedTimestamp);
-    const lastViewedTimestampMigrated = this.settings.lastViewedTimestamp !== migratedLastViewedTimestamp;
-    this.settings.lastViewedTimestamp = migratedLastViewedTimestamp;
-    // R89: hydrate pendingSubmissions from settings; TTL 24h stale running → failed
-    this.pendingSubmissions = this.hydratePendingSubmissions(this.settings.persistedPendingSubmissions);
-    const recentRuns = normalizeProductShellRecentRuns(data.recentRuns);
-    this.pluginState = { recentRuns };
-    this.trimRecentRuns();
-    const defaultAskFormatMigrated = rawSettings.defaultAskFormat === "report";
-    if (feishuWebhookUrlMigrated || wecomWebhookUrlMigrated || enabledChannelsMigrated || lastViewedTimestampMigrated || legacyLlmSettingsMigrated || defaultAskFormatMigrated || legacyShowHtmlShortcutsMigrated || legacyDefaultAskModeMigrated || advancedSectionsExpandedMigrated) {
-      await this.savePluginState();
-    }
+    return loadProductShellPluginState(this);
   }
 
   async savePluginState() {
-    await this.saveData({
-      settings: Object.assign({}, this.settings, {
-        // R89: 把 pending 持久化到 settings；只存最近 8 条 running/received/failed/done
-        persistedPendingSubmissions: this.serializePendingSubmissions(),
-      }),
-      recentRuns: this.pluginState.recentRuns,
-    });
+    return saveProductShellPluginState(this);
   }
 
-  // R91: Advanced 抽屉子 section 折叠态读写。默认全折叠（status/history）。
   getAdvancedSectionExpanded(key) {
-    const s = this.settings && this.settings.advancedSectionsExpanded;
-    if (!s || typeof s !== "object") return false;
-    return Boolean(s[key]);
+    return getProductShellAdvancedSectionExpanded(this, key);
   }
 
   async setAdvancedSectionExpanded(key, value) {
-    if (key !== "status" && key !== "history") {
-      return;
-    }
-    const current = this.settings && this.settings.advancedSectionsExpanded;
-    // 强制 own object，避免与 DEFAULT_SETTINGS 共享引用导致默认值被 mutate
-    const next = {
-      status: Boolean(current && typeof current === "object" && current.status),
-      history: Boolean(current && typeof current === "object" && current.history),
-    };
-    next[key] = Boolean(value);
-    this.settings.advancedSectionsExpanded = next;
-    try {
-      await this.savePluginState();
-    } catch (error) {
-      // 折叠态写失败不影响 UI
-    }
+    return setProductShellAdvancedSectionExpanded(this, key, value);
   }
 
   // R89: 持久化 pending（运行时不变；只在 save 时序列化）
@@ -8263,26 +9274,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   rewriteProposalPathsFromObjects(objects) {
     return rewriteProposalPathsFromObjects(objects);
-  }
-
-  rewriteProposalSlugsFromObjects(objects) {
-    return rewriteProposalSlugsFromObjects(objects);
-  }
-
-  extractRewriteProposalObjects(payload) {
-    return extractRewriteProposalObjects(payload);
-  }
-
-  extractRewriteRecoveryActions(payload) {
-    return extractRewriteRecoveryActions(payload);
-  }
-
-  extractRewriteProposalPaths(payload) {
-    return extractRewriteProposalPaths(payload);
-  }
-
-  extractRewriteProposalSlugs(paths) {
-    return extractRewriteProposalSlugs(paths);
   }
 
   rewriteCandidatesForSlugs(slugs, mode = "review") {
@@ -8428,128 +9419,27 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async handleVaultChange(relativePath) {
-    if (!relativePath) {
-      return;
-    }
-    if (relativePath === ".obsidian/graph.json" && typeof this.maybeRepairEvidenceGraphFilter === "function") {
-      void this.maybeRepairEvidenceGraphFilter().catch(() => {});
-      return;
-    }
-    if (relativePath === SHELL_SUMMARY_PATH) {
-      await this.loadShellSummaryFromDisk();
-      return;
-    }
-    if (relativePath.startsWith("output/") || relativePath.startsWith("wiki/indexes/")) {
-      this.refreshOpenViews();
-    }
+    return handleProductShellVaultChange(this, relativePath);
   }
 
   async syncEvidenceGraphConfig({ quiet = true } = {}) {
-    if (!this.repoState.valid) {
-      return null;
-    }
-    try {
-      return await this.execLauncher(["sync-evidence-graph"]);
-    } catch (error) {
-      if (!quiet) {
-        console.error("[furnace-product-shell] sync-evidence-graph failed", error);
-      }
-      return null;
-    }
+    return syncProductShellEvidenceGraphConfig(this, { quiet });
   }
 
   async maybeRepairEvidenceGraphFilter() {
-    const adapter = this.app.vault.adapter;
-    const graphPath = ".obsidian/graph.json";
-    if (!(await adapter.exists(graphPath))) {
-      return;
-    }
-    try {
-      const raw = await adapter.read(graphPath);
-      const parsed = JSON.parse(raw);
-      const search = String(parsed.search || "").trim();
-      if (!search || search.includes("wiki/concepts")) {
-        await this.syncEvidenceGraphConfig({ quiet: true });
-      }
-    } catch {
-      await this.syncEvidenceGraphConfig({ quiet: true });
-    }
+    return maybeRepairProductShellEvidenceGraphFilter(this);
   }
 
   async openEvidenceGraphView() {
-    await this.syncEvidenceGraphConfig({ quiet: false });
-    await this.openWorkspacePath("wiki/evidence-graph.md");
-    if (this.app.commands?.executeCommandById) {
-      await this.app.commands.executeCommandById("graph:open");
-    }
+    return openProductShellEvidenceGraphView(this);
   }
 
   updateStatusBar() {
-    if (!this.statusBarItem) {
-      return;
-    }
-    const runningCount = this.pluginState.recentRuns.filter((entry) => entry.status === "running").length;
-    if (!this.repoState.valid) {
-      this.statusBarItem.setText(this.t("Furnace shell unavailable"));
-      this.statusBarItem.setAttribute("aria-label", this.t("Missing runtime paths: {missing}", { missing: this.repoState.missingPaths.join(", ") }));
-      return;
-    }
-    const protocol = this.getActiveProtocol();
-    const llmHealth = this.currentLlmHealth();
-    const syncState = this.currentShellSyncState();
-    const llmSuffix = llmHealth.status === "degraded" ? this.t(" | llm degraded") : "";
-    const syncSuffix = syncState.status === "running" ? this.t(" | syncing") : "";
-    const suffix = runningCount ? this.t(" | running {count}", { count: runningCount }) : "";
-    this.statusBarItem.setText(`${this.t("Furnace")} ${protocol}${llmSuffix}${syncSuffix}${suffix}`);
-    this.statusBarItem.setAttribute("aria-label", this.t("Furnace Product Shell active protocol {protocol}", { protocol }));
+    return updateProductShellStatusBar(this);
   }
 
   async loadShellSummaryFromDisk() {
-    if (!this.repoState.valid) {
-      this.shellSummary = null;
-      this.updateStatusBar();
-      this.refreshOpenViews();
-      return null;
-    }
-    let text = null;
-    const summaryFile = this.app.vault.getAbstractFileByPath(SHELL_SUMMARY_PATH);
-    if (summaryFile) {
-      try {
-        text = await this.app.vault.cachedRead(summaryFile);
-      } catch (error) {
-        console.error("[furnace-product-shell] vault read failed for shell summary, falling back to fs", error);
-        text = null;
-      }
-    }
-    // Fallback: vault may exclude output/control/ via userIgnoreFilters,
-    // so getAbstractFileByPath returns null. Read from fs directly.
-    if (text === null && this.repoState.root) {
-      const absPath = path.join(this.repoState.root, SHELL_SUMMARY_PATH);
-      try {
-        if (fs.existsSync(absPath)) {
-          text = fs.readFileSync(absPath, "utf8");
-        }
-      } catch (error) {
-        console.error("[furnace-product-shell] fs read failed for shell summary", error);
-        text = null;
-      }
-    }
-    if (text === null) {
-      this.shellSummary = null;
-      this.updateStatusBar();
-      this.refreshOpenViews();
-      return null;
-    }
-    try {
-      this.shellSummary = readJsonText(text);
-      this.processShellSummaryUpdates(this.shellSummary);
-    } catch (error) {
-      console.error("[furnace-product-shell] failed to parse shell summary", error);
-      this.shellSummary = null;
-    }
-    this.updateStatusBar();
-    this.refreshOpenViews();
-    return this.shellSummary;
+    return loadProductShellSummaryFromDisk(this);
   }
 
   async execLauncher(args) { return execLauncher(this, args); }
@@ -8566,337 +9456,70 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   resolveAbsoluteWorkspacePath(relativePath) {
-    const normalized = String(relativePath || "").trim();
-    if (!normalized || !this.repoState.root) {
-      return "";
-    }
-    return path.join(this.repoState.root, normalized);
+    return resolveProductShellRunLogPath(this.repoState.root, relativePath);
   }
 
   persistRunLog(record, details = {}) {
-    const rendered = renderProductShellRunLog({
+    persistProductShellRunLog({
       record,
       details,
       t: this.t.bind(this),
       repoRoot: this.repoState.root || ".",
     });
-    if (!rendered) return;
-    const absolutePath = this.resolveAbsoluteWorkspacePath(rendered.logPath);
-    if (!absolutePath) return;
-    record.logPath = rendered.logPath;
-    fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
-    fs.writeFileSync(absolutePath, rendered.content, "utf8");
   }
 
   async copyText(value) {
-    const text = String(value || "").trim();
-    if (!text) {
-      new Notice(this.t("Nothing to copy."));
-      return false;
-    }
-    if (clipboard && typeof clipboard.writeText === "function") {
-      clipboard.writeText(text);
-      new Notice(this.t("Copied to clipboard."));
-      return true;
-    }
-    if (window.navigator && window.navigator.clipboard && typeof window.navigator.clipboard.writeText === "function") {
-      await window.navigator.clipboard.writeText(text);
-      new Notice(this.t("Copied to clipboard."));
-      return true;
-    }
-    new Notice(this.t("Clipboard is not available in this environment."));
-    return false;
+    return copyProductShellText(this, value);
   }
 
   async revealWorkspacePath(relativePath) {
-    const normalized = String(relativePath || "").trim();
-    const absolutePath = this.resolveAbsoluteWorkspacePath(normalized);
-    if (!normalized || !absolutePath || !fs.existsSync(absolutePath)) {
-      new Notice(this.t("Path not found: {path}", { path: normalized || relativePath || "" }));
-      return;
-    }
-    if (shell && typeof shell.showItemInFolder === "function") {
-      shell.showItemInFolder(absolutePath);
-      return;
-    }
-    if (shell && typeof shell.openPath === "function") {
-      await shell.openPath(path.dirname(absolutePath));
-      return;
-    }
-    new Notice(this.t("Unable to reveal {path}", { path: normalized }));
+    return revealProductShellWorkspacePath(this, relativePath);
   }
 
   createRunRecord(label, args) {
-    const record = createProductShellRunRecord({
-      label,
-      args,
-      llm: this.currentLlmSelection(),
-      protocol: this.getActiveProtocol(),
-    });
-    this.pluginState.recentRuns.unshift(record);
-    this.trimRecentRuns();
-    this.persistRunLog(record);
-    this.updateStatusBar();
-    this.refreshOpenViews();
-    void this.savePluginState();
-    return record;
+    return createProductShellPluginRunRecord(this, label, args);
   }
 
   updateRunRecord(record, updates) {
-    Object.assign(record, updates);
-    this.trimRecentRuns();
-    this.persistRunLog(record);
-    this.updateStatusBar();
-    this.refreshOpenViews();
-    void this.savePluginState();
+    return updateProductShellPluginRunRecord(this, record, updates);
   }
 
   latestPluginRun() {
-    return this.pluginState.recentRuns.length ? this.pluginState.recentRuns[0] : null;
+    return latestProductShellPluginRun(this);
   }
 
   async rerunRecord(record) {
-    const argv = record && Array.isArray(record.argv) ? record.argv.map((value) => String(value || "")) : [];
-    if (!argv.length) {
-      new Notice(this.t("Cannot re-run this entry because argv was not recorded."));
-      return null;
-    }
-    return await this.runPluginCommand(record.label || record.args || this.t("command"), argv, { refreshAfter: true });
+    return rerunProductShellPluginRecord(this, record);
   }
 
   async runPluginCommand(label, args, options = {}) {
-    const record = this.createRunRecord(label, args);
-    appendRunEvent(record, "Executing", args.join(" "), "running");
-    if (options.longRunning) {
-      appendRunEvent(
-        record,
-        "Long report task",
-        this.t("Report generation can take several minutes; keep this card open and refresh status if needed."),
-        "running"
-      );
-    }
-    this.updateRunRecord(record, {});
-    try {
-      const result = await this.execLauncher(args);
-      const primaryPath = extractPrimaryPath(result.payload);
-      const receiptPath = result.payload && typeof result.payload.receipt_path === "string" ? result.payload.receipt_path : "";
-      const rewriteProposalObjects = this.extractRewriteProposalObjects(result.payload);
-      const rewriteRecoveryActions = this.extractRewriteRecoveryActions(result.payload);
-      const rewriteProposalPaths = this.extractRewriteProposalPaths(result.payload);
-      const rewriteProposalSlugs = rewriteProposalObjects.length
-        ? this.rewriteProposalSlugsFromObjects(rewriteProposalObjects)
-        : this.extractRewriteProposalSlugs(rewriteProposalPaths);
-      if (options.updateSummaryFromPayload && result.payload && result.payload.kind === "product-shell-summary") {
-        this.shellSummary = result.payload;
-        this.processShellSummaryUpdates(this.shellSummary);
-        this.updateStatusBar();
-        this.refreshOpenViews();
-      } else if (options.refreshAfter !== false) {
-        await this.refreshShellSummarySilently();
-      }
-      const llm = this.currentLlmSelection();
-      if (options.backgroundSubmit && result.payload && result.payload.kind === "run-ask-background-job") {
-        appendRunEvent(
-          record,
-          "Background job submitted",
-          result.payload.job_id || result.payload.path || this.t("Long report job accepted."),
-          "running"
-        );
-        this.updateRunRecord(record, buildProductShellBackgroundRunUpdates({ result, primaryPath }));
-        this.persistRunLog(record, { stdoutRaw: result.stdout, stderrRaw: result.stderr });
-        this.updateLongRunningPoller();
-        if (options.notice !== false) {
-          new Notice(this.t("Long report job accepted. The report card will update after background completion."));
-        }
-        return result.payload;
-      }
-      const degradedRun = isProductShellDegradedRun(record, result.payload);
-      appendRunEvent(
-        record,
-        degradedRun ? "LLM timeout" : "Completed",
-        degradedRun
-          ? (result.payload && (result.payload.primary_error || result.payload.fallback_reason) || this.t("LLM timed out; deterministic fallback only."))
-          : (primaryPath || receiptPath || this.t("Command completed successfully.")),
-        degradedRun ? "degraded" : "success"
-      );
-      if (primaryPath || receiptPath) {
-        appendRunEvent(record, "Artifacts", [primaryPath, receiptPath].filter(Boolean).join(" · "), "success");
-      }
-      if (rewriteProposalPaths.length) {
-        appendRunEvent(record, "Rewrite proposals", this.rewriteProposalSummary({ rewriteProposalPaths }), "success");
-      }
-      this.updateRunRecord(record, buildProductShellCompletedRunUpdates({
-        record,
-        result,
-        llm,
-        primaryPath,
-        receiptPath,
-        rewriteProposalObjects,
-        rewriteRecoveryActions,
-        rewriteProposalPaths,
-        rewriteProposalSlugs,
-      }));
-      if (record.command === "run-ask" || record.command === "run-ask-resume") {
-        const usedFallback = Boolean(record.fallbackUsed) || String(record.deliveryMode || "").trim() === "deterministic-fallback";
-        this.recordLlmHealthFromRun(record, {
-          status: usedFallback ? "degraded" : "healthy",
-          reason: usedFallback ? "LLM timed out or failed; only deterministic fallback is available." : "Recent run-ask succeeded.",
-          source: "run-ask",
-          fallbackCommand: usedFallback ? (record.fallbackCommand || "ask") : "",
-          backendRequested: record.backendRequested,
-          backendEffective: record.backendEffective,
-          modelSelected: record.modelSelected,
-          modelFinal: record.modelFinal,
-          fallbackStage: record.fallbackStage,
-          fallbackReason: record.fallbackReason,
-          contractValidated: record.contractValidated,
-        });
-      }
-      this.persistRunLog(record, { stdoutRaw: result.stdout, stderrRaw: result.stderr });
-      if (options.notice !== false) {
-        new Notice(
-          degradedRun
-            ? this.t("LLM timed out; deterministic fallback only. Open the artifact for local context, then retry or switch model.")
-            : `${this.t(label)} ${this.t("completed")}.`
-        );
-      }
-      return result.payload;
-    } catch (error) {
-      appendRunEvent(record, "Failed", truncateText(error.message || "Command failed", 180), "failed");
-      this.updateRunRecord(record, buildProductShellFailedRunUpdates(error));
-      if ((record.command === "run-ask" || record.command === "run-ask-resume") && llmBackendUnavailable(error)) {
-        this.recordLlmHealthFromRun(record, {
-          status: "degraded",
-          reason: truncateText(error.message || error.stderr || error.stdout || "LLM backend unavailable", 240),
-          source: "run-ask",
-          fallbackCommand: "ask",
-          backendRequested: record.backendRequested,
-          backendEffective: record.backendEffective,
-          modelSelected: record.modelSelected,
-          modelFinal: record.modelFinal,
-          fallbackStage: record.fallbackStage,
-          fallbackReason: record.fallbackReason,
-          contractValidated: record.contractValidated,
-          stderrSummary: truncateText(error.stderr || ""),
-          stderrRaw: trimDiagnosticText(error.stderr || error.stdout || ""),
-        });
-      }
-      this.persistRunLog(record, {
-        stdoutRaw: error.stdout || "",
-        stderrRaw: error.stderr || "",
-      });
-      new Notice(`${this.t(label)} ${this.t("failed: {message}", { message: truncateText(error.message || this.t("unknown error"), 120) })}`);
-      throw error;
-    }
+    return runProductShellPluginCommand(this, label, args, options);
   }
 
   async refreshShellSummarySilently() {
-    try {
-      const result = await this.execLauncher(["shell-status"]);
-      if (result.payload && result.payload.kind === "product-shell-summary") {
-        this.shellSummary = result.payload;
-        this.processShellSummaryUpdates(this.shellSummary);
-        this.updateStatusBar();
-        this.refreshOpenViews();
-        return result.payload;
-      }
-    } catch (error) {
-      console.error("[furnace-product-shell] shell-status refresh failed", error);
-    }
-    return await this.loadShellSummaryFromDisk();
+    return refreshProductShellSummarySilently(this);
   }
 
   
   processShellSummaryUpdates(summary) {
-    // R88: shellSummary 刷新时尝试消解已落地的 pending submissions（视觉闭环）
-    this.reconcilePendingSubmissions(summary);
-    const update = knownReportIdsUpdateFromSummary(summary, this.settings.lastKnownReportIds);
-    if (update.shouldSave) {
-      this.settings.lastKnownReportIds = update.ids;
-      void this.savePluginState();
-    }
+    return processProductShellSummaryUpdates(this, summary);
   }
 
   async refreshShellSummaryCommand() {
-    // R90 P1: 保证无论 payload 形态如何，都重新基于磁盘 summary 触发 reconcile。
-    // updateSummaryFromPayload 仅在 payload.kind === "product-shell-summary" 时生效；
-    // 若 launcher 返回旧/异常 payload，显式 fallback loadShellSummaryFromDisk()。
-    try {
-      await this.runPluginCommand(this.t("Refresh Furnace Shell"), ["shell-status"], {
-        refreshAfter: false,
-        updateSummaryFromPayload: true,
-        notice: false,
-      });
-    } catch (error) {
-      // 失败也尝试基于磁盘 summary 推进 reconcile，避免"刷新状态"完全无反馈
-    }
-    await this.loadShellSummaryFromDisk();
+    return refreshProductShellSummaryCommand(this);
   }
 
   // R90: done 卡"打开报告/查看回执"统一入口；处理 path 缺失 + open 失败 + 用户反馈
   async openPendingDoneTarget(target, reconcilePath) {
-    const normalizedPath = String(reconcilePath || "").trim();
-    const normalizedTarget = String(target || "").trim();
-    if (normalizedPath) {
-      let opened = false;
-      try {
-        // openWorkspacePath 返回 boolean：path 缺失 / repo missing / not found / no adapter 时为 false
-        opened = await this.openWorkspacePath(normalizedPath);
-      } catch (error) {
-        opened = false;
-      }
-      if (opened) return;
-    }
-    // 退化：outputs → Outputs Hub；receipts → Recent Runs；其余 → HOME.md
-    try {
-      if (normalizedTarget === "outputs" && typeof this.openOutputsHub === "function") {
-        await this.openOutputsHub();
-        new Notice(this.t("已打开输出汇总（找不到具体报告路径）"));
-        return;
-      }
-      if (normalizedTarget === "receipts" && typeof this.openRecentRunsView === "function") {
-        await this.openRecentRunsView();
-        new Notice(this.t("已打开运行记录（找不到具体回执路径）"));
-        return;
-      }
-      if (typeof this.openHomeNote === "function") {
-        await this.openHomeNote();
-        return;
-      }
-    } catch (error) {
-      // 最后兜底：通知失败
-    }
-    new Notice(this.t("无法打开目标，可能尚未生成"));
+    return openProductShellPendingDoneTarget(this, target, reconcilePath);
   }
 
   async readWorkspaceSnippet(relativePath, length = 420) {
-    const resolvedPath = resolveWorkspaceSnippetPath(this.repoState.root, relativePath);
-    if (!resolvedPath) return "";
-    try {
-      const raw = await fs.promises.readFile(resolvedPath, "utf8");
-      return workspaceSnippetFromMarkdown(raw, length);
-    } catch (error) {
-      return "";
-    }
+    return readProductShellWorkspaceSnippet(this, relativePath, length);
   }
 
   quoteFileToComposer(relativePath) {
-    const normalized = String(relativePath || "").trim();
-    if (!normalized) return false;
-    const textarea = document.querySelector(".furnace-universal-input-textarea");
-    if (!textarea) {
-      new Notice(this.t("找不到输入框，无法引用报告"));
-      return false;
-    }
-    const quoteLine = this.t("引用报告：{path}", { path: normalized });
-    const update = appendComposerReportQuote(textarea.value, quoteLine);
-    if (update.changed) {
-      textarea.value = update.value;
-    }
-    textarea.dispatchEvent(new Event("input", { bubbles: true }));
-    textarea.focus();
-    try { textarea.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (error) {}
-    return true;
+    return quoteProductShellFileToComposer(this, relativePath);
   }
 
 
@@ -8945,77 +9568,31 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async openHomeNote() {
-    await this.openWorkspacePath("HOME.md");
+    return openProductShellHomeNote(this);
   }
 
   async openOutputsHub() {
-    const links = this.shellSummary && typeof this.shellSummary === "object" ? this.shellSummary.links || {} : {};
-    const preferredPath = String(links.output_packs_markdown || "docs/Outputs.md").trim();
-    await this.openWorkspacePath(preferredPath);
+    return openProductShellOutputsHub(this);
   }
 
   async runProtocolSetCommand(protocol) {
     await this.runPluginCommand(`${this.t("Set Protocol")}: ${protocol}`, ["protocol-set", protocol], { refreshAfter: true });
   }
 
-  // ---------------- Pending submissions (R88 + R89 持久化 + 两段式) ----------------
-  // 用户提交后立即出现的"处理中"卡片，独立于 recentRuns（命令历史）和
-  // shellSummary（事实层）。R89: 持久化到 plugin state；status = running | received | done | failed | degraded。
   pushPendingSubmission(displayText, opts = {}) {
-    const text = String(displayText || "").trim();
-    if (!text) return null;
-    if (!Array.isArray(this.pendingSubmissions)) this.pendingSubmissions = [];
-    const fingerprint = text.slice(0, 80);
-    // R88 P2 fix: 同 fingerprint 仍在 running 的 pending 直接复用
-    const dup = this.pendingSubmissions.find((e) => e && e.status === "running" && e.payloadFingerprint === fingerprint);
-    if (dup) return dup.id;
-    const id = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const entry = createPendingSubmissionEntry({
-      id,
-      displayText: text,
-      opts,
-      startedAt: new Date().toISOString(),
-    });
-    if (!entry) return null;
-    this.pendingSubmissions.unshift(entry);
-    if (this.pendingSubmissions.length > 8) this.pendingSubmissions.length = 8;
-    void this.savePluginState();
-    this.refreshOpenViews();
-    this.updateLongRunningPoller();
-    return id;
+    return pushPendingSubmissionRuntime(this, displayText, opts);
   }
 
   resetPendingSubmissionForRetry(id) {
-    const entry = this._findPending(id);
-    if (!entry) return;
-    resetPendingSubmissionEntryForRetry(entry, new Date().toISOString());
-    void this.savePluginState();
-    this.refreshOpenViews();
-    this.updateLongRunningPoller();
+    return resetPendingSubmissionRuntimeForRetry(this, id);
   }
 
-  // R89: handleSubmit 成功 → received（"已接收，等待生成报告"）；不自动消失
-  // 防御：仅在 running 时切换；若 reconcile 已抢先把它升到 done，不要回退
   markPendingSubmissionReceived(id) {
-    const entry = this._findPending(id);
-    if (!entry) return;
-    if (!markPendingSubmissionEntryReceived(entry, new Date().toISOString())) return;
-    void this.savePluginState();
-    this.refreshOpenViews();
-    this.updateLongRunningPoller();
+    return markPendingSubmissionRuntimeReceived(this, id);
   }
 
-  // R90: reconcile 命中 → done/degraded（"报告已生成" / "恢复产物已保留" / "已记录"）
-  // reconcileTarget: "outputs" | "receipts" | "raw"; reconcilePath: cand.path / stored_path（可空）
-  // 不再 4s 自动消失：done 卡变行动卡，由用户点"打开报告/查看回执/完成"主动 dismiss
-  // 防御：terminal states 不应再被升到 done
   markPendingSubmissionDone(id, reconcileTarget, reconcilePath) {
-    const entry = this._findPending(id);
-    if (!entry) return;
-    if (!markPendingSubmissionEntryDone(entry, reconcileTarget, reconcilePath, new Date().toISOString())) return;
-    void this.savePluginState();
-    this.refreshOpenViews();
-    this.updateLongRunningPoller();
+    return markPendingSubmissionRuntimeDone(this, id, reconcileTarget, reconcilePath);
   }
 
   isPendingSubmissionDegraded(entry) {
@@ -9023,57 +9600,27 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   markPendingSubmissionFailed(id, error) {
-    const entry = this._findPending(id);
-    if (!entry) return;
-    markPendingSubmissionEntryFailed(entry, truncateText(String((error && error.message) || error || "失败"), 180), new Date().toISOString());
-    void this.savePluginState();
-    this.refreshOpenViews();
-    this.updateLongRunningPoller();
+    return markPendingSubmissionRuntimeFailed(this, id, error);
   }
 
   removePendingSubmission(id) {
-    if (!Array.isArray(this.pendingSubmissions) || !this.pendingSubmissions.length) return;
-    const before = this.pendingSubmissions.length;
-    this.pendingSubmissions = this.pendingSubmissions.filter((e) => e && e.id !== id);
-    if (this.pendingSubmissions.length !== before) {
-      void this.savePluginState();
-      this.refreshOpenViews();
-      this.updateLongRunningPoller();
-    }
+    if (removePendingSubmissionRuntimeEntry(this, id)) commitPendingSubmissionRuntimeChange(this);
   }
 
   _findPending(id) {
-    if (!Array.isArray(this.pendingSubmissions)) return null;
-    return this.pendingSubmissions.find((e) => e && e.id === id) || null;
+    return findPendingSubmissionRuntimeEntry(this, id);
   }
 
   updatePendingSubmissionRetryArgs(id, retryArgs) {
-    const entry = this._findPending(id);
-    if (!entry) return;
-    entry.retryArgs = retryArgs && typeof retryArgs === "object" ? retryArgs : null;
-    if (retryArgs && typeof retryArgs === "object") {
-      this.updatePendingSubmissionRunNotes(id, retryArgs.runNotesPath, retryArgs.runId, { save: false, refresh: false });
-      if (retryArgs.jobId) entry.jobId = String(retryArgs.jobId || "");
-    }
-    void this.savePluginState();
-    this.refreshOpenViews();
-    this.updateLongRunningPoller();
+    return updatePendingSubmissionRuntimeRetryArgs(this, id, retryArgs);
   }
 
   updatePendingSubmissionRunNotes(id, runNotesPath, runId, opts = {}) {
-    const entry = this._findPending(id);
-    if (!entry) return;
-    updatePendingSubmissionEntryRunNotes(entry, runNotesPath, runId);
-    if (opts.save !== false) void this.savePluginState();
-    if (opts.refresh !== false) this.refreshOpenViews();
+    return updatePendingSubmissionRuntimeRunNotes(this, id, runNotesPath, runId, opts);
   }
 
   updatePendingSubmissionArtifactMeta(id, meta, opts = {}) {
-    const entry = this._findPending(id);
-    if (!entry || !meta || typeof meta !== "object") return;
-    updatePendingSubmissionEntryArtifactMeta(entry, meta);
-    if (opts.save !== false) void this.savePluginState();
-    if (opts.refresh !== false) this.refreshOpenViews();
+    return updatePendingSubmissionRuntimeArtifactMeta(this, id, meta, opts);
   }
 
   hasActiveLongRunningPending() {
@@ -9081,214 +9628,59 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   updateLongRunningPoller() {
-    if (this.hasActiveLongRunningPending()) {
-      this.startLongRunningPoller();
-    } else {
-      this.stopLongRunningPoller();
-    }
+    return updateProductShellLongRunningPoller(this);
   }
 
   startLongRunningPoller() {
-    if (this.longRunningPollTimer) return;
-    this.longRunningPollTimer = window.setInterval(() => {
-      if (!this.hasActiveLongRunningPending()) {
-        this.stopLongRunningPoller();
-        return;
-      }
-      void this.refreshShellSummarySilently();
-    }, 15000);
+    return startProductShellLongRunningPoller(this);
   }
 
   stopLongRunningPoller() {
-    if (!this.longRunningPollTimer) return;
-    window.clearInterval(this.longRunningPollTimer);
-    this.longRunningPollTimer = null;
+    return stopProductShellLongRunningPoller(this);
   }
 
-  // R90: 顶部"刷新炉子"按钮的 last updated 文案
-  // 源：shellSummary.generated_at；返回"刚刚 / N 分钟前 / N 小时前 / N 天前 / 未刷新"
   getLastSummaryRefreshLabel() {
-    const ts = this.shellSummary && this.shellSummary.generated_at ? String(this.shellSummary.generated_at) : "";
-    if (!ts) return this.t("未刷新");
-    const ms = Date.parse(ts);
-    if (!Number.isFinite(ms)) return this.t("未刷新");
-    const diff = Math.max(0, Date.now() - ms);
-    if (diff < 60 * 1000) return this.t("刚刚");
-    const m = Math.floor(diff / (60 * 1000));
-    if (m < 60) return this.t("{n} 分钟前", { n: m });
-    const h = Math.floor(diff / (60 * 60 * 1000));
-    if (h < 24) return this.t("{n} 小时前", { n: h });
-    const d = Math.floor(diff / (24 * 60 * 60 * 1000));
-    return this.t("{n} 天前", { n: d });
+    return productShellLastSummaryRefreshLabel(this);
   }
 
-  // 当 shellSummary 刷新后，匹配 pending → recent_outputs/recent_receipts
-  // R88 P1 fix:
-  //   - candidate 必须有时间戳，且时间戳 >= entry.startedAt（带 60s skew 容忍时钟漂移）
-  //   - 短指纹（< 16 字符）使用 normalized exact 匹配；长指纹至少匹配 60 字符前缀
-  //   - 匹配字段扩到 receipt_path / output_path / query / target
-  //   - running 卡片超过 5 分钟仅停止 reconcile（不删，避免长任务消失）
   reconcilePendingSubmissions(summary) {
-    if (!Array.isArray(this.pendingSubmissions) || !this.pendingSubmissions.length) return;
-    const { remaining, hits } = reconcilePendingSubmissionList(this.pendingSubmissions, summary);
-    if (remaining.length !== this.pendingSubmissions.length) {
-      this.pendingSubmissions = remaining;
-      this.refreshOpenViews();
-    }
-    // R90: markDone 不再设置 setTimeout，done 卡保留等用户行动
-    for (const h of hits) {
-      if (h.runNotesPath || h.runId) {
-        this.updatePendingSubmissionRunNotes(h.id, h.runNotesPath, h.runId, { save: false, refresh: false });
-      }
-      this.updatePendingSubmissionArtifactMeta(h.id, h.meta || {}, { save: false, refresh: false });
-      this.markPendingSubmissionDone(h.id, h.target, h.path);
-    }
-    this.updateLongRunningPoller();
+    return reconcilePendingSubmissionsRuntime(this, summary);
   }
 
   async runUniversalInputCommand({ payload, title }) {
-    const normalizedPayload = String(payload || "").trim();
-    if (!normalizedPayload) {
-      new Notice(this.t("Universal input cannot be empty."));
-      return;
-    }
-    const spec = buildUniversalInputCommandSpec({ payload: normalizedPayload, title });
-    return await this.runPluginCommand(commandLabel(this.t.bind(this), spec.labelKey, spec.labelSubject), spec.args, spec.options);
+    return runProductShellUniversalInputCommand(this, { payload, title });
   }
 
   async runAskCommand({ question, format, mode, protocol }) {
-    const spec = buildAskCommandSpec({ question, format, mode, protocol });
-    return await this.runPluginCommand(commandLabel(this.t.bind(this), spec.labelKey, spec.labelSubject), spec.args, spec.options);
+    return runProductShellAskCommand(this, { question, format, mode, protocol });
   }
 
   async runDroppedPayloadsWithAutoAsk({ payloads, question, protocol }) {
-    const normalizedPayloads = Array.isArray(payloads)
-      ? payloads
-        .map((payload) => {
-          if (payload && typeof payload === "object") {
-            return {
-              path: String(payload.path || payload.source || payload.payload || "").trim(),
-              title: String(payload.title || payload.name || "").trim(),
-            };
-          }
-          return { path: String(payload || "").trim(), title: "" };
-        })
-        .filter((payload) => payload.path)
-      : [];
-    const normalizedQuestion = String(question || "").trim();
-    const materialPaths = [];
-    for (const payloadItem of normalizedPayloads) {
-      const payload = await this.runUniversalInputCommand({ payload: payloadItem.path, title: payloadItem.title });
-      collectMaterialPathsFromPayload(payload).forEach((item) => materialPaths.push(item));
-    }
-    const normalizedMaterialPaths = normalizeMaterialPaths(materialPaths);
-    const askQuestion = normalizedQuestion
-      ? buildAutoAskQuestion(normalizedQuestion, normalizedMaterialPaths)
-      : "";
-    let runNotesPath = "";
-    let runId = "";
-    let jobId = "";
-    let askFormat = "";
-    if (normalizedQuestion) {
-      askFormat = inferAutoAskFormat(normalizedQuestion, normalizedMaterialPaths);
-      const askPayload = await this.runAskCommand({
-        question: askQuestion,
-        format: askFormat,
-        mode: "run-ask",
-        protocol,
-      });
-      runNotesPath = String(askPayload && askPayload.run_notes_path || "");
-      runId = String(askPayload && askPayload.run_id || "");
-      jobId = String(askPayload && askPayload.job_id || "");
-    }
-    return {
-      materialPaths: normalizedMaterialPaths,
-      askQuestion,
-      askFormat,
-      runNotesPath,
-      runId,
-      jobId,
-    };
+    return runProductShellDroppedPayloadsWithAutoAsk(this, { payloads, question, protocol });
   }
 
   completePendingMaterialDrop(id, materialPaths) {
-    const paths = normalizeMaterialPaths(materialPaths);
-    const rawPath = paths.find((item) => item.startsWith("raw/inbox/")) || paths[0] || "";
-    if (id && rawPath) {
-      this.markPendingSubmissionDone(id, "raw", rawPath);
-      return true;
-    }
-    return false;
+    return completeProductShellPendingMaterialDrop(this, id, materialPaths);
   }
 
   async runDroppedFilesWithAutoAsk({ files, question, protocol }) {
-    const normalizedFiles = Array.isArray(files)
-      ? files
-        .map((file) => ({
-          path: String(file && (file.path || file.source) || "").trim(),
-          name: String(file && file.name || "").trim(),
-        }))
-        .filter((file) => file.path)
-      : [];
-    return await this.runDroppedPayloadsWithAutoAsk({
-      payloads: normalizedFiles.map((file) => ({ path: file.path, title: file.name })),
-      question,
-      protocol,
-    });
+    return runProductShellDroppedFilesWithAutoAsk(this, { files, question, protocol });
   }
 
   async runReportSubgraphCommand({ reportPath }) {
-    const spec = buildReportSubgraphCommandSpec(reportPath);
-    if (!spec.normalized) {
-      new Notice(this.t("Report path cannot be empty."));
-      return;
-    }
-    const payload = await this.runPluginCommand(commandLabel(this.t.bind(this), spec.labelKey, spec.labelSubject), spec.args, spec.options);
-    const outputPath = payload && typeof payload.output_path === "string" ? payload.output_path.trim() : "";
-    if (outputPath) {
-      await this.openWorkspacePath(outputPath);
-    }
-    return payload;
+    return runProductShellReportSubgraphCommand(this, { reportPath });
   }
 
   collectReportCandidates() {
-    const summary = this.shellSummary && typeof this.shellSummary === "object" ? this.shellSummary : null;
-    if (!summary) return [];
-    const outputs = Array.isArray(summary.recent_outputs) ? summary.recent_outputs : [];
-    const seen = new Set();
-    const candidates = [];
-    for (const item of outputs) {
-      if (!item || typeof item !== "object") continue;
-      const candidatePath = String(item.path || "").trim();
-      if (!candidatePath || !candidatePath.startsWith("output/reports/")) continue;
-      const deliveryMode = String(item.delivery_mode || "").trim();
-      const llmStatus = String(item.llm_status || "").trim();
-      const backgroundStatus = String(item.background_status || "").trim();
-      const artifactQuality = String(item.artifact_quality || "").trim();
-      const containsPlaceholder = String(item.contains_llm_placeholder || "").trim().toLowerCase();
-      const rawTitle = String(item.title || "").trim();
-      if (deliveryMode === "deterministic-fallback" || deliveryMode === "llm-failed") continue;
-      if (["timeout_or_unavailable", "pending", "failed", "degraded"].includes(llmStatus)) continue;
-      if (["submitted", "running", "degraded"].includes(backgroundStatus)) continue;
-      if (["degraded", "placeholder"].includes(artifactQuality)) continue;
-      if (["1", "true", "yes"].includes(containsPlaceholder)) continue;
-      if (rawTitle.startsWith("LLM 未完成")) continue;
-      if (seen.has(candidatePath)) continue;
-      seen.add(candidatePath);
-      const title = rawTitle || candidatePath;
-      candidates.push({ value: candidatePath, label: `${title} — ${candidatePath}` });
-    }
-    return candidates;
+    return collectProductShellReportCandidates(this);
   }
 
   openReportSubgraphPicker() {
-    const candidates = this.collectReportCandidates();
-    this.openStructuredCommandModal(buildReportSubgraphModalSpec(this, candidates));
+    return openProductShellReportSubgraphPicker(this);
   }
 
   async runDropUrlCommand({ url, title }) {
-    const spec = buildDropUrlCommandSpec({ url, title });
-    await this.runPluginCommand(commandLabel(this.t.bind(this), spec.labelKey, spec.labelSubject), spec.args, spec.options);
+    return runProductShellDropUrlCommand(this, { url, title });
   }
 
   openDropUrlModal(initialUrl = "") {
@@ -9296,56 +9688,23 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async runDropFileCommand({ mode, source, title, maxFiles }) {
-    const spec = buildDropFileCommandSpec({ mode, source, title, maxFiles });
-    await this.runPluginCommand(commandLabel(this.t.bind(this), spec.labelKey, spec.labelSubject), spec.args, spec.options);
+    return runProductShellDropFileCommand(this, { mode, source, title, maxFiles });
   }
 
   async runDropImageCommand({ source, title, noVision }) {
-    const spec = buildDropImageCommandSpec({ source, title, noVision });
-    await this.runPluginCommand(commandLabel(this.t.bind(this), spec.labelKey, spec.labelSubject), spec.args, spec.options);
+    return runProductShellDropImageCommand(this, { source, title, noVision });
   }
 
   async runDropNoteCommand({ text, title, kind }) {
-    const spec = buildDropNoteCommandSpec({ text, title, kind });
-    await this.runPluginCommand(commandLabel(this.t.bind(this), spec.labelKey, spec.labelSubject), spec.args, spec.options);
+    return runProductShellDropNoteCommand(this, { text, title, kind });
   }
 
   async runCliAction(label, command, args = []) {
-    await this.runPluginCommand(label, [command, ...args], { refreshAfter: true });
+    return runProductShellCliAction(this, label, command, args);
   }
 
   async runLauncherCommand(fullCommandStr, label = "Suggested Action") {
-    // Extract CLI subcommand+args from a full command string like:
-    //   "PYTHONPATH=src python3 -m aiwiki.cli --root . review-action foo --status accepted"
-    // The launcher already sets PYTHONPATH and --root, so we strip the prefix.
-    let trimmed = String(fullCommandStr || "").trim();
-    const prefixPattern = /^(?:PYTHONPATH=\S+\s+)?(?:python3?\s+-m\s+aiwiki\.cli\s+)?(?:--root\s+\S+\s+)?/;
-    trimmed = trimmed.replace(prefixPattern, "").trim();
-    if (!trimmed) {
-      new Notice(this.t("Cannot parse command: {command}", { command: truncateText(fullCommandStr, 80) }));
-      return;
-    }
-    // Simple shell-like split respecting double quotes
-    const args = [];
-    let current = "";
-    let inQuote = false;
-    for (let i = 0; i < trimmed.length; i++) {
-      const ch = trimmed[i];
-      if (ch === '"') {
-        inQuote = !inQuote;
-      } else if (ch === " " && !inQuote) {
-        if (current) {
-          args.push(current);
-          current = "";
-        }
-      } else {
-        current += ch;
-      }
-    }
-    if (current) {
-      args.push(current);
-    }
-    await this.runPluginCommand(label, args, { refreshAfter: true });
+    return runProductShellLauncherCommand(this, fullCommandStr, label);
   }
 
   openFileBackModal(prefill = {}) {
@@ -9602,40 +9961,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async openWorkspacePath(relativePath) {
-    // R90 P1-1: 返回 boolean —— true 成功打开；false 失败（无 path / repo missing / path not found / no adapter）
-    // 既有调用方不读返回值，无破坏；openPendingDoneTarget 据此判断是否进退化路径
-    const requestedPath = String(relativePath || "").trim();
-    const normalized = normalizeWorkspaceRelativePath(requestedPath);
-    if (!requestedPath) {
-      new Notice(this.t("No path to open."));
-      return false;
-    }
-    if (!normalized) {
-      new Notice(this.t("Unable to open {path}", { path: requestedPath }));
-      return false;
-    }
-    const abstractFile = this.app.vault.getAbstractFileByPath(normalized);
-    if (abstractFile && normalized.endsWith(".md")) {
-      const leaf = this.app.workspace.getLeaf(true);
-      await leaf.openFile(abstractFile);
-      return true;
-    }
-    if (!this.repoState.root) {
-      new Notice(this.t("Unable to open {path}", { path: normalized }));
-      return false;
-    }
-    const absolutePath = resolveWorkspaceSnippetPath(this.repoState.root, normalized);
-    if (!fs.existsSync(absolutePath)) {
-      new Notice(this.t("Path not found: {path}", { path: normalized }));
-      return false;
-    }
-    if (typeof this.app.vault.adapter.getResourcePath === "function") {
-      const resourcePath = this.app.vault.adapter.getResourcePath(normalized);
-      window.open(resourcePath, "_blank");
-      return true;
-    }
-    new Notice(this.t("Unable to open resource: {path}", { path: normalized }));
-    return false;
+    return openProductShellWorkspacePath(this, relativePath);
   }
 
 

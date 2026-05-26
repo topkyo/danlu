@@ -216,6 +216,42 @@ def test_lane_receipt_helpers_preserve_receipt_contract(tmp_path):
         "scope_preview": plan["scope_preview"],
         "primitive_plan": plan["primitive_plan"],
     }
+    assert support.lane_primitive_scope(primitive="compile", scope="wiki/judgments/a.md") == {
+        "requested_scope": "wiki/judgments/a.md",
+        "effective_scope": "all",
+        "scope_downgraded_from": "wiki/judgments/a.md",
+    }
+    assert support.lane_primitive_scope(primitive="review", scope="wiki/judgments/a.md") == {
+        "requested_scope": "wiki/judgments/a.md",
+        "effective_scope": "wiki/judgments/a.md",
+        "scope_downgraded_from": "",
+    }
+
+    receipt = support.lane_primitive_receipt_payload(
+        lane="quality",
+        primitive="compile",
+        plan=plan,
+        result={"path": "wiki/indexes/compile-status.md", "updated_source_pages": ["a", "b"]},
+        action_id=action_id,
+        applied_at=applied_at,
+        receipt_path="output/control/execution-receipts/alchemy-quality-compile.json",
+        audit_path=".aiwiki/state/execution-receipts.jsonl",
+        note="note",
+        requested_scope="wiki/judgments/a.md",
+        effective_scope="all",
+        scope_downgraded_from="wiki/judgments/a.md",
+    )
+
+    assert receipt["action_id"] == action_id
+    assert receipt["trace_id"] == "trace-a"
+    assert receipt["trace_ids"] == ["trace-a", "trace-b"]
+    assert receipt["protocol"] == "ops"
+    assert receipt["subject_id"] == "quality:all:compile"
+    assert receipt["scope_requested"] == "wiki/judgments/a.md"
+    assert receipt["scope_downgraded_from"] == "wiki/judgments/a.md"
+    assert receipt["scope_enforcement_reason"] == "primitive_global_only:downgraded_to_global"
+    assert receipt["primary_path"] == "wiki/indexes/compile-status.md"
+    assert receipt["result_summary"] == {"updated_source_pages_count": 2}
 
 
 def test_normalize_auto_lanes_dedupes_case_and_rejects_invalid_values():
@@ -274,6 +310,78 @@ def test_auto_skip_reason_reports_plan_state_before_selection_state():
     assert support.auto_skip_reason({"status": "ok", "selected_count": 0}, ["compile"]) == "empty_execute_plan"
     assert support.auto_skip_reason({"status": "ok", "selected_count": 1}, []) == "no_apply_supported_primitives"
     assert support.auto_skip_reason({"status": "ok", "selected_count": 1}, ["compile"]) == ""
+
+
+def test_alchemy_auto_runtime_event_payload_collects_trace_ids_and_counts():
+    payload = support.alchemy_auto_runtime_event_payload(
+        scope="all",
+        lanes=["heavy", "light"],
+        primitives=["compile"],
+        lane_results=[
+            {"plan": {"scope_preview": {"trace_ids": ["trace-b", "trace-a"]}}},
+            {"plan": {"scope_preview": {"trace_ids": ["trace-a", "trace-c"]}}},
+            {"plan": "bad"},
+        ],
+        applied_results=[{"status": "applied"}],
+        skipped=[{"lane": "light", "reason": "empty_execute_plan"}],
+        recorded_at="2026-05-25T00:00:00+00:00",
+    )
+
+    assert payload == {
+        "event_type": "alchemy-auto-scheduler",
+        "recorded_at": "2026-05-25T00:00:00+00:00",
+        "status": "completed",
+        "scope": "all",
+        "lanes": ["heavy", "light"],
+        "requested_primitives": ["compile"],
+        "applied_count": 1,
+        "skipped_count": 1,
+        "skipped": [{"lane": "light", "reason": "empty_execute_plan"}],
+        "trace_id": "trace-a",
+        "trace_ids": ["trace-a", "trace-b", "trace-c"],
+        "subject_kind": "alchemy_auto_scheduler",
+        "subject_id": "all",
+    }
+
+
+def test_alchemy_lane_runtime_event_payload_records_receipts_and_batch_receipt():
+    payload = support.alchemy_lane_runtime_event_payload(
+        event_type="alchemy-lane-completed",
+        lane="heavy",
+        scope="all",
+        action_ids=["action-1"],
+        primitives=["compile", "lint"],
+        plan={
+            "selected_count": 2,
+            "scope_preview": {"trace_ids": ["trace-b", "trace-a"]},
+        },
+        status="completed",
+        primitive_results=[
+            {"receipt_path": "output/control/execution-receipts/compile.json"},
+            {"receipt_path": ""},
+            {"not_receipt": True},
+        ],
+        apply_result={"batch_receipt_path": "output/control/execution-receipts/batch.json"},
+        recorded_at="2026-05-25T00:00:00+00:00",
+    )
+
+    assert payload == {
+        "event_type": "alchemy-lane-completed",
+        "recorded_at": "2026-05-25T00:00:00+00:00",
+        "status": "completed",
+        "lane": "heavy",
+        "scope": "all",
+        "action_ids": ["action-1"],
+        "primitives": ["compile", "lint"],
+        "selected_count": 2,
+        "trace_id": "trace-a",
+        "trace_ids": ["trace-a", "trace-b"],
+        "subject_kind": "alchemy_lane",
+        "subject_id": "heavy:all",
+        "primitive_count": 3,
+        "primitive_receipts": ["output/control/execution-receipts/compile.json"],
+        "action_batch_receipt": "output/control/execution-receipts/batch.json",
+    }
 
 
 def test_apply_preview_candidates_normalizes_filters_and_preserves_error_messages():

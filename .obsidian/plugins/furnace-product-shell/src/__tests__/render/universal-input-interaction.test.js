@@ -144,6 +144,7 @@ function loadRenderContext() {
     "helpers.js",
     "command_specs.js",
     "pending_state.js",
+    "pending_runtime.js",
     "today_feed.js",
     "render/cards.js",
     "render_primitives.js",
@@ -157,6 +158,8 @@ function loadRenderContext() {
     "run_state.js",
     "state/health-state.js",
     "plugin_helpers.js",
+    "plugin_lifecycle.js",
+    "plugin_actions.js",
     "plugin.js",
   ].forEach(loadFile);
 

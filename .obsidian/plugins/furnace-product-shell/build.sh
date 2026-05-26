@@ -38,7 +38,7 @@ const shell = electron && electron.shell ? electron.shell : null;
 HEADER
 
   first_module=1
-  for module in llm_settings constants helpers command_specs pending_state context_state today_feed modals views state/repo-state bridge/launcher render/cards settings render_primitives render_input render_today render_advanced render_runs render_home render_review render_execution plugin_helpers rewrite_state control_items modal_specs run_state state/health-state plugin; do
+  for module in llm_settings constants helpers command_specs pending_state pending_runtime context_state today_feed modals views state/repo-state bridge/launcher render/cards settings render_primitives render_input render_today render_advanced render_runs render_home render_review render_execution plugin_helpers rewrite_state control_items modal_specs run_state run_log_persistence plugin_state plugin_lifecycle plugin_actions plugin_run_pipeline state/health-state plugin; do
     if [[ "$first_module" -eq 0 ]]; then
       echo ""
     fi

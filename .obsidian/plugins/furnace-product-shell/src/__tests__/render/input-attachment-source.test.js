@@ -70,7 +70,7 @@ describe("Universal Input attachment source handling", () => {
     expect(inputSrc).not.toMatch(/runUniversalInputCommand\(\{ payload: file\.path \|\| file\.name/);
     expect(bundleSrc).toMatch(/async function resolvePluginFileSource/);
     expect(bundleSrc).toMatch(/async runDroppedFilesWithAutoAsk\(/);
-    expect(bundleSrc).toMatch(/await this\.runAskCommand\(\{[\s\S]*mode: "run-ask"/);
+    expect(bundleSrc).toMatch(/await plugin\.runAskCommand\(\{[\s\S]*mode: "run-ask"/);
     expect(bundleSrc).toMatch(/product-shell-drop/);
   });
 
@@ -121,6 +121,8 @@ describe("Universal Input attachment source handling", () => {
     const helpersSrc = fs.readFileSync(path.resolve(__dirname, "../../helpers.js"), "utf8");
     const commandSpecsSrc = fs.readFileSync(path.resolve(__dirname, "../../command_specs.js"), "utf8");
     const pendingStateSrc = fs.readFileSync(path.resolve(__dirname, "../../pending_state.js"), "utf8");
+    const pendingRuntimeSrc = fs.readFileSync(path.resolve(__dirname, "../../pending_runtime.js"), "utf8");
+    const pluginActionsSrc = fs.readFileSync(path.resolve(__dirname, "../../plugin_actions.js"), "utf8");
     const pluginSrc = fs.readFileSync(path.resolve(__dirname, "../../plugin.js"), "utf8");
     const calls = [];
     const context = {
@@ -129,7 +131,7 @@ describe("Universal Input attachment source handling", () => {
       require,
       Plugin: class {},
     };
-    vm.runInNewContext(`${helpersSrc}\n${commandSpecsSrc}\n${pendingStateSrc}\n${pluginSrc}\nmodule.exports = module.exports;`, context);
+    vm.runInNewContext(`${helpersSrc}\n${commandSpecsSrc}\n${pendingStateSrc}\n${pendingRuntimeSrc}\n${pluginActionsSrc}\n${pluginSrc}\nmodule.exports = module.exports;`, context);
     const PluginClass = context.module.exports;
     const plugin = new PluginClass();
     plugin.runUniversalInputCommand = jest
@@ -174,6 +176,8 @@ describe("Universal Input attachment source handling", () => {
     const helpersSrc = fs.readFileSync(path.resolve(__dirname, "../../helpers.js"), "utf8");
     const commandSpecsSrc = fs.readFileSync(path.resolve(__dirname, "../../command_specs.js"), "utf8");
     const pendingStateSrc = fs.readFileSync(path.resolve(__dirname, "../../pending_state.js"), "utf8");
+    const pendingRuntimeSrc = fs.readFileSync(path.resolve(__dirname, "../../pending_runtime.js"), "utf8");
+    const pluginActionsSrc = fs.readFileSync(path.resolve(__dirname, "../../plugin_actions.js"), "utf8");
     const pluginSrc = fs.readFileSync(path.resolve(__dirname, "../../plugin.js"), "utf8");
     const context = {
       module: { exports: {} },
@@ -181,7 +185,7 @@ describe("Universal Input attachment source handling", () => {
       require,
       Plugin: class {},
     };
-    vm.runInNewContext(`${helpersSrc}\n${commandSpecsSrc}\n${pendingStateSrc}\n${pluginSrc}\nmodule.exports = module.exports;`, context);
+    vm.runInNewContext(`${helpersSrc}\n${commandSpecsSrc}\n${pendingStateSrc}\n${pendingRuntimeSrc}\n${pluginActionsSrc}\n${pluginSrc}\nmodule.exports = module.exports;`, context);
     const PluginClass = context.module.exports;
     const plugin = new PluginClass();
     plugin.runUniversalInputCommand = jest.fn(async () => ({ note_path: "raw/inbox/trump-visit.md" }));
@@ -202,6 +206,8 @@ describe("Universal Input attachment source handling", () => {
     const helpersSrc = fs.readFileSync(path.resolve(__dirname, "../../helpers.js"), "utf8");
     const commandSpecsSrc = fs.readFileSync(path.resolve(__dirname, "../../command_specs.js"), "utf8");
     const pendingStateSrc = fs.readFileSync(path.resolve(__dirname, "../../pending_state.js"), "utf8");
+    const pendingRuntimeSrc = fs.readFileSync(path.resolve(__dirname, "../../pending_runtime.js"), "utf8");
+    const pluginActionsSrc = fs.readFileSync(path.resolve(__dirname, "../../plugin_actions.js"), "utf8");
     const pluginSrc = fs.readFileSync(path.resolve(__dirname, "../../plugin.js"), "utf8");
     const context = {
       module: { exports: {} },
@@ -209,7 +215,7 @@ describe("Universal Input attachment source handling", () => {
       require,
       Plugin: class {},
     };
-    vm.runInNewContext(`${helpersSrc}\n${commandSpecsSrc}\n${pendingStateSrc}\n${pluginSrc}\nmodule.exports = module.exports;`, context);
+    vm.runInNewContext(`${helpersSrc}\n${commandSpecsSrc}\n${pendingStateSrc}\n${pendingRuntimeSrc}\n${pluginActionsSrc}\n${pluginSrc}\nmodule.exports = module.exports;`, context);
     const PluginClass = context.module.exports;
     const plugin = new PluginClass();
     plugin.runUniversalInputCommand = jest.fn(async () => ({ note_path: "raw/inbox/a.md" }));

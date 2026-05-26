@@ -42,7 +42,7 @@ class ProductShellUniversalInputContractTests(unittest.TestCase):
         self.assertIn("buildAutoAskQuestion(normalizedQuestion, normalizedMaterialPaths)", text)
         self.assertIn("inferAutoAskFormat(normalizedQuestion, normalizedMaterialPaths)", text)
         self.assertIn("材料路径供系统路由使用：", text)
-        self.assertIn('await this.runAskCommand({', text)
+        self.assertIn('await plugin.runAskCommand({', text)
         self.assertIn('mode: "run-ask"', text)
         self.assertIn('format: askFormat', text)
         self.assertIn('const canUseDirect = format === "note"', text)
