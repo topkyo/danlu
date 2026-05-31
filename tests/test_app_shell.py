@@ -1187,6 +1187,109 @@ class ShellFlowTests(AppFlowTestBase):
         self.assertIn("Scaling Judgment", review_queue)
         self.assertIn(followup["id"], review_queue)
 
+    def test_reviewed_judgment_suppresses_existing_counter_evidence_candidates(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        judgment = file_back(self.root, report["path"], title="Scaling Judgment", kind="judgment")
+
+        conflicting = self.root / "conflicting.md"
+        conflicting.write_text(
+            "# Transformer Scaling Followup\n\nTransformers scale inference costs shifted after routing changes.\n",
+            encoding="utf-8",
+        )
+        ingest_source(self.root, str(conflicting), title="Transformer Scaling Followup")
+
+        compile_wiki(self.root)
+        before_review = shell_status(self.root)
+        self.assertEqual(before_review["review_backlog_counts"]["counter_evidence_candidates"], 1)
+        self.assertEqual(before_review["review_backlog_counts"]["judgment_review_actions"], 1)
+
+        with patch("aiwiki.app_compile.utc_now", return_value="2030-01-01T00:00:00+00:00"):
+            review_page(
+                self.root,
+                judgment["path"],
+                "confirmed",
+                note="Reviewed the follow-up and confirmed the original judgment still holds.",
+                confidence="high",
+            )
+        compile_wiki(self.root)
+        after_review = shell_status(self.root)
+
+        self.assertEqual(after_review["review_backlog_counts"]["counter_evidence_candidates"], 0)
+        self.assertEqual(after_review["review_backlog_counts"]["judgment_review_actions"], 0)
+        judgment_controls = {page["path"]: page for page in after_review["review_controls"]["judgment_pages"]}
+        self.assertNotIn("counter-evidence-candidate", judgment_controls[judgment["path"]]["reasons"])
+
+    def test_reviewed_judgment_keeps_same_timestamp_counter_evidence_candidates(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        judgment = file_back(self.root, report["path"], title="Scaling Judgment", kind="judgment")
+
+        conflicting = self.root / "same-timestamp-conflicting.md"
+        conflicting.write_text(
+            "# Transformer Scaling Followup\n\nTransformers scale inference costs shifted after routing changes.\n",
+            encoding="utf-8",
+        )
+        followup = ingest_source(self.root, str(conflicting), title="Transformer Scaling Same Timestamp Followup")
+        compile_wiki(self.root)
+        before_review = shell_status(self.root)
+        self.assertEqual(before_review["review_backlog_counts"]["counter_evidence_candidates"], 1)
+        followup_entry = next(
+            entry for entry in load_manifest(self.root)["entries"] if entry["id"] == followup["id"]
+        )
+        timestamp = followup_entry["updated_at"]
+        with patch("aiwiki.app_compile.utc_now", return_value=timestamp):
+            review_page(
+                self.root,
+                judgment["path"],
+                "confirmed",
+                note="Review timestamp matches the follow-up import timestamp.",
+                confidence="high",
+            )
+
+        compile_wiki(self.root)
+        result = shell_status(self.root)
+
+        self.assertEqual(result["review_backlog_counts"]["counter_evidence_candidates"], 1)
+        self.assertEqual(result["review_backlog_counts"]["judgment_review_actions"], 1)
+        judgment_controls = {page["path"]: page for page in result["review_controls"]["judgment_pages"]}
+        self.assertIn("counter-evidence-candidate", judgment_controls[judgment["path"]]["reasons"])
+
+    def test_reviewed_decision_suppresses_existing_counter_evidence_candidates(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        decision = file_back(self.root, report["path"], title="Scaling Decision", kind="decision")
+
+        conflicting = self.root / "decision-conflicting.md"
+        conflicting.write_text(
+            "# Transformer Scaling Followup\n\nTransformers scale inference costs shifted after routing changes.\n",
+            encoding="utf-8",
+        )
+        ingest_source(self.root, str(conflicting), title="Transformer Scaling Followup")
+
+        compile_wiki(self.root)
+        before_review = shell_status(self.root)
+        self.assertEqual(before_review["review_backlog_counts"]["counter_evidence_candidates"], 1)
+        self.assertEqual(before_review["review_backlog_counts"]["judgment_review_actions"], 1)
+
+        with patch("aiwiki.app_compile.utc_now", return_value="2030-01-01T00:00:00+00:00"):
+            review_page(
+                self.root,
+                decision["path"],
+                "approved",
+                note="Reviewed the follow-up and approved the original decision.",
+            )
+        compile_wiki(self.root)
+        after_review = shell_status(self.root)
+
+        self.assertEqual(after_review["review_backlog_counts"]["counter_evidence_candidates"], 0)
+        self.assertEqual(after_review["review_backlog_counts"]["judgment_review_actions"], 0)
+        decision_controls = {page["path"]: page for page in after_review["review_controls"]["decision_pages"]}
+        self.assertNotIn("counter-evidence-candidate", decision_controls[decision["path"]]["reasons"])
+
     def test_shell_status_control_objects_are_not_truncated(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)

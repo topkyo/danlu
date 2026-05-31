@@ -59,6 +59,7 @@ from ..app_state import (
 )
 from ..app_utils import (
     parse_frontmatter,
+    parse_iso_datetime,
     relative_path,
     strip_frontmatter,
     tokenize,
@@ -99,6 +100,27 @@ def _curated_page_scan_record(root: Path, page: dict[str, str]) -> dict[str, Any
     }
 
 
+def _candidate_is_covered_by_review(
+    scan_record: dict[str, Any],
+    source_entry: dict[str, Any],
+) -> bool:
+    frontmatter = scan_record.get("frontmatter", {})
+    if not isinstance(frontmatter, dict):
+        return False
+    status = str(frontmatter.get("status") or "")
+    if status not in {"approved", "confirmed"}:
+        return False
+    reviewed_at = parse_iso_datetime(
+        str(frontmatter.get("last_reviewed") or frontmatter.get("reviewed_at") or "")
+    )
+    source_updated_at = parse_iso_datetime(
+        str(source_entry.get("updated_at") or source_entry.get("imported_at") or "")
+    )
+    if reviewed_at is None or source_updated_at is None:
+        return False
+    return reviewed_at > source_updated_at
+
+
 def _counter_evidence_scan_phase(context: CompileContext) -> dict[str, Any]:
     entry_by_id = {str(entry["id"]): entry for entry in context.entries}
     source_ids = [source_id for source_id in context.dirty_source_ids if source_id in entry_by_id]
@@ -124,6 +146,8 @@ def _counter_evidence_scan_phase(context: CompileContext) -> dict[str, Any]:
             if source_id in cited_source_ids:
                 continue
             source_entry = entry_by_id.get(source_id, {})
+            if _candidate_is_covered_by_review(scan_record, source_entry):
+                continue
             source_terms = {
                 token
                 for label in context.entry_terms.get(source_id, [])

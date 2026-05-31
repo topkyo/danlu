@@ -1002,7 +1002,7 @@ class DogfoodMaturityGateTests(unittest.TestCase):
         self.assertTrue(summary["operational_maturity"]["human_only_exceptions"])
         self.assertEqual(summary["operational_maturity"]["budget_violations"], [])
 
-    def test_operational_maturity_passes_when_budget_is_clean_even_if_trend_summary_warns(self) -> None:
+    def test_summary_passes_when_budget_is_clean_even_if_trend_summary_warns(self) -> None:
         receipts = [
             _make_run_receipt(
                 generated_at="2026-05-13T00:00:00Z",
@@ -1044,7 +1044,8 @@ class DogfoodMaturityGateTests(unittest.TestCase):
 
         summary = summarize_recent_run_receipts(self.root, recent=3)
 
-        self.assertEqual(summary["status"], "warn")
+        self.assertEqual(summary["status"], "pass")
+        self.assertEqual(summary["trend_status"], "warn")
         self.assertEqual(summary["operational_maturity"]["status"], "pass")
         self.assertEqual(summary["operational_maturity"]["budget_violations"], [])
         self.assertTrue(summary["operational_maturity"]["receipt_integrity"]["consecutive_days"])
@@ -1494,6 +1495,45 @@ class DogfoodMaturityGateTests(unittest.TestCase):
         self.assertTrue(summary["snapshot_consistency"]["snapshot_newer_than_latest_run"])
         self.assertEqual(summary["snapshot_consistency"]["budget_violations"], ["routine_primary_debt"])
         self.assertEqual(summary["strict_failures"], ["latest_snapshot_newer_than_run_failed_budget"])
+
+    def test_summarize_strict_allows_newer_snapshot_human_only_exceptions(self) -> None:
+        receipt = _make_run_receipt(
+            generated_at="2026-05-13T00:00:00Z",
+            status="pass",
+            before_backlog=3,
+            after_backlog=2,
+            before_candidate=1,
+            after_candidate=0,
+            before_judgment_receipts=0,
+            after_judgment_receipts=1,
+            already_exists_count=1,
+        )
+        self._write_receipts([receipt])
+        snapshot = dict(receipt["after"])
+        snapshot["judgment_lane_report"] = {
+            "failure_rate": 0.0,
+            "exception_rate": 0.0,
+            "exception_queue": [],
+        }
+        snapshot["human_required_report"] = {
+            "human_required_count": 0,
+            "routine_primary_debt_count": 0,
+            "exception_count": 3,
+            "auto_resolved_count": 0,
+        }
+        _write_json(maturity_gate_dir(self.root) / "snapshot-20260513T000001Z.json", snapshot)
+
+        summary = summarize_recent_run_receipts(
+            self.root,
+            recent=1,
+            require_current_day=True,
+            expected_latest_day="2026-05-13",
+        )
+
+        self.assertEqual(summary["status"], "pass")
+        self.assertEqual(summary["snapshot_consistency"]["status"], "pass")
+        self.assertEqual(summary["snapshot_consistency"]["budget_violations"], [])
+        self.assertEqual(summary["strict_failures"], [])
 
     def test_summarize_fails_when_any_receipt_failed(self) -> None:
         self._write_receipts(

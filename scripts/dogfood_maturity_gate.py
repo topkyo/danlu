@@ -1490,8 +1490,8 @@ def _snapshot_release_violations(snapshot: dict[str, Any]) -> list[str]:
     if isinstance(human_required, dict):
         if _coerce_int(human_required.get("routine_primary_debt_count")) > 0:
             violations.append("routine_primary_debt")
-        if _coerce_int(human_required.get("exception_count")) > 0:
-            violations.append("human_required_exceptions")
+        if _coerce_int(human_required.get("human_required_count")) > 0:
+            violations.append("human_required_actions")
     judgment_lane = snapshot.get("judgment_lane_report")
     if isinstance(judgment_lane, dict):
         if float(judgment_lane.get("failure_rate") or 0.0) > 0.0:
@@ -1703,24 +1703,32 @@ def summarize_run_receipts(
     if require_current_day and snapshot_consistency.get("snapshot_newer_than_latest_run") and snapshot_consistency.get("status") != "pass":
         strict_failures.append("latest_snapshot_newer_than_run_failed_budget")
     if failed or prompt_hash_changed or missing_required_fields or deterministic_runs or strict_failures:
-        status = "fail"
+        trend_status = "fail"
     elif len(receipts) < recent:
-        status = "warn"
+        trend_status = "warn"
     elif not consecutive_days:
-        status = "warn"
+        trend_status = "warn"
     elif backlog_total_delta <= 0 and l3_candidate_delta <= 0 and l3_dedupe_or_converged and semantic_path_observed and elixir_quality_pass:
-        status = "pass"
+        trend_status = "pass"
     else:
-        status = "warn"
+        trend_status = "warn"
     operational_maturity = _build_operational_maturity_report(
         receipts,
         recent=recent,
-        status=status,
+        status=trend_status,
         backlog_total_delta=backlog_total_delta,
         l3_candidate_delta=l3_candidate_delta,
         l3_dedupe_or_converged=l3_dedupe_or_converged,
         judgment_review_receipts_delta=judgment_review_receipts_delta,
     )
+    status = trend_status
+    if (
+        status == "warn"
+        and str(operational_maturity.get("status") or "") == "pass"
+        and semantic_path_observed
+        and elixir_quality_pass
+    ):
+        status = "pass"
     return {
         "kind": "dogfood-maturity-summary",
         "version": 1,
@@ -1730,6 +1738,7 @@ def summarize_run_receipts(
         "receipt_count": len(receipts),
         "receipt_paths": [str(item.get("receipt_path") or "") for item in receipts],
         "status": status,
+        "trend_status": trend_status,
         "status_counts": dict(sorted(status_counts.items())),
         "backlog_total_delta": backlog_total_delta,
         "l3_candidate_delta": l3_candidate_delta,
