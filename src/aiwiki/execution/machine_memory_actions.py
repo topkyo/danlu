@@ -1087,7 +1087,41 @@ def apply_machine_memory_action(
             f"primary: `{target.get('primary_path', '')}`",
         ],
     )
-    compile_wiki(root)
+    try:
+        compile_wiki(root)
+    except Exception as verify_exc:
+        from ..autonomy_policy import load_policy
+
+        if load_policy(root).auto_revert_on_verify_failure:
+            try:
+                revert_result = revert_machine_memory_action(
+                    root,
+                    resolved_action_id,
+                    note=f"auto-revert after apply verify failure: {type(verify_exc).__name__}: {verify_exc}",
+                    verify=False,
+                )
+                append_runtime_history(
+                    root,
+                    {
+                        "event_type": "action-auto-revert-on-verify-failure",
+                        "occurred_at": _app_compile.utc_now(),
+                        "action_id": resolved_action_id,
+                        "apply_receipt_path": relative_path(root, receipt_path),
+                        "revert_receipt_path": str(revert_result.get("receipt_path") or ""),
+                        "verify_error": f"{type(verify_exc).__name__}: {verify_exc}",
+                    },
+                )
+            except Exception as revert_exc:
+                raise RuntimeError(
+                    "apply-action verify failed and auto-revert also failed: "
+                    f"verify={type(verify_exc).__name__}: {verify_exc}; "
+                    f"revert={type(revert_exc).__name__}: {revert_exc}"
+                ) from verify_exc
+            raise RuntimeError(
+                "apply-action verify failed; auto-revert completed: "
+                f"{type(verify_exc).__name__}: {verify_exc}"
+            ) from verify_exc
+        raise
     response: dict[str, Any] = {
         "id": resolved_action_id,
         "status": "resolved",
@@ -1110,6 +1144,7 @@ def revert_machine_memory_action(
     action_id: str,
     *,
     note: str | None = None,
+    verify: bool = True,
 ) -> dict[str, Any]:
     from .. import app_compile as _app_compile
 
@@ -1294,7 +1329,8 @@ def revert_machine_memory_action(
             f"primary: `{target.get('primary_path', '')}`",
         ],
     )
-    compile_wiki(root)
+    if verify:
+        compile_wiki(root)
     return {
         "id": resolved_action_id,
         "status": "proposed",

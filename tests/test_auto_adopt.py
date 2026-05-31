@@ -19,7 +19,14 @@ from aiwiki.app_state import (
 )
 from aiwiki.execution.l3_proposals import L3PostApplyAuditError
 from aiwiki.llm import CompletionResult
-from aiwiki.runner.auto_adopt import _env_flag, auto_adopt_judgments, auto_adopt_l1, auto_adopt_l2, auto_adopt_l3
+from aiwiki.runner.auto_adopt import (
+    _env_flag,
+    auto_adopt_judgments,
+    auto_adopt_l1,
+    auto_adopt_l2,
+    auto_adopt_l3,
+    revert_judgment_review_receipt,
+)
 
 
 class StubClient:
@@ -210,7 +217,7 @@ class AutoAdoptCriticalFixTests(unittest.TestCase):
         self.assertIn("sha256", payload)
         self.assertIn("review_id", payload)
 
-    def test_judgment_receipt_marks_revert_unsupported(self) -> None:
+    def test_judgment_receipt_marks_revert_supported(self) -> None:
         page = self.root / "wiki" / "judgments" / "j1.md"
         page.parent.mkdir(parents=True, exist_ok=True)
         page.write_text("# J1\n", encoding="utf-8")
@@ -222,12 +229,50 @@ class AutoAdoptCriticalFixTests(unittest.TestCase):
         self.assertEqual(result["items"][0]["status"], "applied")
         entries = load_jsonl_documents_strict(execution_receipt_history_path(self.root))
         receipt = entries[-1]
-        self.assertIs(receipt["revert_supported"], False)
-        self.assertEqual(receipt["revert_policy"], "manual_only")
+        self.assertIs(receipt["revert_supported"], True)
+        self.assertEqual(receipt["revert_policy"], "restore_before_content")
+        self.assertEqual(receipt["autonomy_domain"], "non_core_semantic")
+        self.assertIn("wiki/judgments/j1.md", receipt["evidence_refs"])
         self.assertTrue(receipt["revert_note"])
         self.assertEqual(receipt["conclusion"], "upheld")
         self.assertEqual(receipt["confidence"], "high")
         self.assertEqual(receipt["scan_generated_at"], "2026-01-01T00:00:00Z")
+
+    def test_judgment_review_revert_restores_page_and_writes_receipt(self) -> None:
+        page = self.root / "wiki" / "judgments" / "j1.md"
+        page.parent.mkdir(parents=True, exist_ok=True)
+        page.write_text("# J1\n", encoding="utf-8")
+        _memory_with_judgment_page(self.root, page)
+        response = json.dumps({"conclusion": "upheld", "confidence": "high"})
+        auto_adopt_judgments(self.root, StubClient(response))
+        apply_receipt = load_jsonl_documents_strict(execution_receipt_history_path(self.root))[-1]
+
+        result = revert_judgment_review_receipt(self.root, str(apply_receipt["receipt_path"]))
+
+        self.assertEqual(result["status"], "reverted")
+        self.assertEqual(page.read_text(encoding="utf-8"), "# J1\n")
+        receipts = load_jsonl_documents_strict(execution_receipt_history_path(self.root))
+        self.assertEqual(receipts[-1]["operation"], "revert")
+        self.assertEqual(receipts[-1]["source_receipt_path"], apply_receipt["receipt_path"])
+
+    def test_judgment_review_revert_history_failure_rolls_back_page_and_receipt(self) -> None:
+        page = self.root / "wiki" / "judgments" / "j1.md"
+        page.parent.mkdir(parents=True, exist_ok=True)
+        page.write_text("# J1\n", encoding="utf-8")
+        _memory_with_judgment_page(self.root, page)
+        response = json.dumps({"conclusion": "upheld", "confidence": "high"})
+        auto_adopt_judgments(self.root, StubClient(response))
+        apply_receipt = load_jsonl_documents_strict(execution_receipt_history_path(self.root))[-1]
+        applied_content = page.read_text(encoding="utf-8")
+        receipts_before = load_jsonl_documents_strict(execution_receipt_history_path(self.root))
+
+        with patch("aiwiki.runner.auto_adopt.append_execution_receipt_history", side_effect=RuntimeError("history failed")):
+            with self.assertRaisesRegex(RuntimeError, "history failed"):
+                revert_judgment_review_receipt(self.root, str(apply_receipt["receipt_path"]))
+
+        self.assertEqual(page.read_text(encoding="utf-8"), applied_content)
+        self.assertEqual(load_jsonl_documents_strict(execution_receipt_history_path(self.root)), receipts_before)
+        self.assertFalse((self.root / "output" / "control" / "execution-receipts" / f"judgment-review-revert-{apply_receipt['subject_id']}.json").exists())
 
     def test_judgment_review_surfaces_weakened_exception(self) -> None:
         page = self.root / "wiki" / "judgments" / "j1.md"

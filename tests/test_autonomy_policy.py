@@ -7,6 +7,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from aiwiki import autonomy_policy
+from aiwiki.autonomy_domains import classify_autonomy_domain, classify_l3_proposal
 from aiwiki.autonomy_policy import (
     GLOBAL_OVERRIDE_ENV,
     AutonomyPolicy,
@@ -62,6 +63,47 @@ class AutonomyPolicyTests(unittest.TestCase):
             disabled = nightly_autonomy_flags(root, env={GLOBAL_OVERRIDE_ENV: "1"})
 
         self.assertFalse(any(disabled.values()))
+
+    def test_agentic_profile_enables_non_core_governance_defaults(self) -> None:
+        with TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            path = autonomy_policy.policy_path(root)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps({"schema_version": 3, "autonomy_profile": "agentic"}), encoding="utf-8")
+
+            flags = nightly_autonomy_flags(root, env={})
+
+        self.assertTrue(flags["auto_adopt_l3"])
+        self.assertTrue(flags["auto_apply_heavy_semantic"])
+        self.assertFalse(flags["auto_adopt_core_l3"])
+
+    def test_domain_classifier_separates_non_core_core_and_external(self) -> None:
+        non_core = classify_autonomy_domain(
+            subject_kind="judgment_review",
+            operation="apply",
+            payload={},
+            autonomy_profile="agentic",
+            revert_supported=True,
+        )
+        self.assertEqual(non_core.autonomy_domain, "non_core_semantic")
+        self.assertEqual(non_core.execution_strategy, "llm_decide_apply")
+        self.assertTrue(non_core.llm_governed)
+
+        core = classify_l3_proposal(
+            {"kind": "prompt_proposal", "target_file": "prompts/ask.md", "patch": {"kind": "full_replace"}},
+            autonomy_profile="agentic",
+        )
+        self.assertEqual(core.autonomy_domain, "core")
+        self.assertEqual(core.execution_strategy, "proposal_only")
+
+        external = classify_autonomy_domain(
+            subject_kind="release",
+            operation="deploy",
+            payload={"target_file": ".env"},
+            autonomy_profile="agentic",
+        )
+        self.assertEqual(external.autonomy_domain, "external")
+        self.assertEqual(external.execution_strategy, "human_required")
 
     def test_file_with_explicit_flag_is_respected(self) -> None:
         with TemporaryDirectory() as tempdir:
@@ -253,7 +295,7 @@ class AutonomyPolicyMutationTests(unittest.TestCase):
             self.assertTrue(result.disable_lane_apply)
             self.assertTrue(autonomy_policy.policy_path(root).exists())
             data = json.loads(autonomy_policy.policy_path(root).read_text(encoding="utf-8"))
-            self.assertEqual(data["schema_version"], 2)
+            self.assertEqual(data["schema_version"], 3)
             self.assertEqual(data["autonomy_profile"], "strong")
             self.assertTrue(data["disable_lane_apply"])
             self.assertFalse(data["disable_alchemy_auto"])

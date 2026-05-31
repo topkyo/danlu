@@ -6,6 +6,7 @@ import copy
 import hashlib
 import json
 import logging
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +34,8 @@ from ..app_utils import (
     slugify,
     utc_now,
 )
+from ..autonomy_domains import classify_l3_proposal
+from ..autonomy_policy import load_policy
 from ..render.paths import execution_receipt_path
 from .alchemy import _restore_file_bytes, _snapshot_file_bytes
 from .audit_preview import AUDIT_STREAM_PATH
@@ -278,6 +281,33 @@ def _proposal_review_state(proposal: dict[str, Any]) -> str:
 def _proposal_patch_kind(proposal: dict[str, Any]) -> str:
     patch = proposal.get("patch") if isinstance(proposal.get("patch"), dict) else {}
     return str(patch.get("kind") or "full_replace")
+
+
+def _git_dirty_for_path(root: Path, target: Path) -> bool:
+    try:
+        git_dir = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "--git-dir"],
+            text=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    except OSError:
+        return False
+    if git_dir.returncode != 0:
+        return False
+    rel = relative_path(root, target)
+    try:
+        status = subprocess.run(
+            ["git", "-C", str(root), "status", "--porcelain", "--", rel],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    except OSError:
+        return False
+    return bool(status.stdout.strip())
 
 
 def _requires_human_accept_for_apply(proposal: dict[str, Any]) -> bool:
@@ -815,6 +845,9 @@ def apply_l3_proposal(root: Path, proposal_id: str, *, note: str | None = None) 
     expected_before_hash = str(patch.get("before_hash") or "")
     current_hash = _hash_path(target)
     applied_at = utc_now()
+    policy = load_policy(root)
+    if policy.require_clean_before_hash and _git_dirty_for_path(root, target):
+        raise RuntimeError("L3 proposal apply requires a clean target path before hash-gated apply.")
     if current_hash != expected_before_hash:
         proposal["state"] = "stale"
         proposal["stale_at"] = applied_at
@@ -841,6 +874,11 @@ def apply_l3_proposal(root: Path, proposal_id: str, *, note: str | None = None) 
     after_content = before_content if is_metadata_only else str(patch.get("content") or "")
     before_hash_for_audit = hashlib.sha256(snapshot or b"").hexdigest()
     after_hash_for_audit = hashlib.sha256(after_content.encode("utf-8")).hexdigest()
+    classification = classify_l3_proposal(proposal, autonomy_profile=policy.autonomy_profile, revert_supported=True)
+    proposal_evidence = proposal.get("evidence_refs") if isinstance(proposal.get("evidence_refs"), list) else []
+    proposal_counter_evidence = (
+        proposal.get("counter_evidence_refs") if isinstance(proposal.get("counter_evidence_refs"), list) else []
+    )
     try:
         if not is_metadata_only:
             atomic_write_text(target, after_content)
@@ -853,6 +891,15 @@ def apply_l3_proposal(root: Path, proposal_id: str, *, note: str | None = None) 
             "generated_by": "aiwiki-l3-proposal",
             "applied_at": applied_at,
             "operation": "apply",
+            **classification.as_receipt_fields(
+                decision_confidence=str(proposal.get("decision_confidence") or ""),
+                evidence_refs=[str(item) for item in proposal_evidence if isinstance(item, str)],
+                counter_evidence_refs=[
+                    str(item) for item in proposal_counter_evidence if isinstance(item, str)
+                ],
+                validator_status="passed",
+                revert_supported=True,
+            ),
             "action_id": action_id,
             "subject_kind": "l3_proposal",
             "subject_id": proposal_id,
@@ -1104,6 +1151,24 @@ def revert_l3_proposal(root: Path, receipt_id: str, *, note: str | None = None) 
             "generated_by": "aiwiki-l3-proposal",
             "applied_at": reverted_at,
             "operation": "revert",
+            "autonomy_domain": str(receipt.get("autonomy_domain") or "core"),
+            "llm_governed": bool(receipt.get("llm_governed", False)),
+            "decision_confidence": str(receipt.get("decision_confidence") or ""),
+            "evidence_refs": [
+                str(item)
+                for item in (receipt.get("evidence_refs") if isinstance(receipt.get("evidence_refs"), list) else [])
+                if isinstance(item, str)
+            ],
+            "counter_evidence_refs": [
+                str(item)
+                for item in (
+                    receipt.get("counter_evidence_refs")
+                    if isinstance(receipt.get("counter_evidence_refs"), list)
+                    else []
+                )
+                if isinstance(item, str)
+            ],
+            "validator_status": "passed",
             "action_id": action_id,
             "subject_kind": "l3_proposal",
             "subject_id": proposal_id,

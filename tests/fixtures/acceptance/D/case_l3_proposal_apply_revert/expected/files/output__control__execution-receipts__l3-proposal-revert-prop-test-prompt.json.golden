@@ -5,9 +5,14 @@
   "audit_event": "execution_receipt_history_append",
   "audit_path": ".aiwiki/state/execution-receipts.jsonl",
   "audit_stream": "execution_receipts",
+  "autonomy_domain": "core",
   "before_hash": "sha256:bd13ffc1253b79016029c10d6e4823ff93ec0686ee8c4ec8a494684e66bc5e3b",
+  "counter_evidence_refs": [],
+  "decision_confidence": "",
+  "evidence_refs": [],
   "generated_by": "aiwiki-l3-proposal",
   "kind": "execution-receipt",
+  "llm_governed": false,
   "note": "acceptance revert",
   "operation": "revert",
   "patch_kind": "full_replace",
@@ -18,5 +23,6 @@
   "subject_id": "prop-test-prompt",
   "subject_kind": "l3_proposal",
   "target_file": "prompts/test-prompt.md",
+  "validator_status": "passed",
   "version": 1
 }

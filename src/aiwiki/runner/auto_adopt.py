@@ -39,7 +39,21 @@ from ..app_state import (
     load_machine_memory,
     load_planner_state,
 )
-from ..app_utils import _restore_file_bytes, _snapshot_file_bytes, relative_path, runtime_write_operation, utc_now
+from ..app_utils import (
+    _restore_file_bytes,
+    _snapshot_file_bytes,
+    atomic_write_text,
+    relative_path,
+    runtime_write_operation,
+    utc_now,
+)
+from ..autonomy_domains import (
+    classify_autonomy_domain,
+    classify_judgment_review,
+    classify_l3_proposal,
+    classify_machine_memory_action,
+)
+from ..autonomy_policy import load_policy
 from ..config import l3_auto_adopt_min_evidence_from_env
 from ..execution.lifecycle import review_concepts_batch
 from ..execution.machine_memory_actions import review_machine_memory_actions_batch
@@ -109,6 +123,7 @@ def auto_adopt_l1(root: Path) -> dict[str, Any]:
     Counter-evidence is handled by LLM-powered judgment review, not here.
     """
     results: dict[str, Any] = {"level": "L1", "applied": False, "items": []}
+    policy = load_policy(root)
     try:
         review_ctrl, exec_ctrl = _build_controls(root)
     except Exception as exc:
@@ -124,9 +139,22 @@ def auto_adopt_l1(root: Path) -> dict[str, Any]:
     ]
     results["concept_backlog_pending"] = len(concept_backlog)
     if concept_backlog:
+        classification = classify_autonomy_domain(
+            subject_kind="concept_review",
+            operation="review",
+            payload={},
+            autonomy_profile=policy.autonomy_profile,
+            revert_supported=False,
+        )
         try:
             r = review_concepts_batch(root, concept_backlog, status=_L1_CONCEPT_STATUS, note="nightly L1 auto-adopt: concept backlog → active")
-            results["items"].append({"kind": "concept_backlog", "count": r.get("count", 0), "status": _L1_CONCEPT_STATUS})
+            results["items"].append({
+                "kind": "concept_backlog",
+                "count": r.get("count", 0),
+                "status": _L1_CONCEPT_STATUS,
+                "autonomy_domain": classification.autonomy_domain,
+                "execution_strategy": classification.execution_strategy,
+            })
             if int(r.get("count", 0) or 0) > 0:
                 results["applied"] = True
         except Exception as exc:
@@ -142,9 +170,22 @@ def auto_adopt_l1(root: Path) -> dict[str, Any]:
     ]
     results["revisit_concepts_pending"] = len(revisit)
     if revisit:
+        classification = classify_autonomy_domain(
+            subject_kind="concept_review",
+            operation="review",
+            payload={},
+            autonomy_profile=policy.autonomy_profile,
+            revert_supported=False,
+        )
         try:
             r = review_concepts_batch(root, revisit, status=_L1_REVISIT_STATUS, note="nightly L1 auto-adopt: revisit → deferred")
-            results["items"].append({"kind": "revisit_concepts", "count": r.get("count", 0), "status": _L1_REVISIT_STATUS})
+            results["items"].append({
+                "kind": "revisit_concepts",
+                "count": r.get("count", 0),
+                "status": _L1_REVISIT_STATUS,
+                "autonomy_domain": classification.autonomy_domain,
+                "execution_strategy": classification.execution_strategy,
+            })
             if int(r.get("count", 0) or 0) > 0:
                 results["applied"] = True
         except Exception as exc:
@@ -164,9 +205,22 @@ def auto_adopt_l1(root: Path) -> dict[str, Any]:
     link_actions = [aid for aid in link_actions if aid]
     results["source_concept_links_pending"] = len(link_actions)
     if link_actions:
+        classification = classify_autonomy_domain(
+            subject_kind="machine_memory_action",
+            operation="review",
+            payload={"kind": "add-source-concept-link"},
+            autonomy_profile=policy.autonomy_profile,
+            revert_supported=True,
+        )
         try:
             r = review_machine_memory_actions_batch(root, link_actions, status=_L1_ACTION_STATUS, note="nightly L1 auto-adopt: source-concept link accepted")
-            results["items"].append({"kind": "source_concept_links", "status": _L1_ACTION_STATUS, "count": r.get("count", 0)})
+            results["items"].append({
+                "kind": "source_concept_links",
+                "status": _L1_ACTION_STATUS,
+                "count": r.get("count", 0),
+                "autonomy_domain": classification.autonomy_domain,
+                "execution_strategy": classification.execution_strategy,
+            })
             if int(r.get("count", 0) or 0) > 0:
                 results["applied"] = True
         except Exception as exc:
@@ -214,6 +268,7 @@ def auto_adopt_l2(root: Path) -> dict[str, Any]:
     detector. They are low-risk structural changes.
     """
     results: dict[str, Any] = {"level": "L2", "applied": False, "items": []}
+    policy = load_policy(root)
     try:
         _review_ctrl, exec_ctrl = _build_controls(root)
     except Exception as exc:
@@ -231,9 +286,21 @@ def auto_adopt_l2(root: Path) -> dict[str, Any]:
     ]
     results["concept_splits_pending"] = len(split_actions)
     if split_actions:
+        classification = classify_autonomy_domain(
+            subject_kind="machine_memory_action",
+            operation="review",
+            payload={"kind": "split-overloaded-concept"},
+            autonomy_profile=policy.autonomy_profile,
+            revert_supported=True,
+        )
         try:
             r = review_machine_memory_actions_batch(root, split_actions, status=_L2_CONCEPT_SPLIT_STATUS, note="nightly L2 auto-adopt: concept split accepted")
-            results["items"].append({"kind": "concept_splits_accepted", "count": r.get("count", 0)})
+            results["items"].append({
+                "kind": "concept_splits_accepted",
+                "count": r.get("count", 0),
+                "autonomy_domain": classification.autonomy_domain,
+                "execution_strategy": classification.execution_strategy,
+            })
             if int(r.get("count", 0) or 0) > 0:
                 results["applied"] = True
         except Exception as exc:
@@ -348,6 +415,17 @@ def auto_adopt_judgments(
             judgment_text = page_path.read_text(encoding="utf-8")
             sources_text = _read_source_pages(root, source_ids, max_chars=8000)
             conclusion = _llm_review_judgment(client, judgment_text, sources_text, str(page.get("page_title") or page_path_str))
+            decision = _build_judgment_llm_decision(page_path_str, source_ids, conclusion)
+            decision_error = _validate_judgment_decision_refs(root, decision)
+            if decision_error:
+                results["items"].append({
+                    "page": page_path_str,
+                    "status": "human_required",
+                    "reason": decision_error,
+                })
+                failed += 1
+                results["non_core_human_required_count"] = int(results.get("non_core_human_required_count", 0) or 0) + 1
+                continue
             conclusion_value = str(conclusion.get("conclusion") or "")
             confidence_value = str(conclusion.get("confidence") or "")
             confidence_counts[confidence_value or "(missing)"] += 1
@@ -389,6 +467,7 @@ def auto_adopt_judgments(
                 conclusion,
                 scan_generated_at=scan_generated_at,
                 reviewer_model=reviewer_model,
+                decision=decision,
             )
             results["items"].append({
                 "page": page_path_str,
@@ -597,6 +676,37 @@ def _llm_review_judgment(
         return {"conclusion": "unparsed", "confidence": "low", "raw": text[:500]}
 
 
+def _build_judgment_llm_decision(
+    page_path: str,
+    source_ids: list[Any],
+    conclusion: dict[str, Any],
+) -> dict[str, Any]:
+    evidence_refs = [page_path]
+    evidence_refs.extend(str(source_id) for source_id in source_ids if isinstance(source_id, str) and source_id.strip())
+    counter_evidence_refs = evidence_refs[1:] if conclusion.get("counter_evidence_found") else []
+    return {
+        "action": "append_review_history",
+        "rationale": str(conclusion.get("recommendation") or ""),
+        "evidence_refs": evidence_refs,
+        "counter_evidence_refs": counter_evidence_refs,
+        "confidence": str(conclusion.get("confidence") or "low"),
+    }
+
+
+def _validate_judgment_decision_refs(root: Path, decision: dict[str, Any]) -> str:
+    if str(decision.get("action") or "") != "append_review_history":
+        return "unsupported_llm_decision_action"
+    refs = decision.get("evidence_refs")
+    if not isinstance(refs, list) or not refs:
+        return "missing_evidence_refs"
+    for ref in refs:
+        if not isinstance(ref, str) or not ref.strip():
+            return "invalid_evidence_ref"
+        if ref.startswith("wiki/") and not (root / ref).exists():
+            return f"missing_evidence_ref:{ref}"
+    return ""
+
+
 def _has_judgment_review_receipt(root: Path, review_id: str) -> tuple[str, bool | None]:
     try:
         records = load_jsonl_documents_strict(execution_receipt_history_path(root))
@@ -623,12 +733,30 @@ def _apply_judgment_review_with_receipt(target: Path, mutate_fn: Callable[[str],
     receipt_path = execution_receipt_path(root, action_id)
     receipt_snapshot = _snapshot_file_bytes(receipt_path)
     target_rel = relative_path(root, target)
+    policy = load_policy(root)
+    classification = classify_judgment_review(
+        autonomy_profile=policy.autonomy_profile,
+        revert_supported=True,
+    )
+    evidence_refs = receipt_meta.get("evidence_refs") if isinstance(receipt_meta.get("evidence_refs"), list) else []
+    counter_evidence_refs = (
+        receipt_meta.get("counter_evidence_refs")
+        if isinstance(receipt_meta.get("counter_evidence_refs"), list)
+        else []
+    )
     receipt = {
         "version": 1,
         "kind": "execution-receipt",
         "generated_by": "aiwiki-judgment-review",
         "applied_at": receipt_meta["occurred_at"],
         "operation": "apply",
+        **classification.as_receipt_fields(
+            decision_confidence=str(receipt_meta.get("confidence") or ""),
+            evidence_refs=[str(item) for item in evidence_refs if isinstance(item, str)],
+            counter_evidence_refs=[str(item) for item in counter_evidence_refs if isinstance(item, str)],
+            validator_status="passed",
+            revert_supported=True,
+        ),
         "action_id": action_id,
         "subject_kind": "judgment_review",
         "subject_id": str(receipt_meta["review_id"]),
@@ -639,14 +767,14 @@ def _apply_judgment_review_with_receipt(target: Path, mutate_fn: Callable[[str],
         "before_content": original,
         "after_content": new_content,
         "note": "nightly judgment review",
-        "revert_supported": False,
-        "revert_policy": "manual_only",
-        "revert_note": "Judgment review pages must be reverted manually; automated revert not yet supported.",
+        "revert_policy": "restore_before_content",
+        "revert_note": "Use revert_judgment_review_receipt to restore before_content and write a revert receipt.",
         "receipt_path": relative_path(root, receipt_path),
         "scan_generated_at": str(receipt_meta.get("scan_generated_at") or ""),
         "reviewer_model": str(receipt_meta.get("reviewer_model") or ""),
         "conclusion": str(receipt_meta.get("conclusion") or ""),
         "confidence": str(receipt_meta.get("confidence") or ""),
+        "llm_decision": receipt_meta.get("llm_decision") if isinstance(receipt_meta.get("llm_decision"), dict) else {},
     }
     def rollback() -> None:
         _restore_file_bytes(target, target_snapshot)
@@ -710,6 +838,7 @@ def _write_review_entry(
     *,
     scan_generated_at: str = "",
     reviewer_model: str = "unknown",
+    decision: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Append a review history entry to a judgment page."""
     page = root / page_path
@@ -764,9 +893,105 @@ def _write_review_entry(
             "reviewer_model": model,
             "conclusion": conclusion_text,
             "confidence": confidence_text,
+            "evidence_refs": list((decision or {}).get("evidence_refs") or []),
+            "counter_evidence_refs": list((decision or {}).get("counter_evidence_refs") or []),
+            "llm_decision": decision or {},
         },
     )
     return {**result, "review_id": review_id}
+
+
+@runtime_write_operation
+def revert_judgment_review_receipt(root: Path, receipt_id: str, *, note: str | None = None) -> dict[str, Any]:
+    candidate = receipt_id.strip().strip("'\"`")
+    if not candidate:
+        raise ValueError("receipt_id is required.")
+    receipt_path = root / candidate if "/" in candidate or candidate.endswith(".json") else execution_receipt_path(root, candidate)
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    if not isinstance(receipt, dict) or str(receipt.get("subject_kind") or "") != "judgment_review":
+        raise RuntimeError("Only judgment review receipts can be reverted.")
+    if str(receipt.get("operation") or "") != "apply":
+        raise RuntimeError("Only judgment review apply receipts can be reverted.")
+    target = root / str(receipt.get("target_file") or "")
+    if not target.exists():
+        raise FileNotFoundError(f"Judgment review target not found: {receipt.get('target_file')}")
+    before_content = str(receipt.get("before_content") or "")
+    current_content = target.read_text(encoding="utf-8")
+    expected_after_hash = str(receipt.get("after_hash") or "")
+    current_hash = hashlib.sha256(current_content.encode("utf-8")).hexdigest()
+    if current_hash != expected_after_hash:
+        raise RuntimeError("Judgment review target changed after apply; human merge required.")
+    reverted_at = utc_now()
+    restored_hash = hashlib.sha256(before_content.encode("utf-8")).hexdigest()
+    action_id = f"judgment-review-revert-{receipt.get('subject_id')}"
+    revert_receipt_path = execution_receipt_path(root, action_id)
+    receipt_history_path = execution_receipt_history_path(root)
+    runtime_history_file = root / ".aiwiki" / "state" / "runtime-history.jsonl"
+    audit_file = root / ".aiwiki" / "state" / "audit.jsonl"
+    snapshots: list[tuple[Path, bytes | None]] = [
+        (target, _snapshot_file_bytes(target)),
+        (revert_receipt_path, _snapshot_file_bytes(revert_receipt_path)),
+        (receipt_history_path, _snapshot_file_bytes(receipt_history_path)),
+        (runtime_history_file, _snapshot_file_bytes(runtime_history_file)),
+        (audit_file, _snapshot_file_bytes(audit_file)),
+    ]
+    receipt_evidence_refs = receipt.get("evidence_refs") if isinstance(receipt.get("evidence_refs"), list) else []
+    receipt_counter_evidence_refs = (
+        receipt.get("counter_evidence_refs") if isinstance(receipt.get("counter_evidence_refs"), list) else []
+    )
+    revert_receipt = {
+        "version": 1,
+        "kind": "execution-receipt",
+        "generated_by": "aiwiki-judgment-review",
+        "applied_at": reverted_at,
+        "operation": "revert",
+        "autonomy_domain": str(receipt.get("autonomy_domain") or "non_core_semantic"),
+        "llm_governed": bool(receipt.get("llm_governed", False)),
+        "decision_confidence": str(receipt.get("decision_confidence") or ""),
+        "evidence_refs": [str(item) for item in receipt_evidence_refs if isinstance(item, str)],
+        "counter_evidence_refs": [str(item) for item in receipt_counter_evidence_refs if isinstance(item, str)],
+        "validator_status": "passed",
+        "action_id": action_id,
+        "subject_kind": "judgment_review",
+        "subject_id": str(receipt.get("subject_id") or ""),
+        "source_receipt_path": relative_path(root, receipt_path),
+        "target_file": relative_path(root, target),
+        "before_hash": str(receipt.get("before_hash") or ""),
+        "after_hash": expected_after_hash,
+        "restored_hash": restored_hash,
+        "note": note or "",
+        "revert_supported": False,
+        "receipt_path": relative_path(root, revert_receipt_path),
+    }
+    try:
+        atomic_write_text(target, before_content)
+        revert_receipt_path.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(
+            revert_receipt_path,
+            json.dumps(revert_receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        )
+        append_execution_receipt_history(root, revert_receipt)
+        append_runtime_history(
+            root,
+            {
+                "event_type": "judgment-review-revert",
+                "occurred_at": reverted_at,
+                "action_id": action_id,
+                "source_receipt_path": relative_path(root, receipt_path),
+                "target_path": relative_path(root, target),
+            },
+        )
+    except Exception:
+        for path, snapshot in reversed(snapshots):
+            _restore_file_bytes(path, snapshot)
+        raise
+    return {
+        "status": "reverted",
+        "action_id": action_id,
+        "receipt_path": relative_path(root, revert_receipt_path),
+        "target_path": relative_path(root, target),
+        "restored_hash": restored_hash,
+    }
 
 
 @runtime_write_operation
@@ -794,6 +1019,7 @@ def auto_adopt_l3(root: Path, *, limit: int | None = None) -> dict[str, Any]:
 
         proposals = load_l3_proposal_state(root).get("proposals", [])
         threshold = l3_auto_adopt_min_evidence_from_env()
+        policy = load_policy(root)
         candidates: list[str] = []
         for proposal in proposals:
             if not isinstance(proposal, dict) or proposal.get("state") != "candidate":
@@ -831,22 +1057,32 @@ def auto_adopt_l3(root: Path, *, limit: int | None = None) -> dict[str, Any]:
             patch = proposal.get("patch") if isinstance(proposal.get("patch"), dict) else {}
             patch_kind = str(patch.get("kind") or "full_replace")
             review_state = str(proposal.get("review_state") or "pending_human")
-            if patch_kind != "metadata_only":
+            classification = classify_l3_proposal(
+                proposal,
+                autonomy_profile=policy.autonomy_profile,
+                revert_supported=True,
+            )
+            if classification.execution_strategy != "auto_apply":
+                skip_status = "skipped_core_l3_requires_manual_apply" if classification.autonomy_domain == "core" else "skipped_" + classification.execution_strategy
                 results["items"].append({
                     "proposal_id": proposal_id,
-                    "status": "skipped_core_l3_requires_manual_apply",
+                    "status": skip_status,
                     "patch_kind": patch_kind,
                     "review_state": review_state,
+                    "autonomy_domain": classification.autonomy_domain,
+                    "execution_strategy": classification.execution_strategy,
                 })
                 try:
                     append_runtime_history(
                         root,
                         {
-                            "event_type": "l3-proposal-skipped-core-l3-manual-apply",
+                            "event_type": "l3-proposal-skipped-autonomy-domain",
                             "occurred_at": utc_now(),
                             "proposal_id": proposal_id,
                             "patch_kind": patch_kind,
                             "review_state": review_state,
+                            "autonomy_domain": classification.autonomy_domain,
+                            "execution_strategy": classification.execution_strategy,
                         },
                     )
                 except Exception as exc:
@@ -878,6 +1114,8 @@ def auto_adopt_l3(root: Path, *, limit: int | None = None) -> dict[str, Any]:
                 "status": r.get("state", "accepted"),
                 "receipt_path": r.get("receipt_path", ""),
                 "target_file": r.get("target_file", ""),
+                "autonomy_domain": "governance",
+                "execution_strategy": "auto_apply",
             })
         except Exception as exc:
             status = "failed"
@@ -930,4 +1168,11 @@ def auto_adopt_l3(root: Path, *, limit: int | None = None) -> dict[str, Any]:
     return results
 
 
-__all__ = ["auto_adopt_l1", "auto_adopt_l2", "auto_adopt_l3", "auto_adopt_judgments", "_env_flag"]
+__all__ = [
+    "auto_adopt_l1",
+    "auto_adopt_l2",
+    "auto_adopt_l3",
+    "auto_adopt_judgments",
+    "revert_judgment_review_receipt",
+    "_env_flag",
+]

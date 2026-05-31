@@ -37,6 +37,8 @@ from .app_utils import (
     sha256_bytes,
     slugify,
 )
+from .autonomy_domains import classify_machine_memory_action
+from .autonomy_policy import load_policy
 from .render.paths import execution_bundle_path, execution_receipt_path
 
 
@@ -176,6 +178,7 @@ def build_execution_batch_receipt(
         if isinstance(item, dict) and item.get("path")
     ]
     receipt_path = execution_batch_receipt_path(root, batch_id)
+    autonomy_domain = "maintenance" if operation.endswith("dry-run-batch") else "governance"
     return {
         "version": 1,
         "kind": "execution-batch-receipt",
@@ -183,6 +186,12 @@ def build_execution_batch_receipt(
         "generated_at": generated_at,
         "batch_id": batch_id,
         "operation": operation,
+        "autonomy_domain": autonomy_domain,
+        "llm_governed": False,
+        "decision_confidence": "",
+        "evidence_refs": [],
+        "counter_evidence_refs": [],
+        "validator_status": "not-run",
         "note": note or "",
         "count": len(items),
         "action_ids": action_ids,
@@ -212,12 +221,22 @@ def build_execution_receipt(
     bundle = build_execution_bundle(root, proposal, compiled_at=applied_at)
     preview = proposal.get("safe_apply_preview")
     preview_apply_mode = str(preview.get("apply_mode") or "") if isinstance(preview, dict) else ""
+    revert_supported = operation == "apply"
+    classification = classify_machine_memory_action(
+        action,
+        autonomy_profile=str(action.get("autonomy_profile") or load_policy(root).autonomy_profile),
+        revert_supported=revert_supported,
+    )
     return {
         "version": 1,
         "kind": "execution-receipt",
         "generated_by": "aiwiki-apply-action",
         "applied_at": applied_at,
         "operation": operation,
+        **classification.as_receipt_fields(
+            validator_status="passed",
+            revert_supported=revert_supported,
+        ),
         "action_id": str(action.get("id") or ""),
         "title": str(action.get("title") or ""),
         "status": resulting_status,

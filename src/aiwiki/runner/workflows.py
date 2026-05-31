@@ -1268,8 +1268,10 @@ def run_nightly(
             apply_light=auto_apply_light,
             apply_heavy_semantic=auto_apply_heavy_semantic,
         )
+        run_status = _nightly_status_from_subsystems(agent_loop, signal_pipeline)
         state = attach_agent_loop_to_nightly_state(root, state, agent_loop)
         state["signal_pipeline"] = signal_pipeline
+        state["status"] = run_status
         with runtime_write_lock(root):
             atomic_write_text(
                 nightly_health_state_path(root),
@@ -1324,7 +1326,7 @@ def run_nightly(
                 "duration_ms": int((time.monotonic() - started) * 1000),
             },
             llm_audit,
-            status="success",
+            status=run_status,
         )
         nightly_receipt = write_execution_receipt(
             root,
@@ -1333,6 +1335,7 @@ def run_nightly(
             subject_kind="runtime-state",
             subject_id="nightly-health",
             target_file=relative_path(root, nightly_health_state_path(root)),
+            status=run_status,
             primary_path=relative_path(root, nightly_health_state_path(root)),
             protocol=str(state.get("protocol", {}).get("active_protocol") or ""),
             extra={
@@ -1344,6 +1347,13 @@ def run_nightly(
                 "backend_effective": llm_audit.get("backend_effective", ""),
                 "model_final": llm_audit.get("model_final", ""),
                 "agent_loop_status": str(state.get("agent_loop", {}).get("status") or ""),
+                "signal_pipeline_status": str(state.get("signal_pipeline", {}).get("status") or ""),
+                "autonomy_domain": "maintenance",
+                "llm_governed": False,
+                "decision_confidence": "",
+                "evidence_refs": [relative_path(root, nightly_health_state_path(root))],
+                "counter_evidence_refs": [],
+                "validator_status": "passed" if run_status == "success" else run_status,
                 "state_path": relative_path(root, nightly_health_state_path(root)),
             },
         )
@@ -1367,6 +1377,18 @@ def run_nightly(
         "primary_attempt_status": str(llm_audit.get("primary_attempt_status") or ""),
         "primary_error": str(llm_audit.get("primary_error") or ""),
     }
+
+
+def _nightly_status_from_subsystems(agent_loop: dict[str, Any], signal_pipeline: dict[str, Any]) -> str:
+    statuses = {
+        str(agent_loop.get("status") or ""),
+        str(signal_pipeline.get("status") or ""),
+    }
+    if statuses & {"failed", "error", "blocked"}:
+        return "failed"
+    if statuses & {"degraded"}:
+        return "degraded"
+    return "success"
 
 
 from aiwiki.runner.workflows_ask import (  # noqa: E402

@@ -186,6 +186,35 @@ def test_apply_manual_link_happy_path_atomic_writes(tmp_path: Path) -> None:
     assert len(_history_lines(tmp_path)) == 1
 
 
+def test_apply_manual_link_receipt_uses_root_agentic_policy(tmp_path: Path) -> None:
+    _setup_manual_link_action(tmp_path)
+    policy_path = tmp_path / ".aiwiki" / "state" / "autonomy-policy.json"
+    policy_path.parent.mkdir(parents=True, exist_ok=True)
+    policy_path.write_text(json.dumps({"schema_version": 3, "autonomy_profile": "agentic"}) + "\n", encoding="utf-8")
+
+    result = _apply_manual_link(tmp_path)
+
+    receipt = json.loads((tmp_path / str(result["receipt_path"])).read_text(encoding="utf-8"))
+    assert receipt["autonomy_domain"] == "non_core_semantic"
+    assert receipt["llm_governed"] is True
+
+
+def test_apply_manual_link_auto_reverts_on_verify_failure(tmp_path: Path) -> None:
+    _setup_manual_link_action(tmp_path)
+    dry_run = _write_apply_bundle(tmp_path)
+
+    with patch("aiwiki.execution.machine_memory_actions.compile_wiki", side_effect=RuntimeError("verify failed")):
+        with pytest.raises(RuntimeError, match="auto-revert completed"):
+            apply_machine_memory_action(tmp_path, ACTION_ID, bundle_path=str(dry_run["bundle_path"]))
+
+    manual_link = _manual_link_for_action(tmp_path)
+    assert manual_link is not None
+    assert manual_link["active"] is False
+    assert _action_status(tmp_path) == "proposed"
+    receipts = [json.loads(line) for line in _history_lines(tmp_path)]
+    assert [receipt["operation"] for receipt in receipts] == ["apply", "revert"]
+
+
 def test_apply_manual_link_receipt_history_failure_rolls_back(tmp_path: Path) -> None:
     _setup_manual_link_action(tmp_path)
     dry_run = _write_apply_bundle(tmp_path)
@@ -417,6 +446,8 @@ def load_tests(
     suite = unittest.TestSuite()
     tmp_path_tests = [
         test_apply_manual_link_happy_path_atomic_writes,
+        test_apply_manual_link_receipt_uses_root_agentic_policy,
+        test_apply_manual_link_auto_reverts_on_verify_failure,
         test_apply_manual_link_receipt_history_failure_rolls_back,
         test_apply_citation_happy_path_atomic_writes,
         test_apply_citation_action_state_failure_rolls_back_page_and_receipt,

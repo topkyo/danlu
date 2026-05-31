@@ -2571,6 +2571,7 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(result["agent_loop"]["auto_apply"]["status"], "applied")
         self.assertTrue(result["agent_loop"]["auto_adopt_judgments"]["degraded"])
         self.assertEqual(result["agent_loop"]["auto_apply"]["applied_count"], 1)
+        self.assertEqual(json.loads((self.root / result["receipt_path"]).read_text(encoding="utf-8"))["status"], "degraded")
         light = result["agent_loop"]["auto_apply"]["lane_results"][0]
         self.assertEqual(light["selected_primitives"], ["compile", "lint", "nightly"])
         self.assertEqual(len(light["primitive_receipts"]), 3)

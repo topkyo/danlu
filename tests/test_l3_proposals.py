@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -79,6 +80,22 @@ class L3ProposalTests(unittest.TestCase):
         stored = self._state_proposal("prop-accept-required")
         self.assertEqual(stored["state"], "candidate")
         self.assertEqual(stored["review_state"], "pending_human")
+
+    def test_require_clean_before_hash_blocks_dirty_target(self) -> None:
+        subprocess.run(["git", "-C", str(self.root), "init"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["git", "-C", str(self.root), "add", "prompts/ask.md"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        create_l3_proposal(
+            self.root,
+            kind="prompt_proposal",
+            proposal_id="prop-dirty",
+            target_file="prompts/ask.md",
+            content="Updated ask prompt.\n",
+        )
+        accept_l3_proposal(self.root, "prop-dirty")
+        (self.root / "prompts" / "ask.md").write_text("Original ask prompt.\n", encoding="utf-8")
+
+        with self.assertRaisesRegex(RuntimeError, "clean target path"):
+            apply_l3_proposal(self.root, "prop-dirty")
 
     def test_policy_proposal_allows_schema_policies_only(self) -> None:
         result = create_l3_proposal(

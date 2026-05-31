@@ -9,6 +9,7 @@ from pathlib import Path
 from aiwiki.app_protocol import ensure_layout
 from scripts.dogfood_maturity_gate import (
     RUN_RECEIPT_KIND,
+    _build_agentic_autonomy_report,
     build_parser,
     collect_metrics,
     maturity_gate_dir,
@@ -115,6 +116,18 @@ def _make_run_receipt(
                 "routine_primary_debt_count": 0,
                 "exception_count": 0,
                 "auto_resolved_count": 0,
+            },
+            "agentic_autonomy_report": {
+                "version": 1,
+                "status": "pass",
+                "violations": [],
+                "llm_governed_apply_count": 0,
+                "non_core_human_required_count": 0,
+                "core_proposal_count": 0,
+                "core_auto_apply_count": 0,
+                "degraded_agent_loop_count": 0,
+                "degraded_signal_pipeline_count": 0,
+                "auto_revert_count": 0,
             },
         },
         "l3_generation": {
@@ -336,6 +349,24 @@ class DogfoodMaturityGateTests(unittest.TestCase):
         self.assertEqual(snapshot["human_required_report"]["auto_resolved_count"], 1)
         self.assertEqual(snapshot["human_required_report"]["auto_resolution_report"]["auto_resolution_receipt_count"], 1)
         self.assertEqual(snapshot["elixir_quality_proof"]["status"], "not-yet")
+
+    def test_agentic_autonomy_report_counts_judgment_human_required_from_nightly(self) -> None:
+        report = _build_agentic_autonomy_report(
+            self.root,
+            {
+                "agent_loop": {
+                    "status": "ok",
+                    "auto_adopt_judgments": {
+                        "non_core_human_required_count": 1,
+                        "items": [{"status": "human_required"}],
+                    },
+                }
+            },
+        )
+
+        self.assertEqual(report["non_core_human_required_count"], 2)
+        self.assertEqual(report["status"], "not-yet")
+        self.assertIn("non_core_human_required", report["violations"])
 
     def test_collect_metrics_explains_output_receipt_coverage_gaps_and_exemptions(self) -> None:
         runs_dir = self.root / "output" / "control" / "runs"

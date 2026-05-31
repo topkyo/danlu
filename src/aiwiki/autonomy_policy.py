@@ -3,7 +3,7 @@
 The policy file lives at ``.aiwiki/state/autonomy-policy.json``::
 
     {
-      "schema_version": 2,
+      "schema_version": 3,
       "autonomy_profile": "strong",
       "disable_lane_apply": false,
       "disable_alchemy_auto": false,
@@ -46,8 +46,9 @@ from typing import Mapping
 from .app_utils import runtime_write_operation
 
 POLICY_RELATIVE = Path(".aiwiki") / "state" / "autonomy-policy.json"
-POLICY_SCHEMA_VERSION = 2
+POLICY_SCHEMA_VERSION = 3
 DEFAULT_AUTONOMY_PROFILE = "strong"
+KNOWN_AUTONOMY_PROFILES = {"strong", "agentic"}
 
 KNOWN_FLAGS = (
     "disable_lane_apply",
@@ -100,22 +101,26 @@ def load_policy(root: Path) -> AutonomyPolicy:
     if not isinstance(raw, dict):
         return _disabled_policy("autonomy-policy file not a JSON object")
     schema_version = raw.get("schema_version", 1)
-    if schema_version not in (1, 2):
+    if schema_version not in (1, 2, 3):
         return _disabled_policy(f"unsupported autonomy-policy schema_version: {schema_version}")
+    profile = str(raw.get("autonomy_profile") or DEFAULT_AUTONOMY_PROFILE)
+    if profile not in KNOWN_AUTONOMY_PROFILES:
+        return _disabled_policy(f"unsupported autonomy_profile: {profile}")
+    profile_defaults = _profile_defaults(profile)
     return AutonomyPolicy(
         schema_version=POLICY_SCHEMA_VERSION,
-        autonomy_profile=str(raw.get("autonomy_profile") or DEFAULT_AUTONOMY_PROFILE),
+        autonomy_profile=profile,
         disable_lane_apply=bool(raw.get("disable_lane_apply", False)),
         disable_alchemy_auto=bool(raw.get("disable_alchemy_auto", False)),
         disable_l3_generate=bool(raw.get("disable_l3_generate", False)),
         disable_external_llm=bool(raw.get("disable_external_llm", False)),
-        auto_apply_light=bool(raw.get("auto_apply_light", True)),
-        auto_adopt_l1=bool(raw.get("auto_adopt_l1", True)),
-        auto_adopt_l2=bool(raw.get("auto_adopt_l2", True)),
-        auto_adopt_l3=bool(raw.get("auto_adopt_l3", False)),
-        auto_adopt_judgments=bool(raw.get("auto_adopt_judgments", True)),
-        auto_apply_heavy_semantic=bool(raw.get("auto_apply_heavy_semantic", False)),
-        auto_adopt_core_l3=bool(raw.get("auto_adopt_core_l3", False)),
+        auto_apply_light=bool(raw.get("auto_apply_light", profile_defaults["auto_apply_light"])),
+        auto_adopt_l1=bool(raw.get("auto_adopt_l1", profile_defaults["auto_adopt_l1"])),
+        auto_adopt_l2=bool(raw.get("auto_adopt_l2", profile_defaults["auto_adopt_l2"])),
+        auto_adopt_l3=bool(raw.get("auto_adopt_l3", profile_defaults["auto_adopt_l3"])),
+        auto_adopt_judgments=bool(raw.get("auto_adopt_judgments", profile_defaults["auto_adopt_judgments"])),
+        auto_apply_heavy_semantic=bool(raw.get("auto_apply_heavy_semantic", profile_defaults["auto_apply_heavy_semantic"])),
+        auto_adopt_core_l3=bool(raw.get("auto_adopt_core_l3", profile_defaults["auto_adopt_core_l3"])),
         max_l3_apply_per_run=_positive_int(raw.get("max_l3_apply_per_run"), 1),
         judgment_review_limit=_positive_int(raw.get("judgment_review_limit"), 5),
         require_clean_before_hash=bool(raw.get("require_clean_before_hash", True)),
@@ -146,6 +151,28 @@ def _positive_int(value: object, default: int) -> int:
     except (TypeError, ValueError):
         return default
     return parsed if parsed > 0 else default
+
+
+def _profile_defaults(profile: str) -> dict[str, bool]:
+    if profile == "agentic":
+        return {
+            "auto_apply_light": True,
+            "auto_adopt_l1": True,
+            "auto_adopt_l2": True,
+            "auto_adopt_l3": True,
+            "auto_adopt_judgments": True,
+            "auto_apply_heavy_semantic": True,
+            "auto_adopt_core_l3": False,
+        }
+    return {
+        "auto_apply_light": True,
+        "auto_adopt_l1": True,
+        "auto_adopt_l2": True,
+        "auto_adopt_l3": False,
+        "auto_adopt_judgments": True,
+        "auto_apply_heavy_semantic": False,
+        "auto_adopt_core_l3": False,
+    }
 
 
 def _env_global_override(env: Mapping[str, str] | None) -> bool:

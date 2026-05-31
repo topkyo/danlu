@@ -1239,6 +1239,7 @@ def collect_metrics(root: Path, *, preview_limit: int = 20) -> dict[str, Any]:
         "review_backlog_counts": review_backlog_counts,
         "backlog_total": _sum_int_values(review_backlog_counts),
         "human_required_report": human_required_report,
+        "agentic_autonomy_report": _build_agentic_autonomy_report(root, nightly),
         "knowledge_compounding_proof": knowledge_compounding_proof,
         "elixir_quality_proof": knowledge_compounding_proof.get("elixir_quality_proof", {}),
         "legacy_empty_status_receipts": legacy_empty_status_receipts,
@@ -1255,6 +1256,78 @@ def collect_metrics(root: Path, *, preview_limit: int = 20) -> dict[str, Any]:
         "judgment_review_receipt_counts": _load_judgment_review_receipt_counts(root),
         "judgment_lane_report": _load_judgment_lane_report(root),
         "prompts_ask_sha256": _sha256_path(root / PROMPTS_ASK_REL_PATH),
+    }
+
+
+def _build_agentic_autonomy_report(root: Path, nightly: dict[str, Any] | None = None) -> dict[str, Any]:
+    from aiwiki.app_state import execution_receipt_history_path, load_jsonl_documents
+
+    receipts = [
+        item
+        for item in load_jsonl_documents(execution_receipt_history_path(root))
+        if isinstance(item, dict) and str(item.get("kind") or "") == "execution-receipt"
+    ]
+    llm_governed_apply_count = sum(
+        1
+        for item in receipts
+        if bool(item.get("llm_governed")) and str(item.get("operation") or "") == "apply"
+    )
+    core_proposal_count = sum(
+        1
+        for item in receipts
+        if str(item.get("autonomy_domain") or "") == "core" and str(item.get("operation") or "") == "apply"
+    )
+    auto_revert_count = sum(
+        1
+        for item in receipts
+        if str(item.get("operation") or "") == "revert"
+        or str(item.get("status") or "") == "auto_reverted"
+    )
+    non_core_human_required_count = 0
+    for item in receipts:
+        if str(item.get("autonomy_domain") or "") == "non_core_semantic" and str(item.get("validator_status") or "") in {
+            "human_required",
+            "failed",
+        }:
+            non_core_human_required_count += 1
+    nightly_payload = nightly if isinstance(nightly, dict) else {}
+    agent_loop = nightly_payload.get("agent_loop") if isinstance(nightly_payload.get("agent_loop"), dict) else {}
+    signal_pipeline = nightly_payload.get("signal_pipeline") if isinstance(nightly_payload.get("signal_pipeline"), dict) else {}
+    auto_judgments = (
+        agent_loop.get("auto_adopt_judgments") if isinstance(agent_loop.get("auto_adopt_judgments"), dict) else {}
+    )
+    non_core_human_required_count += _coerce_int(auto_judgments.get("non_core_human_required_count"))
+    auto_judgment_items = auto_judgments.get("items") if isinstance(auto_judgments.get("items"), list) else []
+    non_core_human_required_count += sum(
+        1 for item in auto_judgment_items if isinstance(item, dict) and str(item.get("status") or "") == "human_required"
+    )
+    degraded_agent_loop_count = 1 if str(agent_loop.get("status") or "") in {"degraded", "failed"} else 0
+    degraded_signal_pipeline_count = 1 if str(signal_pipeline.get("status") or "") in {"degraded", "failed"} else 0
+    core_auto_apply_count = sum(
+        1
+        for item in receipts
+        if str(item.get("autonomy_domain") or "") == "core"
+        and str(item.get("operation") or "") == "apply"
+        and bool(item.get("llm_governed"))
+    )
+    violations: list[str] = []
+    if non_core_human_required_count:
+        violations.append("non_core_human_required")
+    if core_auto_apply_count:
+        violations.append("core_auto_apply")
+    if degraded_agent_loop_count or degraded_signal_pipeline_count:
+        violations.append("degraded_runtime_subsystem")
+    return {
+        "version": 1,
+        "status": "pass" if not violations else "not-yet",
+        "violations": violations,
+        "llm_governed_apply_count": llm_governed_apply_count,
+        "non_core_human_required_count": non_core_human_required_count,
+        "core_proposal_count": core_proposal_count,
+        "core_auto_apply_count": core_auto_apply_count,
+        "degraded_agent_loop_count": degraded_agent_loop_count,
+        "degraded_signal_pipeline_count": degraded_signal_pipeline_count,
+        "auto_revert_count": auto_revert_count,
     }
 
 
@@ -1717,6 +1790,18 @@ def summarize_run_receipts(
     latest_human_required = last.get("after", {}).get("human_required_report") if isinstance(last.get("after"), dict) else {}
     if not isinstance(latest_human_required, dict):
         latest_human_required = {}
+    latest_agentic_autonomy = last.get("after", {}).get("agentic_autonomy_report") if isinstance(last.get("after"), dict) else {}
+    if not isinstance(latest_agentic_autonomy, dict):
+        latest_agentic_autonomy = {
+            "version": 1,
+            "status": "not-yet",
+            "violations": ["missing_agentic_autonomy_report"],
+            "llm_governed_apply_count": 0,
+            "non_core_human_required_count": 0,
+            "core_proposal_count": 0,
+            "degraded_agent_loop_count": 0,
+            "auto_revert_count": 0,
+        }
     latest_compounding_proof = last.get("after", {}).get("knowledge_compounding_proof") if isinstance(last.get("after"), dict) else {}
     if not isinstance(latest_compounding_proof, dict):
         latest_compounding_proof = {
@@ -1776,6 +1861,7 @@ def summarize_run_receipts(
     if (
         status == "warn"
         and str(operational_maturity.get("status") or "") == "pass"
+        and str(latest_agentic_autonomy.get("status") or "") == "pass"
         and semantic_path_observed
         and elixir_quality_pass
     ):
@@ -1805,6 +1891,12 @@ def summarize_run_receipts(
         "judgment_review_new_receipts": max(judgment_review_receipts_delta, 0),
         "judgment_lane_report": latest_judgment_lane,
         "human_required_report": latest_human_required,
+        "agentic_autonomy_report": latest_agentic_autonomy,
+        "llm_governed_apply_count": _coerce_int(latest_agentic_autonomy.get("llm_governed_apply_count")),
+        "non_core_human_required_count": _coerce_int(latest_agentic_autonomy.get("non_core_human_required_count")),
+        "core_proposal_count": _coerce_int(latest_agentic_autonomy.get("core_proposal_count")),
+        "degraded_agent_loop_count": _coerce_int(latest_agentic_autonomy.get("degraded_agent_loop_count")),
+        "auto_revert_count": _coerce_int(latest_agentic_autonomy.get("auto_revert_count")),
         "knowledge_compounding_proof": latest_compounding_proof,
         "knowledge_compounding_status": str(latest_compounding_proof.get("status") or "not-yet"),
         "knowledge_compounding_missing_evidence": list(latest_compounding_proof.get("missing_evidence") or []),
