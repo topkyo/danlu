@@ -27,6 +27,10 @@
 - 结束阶段用 `agentstack-finish` 汇总变更、验证、审查状态、风险和后续事项。
 - 未知代码区先做局部只读探索：列出相关文件、关键符号、建议局部命令、风险和待验证假设，再进入编辑。
 - 可并行做只读探索，但主 agent 负责需求澄清、任务拆分、最终判断、集成和验证。
+- 执行已批准计划后，且在提交或推送 L2+ / 复杂 diff 前，必须另起 read-only reviewer subagent 做独立审查。
+- reviewer 只报告 correctness / security / scope / missing verification 风险，不改代码、不跑测试；主 agent 负责修复、集成、验证和最终判断。
+- 独立审查结果用 `scripts/agentstack review --id independent --reviewer independent --handoff PATH --result pass|needs-fix|blocked` 记录；如 review 后发生实质代码修改，必须重新 targeted verify 并复审，或明确记录为何无需复审。
+- 提交/推送前必须满足 targeted verify pass、独立 reviewer 无阻断问题、review evidence 已记录；除非用户明确要求跳过该 gate。
 - 不把 AgentStack 当成 runtime 依赖；它只约束 agent/tooling 协议、验证入口和开发协作方式。
 
 ## 验证入口

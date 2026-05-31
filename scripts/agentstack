@@ -12,6 +12,7 @@ Commands:
   verify     Run targeted verification
   finish     Write finish evidence
   handoff    Generate role handoff evidence
+  iteration  Record iteration evidence
   review     Write review evidence
   dogfood    Record dogfood evidence
   version    Print AgentStack version
@@ -56,6 +57,7 @@ case "$cmd" in
   verify) run_script agentstack-verify "$@" ;;
   finish) run_script agentstack-finish "$@" ;;
   handoff) run_script agentstack-handoff "$@" ;;
+  iteration) run_script agentstack-iteration "$@" ;;
   review) run_script agentstack-review "$@" ;;
   dogfood) run_script agentstack-dogfood "$@" ;;
   version)

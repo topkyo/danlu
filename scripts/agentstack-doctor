@@ -59,6 +59,8 @@ if [ "$source_mode" = "yes" ]; then
     core/flows/execute-plan.yaml \
     core/flows/finish.yaml \
     core/context/active.md.tpl \
+    core/protocol/AGENTS.md.tpl \
+    core/quality/iteration.md \
     core/quality/verify.md \
     scripts/agentstack-init \
     scripts/agentstack \
@@ -67,6 +69,7 @@ if [ "$source_mode" = "yes" ]; then
     scripts/agentstack-resolve-verify-targets \
     scripts/agentstack-finish \
     scripts/agentstack-handoff \
+    scripts/agentstack-iteration \
     scripts/agentstack-review \
     scripts/agentstack-dogfood; do
     need_file "$file"
@@ -79,6 +82,7 @@ else
   need_exec scripts/agentstack-resolve-verify-targets
   need_exec scripts/agentstack-finish
   need_exec scripts/agentstack-handoff
+  need_exec scripts/agentstack-iteration
   need_exec scripts/agentstack-review
   need_exec scripts/agentstack-dogfood
   [ -d .agentstack ] || { echo "missing directory: .agentstack" >&2; failures=$((failures + 1)); }
@@ -95,7 +99,7 @@ else
         need_file .agents/skills/agentstack-finish/SKILL.md
         ;;
       claude)
-        need_file CLAUDE.md
+        need_local_protocol
         need_file .claude/skills/devloop/SKILL.md
         need_file .claude/skills/brainstorming/SKILL.md
         need_file .claude/skills/write-plan/SKILL.md

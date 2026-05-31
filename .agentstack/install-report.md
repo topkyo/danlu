@@ -1,8 +1,8 @@
 # AgentStack Install Report
 
-- Mode: install
+- Mode: update
 - Version: 0.1.0
-- Previous version: none
+- Previous version: 0.1.0
 - Platforms: codex,claude,opencode
 - Force: yes
 - Render conflicts: 0
