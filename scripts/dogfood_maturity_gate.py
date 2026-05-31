@@ -46,6 +46,7 @@ COMPOUNDING_SAMPLE_OPERATIONS = {
     "run-ask",
 }
 FAILED_RECEIPT_STATUSES = {"blocked", "error", "failed", "reverted"}
+LEGACY_DIRECT_NOTE_RECEIPT_CUTOFF = datetime(2026, 5, 23, tzinfo=timezone.utc)
 
 
 def utc_now() -> str:
@@ -807,6 +808,42 @@ def _is_deterministic_baseline_output(frontmatter: dict[str, Any], *, run_notes_
     )
 
 
+def _parse_timestamp(value: str) -> datetime | None:
+    if not value:
+        return None
+    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _is_legacy_direct_note_output(
+    frontmatter: dict[str, Any],
+    *,
+    has_llm_receipt: bool,
+    has_run_notes: bool,
+    has_artifact_provenance: bool,
+) -> bool:
+    generated_by = str(frontmatter.get("generated_by") or "").strip()
+    delivery_mode = str(frontmatter.get("delivery_mode") or "").strip().lower()
+    created_at = _parse_timestamp(
+        str(frontmatter.get("created_at") or frontmatter.get("generated_at") or "")
+    )
+    return (
+        generated_by == "aiwiki-run-ask-direct"
+        and delivery_mode == "llm-direct"
+        and created_at is not None
+        and created_at < LEGACY_DIRECT_NOTE_RECEIPT_CUTOFF
+        and has_llm_receipt
+        and has_run_notes
+        and has_artifact_provenance
+    )
+
+
 def _build_receipt_coverage_report(
     root: Path,
     *,
@@ -840,6 +877,7 @@ def _build_receipt_coverage_report(
     missing_counts: Counter[str] = Counter()
     complete_count = 0
     exempt_count = 0
+    legacy_direct_note_exempt_count = 0
     issue_samples: list[dict[str, Any]] = []
     complete_samples: list[dict[str, Any]] = []
     sample_limit = max(0, int(preview_limit))
@@ -889,14 +927,26 @@ def _build_receipt_coverage_report(
         pending = _is_background_pending_output(frontmatter)
         degraded = _is_degraded_llm_output(frontmatter)
         deterministic_baseline = _is_deterministic_baseline_output(frontmatter, run_notes_status=run_notes_status)
+        legacy_direct_note = (
+            not has_execution_receipt
+            and _is_legacy_direct_note_output(
+                frontmatter,
+                has_llm_receipt=has_llm_receipt,
+                has_run_notes=has_run_notes,
+                has_artifact_provenance=has_artifact_provenance,
+            )
+        )
         if pending:
             exemptions.append("background_pending")
         if degraded:
             exemptions.append("failed_or_degraded_llm_artifact")
         if deterministic_baseline:
             exemptions.append("deterministic_baseline_output")
+        if legacy_direct_note:
+            exemptions.append("legacy_direct_note_execution_receipt")
+            legacy_direct_note_exempt_count += 1
 
-        execution_receipt_exempt = pending or degraded or deterministic_baseline
+        execution_receipt_exempt = pending or degraded or deterministic_baseline or legacy_direct_note
         llm_receipt_exempt = pending or deterministic_baseline
         if not has_execution_receipt and not execution_receipt_exempt:
             missing.append("execution_receipt")
@@ -943,6 +993,7 @@ def _build_receipt_coverage_report(
         "complete_count": complete_count,
         "incomplete_count": outputs_checked - complete_count,
         "exempt_count": exempt_count,
+        "legacy_direct_note_exempt_count": legacy_direct_note_exempt_count,
         "missing_execution_receipt_count": missing_counts.get("execution_receipt", 0),
         "missing_llm_receipt_count": missing_counts.get("llm_receipt", 0),
         "missing_run_notes_count": missing_counts.get("run_notes", 0),
@@ -950,7 +1001,7 @@ def _build_receipt_coverage_report(
         "missing_counts": dict(sorted(missing_counts.items())),
         "legacy_empty_status_receipts": legacy_empty_status_receipts,
         "samples": samples,
-        "note": "Warn-only coverage explanation; pending/degraded/deterministic-baseline outputs are explicitly classified instead of hidden.",
+        "note": "Warn-only coverage explanation; pending/degraded/deterministic-baseline/legacy-direct-note outputs are explicitly classified instead of hidden.",
     }
 
 

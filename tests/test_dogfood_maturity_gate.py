@@ -508,6 +508,74 @@ class DogfoodMaturityGateTests(unittest.TestCase):
         self.assertEqual(sample["missing"], [])
         self.assertIn("deterministic_baseline_output", sample["exemptions"])
 
+    def test_collect_metrics_exempts_legacy_direct_note_execution_receipts(self) -> None:
+        run_notes = self.root / "output" / "control" / "runs" / "legacy-direct" / "thinking.md"
+        run_notes.parent.mkdir(parents=True, exist_ok=True)
+        run_notes.write_text(
+            "---\n"
+            'kind: "run-progress-notes"\n'
+            'status: "llm-complete"\n'
+            "---\n# Run Notes\n",
+            encoding="utf-8",
+        )
+        report = self.root / "output" / "reports" / "legacy-direct.md"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text(
+            "---\n"
+            'kind: "output"\n'
+            'generated_by: "aiwiki-run-ask-direct"\n'
+            'created_at: "2026-05-21T00:00:00+00:00"\n'
+            'delivery_mode: "llm-direct"\n'
+            'run_notes_path: "output/control/runs/legacy-direct/thinking.md"\n'
+            "---\n# Legacy direct note\n",
+            encoding="utf-8",
+        )
+        _write_jsonl(
+            self.root / ".aiwiki" / "logs" / "llm-receipts.jsonl",
+            [{"event": "run-ask-direct", "status": "success", "target": "output/reports/legacy-direct.md"}],
+        )
+
+        coverage = collect_metrics(self.root, preview_limit=10)["receipt_coverage"]
+
+        self.assertEqual(coverage["status"], "pass")
+        self.assertEqual(coverage["missing_execution_receipt_count"], 0)
+        self.assertEqual(coverage["legacy_direct_note_exempt_count"], 1)
+        sample = coverage["samples"][0]
+        self.assertEqual(sample["path"], "output/reports/legacy-direct.md")
+        self.assertEqual(sample["missing"], [])
+        self.assertIn("legacy_direct_note_execution_receipt", sample["exemptions"])
+
+    def test_collect_metrics_does_not_exempt_new_direct_note_missing_execution_receipt(self) -> None:
+        run_notes = self.root / "output" / "control" / "runs" / "new-direct" / "thinking.md"
+        run_notes.parent.mkdir(parents=True, exist_ok=True)
+        run_notes.write_text("# Run Notes\n", encoding="utf-8")
+        report = self.root / "output" / "reports" / "new-direct.md"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text(
+            "---\n"
+            'kind: "output"\n'
+            'generated_by: "aiwiki-run-ask-direct"\n'
+            'created_at: "2026-05-26T00:00:00+00:00"\n'
+            'delivery_mode: "llm-direct"\n'
+            'run_notes_path: "output/control/runs/new-direct/thinking.md"\n'
+            "---\n# New direct note\n",
+            encoding="utf-8",
+        )
+        _write_jsonl(
+            self.root / ".aiwiki" / "logs" / "llm-receipts.jsonl",
+            [{"event": "run-ask-direct", "status": "success", "target": "output/reports/new-direct.md"}],
+        )
+
+        coverage = collect_metrics(self.root, preview_limit=10)["receipt_coverage"]
+
+        self.assertEqual(coverage["status"], "warn")
+        self.assertEqual(coverage["missing_execution_receipt_count"], 1)
+        self.assertEqual(coverage["legacy_direct_note_exempt_count"], 0)
+        sample = coverage["samples"][0]
+        self.assertEqual(sample["path"], "output/reports/new-direct.md")
+        self.assertEqual(sample["missing"], ["execution_receipt"])
+        self.assertNotIn("legacy_direct_note_execution_receipt", sample["exemptions"])
+
     def test_collect_metrics_treats_existing_l3_issue_class_as_preview_noise(self) -> None:
         ask_path = self.root / "prompts" / "ask.md"
         ask_path.parent.mkdir(parents=True, exist_ok=True)
