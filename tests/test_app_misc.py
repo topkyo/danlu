@@ -1092,6 +1092,13 @@ class MiscFlowTests(AppFlowTestBase):
     def test_install_user_service_defaults_watcher_to_deterministic_only(self) -> None:
         script = Path("/home/tim/ai-wiki/scripts/install_user_service.sh")
         content = script.read_text(encoding="utf-8")
+        self.assertIn("AIWIKI_VAULT=$VAULT_ROOT", content)
+        self.assertIn('ensure_env_key "$WATCH_ENV_PATH" "AIWIKI_VAULT" "$VAULT_ROOT"', content)
+        self.assertIn('ensure_env_key "$NIGHTLY_ENV_PATH" "AIWIKI_VAULT" "$VAULT_ROOT"', content)
+        self.assertIn('WATCH_VAULT_ROOT="$(env_key_value "$WATCH_ENV_PATH" "AIWIKI_VAULT" "$VAULT_ROOT")"', content)
+        self.assertIn('NIGHTLY_VAULT_ROOT="$(env_key_value "$NIGHTLY_ENV_PATH" "AIWIKI_VAULT" "$VAULT_ROOT")"', content)
+        self.assertIn('s|__VAULT__|$WATCH_VAULT_ROOT|g', content)
+        self.assertIn('s|__VAULT__|$NIGHTLY_VAULT_ROOT|g', content)
         self.assertIn("AIWIKI_WATCH_DETERMINISTIC_ONLY=1", content)
         self.assertIn("AIWIKI_NIGHTLY_DETERMINISTIC_ONLY=0", content)
         self.assertIn("AIWIKI_NIGHTLY_FALLBACK_ENABLED=${AIWIKI_NIGHTLY_FALLBACK_ENABLED:-0}", content)

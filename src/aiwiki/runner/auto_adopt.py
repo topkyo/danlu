@@ -892,8 +892,8 @@ def _has_judgment_review_receipt(root: Path, review_id: str) -> tuple[str, bool 
 
 
 def _judgment_review_id(page_path: str, scan_at: str, model: str) -> str:
-    judgment_id = Path(page_path).stem
-    return hashlib.sha256(f"{judgment_id}{scan_at}{model}".encode("utf-8")).hexdigest()[:16]
+    normalized_page_path = Path(page_path).as_posix()
+    return hashlib.sha256(f"{normalized_page_path}\n{scan_at}\n{model}".encode("utf-8")).hexdigest()[:16]
 
 
 def _apply_judgment_review_with_receipt(target: Path, mutate_fn: Callable[[str], str], receipt_meta: dict[str, Any]) -> dict[str, Any]:

@@ -57,6 +57,19 @@ set_env_key() {
   mv "$tmp" "$file"
 }
 
+env_key_value() {
+  local file="$1"
+  local key="$2"
+  local default="$3"
+  local line
+  line="$(grep -m 1 "^${key}=" "$file" || true)"
+  if [[ -n "$line" ]]; then
+    printf '%s\n' "${line#*=}"
+  else
+    printf '%s\n' "$default"
+  fi
+}
+
 truthy() {
   case "${1,,}" in
     1|true|yes|on) return 0 ;;
@@ -68,6 +81,7 @@ mkdir -p "$SYSTEMD_USER_DIR" "$AIWIKI_CONFIG_DIR"
 
 if [[ ! -f "$WATCH_ENV_PATH" ]]; then
   cat >"$WATCH_ENV_PATH" <<EOF
+AIWIKI_VAULT=$VAULT_ROOT
 AIWIKI_LLM_BACKEND=opencode-api
 AIWIKI_LLM_MODEL=deepseek-v4-pro
 AIWIKI_LLM_TIMEOUT=120
@@ -84,6 +98,7 @@ fi
 
 if [[ ! -f "$NIGHTLY_ENV_PATH" ]]; then
   cat >"$NIGHTLY_ENV_PATH" <<EOF
+AIWIKI_VAULT=$VAULT_ROOT
 AIWIKI_LLM_BACKEND=opencode-api
 AIWIKI_LLM_MODEL=deepseek-v4-pro
 AIWIKI_LLM_TIMEOUT=120
@@ -118,6 +133,8 @@ AIWIKI_DOGFOOD_MATURITY_NO_SEMANTIC_LINT=1
 EOF
 fi
 
+ensure_env_key "$WATCH_ENV_PATH" "AIWIKI_VAULT" "$VAULT_ROOT"
+ensure_env_key "$NIGHTLY_ENV_PATH" "AIWIKI_VAULT" "$VAULT_ROOT"
 ensure_env_key "$NIGHTLY_ENV_PATH" "AIWIKI_NIGHTLY_FALLBACK_ENABLED" "${AIWIKI_NIGHTLY_FALLBACK_ENABLED:-0}"
 ensure_env_key "$NIGHTLY_ENV_PATH" "AIWIKI_NIGHTLY_FALLBACK_BACKEND" "nvidia-nim-api"
 ensure_env_key "$NIGHTLY_ENV_PATH" "AIWIKI_NIGHTLY_FALLBACK_MODEL" "openai/gpt-oss-120b"
@@ -141,16 +158,19 @@ if truthy "$INSTALL_DOGFOOD_MATURITY"; then
   fi
 fi
 
+WATCH_VAULT_ROOT="$(env_key_value "$WATCH_ENV_PATH" "AIWIKI_VAULT" "$VAULT_ROOT")"
+NIGHTLY_VAULT_ROOT="$(env_key_value "$NIGHTLY_ENV_PATH" "AIWIKI_VAULT" "$VAULT_ROOT")"
+
 sed \
   -e "s|__PROJECT_ROOT__|$PROJECT_ROOT|g" \
   -e "s|__ENV_FILE__|$WATCH_ENV_PATH|g" \
-  -e "s|__VAULT__|$VAULT_ROOT|g" \
+  -e "s|__VAULT__|$WATCH_VAULT_ROOT|g" \
   "$WATCH_TEMPLATE_PATH" >"$WATCH_UNIT_PATH"
 
 sed \
   -e "s|__PROJECT_ROOT__|$PROJECT_ROOT|g" \
   -e "s|__ENV_FILE__|$NIGHTLY_ENV_PATH|g" \
-  -e "s|__VAULT__|$VAULT_ROOT|g" \
+  -e "s|__VAULT__|$NIGHTLY_VAULT_ROOT|g" \
   "$NIGHTLY_SERVICE_TEMPLATE_PATH" >"$NIGHTLY_SERVICE_PATH"
 
 sed \

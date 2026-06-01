@@ -390,6 +390,42 @@ class AutoAdoptCriticalFixTests(unittest.TestCase):
         self.assertEqual(first["items"][0]["status"], "applied")
         self.assertEqual(second["items"][0]["status"], "skipped_idempotent")
 
+    def test_judgment_review_id_includes_page_path_not_only_stem(self) -> None:
+        judgment = self.root / "wiki" / "judgments" / "same.md"
+        decision = self.root / "wiki" / "decisions" / "same.md"
+        judgment.parent.mkdir(parents=True, exist_ok=True)
+        decision.parent.mkdir(parents=True, exist_ok=True)
+        judgment.write_text("# Judgment Same\n", encoding="utf-8")
+        decision.write_text("# Decision Same\n", encoding="utf-8")
+        save_json_document(
+            self.root / ".aiwiki" / "state" / "machine-memory.json",
+            {
+                "health": {
+                    "counter_evidence_scan": {
+                        "generated_at": "2026-01-01T00:00:00Z",
+                        "pages": [
+                            {"page_path": str(judgment.relative_to(self.root)), "page_title": "Judgment", "source_ids": ["s1"]},
+                            {"page_path": str(decision.relative_to(self.root)), "page_title": "Decision", "source_ids": ["s1"]},
+                        ],
+                    }
+                }
+            },
+        )
+        client = StubClient(json.dumps({"conclusion": "upheld", "confidence": "high"}))
+
+        result = auto_adopt_judgments(self.root, client, limit=2)
+
+        self.assertEqual(client.calls, 2)
+        self.assertEqual([item["status"] for item in result["items"]], ["applied", "applied"])
+        receipts = [
+            item
+            for item in load_jsonl_documents_strict(execution_receipt_history_path(self.root))
+            if item.get("subject_kind") == "judgment_review"
+        ]
+        self.assertEqual(len(receipts), 2)
+        self.assertNotEqual(receipts[0]["subject_id"], receipts[1]["subject_id"])
+        self.assertEqual({receipt["target_file"] for receipt in receipts}, {"wiki/judgments/same.md", "wiki/decisions/same.md"})
+
     def test_judgment_review_missing_scan_generated_at_degrades_without_write(self) -> None:
         page = self.root / "wiki" / "judgments" / "j1.md"
         page.parent.mkdir(parents=True, exist_ok=True)
