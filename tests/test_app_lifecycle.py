@@ -82,6 +82,7 @@ from aiwiki.cli import main as cli_main
 from aiwiki.compile import compile_wiki as compile_wiki_owner
 from aiwiki.config import BACKEND_CODEX_CLI, BACKEND_COPILOT_CLI, LLMConfig
 from aiwiki.drop import _fetch_url, drop_image, drop_pdf, drop_repo, drop_url
+from aiwiki.execution.machine_memory_actions import MachineMemoryActionReceiptError
 from aiwiki.llm import CompletionResult
 from aiwiki.runner import auto_process_once, run_ask, run_compile, run_lint, run_nightly, watch_inbox
 from tests.test_app import AppFlowTestBase, CapturingClient, FailingVisionClient, StubClient, StubVisionClient
@@ -852,6 +853,54 @@ class LifecycleFlowTests(AppFlowTestBase):
         self.assertIsNotNone(retired_entry)
         self.assertEqual(retired_entry["override_state"], "retired")
         self.assertTrue(retired_entry["override_active"])
+
+    def test_apply_split_overloaded_concept_receipt_failure_rolls_back_auto_retire(self) -> None:
+        self._seed_machine_memory_actions()
+        compile_wiki(self.root)
+
+        state = load_machine_memory_action_state(self.root)
+        overloaded_action = next(
+            (a for a in state["actions"] if a["kind"] == "split-overloaded-concept" and a["active"]),
+            None,
+        )
+        self.assertIsNotNone(overloaded_action)
+        assert overloaded_action is not None
+        slug = (overloaded_action["concept_slugs"] or [None])[0]
+        self.assertTrue(slug)
+
+        review_machine_memory_action(self.root, overloaded_action["id"], "accepted", note="Accept overloaded action.")
+        dry_run = apply_machine_memory_action(self.root, overloaded_action["id"], dry_run=True)
+        bundle_path = self.root / dry_run["bundle_path"]
+        bundle_path.parent.mkdir(parents=True, exist_ok=True)
+        bundle_path.write_text(
+            json.dumps(dry_run["bundle"], ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        override_before = json.dumps(load_knowledge_lifecycle_override_state(self.root), sort_keys=True)
+
+        with (
+            patch(
+                "aiwiki.execution.machine_memory_actions.append_execution_receipt_history",
+                side_effect=RuntimeError("history failed"),
+            ),
+            self.assertRaises(MachineMemoryActionReceiptError),
+        ):
+            apply_machine_memory_action(
+                self.root,
+                overloaded_action["id"],
+                note="Resolve overloaded concept and auto-retire.",
+                bundle_path=dry_run["bundle_path"],
+            )
+
+        self.assertEqual(json.dumps(load_knowledge_lifecycle_override_state(self.root), sort_keys=True), override_before)
+        lifecycle = load_knowledge_lifecycle_state(self.root)
+        entry = next((e for e in lifecycle["entries"] if Path(e["path"]).stem == slug and e["kind"] == "concept"), None)
+        if entry is not None:
+            self.assertNotEqual(entry.get("override_state"), "retired")
+        refreshed_actions = load_machine_memory_action_state(self.root)["actions"]
+        refreshed = next(action for action in refreshed_actions if action["id"] == overloaded_action["id"])
+        self.assertEqual(refreshed["status"], "accepted")
+        self.assertFalse((self.root / "output" / "control" / "execution-receipts" / f"{overloaded_action['id']}.json").exists())
 
     def test_apply_split_overloaded_concept_skips_active_corpus_softly(self) -> None:
         """F-new-13 (Round 6): active-corpus concept retire fails softly with auto_retire_skipped_active_corpus=True."""

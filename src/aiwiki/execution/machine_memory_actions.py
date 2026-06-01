@@ -73,6 +73,8 @@ from ..app_state import (
     append_runtime_history,
     execution_dry_run_path,
     execution_receipt_history_path,
+    knowledge_lifecycle_override_state_path,
+    knowledge_lifecycle_state_path,
     load_json_document_strict,
     load_machine_memory_action_state_strict,
     load_manual_link_state,
@@ -433,6 +435,7 @@ def auto_resolve_machine_memory_actions(
     dry_run: bool = False,
     limit: int | None = None,
     include_proposed: bool = True,
+    escalate_unsupported: bool = True,
     note: str | None = None,
 ) -> dict[str, Any]:
     ensure_layout(root)
@@ -463,11 +466,16 @@ def auto_resolve_machine_memory_actions(
             operation = str(decision.get("operation") or "skip")
             if operation == "apply":
                 counts["would_apply"] += 1
-            elif operation == "escalate":
+            elif operation == "escalate" and escalate_unsupported:
                 counts["would_escalate"] += 1
             else:
                 counts["skipped"] += 1
-            items.append(dict(decision))
+            item = dict(decision)
+            if operation == "escalate" and not escalate_unsupported:
+                item["operation"] = "skip"
+                item["skipped_operation"] = "escalate"
+                item["reason_code"] = "escalation_disabled"
+            items.append(item)
         return {
             "operation": "auto-resolve-actions",
             "dry_run": True,
@@ -493,7 +501,7 @@ def auto_resolve_machine_memory_actions(
                 counts["applied"] += 1
                 changed = True
                 item["result"] = result
-            elif operation == "escalate":
+            elif operation == "escalate" and escalate_unsupported:
                 # A prior item in the same run may have called apply-action, which
                 # reloads and saves machine-memory action state. Reload before each
                 # escalation so a later state-only receipt cannot overwrite earlier
@@ -526,6 +534,10 @@ def auto_resolve_machine_memory_actions(
                     item["result"] = result
             else:
                 counts["skipped"] += 1
+                if operation == "escalate" and not escalate_unsupported:
+                    item["operation"] = "skip"
+                    item["skipped_operation"] = "escalate"
+                    item["reason_code"] = "escalation_disabled"
             items.append(item)
         except Exception as exc:
             counts["failed"] += 1
@@ -938,6 +950,18 @@ def apply_machine_memory_action(
         (audit_stream_full_path, _snapshot_file_bytes(audit_stream_full_path)),
         (action_state_path, _snapshot_file_bytes(action_state_path)),
     ]
+    if kind == "split-overloaded-concept":
+        snapshots.extend(
+            [
+                (
+                    knowledge_lifecycle_override_state_path(root),
+                    _snapshot_file_bytes(knowledge_lifecycle_override_state_path(root)),
+                ),
+                (knowledge_lifecycle_state_path(root), _snapshot_file_bytes(knowledge_lifecycle_state_path(root))),
+                (runtime_history_path(root), _snapshot_file_bytes(runtime_history_path(root))),
+                (root / "wiki" / "indexes" / "log.md", _snapshot_file_bytes(root / "wiki" / "indexes" / "log.md")),
+            ]
+        )
     citation_page: Path | None = None
     if apply_mode == "manual-link-state":
         ml_path = manual_link_state_path(root)
@@ -1010,11 +1034,10 @@ def apply_machine_memory_action(
             raise RuntimeError(f"Unsupported apply mode: {apply_mode}")
 
         # P4-19a: split-overloaded-concept apply 完成时联动 retire concept，
-        # 让 noise / 过载概念退出默认 ranking。失败不阻断 apply。
+        # 让 noise / 过载概念退出默认 ranking。receipt/history 失败时随主
+        # transaction 一起回滚，避免无人值守 L2 留下半写 lifecycle override。
         # F-new-13 (Round 6): active-corpus 概念不能直接 retire（lifecycle guard），
         # 此时记 `auto_retire_skipped_active_corpus=True` 并依赖 retroactive noise rebuild。
-        # NOTE (R92-MM-ACTION-TX): auto-retire is best-effort and out of the
-        # transaction's rollback scope by design (residual risk noted in contract).
         auto_retired_concept: str | None = None
         auto_retire_error: str | None = None
         auto_retire_skipped_active_corpus = False

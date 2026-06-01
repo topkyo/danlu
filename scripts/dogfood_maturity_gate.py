@@ -1240,6 +1240,7 @@ def collect_metrics(root: Path, *, preview_limit: int = 20) -> dict[str, Any]:
         "backlog_total": _sum_int_values(review_backlog_counts),
         "human_required_report": human_required_report,
         "agentic_autonomy_report": _build_agentic_autonomy_report(root, nightly),
+        "debt_autopilot_report": _build_debt_autopilot_report(root, nightly),
         "knowledge_compounding_proof": knowledge_compounding_proof,
         "elixir_quality_proof": knowledge_compounding_proof.get("elixir_quality_proof", {}),
         "legacy_empty_status_receipts": legacy_empty_status_receipts,
@@ -1302,6 +1303,19 @@ def _build_agentic_autonomy_report(root: Path, nightly: dict[str, Any] | None = 
     non_core_human_required_count += sum(
         1 for item in auto_judgment_items if isinstance(item, dict) and str(item.get("status") or "") == "human_required"
     )
+    debt_autopilot = (
+        agent_loop.get("debt_autopilot") if isinstance(agent_loop.get("debt_autopilot"), dict) else {}
+    )
+    debt_content_counts = _debt_autopilot_content_apply_counts(debt_autopilot)
+    llm_governed_apply_count += (
+        debt_content_counts["updated_source_pages"]
+        + debt_content_counts["updated_concept_pages"]
+        + (
+            debt_content_counts["applied_rewrite_proposals"]
+            if debt_content_counts["applied_rewrite_proposals"] > 0
+            else _verified_debt_autopilot_rewrite_apply_count(root)
+        )
+    )
     degraded_agent_loop_count = 1 if str(agent_loop.get("status") or "") in {"degraded", "failed"} else 0
     degraded_signal_pipeline_count = 1 if str(signal_pipeline.get("status") or "") in {"degraded", "failed"} else 0
     core_auto_apply_count = sum(
@@ -1329,6 +1343,71 @@ def _build_agentic_autonomy_report(root: Path, nightly: dict[str, Any] | None = 
         "degraded_agent_loop_count": degraded_agent_loop_count,
         "degraded_signal_pipeline_count": degraded_signal_pipeline_count,
         "auto_revert_count": auto_revert_count,
+    }
+
+
+def _debt_autopilot_llm_governed_apply_count(debt_autopilot: dict[str, Any]) -> int:
+    counts = _debt_autopilot_content_apply_counts(debt_autopilot)
+    return (
+        counts["updated_source_pages"]
+        + counts["updated_concept_pages"]
+        + counts["applied_rewrite_proposals"]
+    )
+
+
+def _debt_autopilot_content_apply_counts(debt_autopilot: dict[str, Any]) -> dict[str, int]:
+    content = debt_autopilot.get("content_digestion") if isinstance(debt_autopilot.get("content_digestion"), dict) else {}
+    counts = content.get("counts") if isinstance(content.get("counts"), dict) else {}
+    return {
+        "updated_source_pages": _coerce_int(counts.get("updated_source_pages")),
+        "updated_concept_pages": _coerce_int(counts.get("updated_concept_pages")),
+        "applied_rewrite_proposals": _coerce_int(counts.get("applied_rewrite_proposals")),
+    }
+
+
+def _verified_debt_autopilot_rewrite_apply_count(root: Path) -> int:
+    from aiwiki.app_state import load_concept_rewrite_state
+
+    state = load_concept_rewrite_state(root)
+    proposals = state.get("proposals") if isinstance(state.get("proposals"), list) else []
+    return sum(
+        1
+        for proposal in proposals
+        if isinstance(proposal, dict)
+        and str(proposal.get("status") or "") == "applied"
+        and str(proposal.get("verification_status") or "") == "passed"
+        and str(proposal.get("review_note") or "").startswith("debt-autopilot:")
+    )
+
+
+def _build_debt_autopilot_report(root: Path, nightly: dict[str, Any] | None = None) -> dict[str, Any]:
+    from aiwiki.app_state import load_json_document, nightly_health_state_path
+    from aiwiki.debt_autopilot import collect_debt_inventory
+
+    nightly_payload = nightly if isinstance(nightly, dict) else load_json_document(nightly_health_state_path(root))
+    agent_loop = nightly_payload.get("agent_loop") if isinstance(nightly_payload.get("agent_loop"), dict) else {}
+    debt_run = agent_loop.get("debt_autopilot") if isinstance(agent_loop.get("debt_autopilot"), dict) else {}
+    # Maturity collection may run long after the latest nightly receipt. Always
+    # report the current owner-state inventory; stale signal-pipeline snapshots
+    # remain available through ``last_run`` but must not define current debt.
+    inventory = collect_debt_inventory(root, nightly=nightly_payload)
+    auto_resolved = _coerce_int(debt_run.get("debt_auto_resolved_count"))
+    detected = _coerce_int(inventory.get("debt_detected_count"))
+    remaining = _coerce_int(inventory.get("debt_remaining_count"))
+    status = "clear" if remaining == 0 else "active"
+    if auto_resolved > 0:
+        status = "digesting" if remaining > 0 else "pass"
+    return {
+        "version": 1,
+        "status": status,
+        "debt_detected_count": detected,
+        "debt_auto_resolved_count": auto_resolved,
+        "debt_remaining_count": remaining,
+        "llm_owned_non_core_pending_count": _coerce_int(inventory.get("llm_owned_non_core_pending_count")),
+        "autonomy_boundary": str(inventory.get("autonomy_boundary") or "llm_owned_non_core"),
+        "apply_strategy_counts": dict(inventory.get("apply_strategy_counts") or {}),
+        "categories": dict(inventory.get("categories") or {}),
+        "last_run": debt_run,
     }
 
 
@@ -1843,6 +1922,16 @@ def summarize_run_receipts(
             "degraded_agent_loop_count": 0,
             "auto_revert_count": 0,
         }
+    latest_debt_autopilot = last.get("after", {}).get("debt_autopilot_report") if isinstance(last.get("after"), dict) else {}
+    if not isinstance(latest_debt_autopilot, dict):
+        latest_debt_autopilot = {
+            "version": 1,
+            "status": "not-yet",
+            "debt_detected_count": 0,
+            "debt_auto_resolved_count": 0,
+            "debt_remaining_count": 0,
+            "llm_owned_non_core_pending_count": 0,
+        }
     latest_compounding_proof = last.get("after", {}).get("knowledge_compounding_proof") if isinstance(last.get("after"), dict) else {}
     if not isinstance(latest_compounding_proof, dict):
         latest_compounding_proof = {
@@ -1936,6 +2025,11 @@ def summarize_run_receipts(
         "judgment_lane_report": latest_judgment_lane,
         "human_required_report": latest_human_required,
         "agentic_autonomy_report": latest_agentic_autonomy,
+        "debt_autopilot_report": latest_debt_autopilot,
+        "debt_detected_count": _coerce_int(latest_debt_autopilot.get("debt_detected_count")),
+        "debt_auto_resolved_count": _coerce_int(latest_debt_autopilot.get("debt_auto_resolved_count")),
+        "debt_remaining_count": _coerce_int(latest_debt_autopilot.get("debt_remaining_count")),
+        "llm_owned_non_core_pending_count": _coerce_int(latest_debt_autopilot.get("llm_owned_non_core_pending_count")),
         "llm_governed_apply_count": _coerce_int(latest_agentic_autonomy.get("llm_governed_apply_count")),
         "non_core_human_required_count": _coerce_int(latest_agentic_autonomy.get("non_core_human_required_count")),
         "core_proposal_count": _coerce_int(latest_agentic_autonomy.get("core_proposal_count")),

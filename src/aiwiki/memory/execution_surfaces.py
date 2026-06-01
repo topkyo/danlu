@@ -1005,7 +1005,19 @@ def reconcile_concept_rewrite_proposals(
     inactive_records: list[dict[str, Any]] = []
     seen_slugs: set[str] = set()
 
-    for candidate in quality.get("rewrite_candidates", []):
+    rewrite_candidates: list[dict[str, Any]] = []
+    seen_candidate_slugs: set[str] = set()
+    for key in ("rewrite_candidates", "weak_concepts"):
+        for candidate in quality.get(key, []):
+            if not isinstance(candidate, dict):
+                continue
+            slug = str(candidate.get("slug") or "").strip()
+            if not slug or slug in seen_candidate_slugs:
+                continue
+            rewrite_candidates.append(candidate)
+            seen_candidate_slugs.add(slug)
+
+    for candidate in rewrite_candidates:
         slug = str(candidate.get("slug") or "").strip()
         if not slug:
             continue

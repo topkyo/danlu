@@ -78,6 +78,7 @@ def run_nightly_agent_loop(
         l2_result = _build_auto_adopt_l2(root) if auto_adopt_l2 else None
         l3_result = _build_auto_adopt_l3(root) if auto_adopt_l3 else None
         j_result = _build_auto_adopt_judgments(root) if auto_adopt_judgments else None
+        debt_result = _build_debt_autopilot(root, apply=apply_light)
     except Exception as exc:  # noqa: BLE001 - preview failure must be surfaced in nightly state
         return {
             **base,
@@ -86,7 +87,9 @@ def run_nightly_agent_loop(
             "error_type": type(exc).__name__,
         }
 
-    auto_adopt_results = [item for item in (l1_result, l2_result, l3_result, j_result) if isinstance(item, dict)]
+    auto_adopt_results = [
+        item for item in (l1_result, l2_result, l3_result, j_result, debt_result) if isinstance(item, dict)
+    ]
     if any(item.get("degraded") is True for item in auto_adopt_results):
         base["status"] = "degraded"
 
@@ -103,6 +106,7 @@ def run_nightly_agent_loop(
         **({"auto_adopt_l2": l2_result} if l2_result is not None else {}),
         **({"auto_adopt_l3": l3_result} if l3_result is not None else {}),
         **({"auto_adopt_judgments": j_result} if j_result is not None else {}),
+        "debt_autopilot": debt_result,
     }
 
 
@@ -358,3 +362,18 @@ def _build_auto_adopt_judgments(root: Path) -> dict[str, Any]:
         return result
     except Exception as exc:
         return {"level": "Judgment", "applied": False, "error": str(exc), "error_type": type(exc).__name__, "degraded": True}
+
+
+def _build_debt_autopilot(root: Path, *, apply: bool) -> dict[str, Any]:
+    from .debt_autopilot import run_debt_autopilot
+
+    try:
+        return run_debt_autopilot(root, apply=apply)
+    except Exception as exc:
+        return {
+            "operation": "debt-autopilot",
+            "status": "failed",
+            "error": str(exc),
+            "error_type": type(exc).__name__,
+            "degraded": True,
+        }

@@ -290,11 +290,11 @@ def _build_concept_compile_prompt(
 
 def _rewrite_candidate_slugs(memory: dict[str, Any], *, exclude: set[str]) -> list[str]:
     quality = memory.get("health", {}).get("concept_quality", {})
-    candidates = quality.get("rewrite_candidates", [])
+    candidates = list(quality.get("rewrite_candidates", []) or []) + list(quality.get("weak_concepts", []) or [])
     slugs: list[str] = []
     for candidate in candidates:
         slug = str(candidate.get("slug") or "")
-        if not slug or slug in exclude:
+        if not slug or slug in exclude or slug in slugs:
             continue
         slugs.append(slug)
     return slugs
@@ -316,7 +316,7 @@ def _rewrite_candidate_record(memory: dict[str, Any], slug: str) -> dict[str, An
             record.setdefault("conflict_signals", weak_record.get("conflict_signals", []))
             record.setdefault("gap_signals", weak_record.get("gap_signals", []))
         return record
-    return {}
+    return dict(weak_by_slug.get(slug, {}))
 
 
 def _build_ask_prompt(

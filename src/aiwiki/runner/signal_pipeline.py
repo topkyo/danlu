@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from aiwiki import autonomy_policy
+from aiwiki.debt_autopilot import collect_debt_inventory
 from aiwiki.planner.log_writer import write_planner_log
 from aiwiki.runner.alchemy import run_alchemy_auto
 
@@ -41,10 +42,12 @@ def run_signal_pipeline(
             note="signal pipeline heavy semantic preview",
             allow_current_writer_lock=True,
         )
+        debt_inventory = collect_debt_inventory(root)
         return {
             "status": "noop",
             "signals_replay": signals,
             "planner_log_replay": planner,
+            "debt_inventory": debt_inventory,
             "heavy_semantic": _semantic_phase_summary(heavy_preview, applied=False),
             "alchemy_auto": {
                 "status": "skipped",
@@ -68,6 +71,7 @@ def run_signal_pipeline(
         note="signal pipeline heavy semantic phase",
         allow_current_writer_lock=True,
     )
+    debt_inventory = collect_debt_inventory(root)
     return {
         "status": "applied"
         if (resolved_apply_light and alchemy_auto.get("status") == "applied")
@@ -75,6 +79,7 @@ def run_signal_pipeline(
         else "preview",
         "signals_replay": signals,
         "planner_log_replay": planner,
+        "debt_inventory": debt_inventory,
         "alchemy_auto": alchemy_auto,
         "heavy_semantic": _semantic_phase_summary(heavy_semantic, applied=bool(resolved_apply_heavy)),
         "light_apply_enabled": bool(resolved_apply_light),

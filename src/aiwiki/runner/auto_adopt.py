@@ -31,14 +31,11 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ..app_execution import append_execution_receipt_history
-from ..app_shell.controls import shell_execution_controls, shell_review_controls
 from ..app_state import (
     CorruptStateError,
     append_runtime_history,
     execution_receipt_history_path,
     load_jsonl_documents_strict,
-    load_machine_memory,
-    load_planner_state,
 )
 from ..app_utils import (
     _restore_file_bytes,
@@ -66,33 +63,15 @@ from .workflow_shared import _raw_response_path, _receipt_error_class
 
 
 def _build_controls(root: Path):
-    """Load the review and execution control surfaces."""
-    from ..app_compile import collect_aging_signals, review_queue
-    from ..app_state import (
-        DEFAULT_PROTOCOL,
-        load_compile_state,
-    )
+    """Load owner-state controls for unattended adoption.
 
-    compile_state = load_compile_state(root)
-    memory = load_machine_memory(root)
-    planner_state = load_planner_state(root)
-    decisions = compile_state.get("decisions", [])
-    judgments = compile_state.get("judgments", [])
-    active_protocol = str(planner_state.get("active_protocol") or DEFAULT_PROTOCOL)
-    queue = review_queue(decisions, judgments, active_protocol=active_protocol)
-    aging = collect_aging_signals(decisions, judgments, active_protocol=active_protocol)
-    counter_evidence_scan = memory.get("health", {}).get("counter_evidence_scan", {})
-    judgment_review_actions = memory.get("health", {}).get("judgment_review_actions", [])
-    review_ctrl = shell_review_controls(
-        root,
-        queue=queue,
-        aging=aging,
-        active_protocol=active_protocol,
-        counter_evidence_scan=counter_evidence_scan if isinstance(counter_evidence_scan, dict) else {},
-        review_actions=judgment_review_actions if isinstance(judgment_review_actions, list) else [],
-    )
-    exec_ctrl = shell_execution_controls(root, memory)
-    return review_ctrl, exec_ctrl
+    Product Shell renders these same concepts, but Shell controls are not the
+    authority for unattended apply decisions.
+    """
+
+    from ..debt_autopilot import collect_auto_adopt_work
+
+    return collect_auto_adopt_work(root)
 
 _logger = logging.getLogger(__name__)
 
@@ -969,14 +948,14 @@ def _apply_judgment_review_with_receipt(target: Path, mutate_fn: Callable[[str],
 
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(new_content, encoding="utf-8")
+        atomic_write_text(target, new_content)
     except Exception:
         rollback()
         raise
 
     try:
         receipt_path.parent.mkdir(parents=True, exist_ok=True)
-        receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        atomic_write_text(receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     except Exception:
         rollback()
         raise

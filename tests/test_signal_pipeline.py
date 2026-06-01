@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from aiwiki.app_protocol import ensure_layout
+from aiwiki.app_protocol import ensure_layout, save_manifest
 from aiwiki.runner.signal_pipeline import run_signal_pipeline
 
 
@@ -92,6 +92,90 @@ class SignalPipelineTests(unittest.TestCase):
         contract = summary["semantic_contracts"][0]
         self.assertTrue(contract["human_required"])
         self.assertEqual(contract["model_contract"], "explicit_llm_or_human_contract_required_for_semantic_content")
+
+    def test_debt_inventory_is_collected_after_apply_phases(self) -> None:
+        light_result, heavy_result = self._pipeline_fixtures(heavy_status="applied")
+        events: list[str] = []
+
+        def fake_auto(*args: object, **kwargs: object) -> dict:
+            lanes = kwargs.get("lanes")
+            events.append("heavy" if lanes == ["heavy"] else "light")
+            return heavy_result if lanes == ["heavy"] else light_result
+
+        def fake_inventory(root: Path) -> dict:
+            events.append("inventory")
+            return {"debt_remaining_count": 0, "sample": "post-apply"}
+
+        with (
+            patch("aiwiki.signals.collector.collect_signals", return_value={"new_count": 1}),
+            patch("aiwiki.runner.signal_pipeline.write_planner_log", return_value={"new_count": 1}),
+            patch("aiwiki.runner.signal_pipeline.run_alchemy_auto", side_effect=fake_auto),
+            patch("aiwiki.runner.signal_pipeline.collect_debt_inventory", side_effect=fake_inventory),
+        ):
+            result = run_signal_pipeline(self.root, apply_light=True, apply_heavy_semantic=True)
+
+        self.assertEqual(events, ["light", "heavy", "inventory"])
+        self.assertEqual(result["debt_inventory"]["sample"], "post-apply")
+
+    def test_debt_inventory_reads_current_owner_state_not_stale_nightly_backlog(self) -> None:
+        save_manifest(self.root, {"version": 1, "entries": [{"id": "source-a", "title": "Source A"}]})
+        source_page = self.root / "wiki" / "sources" / "source-a.md"
+        source_page.write_text("# Source A\n\nPending LLM summary.\n", encoding="utf-8")
+        (self.root / ".aiwiki" / "state" / "nightly-health.json").write_text(
+            '{"repair_backlog":{"pending_source_summaries":["source-a"]}}\n',
+            encoding="utf-8",
+        )
+        light_result = {
+            "status": "applied",
+            "mode": "apply",
+            "side_effects_allowed": True,
+            "lane_results": [],
+        }
+        _, heavy_result = self._pipeline_fixtures(heavy_status="ready")
+
+        def fake_auto(*args: object, **kwargs: object) -> dict:
+            if kwargs.get("lanes") == ["light"]:
+                source_page.write_text("# Source A\n\nLLM summary complete.\n", encoding="utf-8")
+                return light_result
+            return heavy_result
+
+        with (
+            patch("aiwiki.signals.collector.collect_signals", return_value={"new_count": 1}),
+            patch("aiwiki.runner.signal_pipeline.write_planner_log", return_value={"new_count": 1}),
+            patch("aiwiki.runner.signal_pipeline.run_alchemy_auto", side_effect=fake_auto),
+        ):
+            result = run_signal_pipeline(self.root, apply_light=True, apply_heavy_semantic=False)
+
+        self.assertEqual(result["debt_inventory"]["categories"]["pending_source_summaries"]["count"], 0)
+        self.assertEqual(result["debt_inventory"]["debt_detected_count"], 0)
+
+    def test_noop_branch_returns_post_preview_debt_inventory(self) -> None:
+        events: list[str] = []
+
+        def fake_auto(*args: object, **kwargs: object) -> dict:
+            events.append("preview")
+            return {
+                "status": "ready",
+                "mode": "dry_run",
+                "side_effects_allowed": False,
+                "lane_results": [],
+            }
+
+        def fake_inventory(root: Path) -> dict:
+            events.append("inventory")
+            return {"debt_remaining_count": 0, "sample": "post-preview"}
+
+        with (
+            patch("aiwiki.signals.collector.collect_signals", return_value={"new_count": 0}),
+            patch("aiwiki.runner.signal_pipeline.write_planner_log", return_value={"new_count": 0}),
+            patch("aiwiki.runner.signal_pipeline.run_alchemy_auto", side_effect=fake_auto),
+            patch("aiwiki.runner.signal_pipeline.collect_debt_inventory", side_effect=fake_inventory),
+        ):
+            result = run_signal_pipeline(self.root, apply_light=True, apply_heavy_semantic=True)
+
+        self.assertEqual(result["status"], "noop")
+        self.assertEqual(events, ["preview", "inventory"])
+        self.assertEqual(result["debt_inventory"]["sample"], "post-preview")
 
 
 if __name__ == "__main__":

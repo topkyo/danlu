@@ -6,10 +6,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from aiwiki.app_protocol import ensure_layout
+from aiwiki.app_protocol import ensure_layout, save_manifest
+from aiwiki.app_state import save_concept_rewrite_state
 from scripts.dogfood_maturity_gate import (
     RUN_RECEIPT_KIND,
     _build_agentic_autonomy_report,
+    _build_debt_autopilot_report,
     build_parser,
     collect_metrics,
     maturity_gate_dir,
@@ -128,6 +130,14 @@ def _make_run_receipt(
                 "degraded_agent_loop_count": 0,
                 "degraded_signal_pipeline_count": 0,
                 "auto_revert_count": 0,
+            },
+            "debt_autopilot_report": {
+                "version": 1,
+                "status": "digesting",
+                "debt_detected_count": 3,
+                "debt_auto_resolved_count": 1,
+                "debt_remaining_count": 2,
+                "llm_owned_non_core_pending_count": 2,
             },
         },
         "l3_generation": {
@@ -369,6 +379,97 @@ class DogfoodMaturityGateTests(unittest.TestCase):
         self.assertEqual(report["status"], "not-yet")
         self.assertIn("non_core_human_required", report["violations"])
 
+    def test_debt_autopilot_report_collects_non_core_debt_and_last_run(self) -> None:
+        save_manifest(self.root, {"version": 1, "entries": [{"id": "source-a", "title": "Source A"}]})
+        (self.root / "wiki" / "sources" / "source-a.md").write_text(
+            "# Source A\n\nPending LLM summary.\n",
+            encoding="utf-8",
+        )
+        _write_json(
+            self.root / ".aiwiki" / "state" / "machine-memory.json",
+            {"health": {"concept_quality": {"weak_concepts": [{"slug": "agent"}]}}},
+        )
+        _write_json(
+            self.root / ".aiwiki" / "state" / "nightly-health.json",
+            {
+                "agent_loop": {
+                    "debt_autopilot": {
+                        "debt_detected_count": 2,
+                        "debt_auto_resolved_count": 1,
+                        "debt_remaining_count": 1,
+                    }
+                },
+            },
+        )
+
+        report = _build_debt_autopilot_report(self.root)
+
+        self.assertEqual(report["status"], "digesting")
+        self.assertEqual(report["debt_detected_count"], 2)
+        self.assertEqual(report["debt_auto_resolved_count"], 1)
+        self.assertEqual(report["debt_remaining_count"], 2)
+        self.assertEqual(report["llm_owned_non_core_pending_count"], 2)
+        self.assertEqual(report["autonomy_boundary"], "llm_owned_non_core")
+
+    def test_debt_autopilot_report_uses_current_owner_state_over_stale_pipeline_inventory(self) -> None:
+        save_manifest(self.root, {"version": 1, "entries": [{"id": "source-a", "title": "Source A"}]})
+        (self.root / "wiki" / "sources" / "source-a.md").write_text(
+            "# Source A\n\nPending LLM summary.\n",
+            encoding="utf-8",
+        )
+        _write_json(
+            self.root / ".aiwiki" / "state" / "nightly-health.json",
+            {
+                "repair_backlog": {
+                    "pending_source_summaries": ["stale-source"],
+                    "weak_concept_slugs": ["stale-concept"],
+                },
+                "agent_loop": {
+                    "debt_autopilot": {
+                        "debt_detected_count": 2,
+                        "debt_auto_resolved_count": 1,
+                        "debt_remaining_count": 2,
+                    }
+                },
+                "signal_pipeline": {
+                    "debt_inventory": {
+                        "version": 1,
+                        "debt_detected_count": 99,
+                        "debt_remaining_count": 99,
+                        "llm_owned_non_core_pending_count": 99,
+                        "autonomy_boundary": "llm_owned_non_core",
+                        "apply_strategy_counts": {},
+                        "categories": {},
+                    }
+                },
+            },
+        )
+
+        report = _build_debt_autopilot_report(self.root)
+
+        self.assertEqual(report["status"], "digesting")
+        self.assertEqual(report["debt_detected_count"], 1)
+        self.assertEqual(report["debt_auto_resolved_count"], 1)
+        self.assertEqual(report["debt_remaining_count"], 1)
+
+    def test_debt_autopilot_report_fallback_ignores_stale_repair_backlog(self) -> None:
+        _write_json(
+            self.root / ".aiwiki" / "state" / "nightly-health.json",
+            {
+                "repair_backlog": {
+                    "pending_source_summaries": ["stale-source"],
+                    "weak_concept_slugs": ["stale-concept"],
+                },
+                "agent_loop": {"debt_autopilot": {"debt_auto_resolved_count": 0}},
+            },
+        )
+
+        report = _build_debt_autopilot_report(self.root)
+
+        self.assertEqual(report["status"], "clear")
+        self.assertEqual(report["debt_detected_count"], 0)
+        self.assertEqual(report["debt_remaining_count"], 0)
+
     def test_agentic_autonomy_report_requires_llm_governed_apply_evidence(self) -> None:
         report = _build_agentic_autonomy_report(
             self.root,
@@ -381,6 +482,149 @@ class DogfoodMaturityGateTests(unittest.TestCase):
         self.assertEqual(report["llm_governed_apply_count"], 0)
         self.assertEqual(report["status"], "not-yet")
         self.assertIn("missing_llm_governed_apply", report["violations"])
+
+    def test_agentic_autonomy_report_counts_debt_autopilot_content_digestion(self) -> None:
+        report = _build_agentic_autonomy_report(
+            self.root,
+            {
+                "agent_loop": {
+                    "status": "ok",
+                    "auto_adopt_judgments": {"items": []},
+                    "debt_autopilot": {
+                        "content_digestion": {
+                            "counts": {
+                                "updated_source_pages": 2,
+                                "updated_concept_pages": 0,
+                                "applied_rewrite_proposals": 1,
+                            }
+                        }
+                    },
+                },
+                "signal_pipeline": {"status": "ok"},
+            },
+        )
+
+        self.assertEqual(report["llm_governed_apply_count"], 3)
+        self.assertEqual(report["status"], "pass")
+        self.assertNotIn("missing_llm_governed_apply", report["violations"])
+
+    def test_agentic_autonomy_report_counts_verified_debt_autopilot_rewrite_state(self) -> None:
+        save_concept_rewrite_state(
+            self.root,
+            {
+                "version": 1,
+                "proposals": [
+                    {
+                        "slug": "agent",
+                        "status": "applied",
+                        "verification_status": "passed",
+                        "review_note": "debt-autopilot: apply current non-core concept rewrite",
+                    },
+                    {
+                        "slug": "failed",
+                        "status": "applied",
+                        "verification_status": "failed",
+                        "review_note": "debt-autopilot: apply current non-core concept rewrite",
+                    },
+                    {
+                        "slug": "manual",
+                        "status": "applied",
+                        "verification_status": "passed",
+                        "review_note": "manual apply",
+                    },
+                ],
+            },
+        )
+
+        report = _build_agentic_autonomy_report(
+            self.root,
+            {
+                "agent_loop": {"status": "ok", "auto_adopt_judgments": {"items": []}},
+                "signal_pipeline": {"status": "ok"},
+            },
+        )
+
+        self.assertEqual(report["llm_governed_apply_count"], 1)
+        self.assertEqual(report["status"], "pass")
+        self.assertNotIn("missing_llm_governed_apply", report["violations"])
+
+    def test_agentic_autonomy_report_does_not_double_count_debt_autopilot_rewrite_evidence(self) -> None:
+        save_concept_rewrite_state(
+            self.root,
+            {
+                "version": 1,
+                "proposals": [
+                    {
+                        "slug": "agent",
+                        "status": "applied",
+                        "verification_status": "passed",
+                        "review_note": "debt-autopilot: apply current non-core concept rewrite",
+                    }
+                ],
+            },
+        )
+
+        report = _build_agentic_autonomy_report(
+            self.root,
+            {
+                "agent_loop": {
+                    "status": "ok",
+                    "auto_adopt_judgments": {"items": []},
+                    "debt_autopilot": {
+                        "content_digestion": {
+                            "counts": {
+                                "updated_source_pages": 0,
+                                "updated_concept_pages": 0,
+                                "applied_rewrite_proposals": 1,
+                            }
+                        }
+                    },
+                },
+                "signal_pipeline": {"status": "ok"},
+            },
+        )
+
+        self.assertEqual(report["llm_governed_apply_count"], 1)
+        self.assertEqual(report["status"], "pass")
+
+    def test_agentic_autonomy_report_falls_back_to_state_rewrite_count_when_nightly_has_only_source_updates(self) -> None:
+        save_concept_rewrite_state(
+            self.root,
+            {
+                "version": 1,
+                "proposals": [
+                    {
+                        "slug": "agent",
+                        "status": "applied",
+                        "verification_status": "passed",
+                        "review_note": "debt-autopilot: apply current non-core concept rewrite",
+                    }
+                ],
+            },
+        )
+
+        report = _build_agentic_autonomy_report(
+            self.root,
+            {
+                "agent_loop": {
+                    "status": "ok",
+                    "auto_adopt_judgments": {"items": []},
+                    "debt_autopilot": {
+                        "content_digestion": {
+                            "counts": {
+                                "updated_source_pages": 2,
+                                "updated_concept_pages": 0,
+                                "applied_rewrite_proposals": 0,
+                            }
+                        }
+                    },
+                },
+                "signal_pipeline": {"status": "ok"},
+            },
+        )
+
+        self.assertEqual(report["llm_governed_apply_count"], 3)
+        self.assertEqual(report["status"], "pass")
 
     def test_agentic_autonomy_report_does_not_count_unbacked_judgment_review_as_llm_governed(self) -> None:
         _write_jsonl(

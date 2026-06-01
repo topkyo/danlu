@@ -33,6 +33,7 @@ Design notes:
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
@@ -60,6 +61,10 @@ from ..memory.execution_surfaces import concept_rewrite_proposal_digest
 
 logger = logging.getLogger(__name__)
 
+_WIKILINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]")
+_MARKDOWN_LOCAL_LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+_RENDERED_LOCAL_LINK_RE = re.compile(r"`([^`]+)`\s*[（(]\s*`([^`]+)`\s*[）)]")
+
 
 def _load_concept_rewrite_proposals(root: Path) -> list[dict[str, Any]]:
     state = load_concept_rewrite_state(root)
@@ -71,6 +76,62 @@ def _find_concept_rewrite_proposal(proposals: list[dict[str, Any]], slug: str) -
         if str(proposal.get("slug") or "") == slug:
             return proposal
     raise FileNotFoundError(f"Concept rewrite proposal not found: {slug}")
+
+
+def _canonical_markdown_path_for_summary(path: str) -> str:
+    text = path.strip()
+    while text.endswith(".md.md"):
+        text = text[:-3]
+    if text.startswith("wiki/") and not text.endswith(".md"):
+        text = f"{text}.md"
+    return text
+
+
+def _is_local_markdown_ref(path: str) -> bool:
+    text = path.strip()
+    if not text or "://" in text or text.startswith(("mailto:", "#")):
+        return False
+    return (
+        text.startswith(("wiki/", "raw/", "../", "./"))
+        or text.endswith(".md")
+        or text.endswith(".jpeg")
+        or text.endswith(".jpg")
+        or text.endswith(".png")
+    )
+
+
+def _normalize_rewrite_summary_for_verification(summary: str) -> str:
+    def replace_wikilink(match: re.Match[str]) -> str:
+        path = _canonical_markdown_path_for_summary(match.group(1))
+        alias = str(match.group(2) or Path(path).name).strip()
+        return f"{alias} <{path}>"
+
+    def replace_markdown_link(match: re.Match[str]) -> str:
+        path = _canonical_markdown_path_for_summary(match.group(2))
+        if not _is_local_markdown_ref(path):
+            return match.group(0)
+        alias = match.group(1).strip()
+        return f"{alias} <{path}>"
+
+    def replace_rendered_link(match: re.Match[str]) -> str:
+        alias = match.group(1).strip()
+        path = _canonical_markdown_path_for_summary(match.group(2))
+        if not _is_local_markdown_ref(path):
+            return match.group(0)
+        return f"{alias} <{path}>"
+
+    normalized = _WIKILINK_RE.sub(replace_wikilink, summary.strip())
+    normalized = _MARKDOWN_LOCAL_LINK_RE.sub(replace_markdown_link, normalized)
+    normalized = _RENDERED_LOCAL_LINK_RE.sub(replace_rendered_link, normalized)
+    normalized = re.sub(r"[ \t]+", " ", normalized)
+    normalized = "\n".join(line.strip() for line in normalized.splitlines())
+    return normalized.strip()
+
+
+def _rewrite_summaries_match(candidate_summary: str, current_summary: str) -> bool:
+    return _normalize_rewrite_summary_for_verification(
+        candidate_summary
+    ) == _normalize_rewrite_summary_for_verification(current_summary)
 
 
 def _save_concept_rewrite_proposals(root: Path, proposals: list[dict[str, Any]]) -> None:
@@ -114,7 +175,7 @@ def _evaluate_concept_rewrite_verification(root: Path, proposal: dict[str, Any])
         if current_source_pages != expected_source_pages:
             issues.append("source-pages-drift")
         current_summary = str(snapshot.get("summary") or "").strip()
-        if candidate_summary and current_summary != candidate_summary:
+        if candidate_summary and not _rewrite_summaries_match(candidate_summary, current_summary):
             issues.append("summary-not-applied")
 
     memory = load_machine_memory(root)
@@ -476,7 +537,7 @@ def revert_concept_rewrite(root: Path, slug: str, *, note: str | None = None) ->
         raise RuntimeError("Concept rewrite proposal has no previous concept snapshot to restore.")
     candidate_summary = preserved_section(str(target.get("candidate_markdown") or ""), "Summary", "").strip()
     current_summary = concept_page_snapshot(root, slug).get("summary", "").strip()
-    if candidate_summary and current_summary != candidate_summary:
+    if candidate_summary and not _rewrite_summaries_match(candidate_summary, current_summary):
         raise RuntimeError("Only the latest applied rewrite can be reverted.")
     concept_path = root / str(target.get("target_path") or f"wiki/concepts/{slug}.md")
     if not concept_path.exists():

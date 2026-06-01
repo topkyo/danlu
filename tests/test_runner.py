@@ -2947,6 +2947,10 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(record["conflict_signals"][0]["label"], "conflict")
         self.assertEqual(_rewrite_candidate_record(memory, "missing"), {})
 
+        weak_only_memory = {"health": {"concept_quality": {"weak_concepts": [{"slug": "weak-only", "priority": "low"}]}}}
+        self.assertEqual(_rewrite_candidate_slugs(weak_only_memory, exclude=set()), ["weak-only"])
+        self.assertEqual(_rewrite_candidate_record(weak_only_memory, "weak-only")["priority"], "low")
+
         rendered = _render_machine_query(
             {
                 "matched_terms": ["agent", "protocol"],

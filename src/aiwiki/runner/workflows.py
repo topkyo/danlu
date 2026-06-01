@@ -131,6 +131,21 @@ def _entry_matches_path_filter(
     return bool(candidates & filter_tokens)
 
 
+def _concept_slug_matches_path_filter(slug: str, filter_tokens: set[str]) -> bool:
+    slug = str(slug or "").strip()
+    if not slug:
+        return False
+    candidates = {
+        slug,
+        slug.lower(),
+        f"{slug}.md",
+        f"{slug}.md".lower(),
+        f"wiki/concepts/{slug}.md",
+        f"wiki/concepts/{slug}.md".lower(),
+    }
+    return bool(candidates & filter_tokens)
+
+
 # F-INV-NEW-1: real Chinese annual-report PDFs (270+ pages) overrun the default
 # 120s LLM timeout. Estimate ~30KB of raw text per "page" and give 60s per page,
 # clamped to [240s, 1800s]. The result is per-job (not a global default change);
@@ -375,10 +390,16 @@ def run_compile(
     updated_rewrite_proposal_pages: list[str] = []
     skipped = max(0, len(pending) - limit)
     pending_concept_slugs = placeholder_concept_slugs(root)
+    if path_filter is not None:
+        pending_concept_slugs = [slug for slug in pending_concept_slugs if _concept_slug_matches_path_filter(slug, path_filter)]
     remaining_budget = max(0, limit)
     skipped_concepts = max(0, len(pending_concept_slugs) - remaining_budget)
     memory = load_machine_memory(root)
     pending_rewrite_candidates = _rewrite_candidate_slugs(memory, exclude=set(pending_concept_slugs))
+    if path_filter is not None:
+        pending_rewrite_candidates = [
+            slug for slug in pending_rewrite_candidates if _concept_slug_matches_path_filter(slug, path_filter)
+        ]
     skipped_rewrite_candidates = max(0, len(pending_rewrite_candidates) - remaining_budget)
     started = time.monotonic()
     prompt_profile = ""
@@ -800,6 +821,10 @@ def run_compile(
             memory,
             exclude=set(pending_concept_slugs) | {Path(path).stem for path in updated_placeholder_concept_pages},
         )
+        if path_filter is not None:
+            pending_rewrite_candidates = [
+                slug for slug in pending_rewrite_candidates if _concept_slug_matches_path_filter(slug, path_filter)
+            ]
         skipped_rewrite_candidates = max(0, len(pending_rewrite_candidates) - remaining_budget)
         rewrite_stage_total = len(pending_rewrite_candidates[:remaining_budget])
 

@@ -1305,6 +1305,35 @@ class ExecutionCompatSeamMigratedGroupTests(unittest.TestCase):
             "through aiwiki.app_compile; B5 lazy-lookup seam regressed.",
         )
 
+    def test_b5_rewrite_verification_treats_local_wikilink_rendering_as_equivalent(self) -> None:
+        import importlib
+
+        concept_mod = importlib.import_module("aiwiki.execution.concept_rewrite")
+        candidate_summary = (
+            "The source is [[wiki/sources/source-image.md|Image Asset]].\n"
+            "An extensionless source is [[wiki/sources/source-image|Image Asset]].\n"
+            "A no-alias source is [[wiki/sources/source-image.md]].\n"
+            "Relative source is [source page](../sources/source-image.md).\n"
+            "Raw file: [[raw/assets/image.jpeg|Image Asset]]."
+        )
+        current_summary = (
+            "The source is `Image Asset`（`wiki/sources/source-image.md.md`）.\n"
+            "An extensionless source is `Image Asset`（`wiki/sources/source-image.md`）.\n"
+            "A no-alias source is `source-image.md`（`wiki/sources/source-image.md.md`）.\n"
+            "Relative source is `source page`（`../sources/source-image.md`）.\n"
+            "Raw file: `Image Asset`（`raw/assets/image.jpeg`）."
+        )
+
+        self.assertTrue(
+            concept_mod._rewrite_summaries_match(candidate_summary, current_summary)
+        )
+        self.assertFalse(
+            concept_mod._rewrite_summaries_match(
+                candidate_summary,
+                current_summary.replace("Image Asset", "Different Asset", 1),
+            )
+        )
+
     def test_b5_revert_concept_rewrite_uses_patched_utc_now(self) -> None:
         # ``revert_concept_rewrite`` lazy-resolves ``utc_now`` for its
         # ``reverted_at`` stamp.

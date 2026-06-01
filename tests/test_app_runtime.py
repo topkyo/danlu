@@ -830,6 +830,47 @@ class RuntimeFlowTests(AppFlowTestBase):
         self.assertTrue(proposal_page.exists())
         self.assertIn("Rewritten synthesis", proposal_page.read_text(encoding="utf-8"))
 
+    def test_run_compile_paths_targets_rewrite_candidate_without_source_queue_starvation(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
+        source_page.write_text(
+            source_page.read_text(encoding="utf-8").replace(
+                "- Pending LLM summary.",
+                "- Transformer scale improves capability and raises compute demand.",
+            ),
+            encoding="utf-8",
+        )
+        compile_wiki(self.root)
+
+        self._seed_existing_concept_summaries()
+        compile_wiki(self.root)
+
+        pending_entry = ingest_source(self.root, str(self.sample), title="Pending Source")
+        compile_wiki(self.root)
+        pending_source_page = self.root / "wiki" / "sources" / f"{pending_entry['id']}.md"
+        self.assertIn("Pending LLM summary.", pending_source_page.read_text(encoding="utf-8"))
+
+        memory = load_machine_memory(self.root)
+        candidate = memory["health"]["concept_quality"]["rewrite_candidates"][0]
+        concept_page = self.root / candidate["path"]
+        current = concept_page.read_text(encoding="utf-8")
+        updated = current.replace("Existing synthesis", "Path-filtered rewritten synthesis")
+
+        result = run_compile(
+            self.root,
+            client=StubClient([updated]),
+            limit=1,
+            paths=[f"wiki/concepts/{concept_page.stem}.md"],
+        )
+
+        self.assertEqual(result["pending_pages"], 0)
+        self.assertGreaterEqual(result["pending_rewrite_concept_pages"], 1)
+        self.assertEqual(len(result["updated_rewrite_proposal_pages"]), 1)
+        proposal_page = self.root / result["updated_rewrite_proposal_pages"][0]
+        self.assertIn("Path-filtered rewritten synthesis", proposal_page.read_text(encoding="utf-8"))
+        self.assertIn("Pending LLM summary.", pending_source_page.read_text(encoding="utf-8"))
+
     def test_nightly_prioritizes_pending_reviews_for_active_protocol(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)

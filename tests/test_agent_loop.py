@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from aiwiki.agent_loop import (
     attach_agent_loop_to_nightly_state,
@@ -52,6 +53,8 @@ class AgentLoopPreviewTests(unittest.TestCase):
         self.assertEqual(light["selected_count"], 1)
         self.assertIn("compile", light["selected_primitives"])
         self.assertFalse((self.root / "output/control/execution-receipts").exists())
+        self.assertEqual(result["debt_autopilot"]["operation"], "debt-autopilot")
+        self.assertTrue(result["debt_autopilot"]["dry_run"])
 
     def test_attach_agent_loop_updates_nightly_state_file(self) -> None:
         state = {"generated_at": "2026-04-30T00:00:00+00:00", "repair_backlog": {"path": "x"}}
@@ -116,6 +119,24 @@ class AgentLoopPreviewTests(unittest.TestCase):
         self.assertEqual(len(light["primitive_receipts"]), 3)
         for receipt in light["primitive_receipts"]:
             self.assertTrue((self.root / receipt).exists())
+        self.assertEqual(result["debt_autopilot"]["operation"], "debt-autopilot")
+        self.assertFalse(result["debt_autopilot"]["dry_run"])
+
+    def test_agent_loop_marks_degraded_when_debt_autopilot_degrades(self) -> None:
+        with patch(
+            "aiwiki.agent_loop._build_debt_autopilot",
+            return_value={
+                "operation": "debt-autopilot",
+                "status": "failed",
+                "error": "boom",
+                "degraded": True,
+            },
+        ):
+            result = run_nightly_agent_loop(self.root)
+
+        self.assertEqual(result["status"], "degraded")
+        self.assertTrue(result["debt_autopilot"]["degraded"])
+        self.assertEqual(result["debt_autopilot"]["error"], "boom")
 
 
 if __name__ == "__main__":
