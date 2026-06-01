@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -37,6 +38,7 @@ from ..app_utils import (
     relative_path,
     sha256_bytes,
     slugify,
+    strip_frontmatter,
     utc_now,
 )
 from .audit_preview import AUDIT_STREAM_PATH
@@ -47,6 +49,7 @@ ELIXIR_STATE_VALUES = {"draft", "distilling", "candidate", "settled", "supersede
 _ACTIVE_ELIXIR_STATES = {"draft", "distilling", "candidate"}
 _CONFIDENCE_LEVELS = {"low", "medium", "high"}
 _PROMOTION_TS_FIELD = "promoted_at"
+_PENDING_REFINEMENT_RE = re.compile(r"(?im)^\s*-\s*pending\s+refinement\.?\s*$")
 logger = logging.getLogger("aiwiki")
 
 
@@ -941,6 +944,7 @@ def _scaffold_elixir_markdown(
     created_at: str,
     updated_at: str,
     distill_history: list[dict[str, Any]] | None = None,
+    body: str | None = None,
 ) -> str:
     frontmatter = {
         "kind": "elixir",
@@ -957,7 +961,7 @@ def _scaffold_elixir_markdown(
         "updated_at": updated_at,
         "distill_history_json": json.dumps(distill_history or [], ensure_ascii=False),
     }
-    body = "\n".join([
+    body = body or "\n".join([
         "# Elixir",
         "",
         "## Thesis",
@@ -970,7 +974,80 @@ def _scaffold_elixir_markdown(
         "- Pending refinement.",
         "",
     ])
-    return _render_inserted_frontmatter(frontmatter) + body
+    return _render_inserted_frontmatter(frontmatter) + body.rstrip() + "\n"
+
+
+def _elixir_body_has_pending_refinement(body: str) -> bool:
+    return bool(_PENDING_REFINEMENT_RE.search(body))
+
+
+def _first_section_lines(markdown: str, headings: tuple[str, ...], *, fallback: list[str], max_lines: int = 6) -> list[str]:
+    for heading in headings:
+        match = re.search(rf"(?ms)^## {re.escape(heading)}\n(.*?)(?=^## |\Z)", markdown)
+        if not match:
+            continue
+        lines: list[str] = []
+        for raw_line in match.group(1).splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("```") or line.startswith("#"):
+                continue
+            if "_LLM:" in line or "机器记忆提示" in line or "查询入口：" in line:
+                continue
+            if not line.startswith(("-", "1.", "2.", "3.", "4.", "5.")):
+                line = f"- {line}"
+            lines.append(line)
+            if len(lines) >= max_lines:
+                break
+        if lines:
+            return lines
+    return list(fallback)
+
+
+def _seed_elixir_body_from_sources(root: Path, *, topic: str, source_outputs: list[str]) -> str:
+    source_texts: list[str] = []
+    existing_refs: list[str] = []
+    for ref in source_outputs:
+        path = root / ref
+        if not path.is_file():
+            continue
+        existing_refs.append(ref)
+        try:
+            source_texts.append(strip_frontmatter(path.read_text(encoding="utf-8", errors="replace")))
+        except OSError:
+            continue
+    merged = "\n\n".join(source_texts)
+    refs = existing_refs or source_outputs
+    thesis = _first_section_lines(
+        merged,
+        ("结论", "Conclusion", "Investment Judgment", "Judgment", "Filed Content"),
+        fallback=[f"- {topic} is seeded from {', '.join(refs[:3])}."],
+        max_lines=3,
+    )
+    evidence = _first_section_lines(
+        merged,
+        ("关键证据", "Evidence", "Drivers And Catalysts", "Supporting Evidence"),
+        fallback=[f"- Provenance source: `{ref}`." for ref in refs[:6]],
+        max_lines=6,
+    )
+    questions = _first_section_lines(
+        merged,
+        ("反证与不确定性", "Open Questions", "Next Signals", "下次观察信号", "Risks And Invalidation"),
+        fallback=["- Review counter evidence and refresh this elixir before relying on it for a stronger claim."],
+        max_lines=5,
+    )
+    return "\n".join([
+        "# Elixir",
+        "",
+        "## Thesis",
+        *thesis,
+        "",
+        "## Evidence",
+        *evidence,
+        "",
+        "## Open Questions",
+        *questions,
+        "",
+    ])
 
 
 def _render_inserted_frontmatter(frontmatter: dict[str, Any]) -> str:
@@ -1114,6 +1191,7 @@ def start_elixir(
             elixir_state="draft",
             created_at=now,
             updated_at=now,
+            body=_seed_elixir_body_from_sources(root, topic=topic, source_outputs=source_outputs),
         ),
         encoding="utf-8",
     )
@@ -1183,6 +1261,8 @@ def distill_elixir(root: Path, elixir_id: str, *, question: str, include_elixir_
     original = source_path.read_text(encoding="utf-8", errors="replace")
     body = original.split("---", 2)[-1]
     body = body.lstrip("\n")
+    if _elixir_body_has_pending_refinement(body):
+        body = _seed_elixir_body_from_sources(root, topic=question, source_outputs=merged)
     _write_elixir_markdown(target_path, frontmatter=frontmatter, body=body)
     _validate_state_for_path(root, "distilling", target_path)
     return {
@@ -1312,6 +1392,8 @@ def promote_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> di
 
     original = candidate_path.read_text(encoding="utf-8", errors="replace")
     body = original.split("---", 2)[-1].lstrip("\n")
+    if _elixir_body_has_pending_refinement(body):
+        raise ValueError("elixir_body_placeholder: cannot promote elixir with pending refinement body")
     applied_at_dt = datetime.now(timezone.utc)
     applied_at = applied_at_dt.isoformat()
 

@@ -61,8 +61,48 @@ from ..app_utils import (
     upsert_markdown_section,
 )
 from ..compile.pipeline import compile_wiki
+from ..lifecycle.templates import (
+    curated_frontmatter_hints,
+    curated_structured_value_is_placeholder,
+    repair_curated_page_body,
+)
 from .audit_preview import AUDIT_STREAM_PATH
 from .receipts import write_execution_receipt
+
+
+def _curated_hint_source_body(body: str) -> str:
+    if "## Supporting Artifact" in body:
+        return body.split("## Supporting Artifact", 1)[0].strip()
+    return body
+
+
+def _curated_supporting_body(body: str) -> str:
+    if "## Supporting Artifact" in body:
+        return body.split("## Supporting Artifact", 1)[1].strip()
+    return body
+
+
+def _normalized_curated_value(value: Any) -> Any:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _curated_value_is_empty(value: Any) -> bool:
+    normalized = _normalized_curated_value(value)
+    if isinstance(normalized, list):
+        return not normalized
+    return not normalized
+
+
+def _should_refresh_curated_hint(current: Any, previous_hint: Any) -> bool:
+    return (
+        _curated_value_is_empty(current)
+        or curated_structured_value_is_placeholder(current)
+        or _normalized_curated_value(current) == _normalized_curated_value(previous_hint)
+    )
 
 
 @runtime_write_operation
@@ -122,6 +162,29 @@ def review_page(
     frontmatter["revisit_after"] = revisit_after
     frontmatter["escalate_after"] = escalate_after
     body = strip_frontmatter(content).strip()
+    previous_supporting_body = _curated_supporting_body(body)
+    previous_hints = curated_frontmatter_hints(
+        kind=kind,
+        protocol=str(frontmatter.get("protocol") or DEFAULT_PROTOCOL),
+        supporting_body=previous_supporting_body,
+    )
+    artifact_refs = [str(item) for item in frontmatter.get("source_files", []) if isinstance(item, str) and item.strip()]
+    body = repair_curated_page_body(
+        kind=kind,
+        protocol=str(frontmatter.get("protocol") or DEFAULT_PROTOCOL),
+        body=body,
+        artifact_ref=artifact_refs[0] if artifact_refs else relative_path(root, target),
+        revisit_after=revisit_after,
+        escalate_after=escalate_after,
+    )
+    repaired_hints = curated_frontmatter_hints(
+        kind=kind,
+        protocol=str(frontmatter.get("protocol") or DEFAULT_PROTOCOL),
+        supporting_body=_curated_hint_source_body(body),
+    )
+    for hint_key, hint_value in repaired_hints.items():
+        if _should_refresh_curated_hint(frontmatter.get(hint_key), previous_hints.get(hint_key)):
+            frontmatter[hint_key] = hint_value
     review_status_lines = [
         f"- Current status: `{status}`",
         f"- Reviewed at: `{reviewed_at}`",

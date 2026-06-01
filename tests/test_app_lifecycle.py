@@ -83,6 +83,7 @@ from aiwiki.compile import compile_wiki as compile_wiki_owner
 from aiwiki.config import BACKEND_CODEX_CLI, BACKEND_COPILOT_CLI, LLMConfig
 from aiwiki.drop import _fetch_url, drop_image, drop_pdf, drop_repo, drop_url
 from aiwiki.execution.machine_memory_actions import MachineMemoryActionReceiptError
+from aiwiki.lifecycle.templates import repair_curated_page_body
 from aiwiki.llm import CompletionResult
 from aiwiki.runner import auto_process_once, run_ask, run_compile, run_lint, run_nightly, watch_inbox
 from tests.test_app import AppFlowTestBase, CapturingClient, FailingVisionClient, StubClient, StubVisionClient
@@ -639,7 +640,7 @@ class LifecycleFlowTests(AppFlowTestBase):
         report_text = (self.root / lint["path"]).read_text(encoding="utf-8")
         self.assertIn("Decision page is missing structured `citations` metadata.", report_text)
 
-    def test_lint_warns_when_reviewed_decision_keeps_placeholder_asset_sections(self) -> None:
+    def test_review_page_repairs_placeholder_asset_sections_before_lint(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
         report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
@@ -654,7 +655,174 @@ class LifecycleFlowTests(AppFlowTestBase):
         lint = lint_wiki(self.root)
 
         report_text = (self.root / lint["path"]).read_text(encoding="utf-8")
-        self.assertIn("Decision page still has placeholder `Counter Evidence` content.", report_text)
+        decision_text = (self.root / decision["path"]).read_text(encoding="utf-8")
+        self.assertNotIn("Pending counter evidence.", decision_text)
+        self.assertNotIn("Decision page still has placeholder `Counter Evidence` content.", report_text)
+
+    def test_repair_curated_page_body_replaces_generic_fallback_sections(self) -> None:
+        body = """# AOS C2 Dogfood Live Proof Judgment
+
+## Investment Judgment
+- Filed from `output/reports/proof.md`; review the supporting artifact before confirmation.
+
+## Drivers And Catalysts
+- Evidence is preserved in the supporting artifact `output/reports/proof.md`.
+
+## Risks And Invalidation
+- No explicit counter evidence was found in the filed artifact.
+
+## Confidence And Watchlist
+- Revisit after `none` or when cited evidence changes.
+
+## Supporting Artifact
+# Proof Report
+
+## 结论
+真实判断：dogfood live proof 已形成可审计证据链。
+
+## 关键证据
+- 证据链贯通 raw 到 wiki 到 output。
+
+## 反证与不确定性
+- 仍需补充负面验证。
+
+## 下次观察信号
+- 后续 source checksum 变化时复审。
+"""
+
+        repaired = repair_curated_page_body(
+            kind="judgment",
+            protocol="investing",
+            body=body,
+            artifact_ref="output/reports/proof.md",
+            revisit_after="",
+            escalate_after="",
+        )
+
+        self.assertIn("- 真实判断：dogfood live proof 已形成可审计证据链。", repaired)
+        self.assertIn("- 证据链贯通 raw 到 wiki 到 output。", repaired)
+        self.assertIn("- 仍需补充负面验证。", repaired)
+        self.assertIn("- 后续 source checksum 变化时复审。", repaired)
+        self.assertNotIn("review the supporting artifact before confirmation", repaired)
+        self.assertNotIn("Evidence is preserved in the supporting artifact", repaired)
+
+    def test_repair_curated_page_body_replaces_default_next_signals_asset_section(self) -> None:
+        body = """# AOS C2 Dogfood Live Proof Judgment
+
+## Next Signals
+- Pending next signals.
+- Default revisit window: `none`
+- Default escalation window: `none`
+
+## Supporting Artifact
+# Proof Report
+
+## 下次观察信号
+- Source checksum drift should trigger review.
+"""
+
+        repaired = repair_curated_page_body(
+            kind="judgment",
+            protocol="investing",
+            body=body,
+            artifact_ref="output/reports/proof.md",
+            revisit_after="",
+            escalate_after="",
+        )
+
+        self.assertIn("- Source checksum drift should trigger review.", repaired)
+        self.assertNotIn("Pending next signals.", repaired)
+        self.assertNotIn("Default revisit window:", repaired)
+        self.assertNotIn("Default escalation window:", repaired)
+
+    def test_repair_curated_page_body_preserves_manual_section_with_default_window_line(self) -> None:
+        body = """# Manual Decision
+
+## Catalysts And Revisit
+- Manual reviewer checkpoint after partner launch.
+- Revisit after `none` or when cited evidence changes.
+
+## Supporting Artifact
+# Proof Report
+
+## 下次观察信号
+- Source checksum drift should trigger review.
+"""
+
+        repaired = repair_curated_page_body(
+            kind="decision",
+            protocol="investing",
+            body=body,
+            artifact_ref="output/reports/proof.md",
+            revisit_after="",
+            escalate_after="",
+        )
+
+        self.assertIn("- Manual reviewer checkpoint after partner launch.", repaired)
+        self.assertIn("- Revisit after `none` or when cited evidence changes.", repaired)
+        self.assertNotIn("- Source checksum drift should trigger review.\n\n## Supporting Artifact", repaired)
+
+    def test_review_page_refreshes_generated_hints_without_overwriting_manual_frontmatter(self) -> None:
+        path = self.root / "wiki" / "judgments" / "manual-investing.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        frontmatter = {
+            "kind": "judgment",
+            "status": "proposed",
+            "title": "Manual Investing Judgment",
+            "protocol": "investing",
+            "source_files": ["output/reports/manual.md"],
+            "thesis": "Old supporting thesis.",
+            "counter_evidence": ["Old supporting risk."],
+            "invalidation_rule": "Manual frontmatter invalidation must stay.",
+            "next_signals": ["Old supporting signal."],
+        }
+        body = """# Manual Investing Judgment
+
+## Investment Judgment
+- Manual body thesis.
+
+## Drivers And Catalysts
+- Manual body catalyst.
+
+## Risks And Invalidation
+- Manual body risk.
+
+## Confidence And Watchlist
+- Manual body signal.
+- Revisit after `none` or when cited evidence changes.
+
+## Supporting Artifact
+# Old Report
+
+## 结论
+Old supporting thesis.
+
+## 反证与不确定性
+- Old supporting risk.
+
+## 下次观察信号
+- Old supporting signal.
+"""
+        path.write_text(f"{render_frontmatter(frontmatter)}\n\n{body}", encoding="utf-8")
+
+        review_page(self.root, "wiki/judgments/manual-investing.md", "confirmed", confidence="high")
+
+        updated = path.read_text(encoding="utf-8")
+        updated_frontmatter = parse_frontmatter(updated)
+        self.assertEqual(updated_frontmatter["thesis"], "Manual body thesis.")
+        self.assertEqual(updated_frontmatter["counter_evidence"], ["Manual body risk."])
+        self.assertEqual(updated_frontmatter["next_signals"], ["Manual body signal.", "Revisit after `none` or when cited evidence changes."])
+        self.assertEqual(updated_frontmatter["invalidation_rule"], "Manual frontmatter invalidation must stay.")
+
+    def test_lint_warns_when_elixir_has_placeholder_variant(self) -> None:
+        elixir_dir = self.root / "wiki" / "elixirs"
+        elixir_dir.mkdir(parents=True, exist_ok=True)
+        (elixir_dir / "placeholder.md").write_text("# Elixir\n\n## Thesis\n- pending refinement\n", encoding="utf-8")
+
+        lint = lint_wiki(self.root)
+
+        report_text = (self.root / lint["path"]).read_text(encoding="utf-8")
+        self.assertIn("Elixir page still has placeholder `Pending refinement` content.", report_text)
 
     def test_lint_warns_when_reviewed_judgment_has_citation_drift_and_snapshot_gap(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")

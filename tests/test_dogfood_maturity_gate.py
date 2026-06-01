@@ -1226,6 +1226,48 @@ class DogfoodMaturityGateTests(unittest.TestCase):
         self.assertEqual(elixir_proof["missing_evidence"], [])
         self.assertEqual(quality_proof["missing_evidence"], [])
 
+    def test_elixir_quality_rejects_settled_placeholder_body(self) -> None:
+        ask_path = self.root / "prompts" / "ask.md"
+        ask_path.parent.mkdir(parents=True, exist_ok=True)
+        ask_path.write_text("# Ask\n", encoding="utf-8")
+        _write_json(
+            self.root / ".aiwiki" / "state" / "manifest.json",
+            {"version": 1, "entries": [{"id": "src-1", "stored_path": "raw/src-1.md"}]},
+        )
+        (self.root / "wiki" / "sources").mkdir(parents=True, exist_ok=True)
+        (self.root / "wiki" / "sources" / "src-1.md").write_text("# Source\n", encoding="utf-8")
+        (self.root / "wiki" / "elixirs").mkdir(parents=True, exist_ok=True)
+        (self.root / "wiki" / "elixirs" / "e1.md").write_text(
+            "---\nderived_from:\n  - wiki/judgments/j1.md\n---\n# Elixir\n\n## Thesis\n- pending refinement\n",
+            encoding="utf-8",
+        )
+        output_path = self.root / "output" / "reports" / "r1.md"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
+            "---\nderived_from:\n  - wiki/elixirs/e1.md\ngenerated_at: 2026-05-18T00:00:00Z\n---\n# Report\n",
+            encoding="utf-8",
+        )
+        _write_jsonl(
+            self.root / ".aiwiki" / "state" / "execution-receipts.jsonl",
+            [
+                {
+                    "subject_kind": "report",
+                    "subject_id": "r1",
+                    "operation": "file-back",
+                    "target_file": "output/reports/r1.md",
+                    "receipt_path": "output/control/execution-receipts/report-r1.json",
+                    "applied_at": "2026-05-18T00:00:01Z",
+                }
+            ],
+        )
+        _write_json(self.root / "output" / "control" / "execution-receipts" / "report-r1.json", {"receipt_path": "output/control/execution-receipts/report-r1.json"})
+
+        quality_proof = collect_metrics(self.root, preview_limit=5)["elixir_quality_proof"]
+
+        self.assertEqual(quality_proof["status"], "not-yet")
+        self.assertIn("settled_elixir_placeholder_body", quality_proof["missing_evidence"])
+        self.assertEqual(quality_proof["metrics"]["settled_elixir_placeholder_count"]["value"], 1)
+
     def test_elixir_quality_flags_revert_after_compounding_sample(self) -> None:
         ask_path = self.root / "prompts" / "ask.md"
         ask_path.parent.mkdir(parents=True, exist_ok=True)

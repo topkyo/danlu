@@ -101,6 +101,54 @@ class IoFlowTests(AppFlowTestBase):
         self.assertIn("Scaling Decision", review_queue)
         self.assertIn("Scaling Decision", decisions_index)
 
+    def test_file_back_investing_judgment_projects_report_sections(self) -> None:
+        report_path = self.root / "output" / "reports" / "dogfood-proof.md"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(
+            "\n".join(
+                [
+                    "# Dogfood Proof",
+                    "",
+                    "## 结论",
+                    "炼丹炉 dogfood proof 已经形成 receipt-backed 闭环。",
+                    "",
+                    "## 关键证据",
+                    "- raw 输入已编译为 wiki source。",
+                    "- 输出报告保留 execution receipt。",
+                    "",
+                    "## 反证与不确定性",
+                    "- 当前 proof 仍依赖短窗口样本。",
+                    "",
+                    "## 下次观察信号",
+                    "- 继续观察下一轮 nightly receipt。",
+                    "",
+                    "## 引用",
+                    "- `wiki/sources/source-a.md`",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        judgment = file_back(
+            self.root,
+            str(report_path.relative_to(self.root)),
+            title="Dogfood Proof Judgment",
+            kind="judgment",
+            protocol="investing",
+        )
+
+        text = (self.root / judgment["path"]).read_text(encoding="utf-8")
+        frontmatter = parse_frontmatter(text)
+        self.assertIn("炼丹炉 dogfood proof 已经形成 receipt-backed 闭环。", text)
+        self.assertIn("raw 输入已编译为 wiki source。", text)
+        self.assertIn("当前 proof 仍依赖短窗口样本。", text)
+        self.assertNotIn("State the thesis or judgment call here.", text)
+        self.assertNotIn("Pending counter evidence.", text)
+        self.assertEqual(frontmatter["thesis"], "炼丹炉 dogfood proof 已经形成 receipt-backed 闭环。")
+        self.assertEqual(frontmatter["counter_evidence"], ["当前 proof 仍依赖短窗口样本。"])
+        self.assertEqual(frontmatter["next_signals"], ["继续观察下一轮 nightly receipt。"])
+
     def test_url_ingest_delegates_to_drop_url_without_stub_wrapper(self) -> None:
         fetched = {
             "title": "Karpathy Note",

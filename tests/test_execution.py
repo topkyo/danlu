@@ -800,6 +800,45 @@ class AlchemyTests(unittest.TestCase):
         self.assertEqual(frontmatter["iteration"], "0")
         self.assertTrue(frontmatter["derived_from"])
         self.assertTrue(all(str(item).startswith("wiki/derived/") for item in frontmatter["derived_from"]))
+        self.assertNotIn("Pending refinement", path.read_text(encoding="utf-8"))
+
+    def test_alchemy_promote_rejects_placeholder_body(self) -> None:
+        corpus_id = self._make_promoted_corpus(["Should we increase transformer training spend?"])
+        from aiwiki.runner import run_alchemy_finalize, run_alchemy_promote, run_alchemy_start
+
+        started = run_alchemy_start(self.root, corpus_id, "VLA robotics")
+        path = self.root / started["path"]
+        text = path.read_text(encoding="utf-8")
+        frontmatter = parse_frontmatter(text)
+        _write_elixir_markdown(
+            path,
+            frontmatter=frontmatter,
+            body="# Elixir\n\n## Thesis\n- pending refinement\n\n## Evidence\n- Pending refinement.\n\n## Open Questions\n- Pending refinement.\n",
+        )
+        run_alchemy_finalize(self.root, elixir_id=started["elixir_id"])
+
+        with self.assertRaisesRegex(ValueError, "elixir_body_placeholder"):
+            run_alchemy_promote(self.root, elixir_id=started["elixir_id"])
+
+    def test_alchemy_distill_repairs_legacy_placeholder_body(self) -> None:
+        corpus_id = self._make_promoted_corpus(["Should we increase transformer training spend?"])
+        from aiwiki.runner import run_alchemy_distill, run_alchemy_start
+
+        started = run_alchemy_start(self.root, corpus_id, "VLA robotics")
+        path = self.root / started["path"]
+        text = path.read_text(encoding="utf-8")
+        frontmatter = parse_frontmatter(text)
+        _write_elixir_markdown(
+            path,
+            frontmatter=frontmatter,
+            body="# Elixir\n\n## Thesis\n- Pending refinement.\n\n## Evidence\n- Pending refinement.\n\n## Open Questions\n- Pending refinement.\n",
+        )
+
+        distilled = run_alchemy_distill(self.root, started["elixir_id"], "Repair the elixir body from provenance.")
+
+        body = (self.root / distilled["path"]).read_text(encoding="utf-8")
+        self.assertNotIn("Pending refinement", body)
+        self.assertIn("## Evidence", body)
 
     def test_alchemy_start_raises_when_corpus_has_no_promoted(self) -> None:
         corpus_id = self._make_promoted_corpus(["Should we increase transformer training spend?"])

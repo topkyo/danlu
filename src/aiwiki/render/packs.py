@@ -417,14 +417,14 @@ def decision_memo_section_lines(
     fallback: str,
     limit: int = 5,
 ) -> list[str]:
-    section_lines = compact_section_lines(content, heading, fallback="", limit=limit)
-    normalized = [line for line in section_lines if str(line).strip()]
-    if normalized and normalized != [fallback]:
-        return normalized
     if structured_values:
         return [f"- {value}" for value in structured_values[:limit]]
     if structured_scalar:
         return [f"- {structured_scalar}"]
+    section_lines = compact_section_lines(content, heading, fallback="", limit=limit)
+    normalized = [line for line in section_lines if str(line).strip()]
+    if normalized and normalized != [fallback]:
+        return normalized
     return [fallback]
 
 

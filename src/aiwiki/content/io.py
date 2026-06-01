@@ -298,13 +298,24 @@ def curated_asset_placeholder_lines(heading: str, *, revisit_after: str = "", es
     return placeholders.get(heading, [])
 
 
-def render_curated_asset_sections(*, revisit_after: str, escalate_after: str) -> list[str]:
+def render_curated_asset_sections(
+    *,
+    revisit_after: str,
+    escalate_after: str,
+    section_overrides: dict[str, list[str]] | None = None,
+) -> list[str]:
     sections: list[str] = []
     from ..app_protocol import CURATED_ASSET_SECTION_ORDER
     for heading in CURATED_ASSET_SECTION_ORDER:
         if heading == "Review History":
             continue
-        sections.extend(["", f"## {heading}", *curated_asset_placeholder_lines(heading, revisit_after=revisit_after, escalate_after=escalate_after)])
+        override_lines = (section_overrides or {}).get(heading)
+        body_lines = (
+            override_lines
+            if override_lines
+            else curated_asset_placeholder_lines(heading, revisit_after=revisit_after, escalate_after=escalate_after)
+        )
+        sections.extend(["", f"## {heading}", *body_lines])
     return sections
 
 

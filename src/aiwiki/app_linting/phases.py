@@ -305,6 +305,19 @@ from ..memory.execution_surfaces import build_execution_audit_snapshot, collect_
 from .core import _LintContext
 
 _REVIEW_LIFECYCLE_OVERRIDE_STATES = {"active", "deferred", "review"}
+_PENDING_REFINEMENT_RE = re.compile(r"(?im)^\s*-\s*pending\s+refinement\.?\s*$")
+
+
+def _required_judgment_sections(protocol: str) -> tuple[str, str]:
+    if protocol == "investing":
+        return ("## Investment Judgment", "## Drivers And Catalysts")
+    if protocol == "research":
+        return ("## Research Judgment", "## Supporting Evidence")
+    if protocol == "product":
+        return ("## Product Judgment", "## User Signal And Evidence")
+    if protocol == "ops":
+        return ("## Ops Judgment", "## Incident Evidence")
+    return ("## Judgment", "## Signals")
 
 
 def _lint_layout_phase(context: _LintContext) -> None:
@@ -1011,7 +1024,7 @@ def _lint_curated_phase(context: _LintContext) -> None:
                         page,
                         f"Judgment page has unsupported status `{frontmatter.get('status', '')}`.",
                     )
-                for section in ("## Judgment", "## Signals"):
+                for section in _required_judgment_sections(str(frontmatter.get("protocol") or "")):
                     if section not in content:
                         context.add("warn", page, f"Judgment page is missing section `{section}`.")
                 for section in ("## Review Status", "## Review Notes"):
@@ -1044,3 +1057,7 @@ def _lint_curated_phase(context: _LintContext) -> None:
                         page,
                         f"Reviewed judgment page has citation drift: drifted `{len(citation_snapshot_state['drifted'])}` missing `{len(citation_snapshot_state['missing'])}` stale `{len(citation_snapshot_state['stale'])}`.",
                     )
+    for page in sorted((context.root / "wiki" / "elixirs").glob("*.md")):
+        content = page.read_text(encoding="utf-8", errors="replace")
+        if _PENDING_REFINEMENT_RE.search(strip_frontmatter(content)):
+            context.add("warn", page, "Elixir page still has placeholder `Pending refinement` content.")

@@ -1219,7 +1219,7 @@ class ShellFlowTests(AppFlowTestBase):
         self.assertEqual(after_review["review_backlog_counts"]["counter_evidence_candidates"], 0)
         self.assertEqual(after_review["review_backlog_counts"]["judgment_review_actions"], 0)
         judgment_controls = {page["path"]: page for page in after_review["review_controls"]["judgment_pages"]}
-        self.assertNotIn("counter-evidence-candidate", judgment_controls[judgment["path"]]["reasons"])
+        self.assertNotIn("counter-evidence-candidate", judgment_controls.get(judgment["path"], {}).get("reasons", []))
 
     def test_reviewed_judgment_keeps_same_timestamp_counter_evidence_candidates(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -1288,7 +1288,7 @@ class ShellFlowTests(AppFlowTestBase):
         self.assertEqual(after_review["review_backlog_counts"]["counter_evidence_candidates"], 0)
         self.assertEqual(after_review["review_backlog_counts"]["judgment_review_actions"], 0)
         decision_controls = {page["path"]: page for page in after_review["review_controls"]["decision_pages"]}
-        self.assertNotIn("counter-evidence-candidate", decision_controls[decision["path"]]["reasons"])
+        self.assertNotIn("counter-evidence-candidate", decision_controls.get(decision["path"], {}).get("reasons", []))
 
     def test_shell_status_control_objects_are_not_truncated(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")

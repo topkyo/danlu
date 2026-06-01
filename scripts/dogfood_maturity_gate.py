@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 from collections import Counter
@@ -28,6 +29,7 @@ PROMPTS_ASK_REL_PATH = Path("prompts") / "ask.md"
 SNAPSHOT_KIND = "dogfood-maturity-snapshot"
 RUN_RECEIPT_KIND = "dogfood-maturity-run-receipt"
 GENERATED_BY = "aiwiki-dogfood-maturity-gate"
+PENDING_REFINEMENT_RE = re.compile(r"(?im)^\s*-\s*pending\s+refinement\.?\s*$")
 REQUIRED_SNAPSHOT_FIELDS = (
     "backlog_total",
     "l3_proposal_counts_by_state",
@@ -616,6 +618,9 @@ def _build_elixir_quality_proof(
         missing.append("failed_elixir_receipts")
     if instability_records:
         missing.append("elixir_revert_or_demotion_receipts")
+    settled_placeholder_count = _count_settled_elixir_placeholders(root)
+    if settled_placeholder_count:
+        missing.append("settled_elixir_placeholder_body")
     status = "pass" if not missing else "not-yet"
     return {
         "kind": "elixir-quality-proof-report",
@@ -634,6 +639,7 @@ def _build_elixir_quality_proof(
             "recent_elixir_receipt_count": {"value": len(recent_records), "source": "receipts at or after compounding sample receipt_time"},
             "failed_elixir_receipt_count": {"value": len(failed_records), "source": ".aiwiki/state/execution-receipts.jsonl"},
             "elixir_revert_or_demotion_count": {"value": len(instability_records), "source": ".aiwiki/state/execution-receipts.jsonl"},
+            "settled_elixir_placeholder_count": {"value": settled_placeholder_count, "source": "wiki/elixirs/*.md"},
         },
         "compounding_sample": compounding_sample,
         "missing_evidence": missing,
@@ -677,6 +683,21 @@ def _count_settled_elixirs(root: Path) -> int:
         return sum(1 for path in directory.glob("*.md") if path.is_file()) if directory.exists() else 0
     except OSError:
         return 0
+
+
+def _count_settled_elixir_placeholders(root: Path) -> int:
+    directory = root / "wiki" / "elixirs"
+    if not directory.exists():
+        return 0
+    count = 0
+    for path in directory.glob("*.md"):
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if PENDING_REFINEMENT_RE.search(text):
+            count += 1
+    return count
 
 
 def _count_output_reuse_refs(output_reuse: list[dict[str, Any]], *, prefix: str) -> int:

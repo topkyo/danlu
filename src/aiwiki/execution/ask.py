@@ -860,7 +860,9 @@ def file_back(
             protocol=resolved_protocol,
             root=root,
         )
+    stripped = strip_frontmatter(original).strip()
     from aiwiki.app_protocol import protocol_judgment_extra_fields
+    from aiwiki.lifecycle.templates import curated_frontmatter_hints
 
     frontmatter_payload: dict[str, Any] = {
         "id": entry_id,
@@ -891,8 +893,10 @@ def file_back(
     frontmatter_payload.update(
         protocol_judgment_extra_fields(resolved_protocol, kind)
     )
+    frontmatter_payload.update(
+        curated_frontmatter_hints(kind=kind, protocol=resolved_protocol, supporting_body=stripped)
+    )
     frontmatter = render_frontmatter(frontmatter_payload)
-    stripped = strip_frontmatter(original).strip()
     body_lines = curated_page_template(
         kind=kind,
         protocol=resolved_protocol,
