@@ -1002,7 +1002,7 @@ class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
         self._pinned_ips = list(pinned_ips)
 
     def https_open(self, req):
-        return self.do_open(self._make_connection, req, context=self._context, check_hostname=self._check_hostname)
+        return self.do_open(self._make_connection, req, context=self._context)
 
     def _make_connection(self, host, *args, **kwargs):
         return _PinnedHTTPSConnection(host, *args, _pinned_ips=self._pinned_ips, **kwargs)

@@ -1215,7 +1215,7 @@ def _configure_drop_url_parser(parser: argparse.ArgumentParser) -> None:
 def _configure_drop_pdf_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "source",
-        help="Local PDF path (inside or outside the vault) or PDF URL. PDF assets must be ≤50 MB and start with %PDF- magic bytes.",
+        help="Local PDF path (inside or outside the vault) or PDF URL. PDF assets must be ≤50 MB and start with %%PDF- magic bytes.",
     )
     parser.add_argument("--title", help="Optional display title.")
     _add_auto_flags(parser)

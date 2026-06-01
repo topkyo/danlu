@@ -242,8 +242,16 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . ask "Compare A and B" --format rep
 - `nightly`
 - `run-nightly`
 - `systemd --user` watcher + nightly timer
+- macOS `launchd` watcher + nightly calendar job
 
 默认本机服务只安装两条产品主线：`aiwiki-watch.service` 常驻等待投料，`aiwiki-nightly.timer` 每晚炼化。`dogfood maturity` timer 是成熟度验证 harness，不是默认产品服务；需要验证时显式 `AIWIKI_INSTALL_DOGFOOD_MATURITY=1 scripts/install_user_service.sh`，验证结束后用 `scripts/uninstall_user_service.sh --dogfood-maturity-only` 移除 unit，保留 vault 数据和 receipt。
+
+macOS 上没有 `systemd --user` 时，使用 launchd 安装同样的两条产品主线；launchd plist 只保存 vault 路径和运行参数，LLM key 仍由 vault launcher 从 Product Shell 本机 `data.json` 或当前环境读取，不写入 plist：
+
+```bash
+AIWIKI_VAULT=/path/to/vault scripts/install_launchd_service.sh
+scripts/uninstall_launchd_service.sh
+```
 
 常驻 `watch` 的默认职责是稳定入炉：发现 `raw/inbox` 变化后跑 deterministic compile / lint，保留 provenance、source page、concept graph 和 review queue 的最低可用状态。它默认不 inline 阻塞跑 LLM；如果确实要让 watcher 同步执行 LLM compile，可以显式设置 `AIWIKI_WATCH_DETERMINISTIC_ONLY=0`，但这会增加 single-writer lock 占用，不作为默认推荐。
 

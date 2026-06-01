@@ -82,6 +82,23 @@ class SafeFetchPinningTests(unittest.TestCase):
 
         self.assertEqual(server_names[-1], "example.com")
 
+    def test_pinned_https_handler_uses_context_without_check_hostname_attr(self) -> None:
+        captured: dict[str, object] = {}
+        handler_cls = __import__("aiwiki.app_utils", fromlist=["_PinnedHTTPSHandler"])._PinnedHTTPSHandler
+
+        def fake_do_open(make_connection, req, **kwargs):
+            del make_connection, req
+            captured.update(kwargs)
+            return "ok"
+
+        handler = handler_cls(["93.184.216.34"])
+        with patch.object(handler, "do_open", side_effect=fake_do_open):
+            result = handler.https_open(MagicMock())
+
+        self.assertEqual(result, "ok")
+        self.assertIn("context", captured)
+        self.assertNotIn("check_hostname", captured)
+
     def test_allowlist_unset_allows(self) -> None:
         with patch.dict(os.environ, {}, clear=True), patch.object(socket, "getaddrinfo", return_value=self._dns("93.184.216.34")):
             url, _ = _validate_safe_url("http://anything.example/data")

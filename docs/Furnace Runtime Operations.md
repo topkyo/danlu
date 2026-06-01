@@ -14,7 +14,7 @@ related_docs:
 
 本文档回答三个问题：
 1. **炼丹炉是不是"自动一直在跑"？** — 是；机制见 §1
-2. **它怎么跑？** — `systemd --user` watcher + nightly timer + 显式 LLM-backed worker 入口（§2 / §3）
+2. **它怎么跑？** — `systemd --user` 或 macOS `launchd` watcher + nightly timer + 显式 LLM-backed worker 入口（§2 / §3）
 3. **当主 backend 不可用时，nightly 怎么显式开启 NV NIM fallback？** — §5 操作手册
 
 ---
@@ -39,7 +39,7 @@ related_docs:
 
 ---
 
-## 2. 服务单元（systemd --user）
+## 2. 服务单元（systemd --user / macOS launchd）
 
 ### 2.1 安装位置
 
@@ -57,6 +57,27 @@ related_docs:
 ```
 
 模板源在 `systemd/aiwiki-*.template`，由 `scripts/install_user_service.sh` 渲染落地。`aiwiki-dogfood-maturity.*` 模板仍保留，但默认不安装；仅在 `AIWIKI_INSTALL_DOGFOOD_MATURITY=1` 的验证运行中渲染。
+
+macOS 没有 user-level systemd 时，用 launchd 脚本安装同等产品主线：
+
+```bash
+AIWIKI_VAULT=/path/to/vault scripts/install_launchd_service.sh
+scripts/uninstall_launchd_service.sh
+```
+
+launchd 写入：
+
+```text
+~/Library/LaunchAgents/
+├── com.aiwiki.watch.plist
+└── com.aiwiki.nightly.plist
+
+~/.config/aiwiki/logs/
+├── aiwiki-watch.out.log / aiwiki-watch.err.log
+└── aiwiki-nightly.out.log / aiwiki-nightly.err.log
+```
+
+macOS wrapper 走 vault 内 `scripts/aiwiki-launcher.sh`，所以 Product Shell 写入本机插件 `data.json` 的 LLM backend / key 能被 watcher 和 nightly 读取；plist 只保存 `AIWIKI_VAULT`、调度和非敏感运行参数，不保存 API key。
 
 ### 2.2 watcher 服务
 

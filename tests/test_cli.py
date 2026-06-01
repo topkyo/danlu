@@ -1336,6 +1336,13 @@ class CLITests(unittest.TestCase):
         self.assertEqual(drop_args.source, legacy_args.source)
         self.assertEqual(drop_args.title, legacy_args.title)
 
+    def test_drop_pdf_help_renders_magic_bytes_literal(self) -> None:
+        parser = build_parser()
+        action = next(item for item in parser._actions if getattr(item, "dest", "") == "command")
+        legacy_parser = action.choices["drop-pdf"]
+
+        self.assertIn("%PDF-", legacy_parser.format_help())
+
     def test_drop_image_dispatch(self) -> None:
         parser = build_parser()
 

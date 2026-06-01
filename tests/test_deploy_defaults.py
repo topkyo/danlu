@@ -76,6 +76,39 @@ def test_run_nightly_fallback_default_off() -> None:
     assert "AIWIKI_NIGHTLY_FALLBACK_ENABLED:-0" in content
 
 
+def test_launchd_scripts_are_syntax_valid_and_secret_free() -> None:
+    for script_name in [
+        "install_launchd_service.sh",
+        "uninstall_launchd_service.sh",
+        "run_launchd_watch.sh",
+        "run_launchd_nightly.sh",
+    ]:
+        completed = subprocess.run(
+            ["bash", "-n", f"scripts/{script_name}"],
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stderr
+
+    install_content = (PROJECT_ROOT / "scripts" / "install_launchd_service.sh").read_text(encoding="utf-8")
+    assert "LaunchAgents" in install_content
+    assert "AIWIKI_VAULT" in install_content
+    assert "AIWIKI_OPENCODE_API_KEY" not in install_content
+    assert "llmOpencodeApiKey" not in install_content
+
+
+def test_launchd_wrappers_use_vault_launcher() -> None:
+    watch_content = (PROJECT_ROOT / "scripts" / "run_launchd_watch.sh").read_text(encoding="utf-8")
+    nightly_content = (PROJECT_ROOT / "scripts" / "run_launchd_nightly.sh").read_text(encoding="utf-8")
+
+    assert 'LAUNCHER="$AIWIKI_VAULT/scripts/aiwiki-launcher.sh"' in watch_content
+    assert 'LAUNCHER="$AIWIKI_VAULT/scripts/aiwiki-launcher.sh"' in nightly_content
+    assert "--with-llm" in watch_content
+    assert "run-nightly" in nightly_content
+
+
 def test_dogfood_envrc_stays_git_ignored() -> None:
     content = (PROJECT_ROOT / ".gitignore").read_text(encoding="utf-8")
     assert ".envrc.*" in content
@@ -347,6 +380,8 @@ def load_tests(
         test_run_watch_requires_vault,
         test_run_nightly_requires_vault,
         test_run_nightly_fallback_default_off,
+        test_launchd_scripts_are_syntax_valid_and_secret_free,
+        test_launchd_wrappers_use_vault_launcher,
         test_run_dogfood_maturity_requires_explicit_vault_and_skips_same_day,
         test_runtime_write_lock_timeout_raises,
         test_runtime_write_lock_reentrant_does_not_timeout,
