@@ -218,6 +218,7 @@ def _action_control(root: Path, action: dict[str, Any]) -> dict[str, Any]:
         action,
         autonomy_profile=policy.autonomy_profile,
         revert_supported=action_supports_low_risk_apply(action),
+        root=root,
     )
     return {
         "action_id": str(action.get("id") or ""),
@@ -257,6 +258,7 @@ def _llm_owned_machine_memory_action_ids(root: Path, actions: list[dict[str, Any
             action,
             autonomy_profile=policy.autonomy_profile,
             revert_supported=action_supports_low_risk_apply(action),
+            root=root,
         )
         if classification.autonomy_domain == "non_core_semantic":
             action_id = str(action.get("id") or "")
@@ -277,6 +279,7 @@ def _llm_owned_l3_proposal_ids(root: Path, proposals: object) -> list[str]:
             proposal,
             autonomy_profile=policy.autonomy_profile,
             revert_supported=False,
+            root=root,
         )
         if classification.autonomy_domain == "non_core_semantic":
             proposal_id = str(proposal.get("proposal_id") or "")

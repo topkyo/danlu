@@ -486,12 +486,20 @@ class ReviewFlowTests(AppFlowTestBase):
         self.assertEqual(review["status"], "accepted")
         self.assertEqual(applied["status"], "applied")
         self.assertEqual(applied["verification_status"], "passed")
+        self.assertTrue(applied["receipt_path"])
         refreshed = concept_page.read_text(encoding="utf-8")
         self.assertIn("Rewritten synthesis", refreshed)
         proposal_text = proposal_path.read_text(encoding="utf-8")
         self.assertIn("已应用", proposal_text)
         self.assertIn("## Verification", proposal_text)
         self.assertIn("`passed`", proposal_text)
+        receipts = load_jsonl_documents(execution_receipt_history_path(self.root))
+        rewrite_receipts = [receipt for receipt in receipts if receipt.get("subject_kind") == "concept_rewrite"]
+        self.assertEqual(rewrite_receipts[-1]["operation"], "apply")
+        self.assertEqual(rewrite_receipts[-1]["domain"], "non_core_semantic")
+        self.assertTrue(rewrite_receipts[-1]["before_hash"])
+        self.assertTrue(rewrite_receipts[-1]["after_hash"])
+        self.assertEqual(rewrite_receipts[-1]["autonomy_decision"]["autonomy_domain"], "non_core_semantic")
 
     def test_review_page_updates_status_and_refreshes_queue(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -541,6 +549,10 @@ class ReviewFlowTests(AppFlowTestBase):
         self.assertEqual(judgment_review_receipts[-1]["target_file"], judgment["path"])
         self.assertEqual(judgment_review_receipts[-1]["conclusion"], "confirmed")
         self.assertEqual(judgment_review_receipts[-1]["confidence"], "high")
+        self.assertEqual(judgment_review_receipts[-1]["domain"], "non_core_semantic")
+        self.assertTrue(judgment_review_receipts[-1]["before_hash"])
+        self.assertTrue(judgment_review_receipts[-1]["after_hash"])
+        self.assertIn(judgment["path"], judgment_review_receipts[-1]["target_paths"])
         self.assertEqual(decision_review_receipts[-1]["target_file"], decision["path"])
         self.assertEqual(decision_review_receipts[-1]["conclusion"], "approved")
 

@@ -244,7 +244,7 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . ask "Compare A and B" --format rep
 - `systemd --user` watcher + nightly timer
 - macOS `launchd` watcher + nightly calendar job
 
-默认本机服务只安装两条产品主线：`aiwiki-watch.service` 常驻等待投料，`aiwiki-nightly.timer` 每晚炼化。`dogfood maturity` timer 是成熟度验证 harness，不是默认产品服务；需要验证时显式 `AIWIKI_INSTALL_DOGFOOD_MATURITY=1 scripts/install_user_service.sh`，验证结束后用 `scripts/uninstall_user_service.sh --dogfood-maturity-only` 移除 unit，保留 vault 数据和 receipt。
+默认本机服务只安装两条产品主线：`aiwiki-watch.service` 常驻等待投料，`aiwiki-nightly.timer` 每晚炼化。安装 systemd 服务必须显式提供 vault：`AIWIKI_VAULT=/path/to/vault scripts/install_user_service.sh`，不会把代码仓库当默认 vault。`dogfood maturity` timer 是成熟度验证 harness，不是默认产品服务；需要验证时显式 `AIWIKI_VAULT=/path/to/vault AIWIKI_INSTALL_DOGFOOD_MATURITY=1 scripts/install_user_service.sh`，验证结束后用 `scripts/uninstall_user_service.sh --dogfood-maturity-only` 移除 unit，保留 vault 数据和 receipt。
 
 macOS 上没有 `systemd --user` 时，使用 launchd 安装同样的两条产品主线；launchd plist 只保存 vault 路径和运行参数，LLM key 仍由 vault launcher 从 Product Shell 本机 `data.json` 或当前环境读取，不写入 plist：
 
@@ -263,13 +263,13 @@ LLM enrichment 仍然是炼丹炉主路径，但放在受控 worker 入口：`ru
 
 治理债的目标是自动消化，符合炼丹炉"人只看异常"的设计哲学。分层按**影响范围 × 可逆性**定义：
 
-- **维护层**：compile / lint / nightly / 陈旧状态清理 / 派生索引 refresh — 只读或可逆的操作，静默自动落盘。`AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT=1`。
+- **维护层**：compile / lint / nightly / 陈旧状态清理 / 派生索引 refresh — 只读或可逆的操作，可通过 `AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT=1` 显式开启自动落盘；新安装的 systemd nightly env 默认写 `0`，避免安装即开始写入型自治。
 - **债务自消化层**：source summary backlog / weak concepts / rewrite candidates / judgment metadata debt / machine-memory actions — 统一进入 `debt-autopilot`，由 owner-state collector 只把 policy 分类为 `non_core_semantic` 的项目计入 `llm_owned_non_core`，再交给 `run_compile` LLM 内容消化、current rewrite apply、safe action apply、revert 或 compensating receipt；L3 metadata/governance debt 不能伪装成 `llm_owned_non_core`。Product Shell 只能展示 debt-autopilot 的结果，不参与无人值守 apply 判定；单项 LLM timeout 只能记为该 debt 失败，不能阻塞整个队列。
-- **治理层**：concept backlog / revisit / source-concept links / concept splits — 结构性变更，可逆且有 receipt，静默自动采纳。`AIWIKI_NIGHTLY_AUTO_ADOPT_L1=1` + `AIWIKI_NIGHTLY_AUTO_ADOPT_L2=1`。
-- **判断层**：counter-evidence / judgment review — LLM 驱动的语义复核，自动分析反证、写出审阅结论；judgment page、receipt、history、runtime history 必须同事务落盘，写失败回滚。`AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS=1`。
+- **治理层**：concept backlog / revisit / source-concept links / concept splits — 结构性变更，可逆且有 receipt；通过 `AIWIKI_NIGHTLY_AUTO_ADOPT_L1=1` + `AIWIKI_NIGHTLY_AUTO_ADOPT_L2=1` 显式开启无人值守采纳。
+- **判断层**：counter-evidence / judgment review — LLM 驱动的语义复核，自动分析反证、写出审阅结论；judgment page、标准 execution receipt、execution history、audit stream 必须可互证，写失败回滚。通过 `AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS=1` 显式开启。
 - **策略层**：L3 proposal / prompt 变更 / schema 变更 — 非核心/metadata-only 学习默认由 agentic nightly 登记和消化；写回核心 prompt/policy/schema 前必须 `review proposal <id> --status accepted` 人工确认，再手动 `apply <proposal-id>` hash-gated 写 receipt。`AIWIKI_NIGHTLY_AUTO_ADOPT_CORE_L3=0` 是核心自改红线，不允许无人值守改核心 prompt/policy/schema。
 
-runtime policy 缺省采用 `autonomy_profile=agentic`：未写 `.aiwiki/state/autonomy-policy.json` 时，nightly 默认开启 `auto_apply_light / auto_adopt_l1 / auto_adopt_l2 / auto_adopt_l3 / auto_adopt_judgments / auto_apply_heavy_semantic`，但 `auto_adopt_core_l3` 默认关闭；新安装的 nightly env 也写入 `AIWIKI_AUTONOMY_PROFILE=agentic`，确保老 vault 的 legacy policy 文件不会让 receipt 继续按旧 profile 记账。watcher 仍 deterministic-only，`AIWIKI_NIGHTLY_FALLBACK_ENABLED` 仍默认关闭。需要跨 backend unattended fallback 时必须显式开启并配置 repo 外凭据文件。是否已经达到“人只需事后审计 receipt 和异常”的成熟运行状态，以 `scripts/dogfood_maturity_gate.py summarize --days 3` 的 `operational_maturity.human_only_exceptions`、`agentic_autonomy_report.llm_governed_apply_count > 0`、`core_auto_apply_count=0`、`debt_autopilot_report.debt_remaining_count`、`debt_autopilot_report.debt_auto_resolved_count`、`elixir_quality_status` 和连续 receipt 为准。
+runtime policy 缺省采用 `autonomy_profile=agentic`：未写 `.aiwiki/state/autonomy-policy.json` 时，runtime 内部 profile 允许维护、治理、judgment review、metadata-only L3 和 heavy semantic 非核心自动化，但 `auto_adopt_core_l3` 默认关闭。新安装的 systemd nightly env 仍写入 `AIWIKI_AUTONOMY_PROFILE=agentic` 以保持 receipt 记账口径一致，但写入型 auto flags 默认写 `0`，必须由 operator 显式 opt-in；watcher 仍 deterministic-only，`AIWIKI_NIGHTLY_FALLBACK_ENABLED` 仍默认关闭。需要跨 backend unattended fallback 时必须显式开启并配置 repo 外凭据文件。是否已经达到“人只需事后审计 receipt 和异常”的成熟运行状态，以 `scripts/dogfood_maturity_gate.py summarize --days 3` 的 `operational_maturity.human_only_exceptions`、`agentic_autonomy_report.llm_governed_apply_count > 0`、`core_auto_apply_count=0`、`debt_autopilot_report.debt_remaining_count`、`debt_autopilot_report.debt_auto_resolved_count`、`elixir_quality_status` 和连续 receipt 为准。
 
 ## LLM 后端
 

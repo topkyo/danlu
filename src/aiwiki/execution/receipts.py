@@ -57,6 +57,7 @@ def write_execution_receipt(
     primary_path: str = "",
     secondary_path: str = "",
     protocol: str = "",
+    revert_supported: bool = False,
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Write a JSON execution receipt and append it to receipt history.
@@ -86,7 +87,7 @@ def write_execution_receipt(
         "target_file": target_file,
         "primary_path": primary_path or target_file,
         "receipt_path": receipt_rel,
-        "revert_supported": False,
+        "revert_supported": bool(revert_supported),
     }
     if secondary_path:
         receipt["secondary_path"] = secondary_path

@@ -25,7 +25,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from aiwiki.app_protocol import ensure_layout
-from aiwiki.app_state import save_concept_rewrite_state
+from aiwiki.app_state import execution_receipt_history_path, load_jsonl_documents, save_concept_rewrite_state
 from aiwiki.execution import concept_rewrite as cr_mod
 
 
@@ -132,9 +132,37 @@ class ApplyConceptRewriteTransactionTests(unittest.TestCase):
             self.concept_path.read_text(encoding="utf-8").strip(),
             self.candidate_text.strip(),
         )
+        receipts = load_jsonl_documents(execution_receipt_history_path(self.root))
+        self.assertEqual(receipts[-1]["subject_kind"], "concept_rewrite")
+        self.assertEqual(receipts[-1]["operation"], "apply")
+        self.assertEqual(receipts[-1]["status"], "partial")
+        self.assertEqual(receipts[-1]["verification_status"], "compile_failed")
+        self.assertEqual(receipts[-1]["failure_phase"], "compile")
+
+    def test_apply_wiki_log_failure_writes_partial_receipt(self) -> None:
+        import contextlib
+
+        with contextlib.ExitStack() as stack:
+            self._stub_validation(stack)
+            stack.enter_context(
+                patch.object(cr_mod, "append_wiki_log", side_effect=OSError("wiki log boom"))
+            )
+            with self.assertRaises(OSError):
+                cr_mod.apply_concept_rewrite(self.root, self.slug, note="trigger")
+
+        self.assertEqual(
+            self.concept_path.read_text(encoding="utf-8").strip(),
+            self.candidate_text.strip(),
+        )
+        receipts = load_jsonl_documents(execution_receipt_history_path(self.root))
+        self.assertEqual(receipts[-1]["subject_kind"], "concept_rewrite")
+        self.assertEqual(receipts[-1]["operation"], "apply")
+        self.assertEqual(receipts[-1]["status"], "partial")
+        self.assertEqual(receipts[-1]["verification_status"], "wiki_log_failed")
+        self.assertEqual(receipts[-1]["failure_phase"], "wiki_log")
 
     def test_apply_state_save_failure_preserves_original_exception(self) -> None:
-        # Even if rollback itself raises (atomic_write_bytes fails), the
+        # Even if rollback itself raises, the
         # original IOError must be the surfaced exception, not a double-fault
         # from the rollback path. Rollback failure is logged, not re-raised.
         import contextlib
@@ -144,7 +172,7 @@ class ApplyConceptRewriteTransactionTests(unittest.TestCase):
             stack.enter_context(
                 patch.object(
                     cr_mod,
-                    "atomic_write_bytes",
+                    "_rollback_concept_rewrite_transaction",
                     side_effect=OSError("rollback also failed"),
                 )
             )

@@ -1229,6 +1229,7 @@ def auto_adopt_l3(root: Path, *, limit: int | None = None) -> dict[str, Any]:
                 proposal,
                 autonomy_profile=policy.autonomy_profile,
                 revert_supported=True,
+                root=root,
             )
             if classification.execution_strategy != "auto_apply":
                 skip_status = "skipped_core_l3_requires_manual_apply" if classification.autonomy_domain == "core" else "skipped_" + classification.execution_strategy

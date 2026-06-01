@@ -6,7 +6,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from aiwiki import autonomy_policy
-from aiwiki.autonomy_domains import classify_autonomy_domain, classify_l3_proposal
+from aiwiki.autonomy_domains import classify_autonomy_domain, classify_l3_proposal, classify_machine_memory_action
 from aiwiki.autonomy_policy import (
     GLOBAL_OVERRIDE_ENV,
     PROFILE_OVERRIDE_ENV,
@@ -143,6 +143,98 @@ class AutonomyPolicyTests(unittest.TestCase):
         self.assertEqual(non_core.autonomy_domain, "non_core_semantic")
         self.assertEqual(non_core.execution_strategy, "llm_decide_apply")
         self.assertTrue(non_core.llm_governed)
+
+    def test_domain_classifier_marks_runtime_code_and_scripts_as_core(self) -> None:
+        for target in ("src/aiwiki/config.py", "scripts/run_nightly.sh"):
+            with self.subTest(target=target):
+                result = classify_autonomy_domain(
+                    subject_kind="machine_memory_action",
+                    operation="apply",
+                    payload={"primary_path": target},
+                    autonomy_profile="agentic",
+                    revert_supported=True,
+                )
+
+                self.assertEqual(result.autonomy_domain, "core")
+                self.assertEqual(result.execution_strategy, "proposal_only")
+
+    def test_domain_classifier_rejects_path_escape_and_absolute_outside_root(self) -> None:
+        with TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            outside = root.parent / "outside.md"
+            escaped = classify_autonomy_domain(
+                subject_kind="machine_memory_action",
+                operation="apply",
+                payload={"primary_path": "../schema/policy.json"},
+                root=root,
+                autonomy_profile="agentic",
+                revert_supported=True,
+            )
+            absolute = classify_autonomy_domain(
+                subject_kind="machine_memory_action",
+                operation="apply",
+                payload={"primary_path": str(outside)},
+                root=root,
+                autonomy_profile="agentic",
+                revert_supported=True,
+            )
+
+        self.assertEqual(escaped.autonomy_domain, "external")
+        self.assertEqual(escaped.execution_strategy, "human_required")
+        self.assertEqual(absolute.autonomy_domain, "external")
+        self.assertEqual(absolute.execution_strategy, "human_required")
+
+    def test_domain_classifier_rejects_symlink_escape_when_root_is_available(self) -> None:
+        with TemporaryDirectory() as tempdir, TemporaryDirectory() as outside_dir:
+            root = Path(tempdir)
+            outside = Path(outside_dir)
+            link = root / "wiki" / "escape"
+            link.parent.mkdir(parents=True, exist_ok=True)
+            link.symlink_to(outside, target_is_directory=True)
+
+            result = classify_autonomy_domain(
+                subject_kind="machine_memory_action",
+                operation="apply",
+                payload={"primary_path": "wiki/escape/item.md"},
+                root=root,
+                autonomy_profile="agentic",
+                revert_supported=True,
+            )
+
+        self.assertEqual(result.autonomy_domain, "external")
+        self.assertEqual(result.execution_strategy, "human_required")
+
+    def test_machine_memory_wrapper_uses_root_for_symlink_escape(self) -> None:
+        with TemporaryDirectory() as tempdir, TemporaryDirectory() as outside_dir:
+            root = Path(tempdir)
+            outside = Path(outside_dir)
+            link = root / "wiki" / "escape"
+            link.parent.mkdir(parents=True, exist_ok=True)
+            link.symlink_to(outside, target_is_directory=True)
+
+            result = classify_machine_memory_action(
+                {"kind": "concept-rewrite", "primary_path": "wiki/escape/item.md"},
+                root=root,
+                autonomy_profile="agentic",
+                revert_supported=True,
+            )
+
+        self.assertEqual(result.autonomy_domain, "external")
+        self.assertEqual(result.execution_strategy, "human_required")
+
+    def test_metadata_only_l3_core_target_remains_governance_without_core_byte_apply(self) -> None:
+        result = classify_l3_proposal(
+            {
+                "kind": "prompt_proposal",
+                "target_file": "prompts/ask.md",
+                "patch": {"kind": "metadata_only"},
+            },
+            autonomy_profile="agentic",
+        )
+
+        self.assertEqual(result.autonomy_domain, "governance")
+        self.assertEqual(result.execution_strategy, "auto_apply")
+        self.assertFalse(result.llm_governed)
 
     def test_file_with_explicit_flag_is_respected(self) -> None:
         with TemporaryDirectory() as tempdir:

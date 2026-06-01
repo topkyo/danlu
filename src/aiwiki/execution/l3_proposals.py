@@ -874,7 +874,7 @@ def apply_l3_proposal(root: Path, proposal_id: str, *, note: str | None = None) 
     after_content = before_content if is_metadata_only else str(patch.get("content") or "")
     before_hash_for_audit = hashlib.sha256(snapshot or b"").hexdigest()
     after_hash_for_audit = hashlib.sha256(after_content.encode("utf-8")).hexdigest()
-    classification = classify_l3_proposal(proposal, autonomy_profile=policy.autonomy_profile, revert_supported=True)
+    classification = classify_l3_proposal(proposal, autonomy_profile=policy.autonomy_profile, revert_supported=True, root=root)
     proposal_evidence = proposal.get("evidence_refs") if isinstance(proposal.get("evidence_refs"), list) else []
     proposal_counter_evidence = (
         proposal.get("counter_evidence_refs") if isinstance(proposal.get("counter_evidence_refs"), list) else []

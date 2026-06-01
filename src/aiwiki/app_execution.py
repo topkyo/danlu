@@ -226,6 +226,7 @@ def build_execution_receipt(
         action,
         autonomy_profile=str(action.get("autonomy_profile") or load_policy(root).autonomy_profile),
         revert_supported=revert_supported,
+        root=root,
     )
     return {
         "version": 1,

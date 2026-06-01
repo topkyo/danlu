@@ -19,7 +19,7 @@ from aiwiki.drop import _clone_repo, drop_repo
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_install_user_service_auto_adopt_defaults_match_risk_boundary() -> None:
+def test_install_user_service_auto_adopt_defaults_require_explicit_opt_in() -> None:
     completed = subprocess.run(
         ["bash", "-n", "scripts/install_user_service.sh"],
         cwd=PROJECT_ROOT,
@@ -29,18 +29,19 @@ def test_install_user_service_auto_adopt_defaults_match_risk_boundary() -> None:
     )
     assert completed.returncode == 0, completed.stderr
     content = (PROJECT_ROOT / "scripts" / "install_user_service.sh").read_text(encoding="utf-8")
-    defaults_on = {
+    defaults_off = {
         "AUTO_APPLY_LIGHT": "AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT",
         "AUTO_ADOPT_L1": "AIWIKI_NIGHTLY_AUTO_ADOPT_L1",
         "AUTO_ADOPT_L2": "AIWIKI_NIGHTLY_AUTO_ADOPT_L2",
         "AUTO_ADOPT_L3": "AIWIKI_NIGHTLY_AUTO_ADOPT_L3",
         "AUTO_ADOPT_JUDGMENTS": "AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS",
     }
-    for short_name, env_name in defaults_on.items():
-        assert re.search(rf"{env_name}.*\$\{{{short_name}:-1\}}", content), env_name
+    for short_name, env_name in defaults_off.items():
+        assert re.search(rf"{env_name}.*\$\{{{short_name}:-0\}}", content), env_name
     assert "AIWIKI_AUTONOMY_PROFILE=${AIWIKI_AUTONOMY_PROFILE:-agentic}" in content
-    assert "AIWIKI_NIGHTLY_AUTO_APPLY_HEAVY_SEMANTIC=${AIWIKI_NIGHTLY_AUTO_APPLY_HEAVY_SEMANTIC:-1}" in content
+    assert "AIWIKI_NIGHTLY_AUTO_APPLY_HEAVY_SEMANTIC=${AIWIKI_NIGHTLY_AUTO_APPLY_HEAVY_SEMANTIC:-0}" in content
     assert "AIWIKI_NIGHTLY_AUTO_ADOPT_CORE_L3=${AIWIKI_NIGHTLY_AUTO_ADOPT_CORE_L3:-0}" in content
+    assert 'VAULT_ROOT="${AIWIKI_VAULT:-$PROJECT_ROOT}"' not in content
 
 
 def test_run_watch_requires_vault() -> None:
@@ -376,7 +377,7 @@ def load_tests(
     del loader, tests, pattern
     suite = unittest.TestSuite()
     for test_fn in [
-        test_install_user_service_auto_adopt_defaults_match_risk_boundary,
+        test_install_user_service_auto_adopt_defaults_require_explicit_opt_in,
         test_run_watch_requires_vault,
         test_run_nightly_requires_vault,
         test_run_nightly_fallback_default_off,

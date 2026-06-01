@@ -58,8 +58,10 @@ from aiwiki.app_memory import (
 from aiwiki.app_memory_surfaces import render_machine_memory_graph_html
 from aiwiki.app_protocol import ensure_layout, load_protocol_state, save_manifest
 from aiwiki.app_state import (
+    execution_receipt_history_path,
     load_archive_candidates_state,
     load_cache_status,
+    load_jsonl_documents,
     load_knowledge_lifecycle_override_state,
     load_knowledge_lifecycle_state,
     load_machine_memory,
@@ -324,6 +326,7 @@ class MiscFlowTests(AppFlowTestBase):
         result = retire_concept(self.root, slug, note="Retire noisy concept from active ranking.")
 
         self.assertEqual(result["status"], "retired")
+        self.assertTrue(result["receipt_path"])
         updated_lifecycle = load_knowledge_lifecycle_state(self.root)
         retired_entry = next(entry for entry in updated_lifecycle["entries"] if entry["path"] == concept_entry["path"])
         self.assertEqual(retired_entry["lifecycle_state"], "retired")
@@ -339,6 +342,35 @@ class MiscFlowTests(AppFlowTestBase):
             if entry["slug"] == slug and entry["active"]
         )
         self.assertEqual(active_override["lifecycle_state"], "retired")
+        receipts = load_jsonl_documents(execution_receipt_history_path(self.root))
+        lifecycle_receipts = [receipt for receipt in receipts if receipt.get("subject_kind") == "concept_lifecycle"]
+        self.assertEqual(lifecycle_receipts[-1]["semantic_operation"], "retire")
+        self.assertEqual(lifecycle_receipts[-1]["domain"], "non_core_semantic")
+        self.assertTrue(lifecycle_receipts[-1]["before_hash"])
+        self.assertTrue(lifecycle_receipts[-1]["after_hash"])
+
+    def test_retire_concept_rolls_back_when_receipt_write_fails(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+
+        lifecycle = load_knowledge_lifecycle_state(self.root)
+        concept_entry = next(entry for entry in lifecycle["entries"] if entry["kind"] == "concept")
+        slug = Path(concept_entry["path"]).stem
+        override_path = self.root / ".aiwiki" / "state" / "knowledge-lifecycle-overrides.json"
+        lifecycle_path = self.root / ".aiwiki" / "state" / "knowledge-lifecycle.json"
+        receipt_history = execution_receipt_history_path(self.root)
+        original_override = override_path.read_bytes()
+        original_lifecycle = lifecycle_path.read_bytes()
+        original_receipts = receipt_history.read_bytes() if receipt_history.exists() else b""
+
+        with patch("aiwiki.execution.lifecycle.write_execution_receipt", side_effect=RuntimeError("receipt down")):
+            with self.assertRaisesRegex(RuntimeError, "receipt down"):
+                retire_concept(self.root, slug, note="This should rollback.")
+
+        self.assertEqual(override_path.read_bytes(), original_override)
+        self.assertEqual(lifecycle_path.read_bytes(), original_lifecycle)
+        self.assertEqual(receipt_history.read_bytes() if receipt_history.exists() else b"", original_receipts)
+        self.assertNotIn("This should rollback.", override_path.read_text(encoding="utf-8"))
 
     def test_bridge_evidence_expands_beyond_top_ranked_sources(self) -> None:
         machine_query = {
@@ -1109,6 +1141,8 @@ class MiscFlowTests(AppFlowTestBase):
     def test_install_user_service_defaults_watcher_to_deterministic_only(self) -> None:
         script = PROJECT_ROOT / "scripts/install_user_service.sh"
         content = script.read_text(encoding="utf-8")
+        self.assertIn("install_user_service.sh requires an explicit vault path", content)
+        self.assertNotIn('VAULT_ROOT="${AIWIKI_VAULT:-$PROJECT_ROOT}"', content)
         self.assertIn("AIWIKI_VAULT=$VAULT_ROOT", content)
         self.assertIn('ensure_env_key "$WATCH_ENV_PATH" "AIWIKI_VAULT" "$VAULT_ROOT"', content)
         self.assertIn('ensure_env_key "$NIGHTLY_ENV_PATH" "AIWIKI_VAULT" "$VAULT_ROOT"', content)
@@ -1122,10 +1156,10 @@ class MiscFlowTests(AppFlowTestBase):
         self.assertIn("AIWIKI_NIGHTLY_FALLBACK_BACKEND=nvidia-nim-api", content)
         self.assertIn("AIWIKI_NIGHTLY_FALLBACK_MODEL=openai/gpt-oss-120b", content)
         self.assertIn("AIWIKI_AUTONOMY_PROFILE=${AIWIKI_AUTONOMY_PROFILE:-agentic}", content)
-        self.assertIn("AIWIKI_NIGHTLY_AUTO_ADOPT_L1=${AIWIKI_NIGHTLY_AUTO_ADOPT_L1:-${AUTO_ADOPT_L1:-1}}", content)
-        self.assertIn("AIWIKI_NIGHTLY_AUTO_ADOPT_L3=${AIWIKI_NIGHTLY_AUTO_ADOPT_L3:-${AUTO_ADOPT_L3:-1}}", content)
-        self.assertIn("AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS=${AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS:-${AUTO_ADOPT_JUDGMENTS:-1}}", content)
-        self.assertIn("AIWIKI_NIGHTLY_AUTO_APPLY_HEAVY_SEMANTIC=${AIWIKI_NIGHTLY_AUTO_APPLY_HEAVY_SEMANTIC:-1}", content)
+        self.assertIn("AIWIKI_NIGHTLY_AUTO_ADOPT_L1=${AIWIKI_NIGHTLY_AUTO_ADOPT_L1:-${AUTO_ADOPT_L1:-0}}", content)
+        self.assertIn("AIWIKI_NIGHTLY_AUTO_ADOPT_L3=${AIWIKI_NIGHTLY_AUTO_ADOPT_L3:-${AUTO_ADOPT_L3:-0}}", content)
+        self.assertIn("AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS=${AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS:-${AUTO_ADOPT_JUDGMENTS:-0}}", content)
+        self.assertIn("AIWIKI_NIGHTLY_AUTO_APPLY_HEAVY_SEMANTIC=${AIWIKI_NIGHTLY_AUTO_APPLY_HEAVY_SEMANTIC:-0}", content)
         self.assertIn("AIWIKI_NIGHTLY_AUTO_ADOPT_CORE_L3=${AIWIKI_NIGHTLY_AUTO_ADOPT_CORE_L3:-0}", content)
         self.assertIn('INSTALL_DOGFOOD_MATURITY="${AIWIKI_INSTALL_DOGFOOD_MATURITY:-0}"', content)
         self.assertIn("AIWIKI_DOGFOOD_MATURITY_PREVIEW_LIMIT=1000", content)

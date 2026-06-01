@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import Any, Mapping
 
 DEFAULT_AUTONOMY_PROFILE = "agentic"
@@ -11,6 +11,8 @@ AUTONOMY_DOMAINS = {"maintenance", "governance", "non_core_semantic", "core", "e
 EXECUTION_STRATEGIES = {"auto_apply", "llm_decide_apply", "proposal_only", "human_required"}
 
 CORE_PATH_PREFIXES = (
+    "src/",
+    "scripts/",
     "schema/",
     "prompts/",
     "policy/",
@@ -64,13 +66,15 @@ def classify_autonomy_domain(
     payload: Mapping[str, Any] | None = None,
     autonomy_profile: str = DEFAULT_AUTONOMY_PROFILE,
     revert_supported: bool = False,
+    root: Path | str | None = None,
 ) -> AutonomyClassification:
     payload = payload or {}
     subject = subject_kind.strip().lower()
     op = operation.strip().lower()
     profile = autonomy_profile.strip().lower() or DEFAULT_AUTONOMY_PROFILE
+    resolved_root = _payload_root(payload, root)
 
-    domain, reason, revert_required = _domain_for_subject(subject, op, payload)
+    domain, reason, revert_required = _domain_for_subject(subject, op, payload, root=resolved_root)
     strategy = _strategy_for_domain(domain, profile, revert_supported=revert_supported)
     llm_governed = profile == "agentic" and domain == "non_core_semantic" and strategy == "llm_decide_apply"
     return AutonomyClassification(
@@ -87,6 +91,7 @@ def classify_l3_proposal(
     *,
     autonomy_profile: str = DEFAULT_AUTONOMY_PROFILE,
     revert_supported: bool = True,
+    root: Path | str | None = None,
 ) -> AutonomyClassification:
     patch = proposal.get("patch") if isinstance(proposal.get("patch"), Mapping) else {}
     return classify_autonomy_domain(
@@ -99,6 +104,7 @@ def classify_l3_proposal(
         },
         autonomy_profile=autonomy_profile,
         revert_supported=revert_supported,
+        root=root,
     )
 
 
@@ -107,6 +113,7 @@ def classify_machine_memory_action(
     *,
     autonomy_profile: str = DEFAULT_AUTONOMY_PROFILE,
     revert_supported: bool = False,
+    root: Path | str | None = None,
 ) -> AutonomyClassification:
     return classify_autonomy_domain(
         subject_kind="machine_memory_action",
@@ -118,6 +125,7 @@ def classify_machine_memory_action(
         },
         autonomy_profile=autonomy_profile,
         revert_supported=revert_supported,
+        root=root,
     )
 
 
@@ -139,6 +147,8 @@ def _domain_for_subject(
     subject_kind: str,
     operation: str,
     payload: Mapping[str, Any],
+    *,
+    root: Path | None = None,
 ) -> tuple[str, str, bool]:
     path_values = [
         str(payload.get(key) or "")
@@ -146,18 +156,18 @@ def _domain_for_subject(
         if payload.get(key)
     ]
     if operation in {"push", "deploy", "release", "remote", "credential"} or any(
-        _is_external_path(path) for path in path_values
+        _classify_path_surface(path, root=root) == "external" for path in path_values
     ):
         return "external", "external side effect or credential surface", False
-    if any(_is_raw_path(path) for path in path_values):
+    if any(_classify_path_surface(path, root=root) == "raw" for path in path_values):
         return "core", "raw facts are core source-of-truth", False
     if subject_kind == "l3_proposal":
         patch_kind = str(payload.get("patch_kind") or "full_replace")
         if patch_kind == "metadata_only":
             return "governance", "metadata-only L3 bookkeeping", False
         return "core", "meaning-changing L3 prompt/policy/schema proposal", False
-    if any(_is_core_path(path) for path in path_values):
-        return "core", "core prompt/policy/schema path", False
+    if any(_classify_path_surface(path, root=root) == "core" for path in path_values):
+        return "core", "core runtime/schema/prompt/policy path", False
     if subject_kind == "judgment_review":
         return "non_core_semantic", "counter-evidence judgment review history", True
     if subject_kind == "concept_review":
@@ -186,29 +196,73 @@ def _strategy_for_domain(domain: str, profile: str, *, revert_supported: bool) -
     return "auto_apply"
 
 
-def _is_core_path(path: str) -> bool:
-    normalized = _normalize_rel(path)
-    return any(normalized.startswith(prefix) for prefix in CORE_PATH_PREFIXES)
+def _payload_root(payload: Mapping[str, Any], explicit_root: Path | str | None) -> Path | None:
+    raw = explicit_root
+    if raw is None:
+        raw = payload.get("root") or payload.get("vault_root") or payload.get("repo_root")
+    if raw is None:
+        return None
+    try:
+        return Path(raw).expanduser().resolve(strict=False)
+    except (OSError, RuntimeError):
+        return None
 
 
-def _is_raw_path(path: str) -> bool:
-    normalized = _normalize_rel(path)
-    return any(normalized.startswith(prefix) for prefix in RAW_PATH_PREFIXES)
+def _classify_path_surface(path: str, *, root: Path | None = None) -> str:
+    normalized = _normalize_rel(path, root=root)
+    if normalized == "__external__":
+        return "external"
+    normalized_lower = normalized.lower()
+    if any(
+        normalized_lower == prefix.rstrip("/").lower()
+        or normalized_lower.startswith(prefix.lower())
+        for prefix in EXTERNAL_PATH_PREFIXES
+    ):
+        return "external"
+    if any(
+        normalized_lower == prefix.rstrip("/").lower()
+        or normalized_lower.startswith(prefix.lower())
+        for prefix in RAW_PATH_PREFIXES
+    ):
+        return "raw"
+    if any(
+        normalized_lower == prefix.rstrip("/").lower()
+        or normalized_lower.startswith(prefix.lower())
+        for prefix in CORE_PATH_PREFIXES
+    ):
+        return "core"
+    return "non_core"
 
 
-def _is_external_path(path: str) -> bool:
-    normalized = _normalize_rel(path)
-    return any(normalized == prefix.rstrip("/") or normalized.startswith(prefix) for prefix in EXTERNAL_PATH_PREFIXES)
-
-
-def _normalize_rel(path: str) -> str:
+def _normalize_rel(path: str, *, root: Path | None = None) -> str:
     text = path.strip().replace("\\", "/")
     if not text:
         return ""
+    candidate = Path(text).expanduser()
+    if candidate.is_absolute():
+        if root is None:
+            return "__external__"
+        try:
+            resolved = candidate.resolve(strict=False)
+            rel = resolved.relative_to(root)
+        except (OSError, RuntimeError, ValueError):
+            return "__external__"
+        text = rel.as_posix()
     pure = PurePosixPath(text)
-    parts = [part for part in pure.parts if part not in {"", "."}]
-    while parts and parts[0] == "..":
-        parts.pop(0)
+    parts: list[str] = []
+    for part in pure.parts:
+        if part in {"", "."}:
+            continue
+        if part == "..":
+            return "__external__"
+        parts.append(part)
+    if root is not None and parts:
+        try:
+            resolved = (root / PurePosixPath(*parts).as_posix()).resolve(strict=False)
+            rel = resolved.relative_to(root)
+            parts = [part for part in rel.parts if part not in {"", "."}]
+        except (OSError, RuntimeError, ValueError):
+            return "__external__"
     return "/".join(parts)
 
 

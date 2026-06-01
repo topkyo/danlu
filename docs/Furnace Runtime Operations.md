@@ -140,15 +140,15 @@ else:
 - `AIWIKI_AUTONOMY_PROFILE=agentic` —— runtime profile override；新安装 nightly env 默认写入，保证旧 vault 的 legacy policy 文件不会让 receipt 继续按旧 profile 记账
 - `AIWIKI_NIGHTLY_DETERMINISTIC_ONLY=0` —— 默认跑 LLM；设 `1` 强制不调 LLM
 - `AIWIKI_NIGHTLY_REQUIRE_LLM=0` —— 当没有任何 configured LLM path 可尝试时，默认允许 wrapper 跑 deterministic nightly；一旦 configured `run-nightly` 已失败，wrapper 会 fail closed，不把 deterministic nightly 当作本次 success proof
-- `AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT=1` —— **L0 维护层自动 apply**；agent_loop preview 完成后立即执行 receipted light primitives（compile/lint/nightly），写 receipt + audit
-- `AIWIKI_NIGHTLY_AUTO_ADOPT_L1=1` —— **L1 语义层自动采纳**：concept backlog → active、revisit → deferred、source-concept link 自动 accept + apply
-- `AIWIKI_NIGHTLY_AUTO_ADOPT_L2=1` —— **L2 结构层自动采纳**：overloaded-concept split 自动 accept + apply
-- `AIWIKI_NIGHTLY_AUTO_ADOPT_L3=1` —— **L3 策略层自动采纳**：默认开启；自动登记 `metadata_only` candidate，核心 prompt/policy/schema 写回仍必须显式 human accept + 手动 `apply` + hash gate
-- `AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS=1` —— **判断层自动复核**：LLM-powered counter-evidence review，读取反证来源页生成 upheld/weakened/refuted 结论
-- `AIWIKI_NIGHTLY_AUTO_APPLY_HEAVY_SEMANTIC=1` —— **heavy semantic phase 自动 apply**：默认开启；signal pipeline 会执行 heavy `review/distill/propose` 的 receipt-backed 非核心 apply，核心写回继续走 proposal/human gate
+- `AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT=1` —— **L0 维护层自动 apply**；agent_loop preview 完成后立即执行 receipted light primitives（compile/lint/nightly），写 receipt + audit。systemd installer 默认写 `0`，必须显式 opt-in。
+- `AIWIKI_NIGHTLY_AUTO_ADOPT_L1=1` —— **L1 语义层自动采纳**：concept backlog → active、revisit → deferred、source-concept link 自动 accept + apply。systemd installer 默认写 `0`。
+- `AIWIKI_NIGHTLY_AUTO_ADOPT_L2=1` —— **L2 结构层自动采纳**：overloaded-concept split 自动 accept + apply。systemd installer 默认写 `0`。
+- `AIWIKI_NIGHTLY_AUTO_ADOPT_L3=1` —— **L3 策略层自动采纳**：自动登记 `metadata_only` candidate，核心 prompt/policy/schema 写回仍必须显式 human accept + 手动 `apply` + hash gate。systemd installer 默认写 `0`。
+- `AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS=1` —— **判断层自动复核**：LLM-powered counter-evidence review，读取反证来源页生成 upheld/weakened/refuted 结论，并写标准 execution receipt、history、audit。systemd installer 默认写 `0`。
+- `AIWIKI_NIGHTLY_AUTO_APPLY_HEAVY_SEMANTIC=1` —— **heavy semantic phase 自动 apply**：signal pipeline 会执行 heavy `review/distill/propose` 的 receipt-backed 非核心 apply，核心写回继续走 proposal/human gate。systemd installer 默认写 `0`。
 - `AIWIKI_NIGHTLY_AUTO_ADOPT_CORE_L3=1` —— **核心 L3 写回授权**：默认关闭；当前仍不允许无人值守改核心 prompt/policy/schema，仅作为未来显式 contract flag
 
-这些 env 是显式覆盖层；缺省值来自 `.aiwiki/state/autonomy-policy.json`，文件缺失或 `AIWIKI_AUTONOMY_PROFILE=agentic` 覆盖时按 agentic profile 启用维护、治理、judgment review、metadata-only L3 和 heavy semantic 非核心自动化，但核心 L3 写回默认关闭。`AIWIKI_DISABLE_AUTOMATION=1` 是全局 kill switch；policy 损坏时 fail-closed。预算字段 `max_l3_apply_per_run` 与 `judgment_review_limit` 分别限制单次 nightly 的 L3 apply 数和 judgment review 数。
+这些 env 是显式覆盖层；缺省值来自 `.aiwiki/state/autonomy-policy.json`，文件缺失或 `AIWIKI_AUTONOMY_PROFILE=agentic` 覆盖时 runtime profile 允许维护、治理、judgment review、metadata-only L3 和 heavy semantic 非核心自动化，但核心 L3 写回默认关闭。systemd installer 为防止安装即写入，把上述写入型 auto env 默认落为 `0`；operator 要无人值守写入时必须在 env 文件中显式改成 `1`。`AIWIKI_DISABLE_AUTOMATION=1` 是全局 kill switch；policy 损坏时 fail-closed。预算字段 `max_l3_apply_per_run` 与 `judgment_review_limit` 分别限制单次 nightly 的 L3 apply 数和 judgment review 数。
 - `AIWIKI_NIGHTLY_COMPILE_LIMIT=5` —— LLM enrichment 单批上限
 - `AIWIKI_NIGHTLY_NO_SEMANTIC_LINT=0` —— 是否跑 semantic lint
 - `AIWIKI_NIGHTLY_FALLBACK_ENABLED=0` —— nightly wrapper 的 operator-approved fallback 开关；默认关闭，避免隐式跨 backend routing
@@ -277,7 +277,7 @@ python3 -m aiwiki.cli --root "$AIWIKI_VAULT" run-compile \
 
 ### 5.4 systemd nightly 显式开启 NV 备用
 
-`scripts/install_user_service.sh` 会在 `~/.config/aiwiki/aiwiki-nightly.env` 中补齐 fallback 字段，但开关默认是 `0`。要启用 NV 备用，显式改为：
+`scripts/install_user_service.sh` 必须以 `AIWIKI_VAULT=/path/to/vault` 运行，不会默认使用项目根目录。它会在 `~/.config/aiwiki/aiwiki-nightly.env` 中补齐 fallback 字段，但开关默认是 `0`。要启用 NV 备用，显式改为：
 
 ```text
 AIWIKI_NIGHTLY_FALLBACK_ENABLED=1

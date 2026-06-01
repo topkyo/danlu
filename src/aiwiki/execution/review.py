@@ -57,6 +57,7 @@ from ..app_utils import (
     relative_path,
     render_frontmatter,
     runtime_write_operation,
+    sha256_bytes,
     strip_frontmatter,
     upsert_markdown_section,
 )
@@ -276,6 +277,8 @@ def review_page(
             ],
         )
         review_subject_kind = "judgment_review" if kind == "judgment" else "decision_review"
+        before_bytes = snapshots.get(target)
+        after_bytes = target.read_bytes()
         receipt = write_execution_receipt(
             root,
             operation="review-page",
@@ -286,11 +289,23 @@ def review_page(
             primary_path=relative_path(root, target),
             protocol=str(frontmatter.get("protocol") or DEFAULT_PROTOCOL),
             extra={
+                "domain": "non_core_semantic" if kind == "judgment" else "governance",
                 "page_kind": kind,
                 "conclusion": status,
                 "confidence": str(frontmatter.get("confidence") or ""),
                 "reviewed_at": reviewed_at,
                 "citation_count": len(citations),
+                "target_paths": [relative_path(root, target)],
+                "before_hash": sha256_bytes(before_bytes) if before_bytes is not None else "",
+                "after_hash": sha256_bytes(after_bytes),
+                "source_provenance": {"citations": citations, "source_ids": source_ids},
+                "llm_receipt_id": "",
+                "autonomy_decision": {
+                    "autonomy_domain": "non_core_semantic" if kind == "judgment" else "governance",
+                    "execution_strategy": "semantic_review",
+                    "llm_governed": False,
+                },
+                "revert_ref": "",
             },
         )
         compile_wiki(root)

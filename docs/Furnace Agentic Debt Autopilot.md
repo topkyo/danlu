@@ -7,6 +7,7 @@
 核心 manual-only 面：
 
 - runtime 代码与脚本
+- `src/` 与 `scripts/`
 - `schema/`
 - `prompts/`
 - `policy/`
@@ -41,7 +42,10 @@
 ## Safety Contract
 
 - Product Shell 只展示 debt-autopilot 结果，不参与无人值守 apply 判定。
-- Judgment auto-adopt 使用 atomic write，page、receipt、history、runtime history 任一步失败必须回滚。
+- 自治边界以 root-resolved path classifier 为准：拒绝 `..` escape、绝对路径越界和 symlink 越界；`metadata_only` L3 只能改治理 metadata/receipt，不能改 core target bytes。
+- Judgment auto-adopt 使用 atomic write，page、标准 execution receipt、execution history、runtime history / audit 任一步失败必须回滚或暴露为显式 failure。
+- Concept rewrite、concept lifecycle retire/reactivate、judgment review 都属于 semantic execution：改变语义状态时必须写标准 execution receipt，包含 target paths、before/after hash、source provenance、LLM receipt ref 或显式空值、autonomy decision 和 revert ref。
+- Audit reconciliation 需要覆盖 apply/revert 等成功型操作，并检查 receipt file、execution history、audit stream 是否互相一致；缺任一方都写 deterministic finding。
 - `split-overloaded-concept` 的 auto-retire 纳入 `apply-action` 主事务回滚域。
 - Concept rewrite 只应用 current/valid proposal；stale 或 invalid candidate 会 skip，不会强写。
 - Core L3 仍是 proposal-only；metadata/governance L3 不能伪装成 `llm_owned_non_core` debt。

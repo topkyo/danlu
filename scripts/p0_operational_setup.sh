@@ -13,9 +13,9 @@ echo "vault: $VAULT"
 echo
 
 if [[ "${AIWIKI_INSTALL_DOGFOOD_MATURITY:-0}" == "1" ]]; then
-  AIWIKI_INSTALL_DOGFOOD_MATURITY=1 bash scripts/install_user_service.sh
+  AIWIKI_VAULT="${AIWIKI_VAULT:-$VAULT}" AIWIKI_INSTALL_DOGFOOD_MATURITY=1 bash scripts/install_user_service.sh
 else
-  echo "Tip: AIWIKI_INSTALL_DOGFOOD_MATURITY=1 bash scripts/install_user_service.sh"
+  echo "Tip: AIWIKI_VAULT=\"$VAULT\" AIWIKI_INSTALL_DOGFOOD_MATURITY=1 bash scripts/install_user_service.sh"
   systemctl --user is-active aiwiki-dogfood-maturity.timer 2>/dev/null || echo "timer: not active"
 fi
 

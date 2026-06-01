@@ -31,6 +31,8 @@ Import policy (mirrors EP-018B1/B2):
 
 from __future__ import annotations
 
+import contextlib
+import json
 from pathlib import Path
 from typing import Any
 
@@ -41,13 +43,53 @@ from ..app_protocol import ensure_layout
 from ..app_state import (
     append_runtime_history,
     ensure_knowledge_lifecycle_override_state,
+    execution_receipt_history_path,
     knowledge_lifecycle_override_state_path,
     knowledge_lifecycle_state_path,
     load_active_corpora_state,
     load_machine_memory,
+    runtime_history_path,
     save_knowledge_lifecycle_override_state,
 )
-from ..app_utils import relative_path, runtime_write_operation
+from ..app_utils import (
+    _restore_snapshots,
+    _snapshot_file_bytes,
+    relative_path,
+    runtime_write_operation,
+    sha256_bytes,
+)
+from .audit_preview import AUDIT_STREAM_PATH
+from .receipts import write_execution_receipt
+
+
+def _hash_json(value: Any) -> str:
+    payload = json.dumps(value, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    return sha256_bytes(payload)
+
+
+def _lifecycle_transaction_snapshots(root: Path) -> dict[Path, bytes | None]:
+    return {
+        knowledge_lifecycle_override_state_path(root): _snapshot_file_bytes(knowledge_lifecycle_override_state_path(root)),
+        knowledge_lifecycle_state_path(root): _snapshot_file_bytes(knowledge_lifecycle_state_path(root)),
+        runtime_history_path(root): _snapshot_file_bytes(runtime_history_path(root)),
+        root / "wiki" / "indexes" / "log.md": _snapshot_file_bytes(root / "wiki" / "indexes" / "log.md"),
+        execution_receipt_history_path(root): _snapshot_file_bytes(execution_receipt_history_path(root)),
+        root / AUDIT_STREAM_PATH: _snapshot_file_bytes(root / AUDIT_STREAM_PATH),
+    }
+
+
+def _rollback_lifecycle_transaction(
+    root: Path,
+    snapshots: dict[Path, bytes | None],
+    *,
+    receipt: dict[str, Any] | None,
+) -> None:
+    if receipt:
+        receipt_path = str(receipt.get("receipt_path") or "")
+        if receipt_path:
+            with contextlib.suppress(FileNotFoundError):
+                (root / receipt_path).unlink()
+    _restore_snapshots(snapshots)
 
 
 def refresh_knowledge_lifecycle_runtime(
@@ -75,6 +117,7 @@ def retire_concept(root: Path, slug: str, *, note: str | None = None) -> dict[st
     path = concept_page_path(root, slug)
     if not path.exists():
         raise FileNotFoundError(f"Concept page not found: {relative_path(root, path)}")
+    transaction_snapshots = _lifecycle_transaction_snapshots(root)
     lifecycle = refresh_knowledge_lifecycle_runtime(root)
     current_entry = concept_lifecycle_entry(lifecycle, slug)
     if not current_entry:
@@ -90,6 +133,7 @@ def retire_concept(root: Path, slug: str, *, note: str | None = None) -> dict[st
     override_entries = [
         dict(entry) for entry in override_state.get("entries", []) if isinstance(entry, dict)
     ]
+    before_override_hash = _hash_json(override_entries)
     retired_at = _app_compile.utc_now()
     path_ref = relative_path(root, path)
     page_id = str(current_entry.get("page_id") or f"concept-{slug}")
@@ -117,34 +161,75 @@ def retire_concept(root: Path, slug: str, *, note: str | None = None) -> dict[st
             "note": note or "Concept retired from the active knowledge plane.",
         }
     )
-    save_knowledge_lifecycle_override_state(root, {"version": 1, "entries": override_entries})
-    updated_lifecycle = refresh_knowledge_lifecycle_runtime(root, generated_at=retired_at)
-    append_runtime_history(
-        root,
-        {
-            "event_type": "knowledge-lifecycle-override",
-            "occurred_at": retired_at,
-            "operation": "retire",
-            "kind": "concept",
-            "page_id": page_id,
-            "slug": slug,
-            "path": path_ref,
-            "lifecycle_state": "retired",
-            "note": note or "",
-        },
-    )
-    append_wiki_log(
-        root,
-        "concept-retire",
-        str(current_entry.get("title") or slug),
-        [
-            f"slug: `{slug}`",
-            f"path: `{path_ref}`",
-            "lifecycle_state: `retired`",
-            f"override_state: `{relative_path(root, knowledge_lifecycle_override_state_path(root))}`",
-        ],
-    )
-    final_entry = concept_lifecycle_entry(updated_lifecycle, slug)
+    receipt: dict[str, Any] | None = None
+    try:
+        save_knowledge_lifecycle_override_state(root, {"version": 1, "entries": override_entries})
+        updated_lifecycle = refresh_knowledge_lifecycle_runtime(root, generated_at=retired_at)
+        append_runtime_history(
+            root,
+            {
+                "event_type": "knowledge-lifecycle-override",
+                "occurred_at": retired_at,
+                "operation": "retire",
+                "kind": "concept",
+                "page_id": page_id,
+                "slug": slug,
+                "path": path_ref,
+                "lifecycle_state": "retired",
+                "note": note or "",
+            },
+        )
+        append_wiki_log(
+            root,
+            "concept-retire",
+            str(current_entry.get("title") or slug),
+            [
+                f"slug: `{slug}`",
+                f"path: `{path_ref}`",
+                "lifecycle_state: `retired`",
+                f"override_state: `{relative_path(root, knowledge_lifecycle_override_state_path(root))}`",
+            ],
+        )
+        receipt = write_execution_receipt(
+            root,
+            operation="apply",
+            generated_by="aiwiki-retire-concept",
+            subject_kind="concept_lifecycle",
+            subject_id=slug,
+            target_file=path_ref,
+            primary_path=path_ref,
+            secondary_path=relative_path(root, knowledge_lifecycle_override_state_path(root)),
+            revert_supported=True,
+            extra={
+                "domain": "non_core_semantic",
+                "semantic_operation": "retire",
+                "target_paths": [
+                    path_ref,
+                    relative_path(root, knowledge_lifecycle_override_state_path(root)),
+                    relative_path(root, knowledge_lifecycle_state_path(root)),
+                ],
+                "before_hash": before_override_hash,
+                "after_hash": _hash_json(override_entries),
+                "source_provenance": {"page_id": page_id, "path": path_ref},
+                "llm_receipt_id": "",
+                "autonomy_decision": {
+                    "autonomy_domain": "non_core_semantic",
+                    "execution_strategy": "semantic_apply",
+                    "llm_governed": False,
+                },
+                "revert_ref": f"concept_lifecycle:{slug}:reactivate",
+            },
+        )
+        final_entry = concept_lifecycle_entry(updated_lifecycle, slug)
+    except Exception as transaction_error:
+        try:
+            _rollback_lifecycle_transaction(root, transaction_snapshots, receipt=receipt)
+        except Exception as rollback_error:
+            raise RuntimeError(
+                f"concept lifecycle retire rollback failed for {path_ref}: "
+                f"transaction_error={transaction_error!r}; rollback_error={rollback_error!r}"
+            ) from rollback_error
+        raise
     return {
         "slug": slug,
         "path": path_ref,
@@ -152,6 +237,7 @@ def retire_concept(root: Path, slug: str, *, note: str | None = None) -> dict[st
         "override_path": relative_path(root, knowledge_lifecycle_override_state_path(root)),
         "knowledge_lifecycle_path": relative_path(root, knowledge_lifecycle_state_path(root)),
         "updated_at": retired_at,
+        "receipt_path": str(receipt.get("receipt_path") or ""),
     }
 
 
@@ -183,10 +269,12 @@ def reactivate_concept(root: Path, slug: str, *, note: str | None = None) -> dic
     path = concept_page_path(root, slug)
     if not path.exists():
         raise FileNotFoundError(f"Concept page not found: {relative_path(root, path)}")
+    transaction_snapshots = _lifecycle_transaction_snapshots(root)
     override_state = ensure_knowledge_lifecycle_override_state(root)
     override_entries = [
         dict(entry) for entry in override_state.get("entries", []) if isinstance(entry, dict)
     ]
+    before_override_hash = _hash_json(override_entries)
     path_ref = relative_path(root, path)
     matches: list[dict[str, Any]] = [
         entry
@@ -209,36 +297,77 @@ def reactivate_concept(root: Path, slug: str, *, note: str | None = None) -> dic
             note or "Concept reactivated into heuristic lifecycle routing."
         )
         entry["updated_at"] = reactivated_at
-    save_knowledge_lifecycle_override_state(root, {"version": 1, "entries": override_entries})
-    updated_lifecycle = refresh_knowledge_lifecycle_runtime(root, generated_at=reactivated_at)
-    final_entry = concept_lifecycle_entry(updated_lifecycle, slug)
-    append_runtime_history(
-        root,
-        {
-            "event_type": "knowledge-lifecycle-override",
-            "occurred_at": reactivated_at,
-            "operation": "reactivate",
-            "kind": "concept",
-            "page_id": str(target.get("page_id") or f"concept-{slug}"),
-            "slug": slug,
-            "path": path_ref,
-            "lifecycle_state": str(final_entry.get("lifecycle_state") or ""),
-            "cleared_lifecycle_state": cleared_state,
-            "note": note or "",
-        },
-    )
-    append_wiki_log(
-        root,
-        "concept-reactivate",
-        str(final_entry.get("title") or slug),
-        [
-            f"slug: `{slug}`",
-            f"path: `{path_ref}`",
-            f"lifecycle_state: `{str(final_entry.get('lifecycle_state') or 'unknown')}` "
-            f"(cleared `{cleared_state or 'unknown'}` override)",
-            f"override_state: `{relative_path(root, knowledge_lifecycle_override_state_path(root))}`",
-        ],
-    )
+    receipt: dict[str, Any] | None = None
+    try:
+        save_knowledge_lifecycle_override_state(root, {"version": 1, "entries": override_entries})
+        updated_lifecycle = refresh_knowledge_lifecycle_runtime(root, generated_at=reactivated_at)
+        final_entry = concept_lifecycle_entry(updated_lifecycle, slug)
+        append_runtime_history(
+            root,
+            {
+                "event_type": "knowledge-lifecycle-override",
+                "occurred_at": reactivated_at,
+                "operation": "reactivate",
+                "kind": "concept",
+                "page_id": str(target.get("page_id") or f"concept-{slug}"),
+                "slug": slug,
+                "path": path_ref,
+                "lifecycle_state": str(final_entry.get("lifecycle_state") or ""),
+                "cleared_lifecycle_state": cleared_state,
+                "note": note or "",
+            },
+        )
+        append_wiki_log(
+            root,
+            "concept-reactivate",
+            str(final_entry.get("title") or slug),
+            [
+                f"slug: `{slug}`",
+                f"path: `{path_ref}`",
+                f"lifecycle_state: `{str(final_entry.get('lifecycle_state') or 'unknown')}` "
+                f"(cleared `{cleared_state or 'unknown'}` override)",
+                f"override_state: `{relative_path(root, knowledge_lifecycle_override_state_path(root))}`",
+            ],
+        )
+        receipt = write_execution_receipt(
+            root,
+            operation="revert",
+            generated_by="aiwiki-reactivate-concept",
+            subject_kind="concept_lifecycle",
+            subject_id=slug,
+            target_file=path_ref,
+            primary_path=path_ref,
+            secondary_path=relative_path(root, knowledge_lifecycle_override_state_path(root)),
+            revert_supported=False,
+            extra={
+                "domain": "non_core_semantic",
+                "semantic_operation": "reactivate",
+                "target_paths": [
+                    path_ref,
+                    relative_path(root, knowledge_lifecycle_override_state_path(root)),
+                    relative_path(root, knowledge_lifecycle_state_path(root)),
+                ],
+                "before_hash": before_override_hash,
+                "after_hash": _hash_json(override_entries),
+                "source_provenance": {"cleared_lifecycle_state": cleared_state, "path": path_ref},
+                "llm_receipt_id": "",
+                "autonomy_decision": {
+                    "autonomy_domain": "non_core_semantic",
+                    "execution_strategy": "semantic_revert",
+                    "llm_governed": False,
+                },
+                "revert_ref": f"concept_lifecycle:{slug}:cleared:{cleared_state}",
+            },
+        )
+    except Exception as transaction_error:
+        try:
+            _rollback_lifecycle_transaction(root, transaction_snapshots, receipt=receipt)
+        except Exception as rollback_error:
+            raise RuntimeError(
+                f"concept lifecycle reactivate rollback failed for {path_ref}: "
+                f"transaction_error={transaction_error!r}; rollback_error={rollback_error!r}"
+            ) from rollback_error
+        raise
     return {
         "slug": slug,
         "path": path_ref,
@@ -247,6 +376,7 @@ def reactivate_concept(root: Path, slug: str, *, note: str | None = None) -> dic
         "override_path": relative_path(root, knowledge_lifecycle_override_state_path(root)),
         "knowledge_lifecycle_path": relative_path(root, knowledge_lifecycle_state_path(root)),
         "updated_at": reactivated_at,
+        "receipt_path": str(receipt.get("receipt_path") or ""),
     }
 
 

@@ -58,8 +58,11 @@ from aiwiki.app_memory import (
 from aiwiki.app_memory_surfaces import render_machine_memory_graph_html
 from aiwiki.app_protocol import ensure_layout, load_protocol_state, save_manifest
 from aiwiki.app_state import (
+    concept_rewrite_state_path,
+    execution_receipt_history_path,
     load_archive_candidates_state,
     load_cache_status,
+    load_jsonl_documents,
     load_knowledge_lifecycle_override_state,
     load_knowledge_lifecycle_state,
     load_machine_memory,
@@ -70,6 +73,7 @@ from aiwiki.app_state import (
     load_output_candidates_state,
     load_planner_state,
     load_query_route_telemetry,
+    runtime_history_path,
     save_knowledge_lifecycle_override_state,
     save_machine_memory_action_state,
     save_manual_link_state,
@@ -262,9 +266,17 @@ class LifecycleFlowTests(AppFlowTestBase):
         reverted = revert_concept_rewrite(self.root, slug, note="Restore prior synthesis.")
 
         self.assertEqual(reverted["status"], "accepted")
+        self.assertTrue(reverted["receipt_path"])
         restored = concept_page.read_text(encoding="utf-8")
         self.assertIn("Existing synthesis", restored)
         self.assertNotIn("Rewritten synthesis", restored)
+        receipts = load_jsonl_documents(execution_receipt_history_path(self.root))
+        rewrite_receipts = [receipt for receipt in receipts if receipt.get("subject_kind") == "concept_rewrite"]
+        self.assertEqual([receipt["operation"] for receipt in rewrite_receipts[-2:]], ["apply", "revert"])
+        self.assertEqual(rewrite_receipts[-1]["domain"], "non_core_semantic")
+        self.assertTrue(rewrite_receipts[-1]["before_hash"])
+        self.assertTrue(rewrite_receipts[-1]["after_hash"])
+        self.assertEqual(rewrite_receipts[-1]["autonomy_decision"]["execution_strategy"], "semantic_revert")
 
         reverted_shell = shell_status(self.root)
         reverted_controls = {proposal["slug"]: proposal for proposal in reverted_shell["review_controls"]["rewrite_proposals"]}
@@ -277,6 +289,29 @@ class LifecycleFlowTests(AppFlowTestBase):
         cognitive_history = (self.root / "wiki" / "indexes" / "cognitive-history.md").read_text(encoding="utf-8")
         self.assertIn("Concept Rewrite 事件", cognitive_history)
         self.assertIn("revert -> accepted", cognitive_history)
+
+    def test_apply_concept_rewrite_rolls_back_when_receipt_write_fails(self) -> None:
+        prepared = self._prepare_concept_rewrite_proposal()
+        concept_page = prepared["concept_page"]
+        slug = str(prepared["slug"])
+
+        review_concept_rewrite(self.root, slug, "accepted", note="Looks grounded.")
+        original_page = concept_page.read_bytes()
+        original_state = concept_rewrite_state_path(self.root).read_bytes()
+        original_runtime = runtime_history_path(self.root).read_bytes()
+        receipt_history = execution_receipt_history_path(self.root)
+        original_receipts = receipt_history.read_bytes() if receipt_history.exists() else b""
+
+        with patch("aiwiki.execution.concept_rewrite.write_execution_receipt", side_effect=RuntimeError("receipt down")):
+            with self.assertRaisesRegex(RuntimeError, "receipt down"):
+                apply_concept_rewrite(self.root, slug, note="Apply should rollback.")
+
+        self.assertEqual(concept_page.read_bytes(), original_page)
+        self.assertEqual(concept_rewrite_state_path(self.root).read_bytes(), original_state)
+        self.assertEqual(runtime_history_path(self.root).read_bytes(), original_runtime)
+        self.assertEqual(receipt_history.read_bytes() if receipt_history.exists() else b"", original_receipts)
+        self.assertIn("Existing synthesis", concept_page.read_text(encoding="utf-8"))
+        self.assertNotIn("Rewritten synthesis", concept_page.read_text(encoding="utf-8"))
 
     def test_apply_machine_memory_action_writes_manual_link_state(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
