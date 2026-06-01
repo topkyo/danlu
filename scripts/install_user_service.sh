@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+VAULT_ROOT="${AIWIKI_VAULT:-$PROJECT_ROOT}"
 
 WATCH_SERVICE_NAME="aiwiki-watch.service"
 NIGHTLY_SERVICE_NAME="aiwiki-nightly.service"
@@ -143,11 +144,13 @@ fi
 sed \
   -e "s|__PROJECT_ROOT__|$PROJECT_ROOT|g" \
   -e "s|__ENV_FILE__|$WATCH_ENV_PATH|g" \
+  -e "s|__VAULT__|$VAULT_ROOT|g" \
   "$WATCH_TEMPLATE_PATH" >"$WATCH_UNIT_PATH"
 
 sed \
   -e "s|__PROJECT_ROOT__|$PROJECT_ROOT|g" \
   -e "s|__ENV_FILE__|$NIGHTLY_ENV_PATH|g" \
+  -e "s|__VAULT__|$VAULT_ROOT|g" \
   "$NIGHTLY_SERVICE_TEMPLATE_PATH" >"$NIGHTLY_SERVICE_PATH"
 
 sed \
@@ -159,6 +162,7 @@ if truthy "$INSTALL_DOGFOOD_MATURITY"; then
   sed \
     -e "s|__PROJECT_ROOT__|$PROJECT_ROOT|g" \
     -e "s|__ENV_FILE__|$DOGFOOD_MATURITY_ENV_PATH|g" \
+    -e "s|__DOGFOOD_VAULT__|$DOGFOOD_MATURITY_VAULT_DEFAULT|g" \
     "$DOGFOOD_MATURITY_SERVICE_TEMPLATE_PATH" >"$DOGFOOD_MATURITY_SERVICE_PATH"
 
   sed \

@@ -1118,7 +1118,12 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
     auto_once_parser.add_argument(
         "--deterministic-only",
         action="store_true",
-        help="Skip the LLM layer and run deterministic compile + lint only.",
+        help="Compatibility no-op: auto-once is deterministic-only unless --with-llm is provided.",
+    )
+    auto_once_parser.add_argument(
+        "--with-llm",
+        action="store_true",
+        help="Opt in to LLM compile + semantic lint for this auto-once run.",
     )
     auto_once_parser.add_argument(
         "--no-semantic-lint",
@@ -1145,7 +1150,12 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
     watch_parser.add_argument(
         "--deterministic-only",
         action="store_true",
-        help="Skip the LLM layer and run deterministic compile + lint only.",
+        help="Compatibility no-op: watch is deterministic-only unless --with-llm is provided.",
+    )
+    watch_parser.add_argument(
+        "--with-llm",
+        action="store_true",
+        help="Opt in to LLM compile + semantic lint in the watcher loop.",
     )
     watch_parser.add_argument(
         "--no-semantic-lint",
@@ -1282,7 +1292,12 @@ def _add_auto_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--deterministic-only",
         action="store_true",
-        help="When used with --auto, skip the LLM layer and run deterministic compile + lint only.",
+        help="Compatibility no-op: drop --auto is deterministic-only unless --with-llm is provided.",
+    )
+    parser.add_argument(
+        "--with-llm",
+        action="store_true",
+        help="When used with --auto, opt in to LLM compile + semantic lint after the material is dropped.",
     )
     parser.add_argument(
         "--no-semantic-lint",

@@ -25,8 +25,8 @@ ARGS=(
   --compile-limit "$COMPILE_LIMIT"
 )
 
-if [[ "${AIWIKI_WATCH_DETERMINISTIC_ONLY:-1}" != "0" ]]; then
-  ARGS+=(--deterministic-only)
+if [[ "${AIWIKI_WATCH_DETERMINISTIC_ONLY:-1}" == "0" ]]; then
+  ARGS+=(--with-llm)
 fi
 
 if [[ "${AIWIKI_WATCH_NO_SEMANTIC_LINT:-0}" == "1" ]]; then

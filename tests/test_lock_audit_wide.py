@@ -65,7 +65,7 @@ def test_auto_process_once_acquires_lock(tmp_path: Path, monkeypatch: pytest.Mon
     def probe(*_args: object, **_kwargs: object) -> None:
         _short_circuit_after_lock_probe(tmp_path)
 
-    monkeypatch.setattr("aiwiki.runner.automation.ensure_layout", probe)
+    monkeypatch.setattr("aiwiki.runner.automation.compile_wiki", probe)
     with pytest.raises(RuntimeError, match="short-circuit after lock probe"):
         auto_process_once(tmp_path, deterministic_only=True, semantic_lint=False)
 

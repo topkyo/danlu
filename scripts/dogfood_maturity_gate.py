@@ -1267,10 +1267,11 @@ def _build_agentic_autonomy_report(root: Path, nightly: dict[str, Any] | None = 
         for item in load_jsonl_documents(execution_receipt_history_path(root))
         if isinstance(item, dict) and str(item.get("kind") or "") == "execution-receipt"
     ]
+    llm_review_ids = _successful_judgment_review_llm_ids(root)
     llm_governed_apply_count = sum(
         1
         for item in receipts
-        if _is_llm_governed_apply_receipt(item)
+        if _is_llm_governed_apply_receipt(item, llm_review_ids=llm_review_ids)
     )
     core_proposal_count = sum(
         1
@@ -1331,17 +1332,35 @@ def _build_agentic_autonomy_report(root: Path, nightly: dict[str, Any] | None = 
     }
 
 
-def _is_llm_governed_apply_receipt(item: dict[str, Any]) -> bool:
+def _successful_judgment_review_llm_ids(root: Path) -> set[str]:
+    from aiwiki.app_state import load_jsonl_documents
+
+    path = root / ".aiwiki" / "logs" / "llm-receipts.jsonl"
+    return {
+        str(item.get("review_id") or "")
+        for item in load_jsonl_documents(path)
+        if isinstance(item, dict)
+        and str(item.get("event") or "") == "judgment-review-llm"
+        and str(item.get("status") or "") == "success"
+        and str(item.get("delivery_mode") or "") == "llm-judgment-review"
+        and str(item.get("review_id") or "")
+    }
+
+
+def _is_llm_governed_apply_receipt(item: dict[str, Any], *, llm_review_ids: set[str] | None = None) -> bool:
     if str(item.get("operation") or "") != "apply":
         return False
-    if bool(item.get("llm_governed")):
-        return True
-    return (
+    if (
         str(item.get("generated_by") or "") == "aiwiki-judgment-review"
         and str(item.get("subject_kind") or "") == "judgment_review"
         and str(item.get("autonomy_domain") or "non_core_semantic") == "non_core_semantic"
-        and ("llm_governed" not in item or bool(item.get("llm_governed")))
-    )
+    ):
+        if int(item.get("judgment_llm_receipt_version") or 0) >= 1:
+            return str(item.get("subject_id") or "") in (llm_review_ids or set())
+        return bool(item.get("llm_governed"))
+    if bool(item.get("llm_governed")):
+        return True
+    return False
 
 
 def _is_core_auto_apply_receipt(item: dict[str, Any]) -> bool:

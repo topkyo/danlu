@@ -649,9 +649,11 @@ def _handle_ops(args: argparse.Namespace, root: Path) -> tuple[object, str | Non
             raise ValueError("Provide exactly one of --status, --rebuild, or --drop.")
         result = cache_status_summary(root) if args.status else force_rebuild_query_cache(root) if args.rebuild else drop_query_cache(root)
     elif args.handler_command == "auto-once":
-        result = auto_process_once(root, compile_limit=args.compile_limit, deterministic_only=args.deterministic_only, semantic_lint=not args.no_semantic_lint)
+        deterministic_only = not bool(getattr(args, "with_llm", False)) or bool(args.deterministic_only)
+        result = auto_process_once(root, compile_limit=args.compile_limit, deterministic_only=deterministic_only, semantic_lint=not args.no_semantic_lint)
     elif args.handler_command == "watch":
-        result = watch_inbox(root, interval_seconds=args.interval, compile_limit=args.compile_limit, deterministic_only=args.deterministic_only, semantic_lint=not args.no_semantic_lint, process_initial=not args.skip_initial, max_cycles=args.max_cycles)
+        deterministic_only = not bool(getattr(args, "with_llm", False)) or bool(args.deterministic_only)
+        result = watch_inbox(root, interval_seconds=args.interval, compile_limit=args.compile_limit, deterministic_only=deterministic_only, semantic_lint=not args.no_semantic_lint, process_initial=not args.skip_initial, max_cycles=args.max_cycles)
     else:
         raise ValueError(f"Unsupported command: {args.handler_command}")
     return _out(result, text_output)

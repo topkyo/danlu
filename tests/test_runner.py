@@ -409,7 +409,7 @@ class RunnerTests(unittest.TestCase):
 
         self.assertEqual(_safe_quoted_report_reference_paths(self.root, refs), ["output/reports/safe.md"])
 
-    def test_run_ask_elixir_count_uses_local_stats_before_direct_llm(self) -> None:
+    def test_run_ask_elixir_count_uses_llm_direct_path(self) -> None:
         elixir_dir = self.root / "wiki" / "elixirs"
         elixir_dir.mkdir(parents=True, exist_ok=True)
         (elixir_dir / "elixir-a.md").write_text(
@@ -424,28 +424,30 @@ class RunnerTests(unittest.TestCase):
         candidate_dir.mkdir(parents=True, exist_ok=True)
         (candidate_dir / "candidate.md").write_text("# Candidate\n", encoding="utf-8")
 
-        question = "# 引用报告：output/reports/目前炼丹炉有几个金丹-note.md 当前炼丹炉valut这个仓库有几个金丹？"
-        with patch("aiwiki.runner.workflows_ask.ask_question") as deterministic_ask, patch(
-            "aiwiki.runner.preflight.preflight_check_backend",
-            side_effect=AssertionError("local elixir stats must not probe backend"),
-        ):
-            result = run_ask(self.root, question, "note", direct=True)
+        question = "当前炼丹炉 vault 这个仓库有几个金丹？"
+        class _CountClient:
+            def __init__(self) -> None:
+                self.config = type("Config", (), {"model": "deepseek-v4-pro", "backend": "opencode-api", "timeout_seconds": 45})()
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt
+                self.assert_prompt = user_prompt
+                return CompletionResult(text="当前 vault 已沉淀金丹 2 个，候选金丹 1 个。", response_id="resp_count", usage={"total_tokens": 9})
+
+        client = _CountClient()
+        with patch("aiwiki.runner.workflows_ask.ask_question") as deterministic_ask:
+            result = run_ask(self.root, question, "note", client=client, direct=True)
 
         deterministic_ask.assert_not_called()
-        self.assertEqual(result["delivery_mode"], "local-deterministic")
-        self.assertEqual(result["settled_elixir_count"], 2)
-        self.assertEqual(result["candidate_elixir_count"], 1)
-        self.assertIn("当前炼丹炉vault这个仓库有几个金丹？", result["clean_question"])
+        self.assertEqual(result["delivery_mode"], "llm-direct")
         artifact = self.root / result["path"]
         content = artifact.read_text(encoding="utf-8")
-        self.assertIn("generated_by: \"aiwiki-local-elixir-stats\"", content)
+        self.assertIn("generated_by: \"aiwiki-run-ask-direct\"", content)
         self.assertIn("cssclasses:", content)
         self.assertIn('  - "aiwiki-output"', content)
-        self.assertIn("当前 vault 已沉淀金丹 **2 个**", content)
-        self.assertIn("候选金丹 **1 个**", content)
-        self.assertIn("[第一个金丹](wiki/elixirs/elixir-a.md)", content)
+        self.assertIn("当前 vault 已沉淀金丹 2 个", content)
         receipt = json.loads((self.root / ".aiwiki/logs/llm-receipts.jsonl").read_text(encoding="utf-8").splitlines()[-1])
-        self.assertEqual(receipt["event"], "run-ask-local-elixir-stats")
+        self.assertEqual(receipt["event"], "run-ask-direct")
         self.assertEqual(receipt["status"], "success")
         receipt_history = _load_jsonl_records(self.root / ".aiwiki" / "state" / "execution-receipts.jsonl")
         matching_receipts = [
@@ -453,14 +455,13 @@ class RunnerTests(unittest.TestCase):
             for record in receipt_history
             if record.get("operation") == "run-ask"
             and record.get("status") == "success"
-            and record.get("generated_by") == "aiwiki-local-elixir-stats"
+            and record.get("generated_by") == "aiwiki-run-ask-direct"
             and record.get("target_file") == result["path"]
         ]
         self.assertTrue(matching_receipts, receipt_history)
         self.assertEqual(matching_receipts[-1]["receipt_matrix_version"], 1)
-        self.assertEqual(matching_receipts[-1]["run_ask_path"], "local-elixir-stats")
+        self.assertEqual(matching_receipts[-1]["run_ask_path"], "direct-note")
         self.assertEqual(matching_receipts[-1]["artifact_status"], "completed")
-        self.assertEqual(matching_receipts[-1]["settled_elixir_count"], 2)
         run_notes = (self.root / result["run_notes_path"]).read_text(encoding="utf-8")
         self.assertIn(matching_receipts[-1]["receipt_path"], run_notes)
 
@@ -573,52 +574,60 @@ class RunnerTests(unittest.TestCase):
         context_section = run_notes.split("## Context References", 1)[1].split("## Receipt", 1)[0]
         self.assertNotIn("raw/assets/image.jpeg", context_section)
 
-    def test_run_ask_markdown_count_uses_local_stats_before_direct_llm(self) -> None:
+    def test_run_ask_markdown_count_uses_llm_direct_path(self) -> None:
         (self.root / "raw" / "inbox").mkdir(parents=True, exist_ok=True)
         (self.root / "wiki" / "sources").mkdir(parents=True, exist_ok=True)
         (self.root / "raw" / "inbox" / "a.md").write_text("# A\n", encoding="utf-8")
         (self.root / "wiki" / "sources" / "b.md").write_text("# B\n", encoding="utf-8")
 
-        class _UnexpectedClient:
+        class _CountClient:
+            def __init__(self) -> None:
+                self.config = type("Config", (), {"model": "deepseek-v4-pro", "backend": "opencode-api", "timeout_seconds": 45})()
+
             def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
                 del system_prompt, user_prompt
-                raise AssertionError("local markdown stats must not call LLM")
+                return CompletionResult(text="当前 vault 中可见 Markdown 文件至少 2 个。", response_id="resp_md_count", usage={"total_tokens": 8})
 
-        result = run_ask(self.root, "炼丹炉有多少md文件？", "note", client=_UnexpectedClient(), direct=True)
+        result = run_ask(self.root, "炼丹炉有多少md文件？", "note", client=_CountClient(), direct=True)
 
-        self.assertEqual(result["delivery_mode"], "local-deterministic")
-        self.assertGreaterEqual(result["markdown_file_count"], 2)
+        self.assertEqual(result["delivery_mode"], "llm-direct")
         content = (self.root / result["path"]).read_text(encoding="utf-8")
-        self.assertIn(f"当前 vault 中可见 Markdown 文件共 **{result['markdown_file_count']} 个**", content)
-        self.assertIn("`raw/`：1 个", content)
-        self.assertIn("`wiki/`：", content)
-        self.assertIn("raw/inbox/a.md", content)
-        self.assertIn('generated_by: "aiwiki-local-markdown-stats"', content)
+        self.assertIn("当前 vault 中可见 Markdown 文件至少 2 个。", content)
+        self.assertIn('generated_by: "aiwiki-run-ask-direct"', content)
         receipt_history = _load_jsonl_records(self.root / ".aiwiki" / "state" / "execution-receipts.jsonl")
         matching_receipts = [
             record
             for record in receipt_history
             if record.get("operation") == "run-ask"
             and record.get("status") == "success"
-            and record.get("generated_by") == "aiwiki-local-markdown-stats"
+            and record.get("generated_by") == "aiwiki-run-ask-direct"
             and record.get("target_file") == result["path"]
         ]
         self.assertTrue(matching_receipts, receipt_history)
         self.assertEqual(matching_receipts[-1]["receipt_matrix_version"], 1)
-        self.assertEqual(matching_receipts[-1]["run_ask_path"], "local-markdown-stats")
+        self.assertEqual(matching_receipts[-1]["run_ask_path"], "direct-note")
         self.assertEqual(matching_receipts[-1]["artifact_status"], "completed")
-        self.assertEqual(matching_receipts[-1]["markdown_file_count"], result["markdown_file_count"])
 
-    def test_run_ask_local_stats_run_notes_failure_does_not_leave_success_receipt(self) -> None:
+    def test_run_ask_count_question_llm_failure_does_not_leave_success_receipt(self) -> None:
         (self.root / "raw" / "inbox").mkdir(parents=True, exist_ok=True)
         (self.root / "raw" / "inbox" / "a.md").write_text("# A\n", encoding="utf-8")
 
-        with patch("aiwiki.runner.workflows_ask.write_run_notes", side_effect=RuntimeError("notes failed")):
-            with self.assertRaises(RuntimeError):
-                run_ask(self.root, "炼丹炉有多少md文件？", "note", direct=True)
+        class _FailingClient:
+            def __init__(self) -> None:
+                self.config = type("Config", (), {"model": "deepseek-v4-pro", "backend": "opencode-api", "timeout_seconds": 45})()
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt, user_prompt
+                raise LLMError("backend unavailable")
+
+        with self.assertRaises(LLMError):
+            run_ask(self.root, "炼丹炉有多少md文件？", "note", client=_FailingClient(), direct=True)
 
         self.assertEqual(list((self.root / "output" / "reports").glob("*.md")), [])
         self.assertEqual(_load_jsonl_records(self.root / ".aiwiki" / "state" / "execution-receipts.jsonl"), [])
+        llm_receipt = json.loads((self.root / ".aiwiki/logs/llm-receipts.jsonl").read_text(encoding="utf-8").splitlines()[-1])
+        self.assertEqual(llm_receipt["event"], "run-ask-direct")
+        self.assertEqual(llm_receipt["status"], "failed")
 
     def test_run_ask_direct_note_supplies_relevant_vault_context_to_llm(self) -> None:
         source = self.root / "wiki" / "sources" / "source-vla.md"

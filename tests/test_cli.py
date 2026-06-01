@@ -2374,6 +2374,70 @@ class CLITests(unittest.TestCase):
         self.assertEqual(payload["auto_process"], {"compiled": 1})
         self.assertEqual(payload["material"], "url")
 
+    def test_drop_auto_defaults_to_deterministic_processing(self) -> None:
+        with patch("aiwiki.cli.drop_url", return_value={"material": "url"}) as drop_mock:
+            with patch("aiwiki.cli.auto_process_once", return_value={"compiled": 1}) as auto_mock:
+                code, payload, _stderr = self._run_main(["drop-url", "https://example.com", "--auto"])
+
+        self.assertEqual(code, 0)
+        drop_mock.assert_called_once_with(self.root, "https://example.com", title=None)
+        auto_mock.assert_called_once_with(self.root, deterministic_only=True, semantic_lint=True)
+        self.assertEqual(payload["auto_process"], {"compiled": 1})
+
+    def test_drop_auto_with_llm_opts_into_llm_processing(self) -> None:
+        with patch("aiwiki.cli.drop_url", return_value={"material": "url"}):
+            with patch("aiwiki.cli.auto_process_once", return_value={"compiled": 1}) as auto_mock:
+                code, _payload, _stderr = self._run_main(["drop-url", "https://example.com", "--auto", "--with-llm"])
+
+        self.assertEqual(code, 0)
+        auto_mock.assert_called_once_with(self.root, deterministic_only=False, semantic_lint=True)
+
+    def test_auto_once_and_watch_default_to_deterministic_processing(self) -> None:
+        with patch("aiwiki.cli.auto_process_once", return_value={"command": "auto-once"}) as auto_mock:
+            code, payload, stderr = self._run_main(["auto-once", "--compile-limit", "4"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(payload["command"], "auto-once")
+        auto_mock.assert_called_once_with(self.root, compile_limit=4, deterministic_only=True, semantic_lint=True)
+
+        with patch("aiwiki.cli.watch_inbox", return_value={"command": "watch"}) as watch_mock:
+            code, payload, stderr = self._run_main(["watch", "--max-cycles", "1", "--skip-initial"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(payload["command"], "watch")
+        watch_mock.assert_called_once_with(
+            self.root,
+            interval_seconds=5.0,
+            compile_limit=5,
+            deterministic_only=True,
+            semantic_lint=True,
+            process_initial=False,
+            max_cycles=1,
+        )
+
+    def test_auto_once_and_watch_with_llm_opt_into_llm_processing(self) -> None:
+        with patch("aiwiki.cli.auto_process_once", return_value={"command": "auto-once"}) as auto_mock:
+            code, _payload, _stderr = self._run_main(["auto-once", "--with-llm", "--no-semantic-lint"])
+
+        self.assertEqual(code, 0)
+        auto_mock.assert_called_once_with(self.root, compile_limit=5, deterministic_only=False, semantic_lint=False)
+
+        with patch("aiwiki.cli.watch_inbox", return_value={"command": "watch"}) as watch_mock:
+            code, _payload, _stderr = self._run_main(["watch", "--with-llm", "--max-cycles", "1"])
+
+        self.assertEqual(code, 0)
+        watch_mock.assert_called_once_with(
+            self.root,
+            interval_seconds=5.0,
+            compile_limit=5,
+            deterministic_only=False,
+            semantic_lint=True,
+            process_initial=True,
+            max_cycles=1,
+        )
+
     def test_compile_command_wraps_runtime_owned_rewrite_recovery_payload(self) -> None:
         compile_payload = {
             "compiled_at": "2026-04-22T00:00:00+00:00",

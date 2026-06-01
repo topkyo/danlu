@@ -762,9 +762,10 @@ def _emit_legacy_drop_deprecation_warning(args: argparse.Namespace) -> None:
 def _maybe_auto_process(root: Path, result: dict[str, object], args: argparse.Namespace) -> dict[str, object]:
     if not getattr(args, "auto", False):
         return result
+    deterministic_only = not bool(getattr(args, "with_llm", False)) or bool(getattr(args, "deterministic_only", False))
     auto_result = auto_process_once(
         root,
-        deterministic_only=getattr(args, "deterministic_only", False),
+        deterministic_only=deterministic_only,
         semantic_lint=not getattr(args, "no_semantic_lint", False),
     )
     return {

@@ -46,6 +46,7 @@ from ..app_utils import (
     atomic_write_text,
     relative_path,
     runtime_write_operation,
+    safe_resolve_within,
     utc_now,
 )
 from ..autonomy_domains import (
@@ -60,6 +61,8 @@ from ..execution.lifecycle import review_concepts_batch
 from ..execution.machine_memory_actions import review_machine_memory_actions_batch
 from ..execution.machine_memory_batch import apply_machine_memory_actions_batch
 from ..render.paths import execution_receipt_path
+from .receipts import record_llm_attempt
+from .workflow_shared import _raw_response_path, _receipt_error_class
 
 
 def _build_controls(root: Path):
@@ -395,32 +398,67 @@ def auto_adopt_judgments(
         if not page_path_str or not isinstance(source_ids, list) or not source_ids:
             continue
 
-        page_path = root / page_path_str
-        if not page_path.exists():
+        page_path, page_ref, page_error = _safe_judgment_review_page(root, page_path_str)
+        if page_error:
+            results["items"].append({"page": page_path_str, "status": "human_required", "reason": page_error})
+            failed += 1
+            results["non_core_human_required_count"] = int(results.get("non_core_human_required_count", 0) or 0) + 1
+            continue
+        if page_path is None or not page_path.exists():
             continue
 
         if not scan_generated_at:
             _record_judgment_review_failed(
                 root,
-                page_path=page_path_str,
+                page_path=page_ref,
                 scan_id=scan_id,
                 reviewer_model=reviewer_model,
                 failure_reason="missing_scan_generated_at",
                 error="counter_evidence_scan.generated_at is required",
             )
-            results["items"].append({"page": page_path_str, "status": "missing_scan_generated_at"})
+            results["items"].append({"page": page_ref, "status": "missing_scan_generated_at"})
             failed += 1
+            continue
+        review_id = _judgment_review_id(page_ref, scan_generated_at, reviewer_model)
+        receipt_status, has_receipt = _has_judgment_review_receipt(root, review_id)
+        if receipt_status == "corrupt":
+            results["items"].append({"page": page_ref, "status": "receipt_history_corrupt", "review_id": review_id})
+            _record_judgment_review_failed(
+                root,
+                page_path=page_ref,
+                scan_id=scan_id,
+                reviewer_model=reviewer_model,
+                failure_reason="receipt_history_corrupt",
+                error="execution receipt history is corrupt; fail-closed before LLM call",
+            )
+            failed += 1
+            exception_count += 1
+            results["degraded"] = True
+            continue
+        if has_receipt:
+            results["items"].append({"page": page_ref, "status": "skipped_idempotent", "review_id": review_id})
             continue
 
         try:
             judgment_text = page_path.read_text(encoding="utf-8")
-            sources_text = _read_source_pages(root, source_ids, max_chars=8000)
-            conclusion = _llm_review_judgment(client, judgment_text, sources_text, str(page.get("page_title") or page_path_str))
-            decision = _build_judgment_llm_decision(page_path_str, source_ids, conclusion)
+            sources_text, evidence_source_refs = _read_source_pages(root, source_ids, max_chars=8000)
+            conclusion = _llm_review_judgment(
+                root,
+                client,
+                judgment_text,
+                sources_text,
+                str(page.get("page_title") or page_ref),
+                page_path=page_ref,
+                source_refs=evidence_source_refs,
+                scan_id=scan_id,
+                review_id=review_id,
+                reviewer_model=reviewer_model,
+            )
+            decision = _build_judgment_llm_decision(page_ref, evidence_source_refs, conclusion)
             decision_error = _validate_judgment_decision_refs(root, decision)
             if decision_error:
                 results["items"].append({
-                    "page": page_path_str,
+                    "page": page_ref,
                     "status": "human_required",
                     "reason": decision_error,
                 })
@@ -433,7 +471,7 @@ def auto_adopt_judgments(
             conclusion_counts[conclusion_value or "(missing)"] += 1
             if conclusion_value in {"error", "unparsed"}:
                 item = {
-                    "page": page_path_str,
+                    "page": page_ref,
                     "status": "llm_failed" if conclusion_value == "error" else "llm_unparsed",
                     "conclusion": conclusion_value,
                 }
@@ -445,7 +483,7 @@ def auto_adopt_judgments(
                 exception_count += 1
                 _append_judgment_exception(
                     results,
-                    page_path=page_path_str,
+                    page_path=page_ref,
                     reason=item["status"],
                     conclusion=conclusion_value,
                     confidence=confidence_value,
@@ -453,7 +491,7 @@ def auto_adopt_judgments(
                 )
                 _record_judgment_review_failed(
                     root,
-                    page_path=page_path_str,
+                    page_path=page_ref,
                     scan_id=scan_id,
                     reviewer_model=reviewer_model,
                     failure_reason=item["status"],
@@ -464,14 +502,15 @@ def auto_adopt_judgments(
                 continue
             write_result = _write_review_entry(
                 root,
-                page_path_str,
+                page_ref,
                 conclusion,
                 scan_generated_at=scan_generated_at,
                 reviewer_model=reviewer_model,
                 decision=decision,
+                review_id=review_id,
             )
             results["items"].append({
-                "page": page_path_str,
+                "page": page_ref,
                 "status": write_result.get("status", "applied"),
                 "conclusion": conclusion.get("conclusion", "?"),
                 "confidence": conclusion.get("confidence", "?"),
@@ -481,7 +520,7 @@ def auto_adopt_judgments(
                 exception_count += 1
                 _append_judgment_exception(
                     results,
-                    page_path=page_path_str,
+                    page_path=page_ref,
                     reason="receipt_history_corrupt",
                     conclusion=conclusion_value,
                     confidence=confidence_value,
@@ -489,7 +528,7 @@ def auto_adopt_judgments(
                 )
                 _record_judgment_review_failed(
                     root,
-                    page_path=page_path_str,
+                    page_path=page_ref,
                     scan_id=scan_id,
                     reviewer_model=reviewer_model,
                     failure_reason="receipt_history_corrupt",
@@ -504,19 +543,19 @@ def auto_adopt_judgments(
                     exception_count += 1
                     _append_judgment_exception(
                         results,
-                        page_path=page_path_str,
+                        page_path=page_ref,
                         reason=exception_reason,
                         conclusion=conclusion_value,
                         confidence=confidence_value,
                         review_id=str(write_result.get("review_id") or ""),
                     )
         except Exception as exc:
-            results["items"].append({"page": page_path_str, "status": "failed", "error": str(exc)})
+            results["items"].append({"page": page_ref, "status": "failed", "error": str(exc)})
             failed += 1
             exception_count += 1
             _append_judgment_exception(
                 results,
-                page_path=page_path_str,
+                page_path=page_ref,
                 reason="failed",
                 conclusion="error",
                 confidence="low",
@@ -596,18 +635,60 @@ def _record_judgment_review_failed(
         print(f"warning: failed to write judgment-review-failed audit: {exc}")
 
 
-def _read_source_pages(root: Path, source_ids: list[str], max_chars: int = 8000) -> str:
-    """Read up to 4 new source pages, truncating to ``max_chars`` total."""
+def _safe_judgment_review_page(root: Path, page_path: str) -> tuple[Path | None, str, str]:
+    text = str(page_path or "").strip()
+    if not text:
+        return None, "", "missing_page_path"
+    try:
+        resolved = safe_resolve_within(root / text, root)
+    except Exception:
+        return None, text, "page_path_outside_vault"
+    root_resolved = root.resolve()
+    try:
+        rel = resolved.relative_to(root_resolved).as_posix()
+    except ValueError:
+        return None, text, "page_path_outside_vault"
+    allowed_prefixes = ("wiki/judgments/", "wiki/decisions/")
+    if not rel.endswith(".md") or not any(rel.startswith(prefix) for prefix in allowed_prefixes):
+        return None, rel, "page_path_not_reviewable_judgment_or_decision"
+    return resolved, rel, ""
+
+
+def _safe_source_page(root: Path, source_ref: str) -> tuple[Path | None, str]:
+    text = str(source_ref or "").strip()
+    if not text:
+        return None, ""
+    if "/" not in text and "\\" not in text and not text.startswith("."):
+        candidate_ref = f"wiki/sources/{text}.md"
+    elif text.startswith("wiki/sources/") and text.endswith(".md"):
+        candidate_ref = text
+    else:
+        return None, ""
+    try:
+        resolved = safe_resolve_within(root / candidate_ref, root)
+    except Exception:
+        return None, ""
+    root_resolved = root.resolve()
+    try:
+        rel = resolved.relative_to(root_resolved).as_posix()
+    except ValueError:
+        return None, ""
+    if not rel.startswith("wiki/sources/") or not rel.endswith(".md"):
+        return None, ""
+    return resolved, rel
+
+
+def _read_source_pages(root: Path, source_ids: list[str], max_chars: int = 8000) -> tuple[str, list[str]]:
+    """Read up to 4 source pages within wiki/sources, truncating to ``max_chars`` total."""
     parts: list[str] = []
+    refs: list[str] = []
     total = 0
     for sid in source_ids[:4]:
         if not isinstance(sid, str) or not sid.strip():
             continue
-        # Normalize: source_ids may be bare ids or wiki/sources/<id>.md paths
-        source_path = root / "wiki" / "sources" / f"{sid}.md"
-        if not source_path.exists():
-            # Try as-is path
-            source_path = root / sid
+        source_path, source_ref = _safe_source_page(root, sid)
+        if source_path is None:
+            continue
         if not source_path.exists():
             continue
         content = source_path.read_text(encoding="utf-8")
@@ -616,9 +697,10 @@ def _read_source_pages(root: Path, source_ids: list[str], max_chars: int = 8000)
             break
         if len(content) > remaining:
             content = content[:remaining] + "\n…(truncated)"
-        parts.append(f"--- 来源: {sid} ---\n{content}")
+        parts.append(f"--- 来源: {source_ref} ---\n{content}")
+        refs.append(source_ref)
         total += len(content)
-    return "\n\n".join(parts) if parts else "(无新来源内容可读)"
+    return ("\n\n".join(parts) if parts else "(无新来源内容可读)", refs)
 
 
 _JUDGMENT_SYSTEM_PROMPT = """你是炼丹炉的判断复核 Agent。读取一个已有的判断页和可能反驳它的新来源材料，分析新证据是否动摇了原始判断。
@@ -640,14 +722,22 @@ _JUDGMENT_SYSTEM_PROMPT = """你是炼丹炉的判断复核 Agent。读取一个
 
 
 def _llm_review_judgment(
+    root: Path,
     client: Any,
     judgment_text: str,
     sources_text: str,
     title: str,
+    *,
+    page_path: str,
+    source_refs: list[str],
+    scan_id: Any,
+    review_id: str,
+    reviewer_model: str,
 ) -> dict[str, Any]:
     """Call the LLM to review a judgment with new evidence."""
     import json as _json
     import re
+    import time
 
     user_prompt = f"""## 原始判断
 
@@ -658,23 +748,94 @@ def _llm_review_judgment(
 {sources_text}
 
 请分析新来源是否反驳了原始判断，返回 JSON。"""
+    llm_audit = _llm_audit_for_client(client, delivery_mode="llm-judgment-review", contract_validated=False)
+    base_event = {
+        "event": "judgment-review-llm",
+        "target": page_path,
+        "review_id": review_id,
+        "scan_id": scan_id,
+        "reviewer_model": reviewer_model,
+        "source_refs": source_refs,
+    }
+    started = time.monotonic()
+    result: Any | None = None
     try:
-        result = client.complete(
-            system_prompt=_JUDGMENT_SYSTEM_PROMPT,
-            user_prompt=user_prompt,
-        )
+        result = client.complete(system_prompt=_JUDGMENT_SYSTEM_PROMPT, user_prompt=user_prompt)
         text = str(getattr(result, "text", "") or "")
     except Exception as exc:
+        base_event["duration_ms"] = int((time.monotonic() - started) * 1000)
+        record_llm_attempt(
+            root,
+            base_event,
+            llm_audit,
+            status="failed",
+            error=str(exc),
+            raw_response_path=_raw_response_path(root, result, exc),
+            error_class=_receipt_error_class(exc),
+        )
         return {"conclusion": "error", "confidence": "low", "error": str(exc)}
 
     # Extract JSON from potential markdown fences
     match = re.search(r"\{.*\}", text, re.DOTALL)
     if not match:
+        base_event["duration_ms"] = int((time.monotonic() - started) * 1000)
+        record_llm_attempt(
+            root,
+            base_event,
+            llm_audit,
+            status="failed",
+            error="LLM returned unparseable judgment review JSON.",
+            response_id=str(getattr(result, "response_id", "") or ""),
+            usage=getattr(result, "usage", {}) if result is not None else {},
+            raw_response_path=_raw_response_path(root, result),
+            error_class="parse_error",
+        )
         return {"conclusion": "unparsed", "confidence": "low", "raw": text[:500]}
     try:
-        return _json.loads(match.group(0))
+        parsed = _json.loads(match.group(0))
     except (_json.JSONDecodeError, TypeError):
+        base_event["duration_ms"] = int((time.monotonic() - started) * 1000)
+        record_llm_attempt(
+            root,
+            base_event,
+            llm_audit,
+            status="failed",
+            error="LLM returned invalid judgment review JSON.",
+            response_id=str(getattr(result, "response_id", "") or ""),
+            usage=getattr(result, "usage", {}) if result is not None else {},
+            raw_response_path=_raw_response_path(root, result),
+            error_class="parse_error",
+        )
         return {"conclusion": "unparsed", "confidence": "low", "raw": text[:500]}
+    base_event["duration_ms"] = int((time.monotonic() - started) * 1000)
+    llm_audit["contract_validated"] = True
+    record_llm_attempt(
+        root,
+        base_event,
+        llm_audit,
+        status="success",
+        response_id=str(getattr(result, "response_id", "") or ""),
+        usage=getattr(result, "usage", {}) if result is not None else {},
+        raw_response_path=_raw_response_path(root, result),
+    )
+    return parsed
+
+
+def _llm_audit_for_client(client: Any, *, delivery_mode: str, contract_validated: bool) -> dict[str, Any]:
+    config = getattr(client, "config", None)
+    backend = str(getattr(config, "backend", "") or "")
+    requested = str(getattr(config, "backend_requested", "") or backend)
+    model = str(getattr(config, "model", "") or "")
+    return {
+        "backend_requested": requested,
+        "backend_effective": backend,
+        "model_selected": model,
+        "model_final": model,
+        "fallback_stage": "",
+        "fallback_reason": "",
+        "contract_validated": contract_validated,
+        "delivery_mode": delivery_mode,
+    }
 
 
 def _build_judgment_llm_decision(
@@ -703,7 +864,18 @@ def _validate_judgment_decision_refs(root: Path, decision: dict[str, Any]) -> st
     for ref in refs:
         if not isinstance(ref, str) or not ref.strip():
             return "invalid_evidence_ref"
-        if ref.startswith("wiki/") and not (root / ref).exists():
+        try:
+            resolved = safe_resolve_within(root / ref, root)
+        except Exception:
+            return f"evidence_ref_outside_vault:{ref}"
+        try:
+            normalized = resolved.relative_to(root.resolve()).as_posix()
+        except ValueError:
+            return f"evidence_ref_outside_vault:{ref}"
+        allowed = normalized.startswith(("wiki/judgments/", "wiki/decisions/", "wiki/sources/")) and normalized.endswith(".md")
+        if not allowed:
+            return f"unsupported_evidence_ref:{ref}"
+        if not resolved.exists():
             return f"missing_evidence_ref:{ref}"
     return ""
 
@@ -717,6 +889,11 @@ def _has_judgment_review_receipt(root: Path, review_id: str) -> tuple[str, bool 
         if record.get("subject_kind") == "judgment_review" and record.get("subject_id") == review_id:
             return "ok", True
     return "ok", False
+
+
+def _judgment_review_id(page_path: str, scan_at: str, model: str) -> str:
+    judgment_id = Path(page_path).stem
+    return hashlib.sha256(f"{judgment_id}{scan_at}{model}".encode("utf-8")).hexdigest()[:16]
 
 
 def _apply_judgment_review_with_receipt(target: Path, mutate_fn: Callable[[str], str], receipt_meta: dict[str, Any]) -> dict[str, Any]:
@@ -775,6 +952,13 @@ def _apply_judgment_review_with_receipt(target: Path, mutate_fn: Callable[[str],
         "reviewer_model": str(receipt_meta.get("reviewer_model") or ""),
         "conclusion": str(receipt_meta.get("conclusion") or ""),
         "confidence": str(receipt_meta.get("confidence") or ""),
+        "judgment_llm_receipt_version": 1,
+        "llm_receipt_path": str(receipt_meta.get("llm_receipt_path") or ".aiwiki/logs/llm-receipts.jsonl"),
+        "llm_receipt_ref": {
+            "event": "judgment-review-llm",
+            "review_id": str(receipt_meta["review_id"]),
+            "status": "success",
+        },
         "llm_decision": receipt_meta.get("llm_decision") if isinstance(receipt_meta.get("llm_decision"), dict) else {},
     }
     def rollback() -> None:
@@ -840,9 +1024,12 @@ def _write_review_entry(
     scan_generated_at: str = "",
     reviewer_model: str = "unknown",
     decision: dict[str, Any] | None = None,
+    review_id: str | None = None,
 ) -> dict[str, Any]:
     """Append a review history entry to a judgment page."""
-    page = root / page_path
+    page, normalized_page_path, page_error = _safe_judgment_review_page(root, page_path)
+    if page_error or page is None:
+        return {"status": "human_required", "reason": page_error or "invalid_page_path"}
     if not page.exists():
         return {"status": "skipped_missing"}
     scan_at = str(conclusion.get("scan_generated_at") or scan_generated_at or "")
@@ -850,7 +1037,7 @@ def _write_review_entry(
         raise ValueError("scan_generated_at is required for judgment review idempotency")
     model = str(conclusion.get("reviewer_model") or reviewer_model or "unknown")
     judgment_id = page.stem
-    review_id = hashlib.sha256(f"{judgment_id}{scan_at}{model}".encode("utf-8")).hexdigest()[:16]
+    review_id = review_id or _judgment_review_id(normalized_page_path, scan_at, model)
     receipt_status, has_receipt = _has_judgment_review_receipt(root, review_id)
     if receipt_status == "corrupt":
         return {"status": "receipt_history_corrupt", "review_id": review_id}
@@ -897,6 +1084,7 @@ def _write_review_entry(
             "evidence_refs": list((decision or {}).get("evidence_refs") or []),
             "counter_evidence_refs": list((decision or {}).get("counter_evidence_refs") or []),
             "llm_decision": decision or {},
+            "llm_receipt_path": ".aiwiki/logs/llm-receipts.jsonl",
         },
     )
     return {**result, "review_id": review_id}

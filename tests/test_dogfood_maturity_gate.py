@@ -382,7 +382,7 @@ class DogfoodMaturityGateTests(unittest.TestCase):
         self.assertEqual(report["status"], "not-yet")
         self.assertIn("missing_llm_governed_apply", report["violations"])
 
-    def test_agentic_autonomy_report_counts_legacy_judgment_review_as_llm_governed(self) -> None:
+    def test_agentic_autonomy_report_does_not_count_unbacked_judgment_review_as_llm_governed(self) -> None:
         _write_jsonl(
             self.root / ".aiwiki" / "state" / "execution-receipts.jsonl",
             [
@@ -394,6 +394,47 @@ class DogfoodMaturityGateTests(unittest.TestCase):
                     "subject_id": "review-1",
                     "autonomy_domain": "non_core_semantic",
                     "validator_status": "passed",
+                }
+            ],
+        )
+
+        report = _build_agentic_autonomy_report(
+            self.root,
+            {
+                "agent_loop": {"status": "ok", "auto_adopt_judgments": {"items": []}},
+                "signal_pipeline": {"status": "ok"},
+            },
+        )
+
+        self.assertEqual(report["llm_governed_apply_count"], 0)
+        self.assertEqual(report["status"], "not-yet")
+        self.assertIn("missing_llm_governed_apply", report["violations"])
+
+    def test_agentic_autonomy_report_counts_judgment_review_with_matching_llm_receipt(self) -> None:
+        _write_jsonl(
+            self.root / ".aiwiki" / "logs" / "llm-receipts.jsonl",
+            [
+                {
+                    "event": "judgment-review-llm",
+                    "review_id": "review-1",
+                    "status": "success",
+                    "delivery_mode": "llm-judgment-review",
+                }
+            ],
+        )
+        _write_jsonl(
+            self.root / ".aiwiki" / "state" / "execution-receipts.jsonl",
+            [
+                {
+                    "kind": "execution-receipt",
+                    "generated_by": "aiwiki-judgment-review",
+                    "operation": "apply",
+                    "subject_kind": "judgment_review",
+                    "subject_id": "review-1",
+                    "autonomy_domain": "non_core_semantic",
+                    "validator_status": "passed",
+                    "judgment_llm_receipt_version": 1,
+                    "llm_receipt_path": ".aiwiki/logs/llm-receipts.jsonl",
                 }
             ],
         )

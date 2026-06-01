@@ -33,10 +33,13 @@ class StubClient:
     def __init__(self, response: str | None = None, *, fail: bool = False) -> None:
         self.response = response
         self.fail = fail
+        self.calls = 0
+        self.last_user_prompt = ""
 
     def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
         del system_prompt
-        del user_prompt
+        self.calls += 1
+        self.last_user_prompt = user_prompt
         if self.fail:
             raise RuntimeError("llm boom")
         return CompletionResult(text=str(self.response or ""), response_id="stub", usage={})
@@ -237,6 +240,65 @@ class AutoAdoptCriticalFixTests(unittest.TestCase):
         self.assertEqual(receipt["conclusion"], "upheld")
         self.assertEqual(receipt["confidence"], "high")
         self.assertEqual(receipt["scan_generated_at"], "2026-01-01T00:00:00Z")
+
+    def test_judgment_review_writes_matching_llm_receipt_ref(self) -> None:
+        page = self.root / "wiki" / "judgments" / "j1.md"
+        page.parent.mkdir(parents=True, exist_ok=True)
+        page.write_text("# J1\n", encoding="utf-8")
+        source = self.root / "wiki" / "sources" / "s1.md"
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text("# S1\nnew evidence\n", encoding="utf-8")
+        _memory_with_judgment_page(self.root, page)
+        response = json.dumps(
+            {
+                "conclusion": "weakened",
+                "confidence": "medium",
+                "counter_evidence_found": True,
+                "key_findings": ["new evidence"],
+                "recommendation": "review",
+            }
+        )
+
+        result = auto_adopt_judgments(self.root, StubClient(response))
+
+        self.assertEqual(result["items"][0]["status"], "applied")
+        receipt = load_jsonl_documents_strict(execution_receipt_history_path(self.root))[-1]
+        review_id = receipt["subject_id"]
+        llm_receipts = load_jsonl_documents_strict(self.root / ".aiwiki" / "logs" / "llm-receipts.jsonl")
+        llm_receipt = next(item for item in llm_receipts if item.get("review_id") == review_id)
+        self.assertEqual(llm_receipt["event"], "judgment-review-llm")
+        self.assertEqual(llm_receipt["status"], "success")
+        self.assertEqual(llm_receipt["delivery_mode"], "llm-judgment-review")
+        self.assertEqual(llm_receipt["target"], "wiki/judgments/j1.md")
+        self.assertEqual(llm_receipt["source_refs"], ["wiki/sources/s1.md"])
+        self.assertEqual(receipt["judgment_llm_receipt_version"], 1)
+        self.assertEqual(receipt["llm_receipt_path"], ".aiwiki/logs/llm-receipts.jsonl")
+        self.assertEqual(receipt["llm_receipt_ref"], {"event": "judgment-review-llm", "review_id": review_id, "status": "success"})
+        self.assertIn("wiki/sources/s1.md", receipt["evidence_refs"])
+        self.assertIn("wiki/sources/s1.md", receipt["counter_evidence_refs"])
+
+    def test_judgment_review_rejects_unsafe_page_path_before_llm(self) -> None:
+        save_json_document(
+            self.root / ".aiwiki" / "state" / "machine-memory.json",
+            {
+                "health": {
+                    "counter_evidence_scan": {
+                        "generated_at": "2026-01-01T00:00:00Z",
+                        "pages": [{"page_path": "../outside.md", "page_title": "Unsafe", "source_ids": ["s1"]}],
+                    }
+                }
+            },
+        )
+        client = StubClient(json.dumps({"conclusion": "upheld", "confidence": "high"}))
+
+        result = auto_adopt_judgments(self.root, client)
+
+        self.assertEqual(client.calls, 0)
+        self.assertEqual(result["items"][0]["status"], "human_required")
+        self.assertEqual(result["items"][0]["reason"], "page_path_outside_vault")
+        self.assertEqual(result["failed"], 1)
+        self.assertEqual(result["non_core_human_required_count"], 1)
+        self.assertFalse((self.root / ".aiwiki" / "logs" / "llm-receipts.jsonl").exists())
 
     def test_judgment_review_revert_restores_page_and_writes_receipt(self) -> None:
         page = self.root / "wiki" / "judgments" / "j1.md"
