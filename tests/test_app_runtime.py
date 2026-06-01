@@ -87,6 +87,8 @@ from aiwiki.llm import CompletionResult
 from aiwiki.runner import auto_process_once, run_ask, run_compile, run_lint, run_nightly, watch_inbox
 from tests.test_app import AppFlowTestBase, CapturingClient, FailingVisionClient, StubClient, StubVisionClient
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
 _VALID_REPORT_BODY = (
     "---\nid: query-stub\nkind: output\nformat: report\n---\n\n"
     "# Stub answer\n\n"
@@ -1403,7 +1405,7 @@ class RuntimeFlowTests(AppFlowTestBase):
         self.assertEqual(llm_receipt["model_selected"], "stub-model")
 
     def test_run_watch_script_uses_root_relative_paths(self) -> None:
-        script = Path("/home/tim/ai-wiki/scripts/run_watch.sh")
+        script = PROJECT_ROOT / "scripts/run_watch.sh"
         content = script.read_text(encoding="utf-8")
         self.assertIn('PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"', content)
         self.assertIn('if [ -z "${AIWIKI_VAULT:-}" ]; then', content)
@@ -1414,7 +1416,7 @@ class RuntimeFlowTests(AppFlowTestBase):
         self.assertIn('exec python3 -m aiwiki.cli "${ARGS[@]}"', content)
 
     def test_run_nightly_script_uses_root_relative_paths(self) -> None:
-        script = Path("/home/tim/ai-wiki/scripts/run_nightly.sh")
+        script = PROJECT_ROOT / "scripts/run_nightly.sh"
         content = script.read_text(encoding="utf-8")
         self.assertIn('PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"', content)
         self.assertIn('if [ -z "${AIWIKI_VAULT:-}" ]; then', content)
@@ -1429,9 +1431,11 @@ class RuntimeFlowTests(AppFlowTestBase):
         self.assertIn("source \"$FALLBACK_ENV\"", content)
         self.assertIn("retrying nightly with fallback", content)
         self.assertIn("deterministic nightly fallback suppressed after run-nightly failure", content)
+        self.assertIn("stat -f '%Lp'", content)
+        self.assertNotIn(",,}", content)
 
     def test_run_nightly_script_retries_nim_fallback_before_deterministic(self) -> None:
-        script = Path("/home/tim/ai-wiki/scripts/run_nightly.sh")
+        script = PROJECT_ROOT / "scripts/run_nightly.sh"
         with tempfile.TemporaryDirectory() as tempdir:
             temp_root = Path(tempdir)
             bin_dir = temp_root / "bin"
@@ -1480,7 +1484,7 @@ exit 0
             )
             completed = subprocess.run(
                 ["bash", str(script)],
-                cwd="/home/tim/ai-wiki",
+                cwd=PROJECT_ROOT,
                 env=env,
                 text=True,
                 capture_output=True,
@@ -1498,7 +1502,7 @@ exit 0
         self.assertIn("retrying nightly with fallback nvidia-nim-api/openai/gpt-oss-120b", completed.stderr)
 
     def test_run_nightly_script_rejects_group_writable_fallback_env(self) -> None:
-        script = Path("/home/tim/ai-wiki/scripts/run_nightly.sh")
+        script = PROJECT_ROOT / "scripts/run_nightly.sh"
         with tempfile.TemporaryDirectory() as tempdir:
             temp_root = Path(tempdir)
             bin_dir = temp_root / "bin"
@@ -1537,7 +1541,7 @@ exit 0
             )
             completed = subprocess.run(
                 ["bash", str(script)],
-                cwd="/home/tim/ai-wiki",
+                cwd=PROJECT_ROOT,
                 env=env,
                 text=True,
                 capture_output=True,
@@ -1552,7 +1556,7 @@ exit 0
         self.assertIn("must not be group/world writable", completed.stderr)
 
     def test_run_nightly_script_rejects_symlink_fallback_env(self) -> None:
-        script = Path("/home/tim/ai-wiki/scripts/run_nightly.sh")
+        script = PROJECT_ROOT / "scripts/run_nightly.sh"
         with tempfile.TemporaryDirectory() as tempdir:
             temp_root = Path(tempdir)
             bin_dir = temp_root / "bin"
@@ -1593,7 +1597,7 @@ exit 0
             )
             completed = subprocess.run(
                 ["bash", str(script)],
-                cwd="/home/tim/ai-wiki",
+                cwd=PROJECT_ROOT,
                 env=env,
                 text=True,
                 capture_output=True,
@@ -1608,7 +1612,7 @@ exit 0
         self.assertIn("regular non-symlink file", completed.stderr)
 
     def test_run_nightly_script_does_not_deterministic_fallback_after_llm_failure(self) -> None:
-        script = Path("/home/tim/ai-wiki/scripts/run_nightly.sh")
+        script = PROJECT_ROOT / "scripts/run_nightly.sh"
         with tempfile.TemporaryDirectory() as tempdir:
             temp_root = Path(tempdir)
             bin_dir = temp_root / "bin"
@@ -1642,7 +1646,7 @@ exit 0
             )
             completed = subprocess.run(
                 ["bash", str(script)],
-                cwd="/home/tim/ai-wiki",
+                cwd=PROJECT_ROOT,
                 env=env,
                 text=True,
                 capture_output=True,
@@ -1658,7 +1662,7 @@ exit 0
         self.assertIn("deterministic nightly fallback suppressed after run-nightly failure", completed.stderr)
 
     def test_run_nightly_script_allows_deterministic_when_only_fallback_is_unconfigured(self) -> None:
-        script = Path("/home/tim/ai-wiki/scripts/run_nightly.sh")
+        script = PROJECT_ROOT / "scripts/run_nightly.sh"
         with tempfile.TemporaryDirectory() as tempdir:
             temp_root = Path(tempdir)
             bin_dir = temp_root / "bin"
@@ -1689,7 +1693,7 @@ exit 0
             )
             completed = subprocess.run(
                 ["bash", str(script)],
-                cwd="/home/tim/ai-wiki",
+                cwd=PROJECT_ROOT,
                 env=env,
                 text=True,
                 capture_output=True,
@@ -1704,10 +1708,10 @@ exit 0
         self.assertIn("falling back to deterministic nightly", completed.stderr)
 
     def test_nightly_systemd_templates_exist(self) -> None:
-        service_template = Path("/home/tim/ai-wiki/systemd/aiwiki-nightly.service.template")
-        timer_template = Path("/home/tim/ai-wiki/systemd/aiwiki-nightly.timer.template")
-        dogfood_service_template = Path("/home/tim/ai-wiki/systemd/aiwiki-dogfood-maturity.service.template")
-        dogfood_timer_template = Path("/home/tim/ai-wiki/systemd/aiwiki-dogfood-maturity.timer.template")
+        service_template = PROJECT_ROOT / "systemd/aiwiki-nightly.service.template"
+        timer_template = PROJECT_ROOT / "systemd/aiwiki-nightly.timer.template"
+        dogfood_service_template = PROJECT_ROOT / "systemd/aiwiki-dogfood-maturity.service.template"
+        dogfood_timer_template = PROJECT_ROOT / "systemd/aiwiki-dogfood-maturity.timer.template"
         self.assertTrue(service_template.exists())
         self.assertTrue(timer_template.exists())
         self.assertTrue(dogfood_service_template.exists())

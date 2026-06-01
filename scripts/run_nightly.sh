@@ -53,15 +53,15 @@ run_deterministic_nightly() {
 }
 
 fallback_enabled() {
-  case "${FALLBACK_ENABLED,,}" in
-    0|false|no|off) return 1 ;;
+  case "$FALLBACK_ENABLED" in
+    0|false|False|FALSE|no|No|NO|off|Off|OFF) return 1 ;;
     *) return 0 ;;
   esac
 }
 
 require_llm() {
-  case "${REQUIRE_LLM,,}" in
-    1|true|yes|on) return 0 ;;
+  case "$REQUIRE_LLM" in
+    1|true|True|TRUE|yes|Yes|YES|on|On|ON) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -80,6 +80,12 @@ validate_fallback_env_file() {
     exit 2
   fi
   if ! mode="$(stat -c '%a' "$env_path" 2>/dev/null)"; then
+    if ! mode="$(stat -f '%Lp' "$env_path" 2>/dev/null)"; then
+      log "fallback env $env_path permissions could not be inspected"
+      exit 2
+    fi
+  fi
+  if [[ ! "$mode" =~ ^[0-7]+$ ]]; then
     log "fallback env $env_path permissions could not be inspected"
     exit 2
   fi

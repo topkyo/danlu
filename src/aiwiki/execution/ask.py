@@ -821,9 +821,10 @@ def file_back(
     from .. import app_compile as _app_compile
 
     ensure_layout(root)
+    root_resolved = root.resolve(strict=False)
     candidate = Path(artifact)
     artifact_path = candidate if candidate.is_absolute() else (root / candidate)
-    artifact_path = artifact_path.resolve()
+    artifact_path = artifact_path.resolve(strict=False)
     if not artifact_path.is_file():
         raise FileNotFoundError(f"Artifact not found: {artifact}")
     if artifact_path.suffix.lower() not in {".md", ".markdown", ".txt"}:
@@ -832,9 +833,7 @@ def file_back(
         raise ValueError(f"Unsupported filed-back kind: {kind}")
 
     filed_at = _app_compile.utc_now()
-    artifact_ref = (
-        relative_path(root, artifact_path) if artifact_path.is_relative_to(root) else str(artifact_path)
-    )
+    artifact_ref = relative_path(root, artifact_path) if artifact_path.is_relative_to(root_resolved) else str(artifact_path)
     original = artifact_path.read_text(encoding="utf-8", errors="replace")
     original_frontmatter = parse_frontmatter(original)
     citations = extract_provenance_paths(root, original)

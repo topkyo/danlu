@@ -47,23 +47,7 @@
     "schema/protocols/index.md"
   ],
   "machine_memory_query": {
-    "archive_recall_hints": [
-      {
-        "archive_status": "suggested",
-        "entry_id": "source-a",
-        "path": "wiki/sources/source-a.md",
-        "reason_codes": [
-          "no-active-corpus",
-          "stale-no-query-hit",
-          "stale-no-touch",
-          "low-routing-score",
-          "already-cold"
-        ],
-        "recommended_temperature": "archived",
-        "temperature": "cold",
-        "title": "Source A"
-      }
-    ],
+    "archive_recall_hints": [],
     "bridge_concept_slugs": [],
     "direct_concept_slugs": [],
     "direct_source_ids": [

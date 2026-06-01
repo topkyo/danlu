@@ -87,6 +87,8 @@ from aiwiki.llm import CompletionResult
 from aiwiki.runner import auto_process_once, run_ask, run_compile, run_lint, run_nightly, watch_inbox
 from tests.test_app import AppFlowTestBase, CapturingClient, FailingVisionClient, StubClient, StubVisionClient
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
 _VALID_REPORT_BODY = (
     "---\nid: query-stub\nkind: output\nformat: report\n---\n\n"
     "# Stub answer\n\n"
@@ -1334,7 +1336,7 @@ class ShellFlowTests(AppFlowTestBase):
         self.assertGreaterEqual(len(result["execution_controls"]["actions"]), 17)
 
     def test_product_shell_plugin_manifest_declares_desktop_only(self) -> None:
-        manifest_path = Path("/home/tim/ai-wiki/.obsidian/plugins/furnace-product-shell/manifest.json")
+        manifest_path = PROJECT_ROOT / ".obsidian/plugins/furnace-product-shell/manifest.json"
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         self.assertEqual(manifest["id"], "furnace-product-shell")
         self.assertEqual(manifest["name"], "Furnace Product Shell")
@@ -1342,7 +1344,7 @@ class ShellFlowTests(AppFlowTestBase):
         self.assertGreaterEqual(str(manifest["minAppVersion"]), "1.8.0")
 
     def test_product_shell_plugin_main_js_passes_node_syntax_check(self) -> None:
-        plugin_path = Path("/home/tim/ai-wiki/.obsidian/plugins/furnace-product-shell/main.js")
+        plugin_path = PROJECT_ROOT / ".obsidian/plugins/furnace-product-shell/main.js"
         result = subprocess.run(
             ["node", "--check", str(plugin_path)],
             capture_output=True,
@@ -1352,7 +1354,7 @@ class ShellFlowTests(AppFlowTestBase):
         self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
 
     def test_product_shell_plugin_scaffold_declares_p0_views_and_commands(self) -> None:
-        plugin_path = Path("/home/tim/ai-wiki/.obsidian/plugins/furnace-product-shell/main.js")
+        plugin_path = PROJECT_ROOT / ".obsidian/plugins/furnace-product-shell/main.js"
         content = plugin_path.read_text(encoding="utf-8")
         self.assertIn('const VIEW_TYPE_FURNACE_CENTER = "furnace-product-shell-furnace-center";', content)
         self.assertIn('const VIEW_TYPE_RECENT_RUNS = "furnace-product-shell-recent-runs";', content)
@@ -1395,7 +1397,7 @@ class ShellFlowTests(AppFlowTestBase):
         self.assertIn('renderExecutionCenter(this.contentEl);', content)
 
     def test_product_shell_plugin_supports_external_runtime_launcher_mode(self) -> None:
-        plugin_path = Path("/home/tim/ai-wiki/.obsidian/plugins/furnace-product-shell/main.js")
+        plugin_path = PROJECT_ROOT / ".obsidian/plugins/furnace-product-shell/main.js"
         content = plugin_path.read_text(encoding="utf-8")
         self.assertNotIn('"src/aiwiki/cli.py"', content)
         self.assertIn("Vault-local or absolute launcher path.", content)
@@ -1488,7 +1490,7 @@ class ShellFlowTests(AppFlowTestBase):
         self.assertIn("fs.accessSync(launcherPath, fs.constants.X_OK)", content)
         self.assertIn("runUiAction(action, label = \"ui-action\")", content)
         self.assertIn("console.error(`[furnace-product-shell] ${label} failed`, error);", content)
-        app_shim = Path("/home/tim/ai-wiki/src/aiwiki/app.py").read_text(encoding="utf-8")
+        app_shim = (PROJECT_ROOT / "src/aiwiki/app.py").read_text(encoding="utf-8")
         self.assertNotIn("_sync_facade_bindings", app_shim)
         self.assertIn("transition_profile = _app_content.transition_profile", app_shim)
         self.assertIn("curated_page_transition_profile = _app_content.curated_page_transition_profile", app_shim)

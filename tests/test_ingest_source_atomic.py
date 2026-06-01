@@ -25,8 +25,23 @@ class IngestSourceAtomicTest(unittest.TestCase):
     def tearDown(self) -> None:
         self._tmp.cleanup()
 
+    @staticmethod
+    def _fetched_example() -> dict[str, object]:
+        return {
+            "title": "Example Domain",
+            "final_url": "https://example.com/",
+            "content_type": "text/html",
+            "status": "200",
+            "browser_backend": "",
+            "extraction_mode": "bs4-main-content",
+            "description": "",
+            "image_urls": [],
+            "text": "Example Domain\nThis domain is for use in illustrative examples in documents.",
+        }
+
     def test_ingest_url_writes_atomically(self) -> None:
-        entry = ingest_source(self.root, "https://example.com/post", title="Post")
+        with patch("aiwiki.drop._fetch_url", return_value=self._fetched_example()):
+            entry = ingest_source(self.root, "https://example.com/post", title="Post")
         stored = self.root / entry["stored_path"]
         self.assertTrue(stored.is_file())
         text = stored.read_text(encoding="utf-8")
@@ -38,8 +53,16 @@ class IngestSourceAtomicTest(unittest.TestCase):
         self.assertEqual(leftovers, [])
 
     def test_ingest_url_replace_failure_leaves_no_partial(self) -> None:
-        with patch("aiwiki.app_utils.os.replace", side_effect=OSError("boom")):
-            with self.assertRaises(OSError):
+        with patch("aiwiki.drop._fetch_url", return_value=self._fetched_example()):
+            with patch("aiwiki.app_utils.os.replace", side_effect=OSError("boom")):
+                with self.assertRaises(OSError):
+                    ingest_source(self.root, "https://example.com/x", title="X")
+        files = list(self.inbox.iterdir())
+        self.assertEqual(files, [], f"unexpected files: {[p.name for p in files]}")
+
+    def test_ingest_url_fetch_failure_leaves_no_partial(self) -> None:
+        with patch("aiwiki.drop._fetch_url", side_effect=RuntimeError("network boom")):
+            with self.assertRaises(RuntimeError):
                 ingest_source(self.root, "https://example.com/x", title="X")
         files = list(self.inbox.iterdir())
         self.assertEqual(files, [], f"unexpected files: {[p.name for p in files]}")

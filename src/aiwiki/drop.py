@@ -1616,7 +1616,7 @@ def _repo_tree(repo_path: Path, max_files: int) -> list[str]:
         if not path.is_file():
             continue
         safe_path = safe_resolve_within(path, repo_path)
-        entries.append(safe_path.relative_to(repo_path).as_posix())
+        entries.append(relative_path(repo_path, safe_path))
         if len(entries) >= max_files:
             break
     return entries
@@ -1634,7 +1634,7 @@ def _repo_key_files(repo_path: Path) -> list[str]:
         if candidate.is_symlink():
             continue
         if candidate.is_file():
-            value = safe_resolve_within(candidate, repo_path).relative_to(repo_path).as_posix()
+            value = relative_path(repo_path, safe_resolve_within(candidate, repo_path))
             selected.append(value)
             seen.add(value)
 
@@ -1645,7 +1645,7 @@ def _repo_key_files(repo_path: Path) -> list[str]:
             continue
         if not path.is_file():
             continue
-        relative = safe_resolve_within(path, repo_path).relative_to(repo_path).as_posix()
+        relative = relative_path(repo_path, safe_resolve_within(path, repo_path))
         if relative in seen:
             continue
         if path.suffix.lower() not in TEXT_FILE_SUFFIXES and path.name not in {"Dockerfile", "Makefile"}:

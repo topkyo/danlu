@@ -4,6 +4,7 @@ import os
 import socket
 import unittest
 from http import HTTPStatus
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 from urllib.error import HTTPError
 
@@ -98,6 +99,13 @@ class SafeFetchPinningTests(unittest.TestCase):
         self.assertEqual(result, "ok")
         self.assertIn("context", captured)
         self.assertNotIn("check_hostname", captured)
+
+    def test_relative_path_normalizes_macos_private_var_alias(self) -> None:
+        relative_path = __import__("aiwiki.app_utils", fromlist=["relative_path"]).relative_path
+        root = Path("/var/folders/example/vault")
+        path = Path("/private/var/folders/example/vault/wiki/page.md")
+
+        self.assertEqual(relative_path(root, path), "wiki/page.md")
 
     def test_allowlist_unset_allows(self) -> None:
         with patch.dict(os.environ, {}, clear=True), patch.object(socket, "getaddrinfo", return_value=self._dns("93.184.216.34")):

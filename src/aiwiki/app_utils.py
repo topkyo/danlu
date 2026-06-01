@@ -552,7 +552,7 @@ def sha256_file(path: Path) -> str:
 
 
 def relative_path(root: Path, path: Path) -> str:
-    return path.relative_to(root).as_posix()
+    return path.resolve(strict=False).relative_to(root.resolve(strict=False)).as_posix()
 
 
 def next_identifier(existing_ids: set[str], seed: str) -> str:

@@ -228,5 +228,5 @@ class DropSafetyTests(unittest.TestCase):
         ) as snapshot:
             result = drop_repo(self.root, str(repo), max_files=10)
 
-        snapshot.assert_called_once_with(repo, max_files=10)
+        snapshot.assert_called_once_with(repo.resolve(strict=False), max_files=10)
         self.assertEqual(result["material"], "repo")

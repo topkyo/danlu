@@ -86,6 +86,8 @@ from aiwiki.llm import CompletionResult
 from aiwiki.runner import auto_process_once, run_ask, run_compile, run_lint, run_nightly, watch_inbox
 from tests.test_app import AppFlowTestBase, CapturingClient, FailingVisionClient, StubClient, StubVisionClient
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
 _VALID_REPORT_BODY = (
     "---\nid: query-stub\nkind: output\nformat: report\n---\n\n"
     "# Stub answer\n\n"
@@ -180,6 +182,21 @@ class MiscFlowTests(AppFlowTestBase):
         self.assertEqual(receipt["primary_path"], report["path"])
         self.assertEqual(receipt["secondary_path"], filed["path"])
         self.assertEqual(receipt["receipt_path"], relative_path(self.root, receipt_path))
+
+    def test_file_back_absolute_artifact_under_resolved_root_stays_workspace_relative(self) -> None:
+        ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        report = ask_question(self.root, "Compare transformer scale and inference cost", "report")
+        absolute_artifact = (self.root / report["path"]).resolve(strict=False)
+
+        filed = file_back(self.root, str(absolute_artifact), title="Scaling Decision", kind="decision")
+
+        receipt_history = _load_jsonl_records(self.root / ".aiwiki" / "state" / "execution-receipts.jsonl")
+        matching = [record for record in receipt_history if record.get("operation") == "file-back"]
+        self.assertTrue(matching, receipt_history)
+        self.assertEqual(matching[-1]["target_file"], report["path"])
+        self.assertEqual(matching[-1]["primary_path"], report["path"])
+        self.assertEqual(matching[-1]["secondary_path"], filed["path"])
 
     def test_file_back_execution_receipt_failure_rolls_back_mutation(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -1080,7 +1097,7 @@ class MiscFlowTests(AppFlowTestBase):
         self.assertIsNotNone(result["last_result"])
 
     def test_aiwiki_launcher_script_uses_env_vault_when_present(self) -> None:
-        script = Path("/home/tim/ai-wiki/scripts/aiwiki-launcher.sh")
+        script = PROJECT_ROOT / "scripts/aiwiki-launcher.sh"
         content = script.read_text(encoding="utf-8")
         self.assertTrue(os.access(script, os.X_OK))
         self.assertIn('PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"', content)
@@ -1090,7 +1107,7 @@ class MiscFlowTests(AppFlowTestBase):
         self.assertIn('exec python3 -m aiwiki.cli --root "$TARGET_ROOT" "$@"', content)
 
     def test_install_user_service_defaults_watcher_to_deterministic_only(self) -> None:
-        script = Path("/home/tim/ai-wiki/scripts/install_user_service.sh")
+        script = PROJECT_ROOT / "scripts/install_user_service.sh"
         content = script.read_text(encoding="utf-8")
         self.assertIn("AIWIKI_VAULT=$VAULT_ROOT", content)
         self.assertIn('ensure_env_key "$WATCH_ENV_PATH" "AIWIKI_VAULT" "$VAULT_ROOT"', content)
@@ -1119,7 +1136,7 @@ class MiscFlowTests(AppFlowTestBase):
         self.assertIn('set_env_key "$DOGFOOD_MATURITY_ENV_PATH" "AIWIKI_DOGFOOD_MATURITY_ENVRC"', content)
 
     def test_user_service_install_script_mentions_nightly_timer(self) -> None:
-        script = Path("/home/tim/ai-wiki/scripts/install_user_service.sh")
+        script = PROJECT_ROOT / "scripts/install_user_service.sh"
         content = script.read_text(encoding="utf-8")
         self.assertIn("aiwiki-nightly.service", content)
         self.assertIn("aiwiki-nightly.timer", content)
@@ -1138,7 +1155,7 @@ class MiscFlowTests(AppFlowTestBase):
         self.assertIn("ensure_env_key", content)
 
     def test_uninstall_user_service_mentions_dogfood_maturity_cleanup(self) -> None:
-        script = Path("/home/tim/ai-wiki/scripts/uninstall_user_service.sh")
+        script = PROJECT_ROOT / "scripts/uninstall_user_service.sh"
         content = script.read_text(encoding="utf-8")
         self.assertIn('systemctl --user disable --now "$DOGFOOD_MATURITY_TIMER_NAME"', content)
         self.assertIn('systemctl --user stop "$DOGFOOD_MATURITY_SERVICE_NAME"', content)

@@ -31,6 +31,10 @@ PROGRESS.md
 .aiwiki/logs/*.jsonl
 .aiwiki/llm-responses/
 output/
+!tests/fixtures/acceptance/M6.1b/case_heavy_after_llm/root/output/
+!tests/fixtures/acceptance/M6.1b/case_heavy_after_llm/root/output/_candidates/
+!tests/fixtures/acceptance/M6.1b/case_heavy_after_llm/root/output/_candidates/elixirs/
+!tests/fixtures/acceptance/M6.1b/case_heavy_after_llm/root/output/_candidates/elixirs/elixir-b3.md
 
 # Python
 __pycache__/
