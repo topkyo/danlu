@@ -1270,7 +1270,7 @@ def _build_agentic_autonomy_report(root: Path, nightly: dict[str, Any] | None = 
     llm_governed_apply_count = sum(
         1
         for item in receipts
-        if bool(item.get("llm_governed")) and str(item.get("operation") or "") == "apply"
+        if _is_llm_governed_apply_receipt(item)
     )
     core_proposal_count = sum(
         1
@@ -1306,13 +1306,13 @@ def _build_agentic_autonomy_report(root: Path, nightly: dict[str, Any] | None = 
     core_auto_apply_count = sum(
         1
         for item in receipts
-        if str(item.get("autonomy_domain") or "") == "core"
-        and str(item.get("operation") or "") == "apply"
-        and bool(item.get("llm_governed"))
+        if _is_core_auto_apply_receipt(item)
     )
     violations: list[str] = []
     if non_core_human_required_count:
         violations.append("non_core_human_required")
+    if llm_governed_apply_count <= 0:
+        violations.append("missing_llm_governed_apply")
     if core_auto_apply_count:
         violations.append("core_auto_apply")
     if degraded_agent_loop_count or degraded_signal_pipeline_count:
@@ -1329,6 +1329,27 @@ def _build_agentic_autonomy_report(root: Path, nightly: dict[str, Any] | None = 
         "degraded_signal_pipeline_count": degraded_signal_pipeline_count,
         "auto_revert_count": auto_revert_count,
     }
+
+
+def _is_llm_governed_apply_receipt(item: dict[str, Any]) -> bool:
+    if str(item.get("operation") or "") != "apply":
+        return False
+    if bool(item.get("llm_governed")):
+        return True
+    return (
+        str(item.get("generated_by") or "") == "aiwiki-judgment-review"
+        and str(item.get("subject_kind") or "") == "judgment_review"
+        and str(item.get("autonomy_domain") or "non_core_semantic") == "non_core_semantic"
+        and ("llm_governed" not in item or bool(item.get("llm_governed")))
+    )
+
+
+def _is_core_auto_apply_receipt(item: dict[str, Any]) -> bool:
+    if str(item.get("operation") or "") != "apply":
+        return False
+    if str(item.get("autonomy_domain") or "") != "core":
+        return False
+    return bool(item.get("human_accept_required")) is not True
 
 
 def write_snapshot(root: Path, snapshot: dict[str, Any]) -> Path:
@@ -1353,12 +1374,13 @@ def prepare_nightly_env(
 ) -> dict[str, str]:
     prepared = dict(env if env is not None else os.environ)
     prepared["AIWIKI_VAULT"] = str(root)
+    prepared["AIWIKI_AUTONOMY_PROFILE"] = "agentic"
     prepared["AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT"] = "1"
     prepared["AIWIKI_NIGHTLY_AUTO_ADOPT_L1"] = "1"
     prepared["AIWIKI_NIGHTLY_AUTO_ADOPT_L2"] = "1"
-    prepared["AIWIKI_NIGHTLY_AUTO_ADOPT_L3"] = "0"
+    prepared["AIWIKI_NIGHTLY_AUTO_ADOPT_L3"] = "1"
     prepared["AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS"] = "1"
-    prepared["AIWIKI_NIGHTLY_AUTO_APPLY_HEAVY_SEMANTIC"] = "0"
+    prepared["AIWIKI_NIGHTLY_AUTO_APPLY_HEAVY_SEMANTIC"] = "1"
     prepared["AIWIKI_NIGHTLY_AUTO_ADOPT_CORE_L3"] = "0"
     prepared["AIWIKI_NIGHTLY_DETERMINISTIC_ONLY"] = "1" if deterministic_only else "0"
     prepared["AIWIKI_NIGHTLY_REQUIRE_LLM"] = "0" if deterministic_only else "1"
@@ -1857,11 +1879,14 @@ def summarize_run_receipts(
         l3_dedupe_or_converged=l3_dedupe_or_converged,
         judgment_review_receipts_delta=judgment_review_receipts_delta,
     )
+    agentic_autonomy_pass = str(latest_agentic_autonomy.get("status") or "") == "pass"
     status = trend_status
+    if status == "pass" and not agentic_autonomy_pass:
+        status = "warn"
     if (
         status == "warn"
         and str(operational_maturity.get("status") or "") == "pass"
-        and str(latest_agentic_autonomy.get("status") or "") == "pass"
+        and agentic_autonomy_pass
         and semantic_path_observed
         and elixir_quality_pass
     ):

@@ -33,16 +33,13 @@ def test_install_user_service_auto_adopt_defaults_match_risk_boundary() -> None:
         "AUTO_APPLY_LIGHT": "AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT",
         "AUTO_ADOPT_L1": "AIWIKI_NIGHTLY_AUTO_ADOPT_L1",
         "AUTO_ADOPT_L2": "AIWIKI_NIGHTLY_AUTO_ADOPT_L2",
+        "AUTO_ADOPT_L3": "AIWIKI_NIGHTLY_AUTO_ADOPT_L3",
         "AUTO_ADOPT_JUDGMENTS": "AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS",
     }
     for short_name, env_name in defaults_on.items():
         assert re.search(rf"{env_name}.*\$\{{{short_name}:-1\}}", content), env_name
-    defaults_off = {
-        "AUTO_ADOPT_L3": "AIWIKI_NIGHTLY_AUTO_ADOPT_L3",
-    }
-    for short_name, env_name in defaults_off.items():
-        assert re.search(rf"{env_name}.*\$\{{{short_name}:-0\}}", content), env_name
-    assert "AIWIKI_NIGHTLY_AUTO_APPLY_HEAVY_SEMANTIC=${AIWIKI_NIGHTLY_AUTO_APPLY_HEAVY_SEMANTIC:-0}" in content
+    assert "AIWIKI_AUTONOMY_PROFILE=${AIWIKI_AUTONOMY_PROFILE:-agentic}" in content
+    assert "AIWIKI_NIGHTLY_AUTO_APPLY_HEAVY_SEMANTIC=${AIWIKI_NIGHTLY_AUTO_APPLY_HEAVY_SEMANTIC:-1}" in content
     assert "AIWIKI_NIGHTLY_AUTO_ADOPT_CORE_L3=${AIWIKI_NIGHTLY_AUTO_ADOPT_CORE_L3:-0}" in content
 
 

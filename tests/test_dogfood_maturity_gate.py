@@ -121,7 +121,7 @@ def _make_run_receipt(
                 "version": 1,
                 "status": "pass",
                 "violations": [],
-                "llm_governed_apply_count": 0,
+                "llm_governed_apply_count": 1,
                 "non_core_human_required_count": 0,
                 "core_proposal_count": 0,
                 "core_auto_apply_count": 0,
@@ -170,7 +170,7 @@ class DogfoodMaturityGateTests(unittest.TestCase):
         self.assertEqual(after.root, str(self.root))
         self.assertEqual(days.days, 3)
 
-    def test_prepare_nightly_env_forces_safe_auto_flags_only(self) -> None:
+    def test_prepare_nightly_env_forces_agentic_non_core_flags(self) -> None:
         prepared = prepare_nightly_env(
             self.root,
             compile_limit=0,
@@ -183,12 +183,13 @@ class DogfoodMaturityGateTests(unittest.TestCase):
             },
         )
 
+        self.assertEqual(prepared["AIWIKI_AUTONOMY_PROFILE"], "agentic")
         self.assertEqual(prepared["AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT"], "1")
         self.assertEqual(prepared["AIWIKI_NIGHTLY_AUTO_ADOPT_L1"], "1")
         self.assertEqual(prepared["AIWIKI_NIGHTLY_AUTO_ADOPT_L2"], "1")
-        self.assertEqual(prepared["AIWIKI_NIGHTLY_AUTO_ADOPT_L3"], "0")
+        self.assertEqual(prepared["AIWIKI_NIGHTLY_AUTO_ADOPT_L3"], "1")
         self.assertEqual(prepared["AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS"], "1")
-        self.assertEqual(prepared["AIWIKI_NIGHTLY_AUTO_APPLY_HEAVY_SEMANTIC"], "0")
+        self.assertEqual(prepared["AIWIKI_NIGHTLY_AUTO_APPLY_HEAVY_SEMANTIC"], "1")
         self.assertEqual(prepared["AIWIKI_NIGHTLY_AUTO_ADOPT_CORE_L3"], "0")
         self.assertEqual(prepared["AIWIKI_NIGHTLY_COMPILE_LIMIT"], "0")
         self.assertEqual(prepared["AIWIKI_NIGHTLY_DETERMINISTIC_ONLY"], "0")
@@ -367,6 +368,156 @@ class DogfoodMaturityGateTests(unittest.TestCase):
         self.assertEqual(report["non_core_human_required_count"], 2)
         self.assertEqual(report["status"], "not-yet")
         self.assertIn("non_core_human_required", report["violations"])
+
+    def test_agentic_autonomy_report_requires_llm_governed_apply_evidence(self) -> None:
+        report = _build_agentic_autonomy_report(
+            self.root,
+            {
+                "agent_loop": {"status": "ok", "auto_adopt_judgments": {"items": []}},
+                "signal_pipeline": {"status": "ok"},
+            },
+        )
+
+        self.assertEqual(report["llm_governed_apply_count"], 0)
+        self.assertEqual(report["status"], "not-yet")
+        self.assertIn("missing_llm_governed_apply", report["violations"])
+
+    def test_agentic_autonomy_report_counts_legacy_judgment_review_as_llm_governed(self) -> None:
+        _write_jsonl(
+            self.root / ".aiwiki" / "state" / "execution-receipts.jsonl",
+            [
+                {
+                    "kind": "execution-receipt",
+                    "generated_by": "aiwiki-judgment-review",
+                    "operation": "apply",
+                    "subject_kind": "judgment_review",
+                    "subject_id": "review-1",
+                    "autonomy_domain": "non_core_semantic",
+                    "validator_status": "passed",
+                }
+            ],
+        )
+
+        report = _build_agentic_autonomy_report(
+            self.root,
+            {
+                "agent_loop": {"status": "ok", "auto_adopt_judgments": {"items": []}},
+                "signal_pipeline": {"status": "ok"},
+            },
+        )
+
+        self.assertEqual(report["llm_governed_apply_count"], 1)
+        self.assertEqual(report["status"], "pass")
+        self.assertEqual(report["violations"], [])
+
+    def test_agentic_autonomy_report_respects_explicit_non_llm_governed_receipt(self) -> None:
+        _write_jsonl(
+            self.root / ".aiwiki" / "state" / "execution-receipts.jsonl",
+            [
+                {
+                    "kind": "execution-receipt",
+                    "generated_by": "aiwiki-judgment-review",
+                    "operation": "apply",
+                    "subject_kind": "judgment_review",
+                    "subject_id": "review-1",
+                    "autonomy_domain": "non_core_semantic",
+                    "llm_governed": False,
+                    "validator_status": "passed",
+                }
+            ],
+        )
+
+        report = _build_agentic_autonomy_report(
+            self.root,
+            {
+                "agent_loop": {"status": "ok", "auto_adopt_judgments": {"items": []}},
+                "signal_pipeline": {"status": "ok"},
+            },
+        )
+
+        self.assertEqual(report["llm_governed_apply_count"], 0)
+        self.assertEqual(report["status"], "not-yet")
+        self.assertIn("missing_llm_governed_apply", report["violations"])
+
+    def test_agentic_autonomy_report_counts_core_apply_without_human_accept_as_violation(self) -> None:
+        _write_jsonl(
+            self.root / ".aiwiki" / "state" / "execution-receipts.jsonl",
+            [
+                {
+                    "kind": "execution-receipt",
+                    "generated_by": "aiwiki-judgment-review",
+                    "operation": "apply",
+                    "subject_kind": "judgment_review",
+                    "subject_id": "review-1",
+                    "autonomy_domain": "non_core_semantic",
+                    "llm_governed": True,
+                    "validator_status": "passed",
+                },
+                {
+                    "kind": "execution-receipt",
+                    "generated_by": "aiwiki-l3-proposal",
+                    "operation": "apply",
+                    "subject_kind": "l3_proposal",
+                    "subject_id": "core-1",
+                    "autonomy_domain": "core",
+                    "execution_strategy": "proposal_only",
+                    "human_accept_required": False,
+                    "validator_status": "passed",
+                },
+            ],
+        )
+
+        report = _build_agentic_autonomy_report(
+            self.root,
+            {
+                "agent_loop": {"status": "ok", "auto_adopt_judgments": {"items": []}},
+                "signal_pipeline": {"status": "ok"},
+            },
+        )
+
+        self.assertEqual(report["llm_governed_apply_count"], 1)
+        self.assertEqual(report["core_auto_apply_count"], 1)
+        self.assertEqual(report["status"], "not-yet")
+        self.assertIn("core_auto_apply", report["violations"])
+
+    def test_agentic_autonomy_report_allows_human_accepted_core_apply(self) -> None:
+        _write_jsonl(
+            self.root / ".aiwiki" / "state" / "execution-receipts.jsonl",
+            [
+                {
+                    "kind": "execution-receipt",
+                    "generated_by": "aiwiki-judgment-review",
+                    "operation": "apply",
+                    "subject_kind": "judgment_review",
+                    "subject_id": "review-1",
+                    "autonomy_domain": "non_core_semantic",
+                    "llm_governed": True,
+                    "validator_status": "passed",
+                },
+                {
+                    "kind": "execution-receipt",
+                    "generated_by": "aiwiki-l3-proposal",
+                    "operation": "apply",
+                    "subject_kind": "l3_proposal",
+                    "subject_id": "core-1",
+                    "autonomy_domain": "core",
+                    "execution_strategy": "proposal_only",
+                    "human_accept_required": True,
+                    "validator_status": "passed",
+                },
+            ],
+        )
+
+        report = _build_agentic_autonomy_report(
+            self.root,
+            {
+                "agent_loop": {"status": "ok", "auto_adopt_judgments": {"items": []}},
+                "signal_pipeline": {"status": "ok"},
+            },
+        )
+
+        self.assertEqual(report["core_auto_apply_count"], 0)
+        self.assertEqual(report["status"], "pass")
 
     def test_collect_metrics_explains_output_receipt_coverage_gaps_and_exemptions(self) -> None:
         runs_dir = self.root / "output" / "control" / "runs"
@@ -1148,6 +1299,55 @@ class DogfoodMaturityGateTests(unittest.TestCase):
         self.assertEqual(summary["operational_maturity"]["status"], "pass")
         self.assertEqual(summary["operational_maturity"]["budget_violations"], [])
         self.assertTrue(summary["operational_maturity"]["receipt_integrity"]["consecutive_days"])
+
+    def test_summary_does_not_pass_without_agentic_autonomy_proof(self) -> None:
+        receipts = [
+            _make_run_receipt(
+                generated_at="2026-05-13T00:00:00Z",
+                status="pass",
+                before_backlog=10,
+                after_backlog=9,
+                before_candidate=3,
+                after_candidate=2,
+                before_judgment_receipts=0,
+                after_judgment_receipts=1,
+            ),
+            _make_run_receipt(
+                generated_at="2026-05-14T00:00:00Z",
+                status="pass",
+                before_backlog=9,
+                after_backlog=8,
+                before_candidate=2,
+                after_candidate=1,
+                before_judgment_receipts=1,
+                after_judgment_receipts=2,
+            ),
+            _make_run_receipt(
+                generated_at="2026-05-15T00:00:00Z",
+                status="pass",
+                before_backlog=8,
+                after_backlog=7,
+                before_candidate=1,
+                after_candidate=0,
+                before_judgment_receipts=2,
+                after_judgment_receipts=3,
+            ),
+        ]
+        receipts[-1]["after"]["agentic_autonomy_report"] = {
+            "version": 1,
+            "status": "not-yet",
+            "violations": ["missing_llm_governed_apply"],
+            "llm_governed_apply_count": 0,
+            "non_core_human_required_count": 0,
+            "core_auto_apply_count": 0,
+        }
+        self._write_receipts(receipts)
+
+        summary = summarize_recent_run_receipts(self.root, recent=3)
+
+        self.assertEqual(summary["trend_status"], "pass")
+        self.assertEqual(summary["agentic_autonomy_report"]["status"], "not-yet")
+        self.assertEqual(summary["status"], "warn")
 
     def test_operational_maturity_flags_routine_primary_debt(self) -> None:
         receipts = [

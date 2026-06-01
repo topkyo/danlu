@@ -4,12 +4,12 @@ import json
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import patch
 
 from aiwiki import autonomy_policy
 from aiwiki.autonomy_domains import classify_autonomy_domain, classify_l3_proposal
 from aiwiki.autonomy_policy import (
     GLOBAL_OVERRIDE_ENV,
+    PROFILE_OVERRIDE_ENV,
     AutonomyPolicy,
     disabled_reason,
     is_disabled,
@@ -19,17 +19,17 @@ from aiwiki.autonomy_policy import (
 
 
 class AutonomyPolicyTests(unittest.TestCase):
-    def test_missing_file_returns_default_all_false(self) -> None:
+    def test_missing_file_returns_agentic_default(self) -> None:
         with TemporaryDirectory() as tempdir:
             policy = load_policy(Path(tempdir))
             self.assertEqual(policy, AutonomyPolicy())
             self.assertFalse(policy.disable_external_llm)
-            self.assertEqual(policy.autonomy_profile, "strong")
-            self.assertFalse(policy.auto_adopt_l3)
-            self.assertFalse(policy.auto_apply_heavy_semantic)
+            self.assertEqual(policy.autonomy_profile, "agentic")
+            self.assertTrue(policy.auto_adopt_l3)
+            self.assertTrue(policy.auto_apply_heavy_semantic)
             self.assertFalse(policy.auto_adopt_core_l3)
 
-    def test_nightly_autonomy_defaults_to_strong_profile(self) -> None:
+    def test_nightly_autonomy_defaults_to_agentic_profile(self) -> None:
         with TemporaryDirectory() as tempdir:
             flags = nightly_autonomy_flags(Path(tempdir), env={})
 
@@ -39,14 +39,14 @@ class AutonomyPolicyTests(unittest.TestCase):
                 "auto_apply_light": True,
                 "auto_adopt_l1": True,
                 "auto_adopt_l2": True,
-                "auto_adopt_l3": False,
+                "auto_adopt_l3": True,
                 "auto_adopt_judgments": True,
-                "auto_apply_heavy_semantic": False,
+                "auto_apply_heavy_semantic": True,
                 "auto_adopt_core_l3": False,
             },
         )
 
-    def test_nightly_autonomy_env_and_kill_switch_override_strong_profile(self) -> None:
+    def test_nightly_autonomy_env_and_kill_switch_override_agentic_profile(self) -> None:
         with TemporaryDirectory() as tempdir:
             root = Path(tempdir)
             flags = nightly_autonomy_flags(
@@ -72,6 +72,33 @@ class AutonomyPolicyTests(unittest.TestCase):
             path.write_text(json.dumps({"schema_version": 3, "autonomy_profile": "agentic"}), encoding="utf-8")
 
             flags = nightly_autonomy_flags(root, env={})
+
+        self.assertTrue(flags["auto_adopt_l3"])
+        self.assertTrue(flags["auto_apply_heavy_semantic"])
+        self.assertFalse(flags["auto_adopt_core_l3"])
+
+    def test_profile_env_override_migrates_existing_legacy_policy_for_receipts(self) -> None:
+        with TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            path = autonomy_policy.policy_path(root)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps({"schema_version": 3, "autonomy_profile": "strong"}), encoding="utf-8")
+
+            policy = load_policy(root, env={PROFILE_OVERRIDE_ENV: "agentic"})
+
+        self.assertEqual(policy.autonomy_profile, "agentic")
+        self.assertTrue(policy.auto_adopt_l3)
+        self.assertTrue(policy.auto_apply_heavy_semantic)
+        self.assertFalse(policy.auto_adopt_core_l3)
+
+    def test_profile_env_override_flows_through_nightly_flags_env_parameter(self) -> None:
+        with TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            path = autonomy_policy.policy_path(root)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps({"schema_version": 3, "autonomy_profile": "strong"}), encoding="utf-8")
+
+            flags = nightly_autonomy_flags(root, env={PROFILE_OVERRIDE_ENV: "agentic"})
 
         self.assertTrue(flags["auto_adopt_l3"])
         self.assertTrue(flags["auto_apply_heavy_semantic"])
@@ -104,6 +131,18 @@ class AutonomyPolicyTests(unittest.TestCase):
         )
         self.assertEqual(external.autonomy_domain, "external")
         self.assertEqual(external.execution_strategy, "human_required")
+
+    def test_domain_classifier_defaults_to_agentic_profile(self) -> None:
+        non_core = classify_autonomy_domain(
+            subject_kind="judgment_review",
+            operation="apply",
+            payload={},
+            revert_supported=True,
+        )
+
+        self.assertEqual(non_core.autonomy_domain, "non_core_semantic")
+        self.assertEqual(non_core.execution_strategy, "llm_decide_apply")
+        self.assertTrue(non_core.llm_governed)
 
     def test_file_with_explicit_flag_is_respected(self) -> None:
         with TemporaryDirectory() as tempdir:
@@ -296,7 +335,7 @@ class AutonomyPolicyMutationTests(unittest.TestCase):
             self.assertTrue(autonomy_policy.policy_path(root).exists())
             data = json.loads(autonomy_policy.policy_path(root).read_text(encoding="utf-8"))
             self.assertEqual(data["schema_version"], 3)
-            self.assertEqual(data["autonomy_profile"], "strong")
+            self.assertEqual(data["autonomy_profile"], "agentic")
             self.assertTrue(data["disable_lane_apply"])
             self.assertFalse(data["disable_alchemy_auto"])
 
@@ -344,6 +383,20 @@ class AutonomyPolicyMutationTests(unittest.TestCase):
             for _name, info in status["flags"].items():
                 self.assertTrue(info["effective"])
                 self.assertIn(GLOBAL_OVERRIDE_ENV, info["reason"] or "")
+
+    def test_policy_status_uses_profile_override_from_env_parameter(self) -> None:
+        from aiwiki.autonomy_policy import policy_status
+
+        with TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            path = autonomy_policy.policy_path(root)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps({"schema_version": 3, "autonomy_profile": "strong"}), encoding="utf-8")
+
+            status = policy_status(root, env={PROFILE_OVERRIDE_ENV: "agentic"})
+
+        self.assertEqual(status["policy_profile"], "agentic")
+        self.assertIsNone(status["policy_load_error"])
 
 
 if __name__ == "__main__":

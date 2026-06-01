@@ -94,6 +94,7 @@ python3 scripts/dogfood_maturity_gate.py --root /home/tim/danlu/炼丹炉 summar
 | summarize --days 3 | live PASS | sees `2026-05-21/22/23`, `consecutive_days=true`, `status_counts.pass=3` |
 | receipt integrity | live PASS | `deterministic_only_runs=[]`, `failed_runs=[]`, `prompt_hash_changed_runs=[]` |
 | operational maturity | live PASS | `operational_maturity.status=pass`, `budget_violations=[]`, `effective_l3_candidates=0` |
+| agentic non-core autonomy | live gate | `agentic_autonomy_report.status=pass` now requires `llm_governed_apply_count > 0`, `non_core_human_required_count=0`, and `core_auto_apply_count=0` |
 | LLM failure handling | live explicit | timeout receipts are `blocked/failed`, not fake success |
 | receipt coverage explainability | repo targeted/unit/acceptance PASS | AOS-C3 adds `receipt_coverage` snapshot field; direct/local `run-ask` success paths now write execution receipts; failure-after-run-notes paths do not leave success receipts |
 | long-run natural proof | not-yet | 3-day live release proof is PASS; 14/30-day natural window must wait for wall-clock evidence |

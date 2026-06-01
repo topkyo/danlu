@@ -4,7 +4,7 @@ The policy file lives at ``.aiwiki/state/autonomy-policy.json``::
 
     {
       "schema_version": 3,
-      "autonomy_profile": "strong",
+      "autonomy_profile": "agentic",
       "disable_lane_apply": false,
       "disable_alchemy_auto": false,
       "disable_l3_generate": false,
@@ -12,9 +12,9 @@ The policy file lives at ``.aiwiki/state/autonomy-policy.json``::
       "auto_apply_light": true,
       "auto_adopt_l1": true,
       "auto_adopt_l2": true,
-      "auto_adopt_l3": false,
+      "auto_adopt_l3": true,
       "auto_adopt_judgments": true,
-      "auto_apply_heavy_semantic": false,
+      "auto_apply_heavy_semantic": true,
       "auto_adopt_core_l3": false,
       "max_l3_apply_per_run": 1,
       "judgment_review_limit": 5,
@@ -24,15 +24,14 @@ The policy file lives at ``.aiwiki/state/autonomy-policy.json``::
 
 Backward-compat by design:
 
-- File missing  → all flags False (identical to today's behavior).
-- File malformed/unreadable → all flags True (fail closed) with load_error so
-  CLIs can surface why automation is disabled.
-- Env override ``AIWIKI_DISABLE_AUTOMATION=1`` forces every flag to True
-  regardless of the file. Designed as a "panic button" knob.
+- File missing  → agentic default: non-core LLM-governed automation on, core
+  prompt/policy/schema writes still proposal-only.
+- File malformed/unreadable → fail closed with load_error so CLIs can surface
+  why automation is disabled.
+- Env override ``AIWIKI_DISABLE_AUTOMATION=1`` disables all automation.
 
-In M7.4a only one hook point reads this module: external LLM (i.e.
-``aiwiki.llm.create_backend_client``). Lane apply / alchemy auto / l3 generate
-are wired in M7.4b.
+Nightly autonomy, external LLM gating, and governed apply receipts all read this
+module so the local runtime has one policy source for automation boundaries.
 """
 
 from __future__ import annotations
@@ -47,7 +46,7 @@ from .app_utils import runtime_write_operation
 
 POLICY_RELATIVE = Path(".aiwiki") / "state" / "autonomy-policy.json"
 POLICY_SCHEMA_VERSION = 3
-DEFAULT_AUTONOMY_PROFILE = "strong"
+DEFAULT_AUTONOMY_PROFILE = "agentic"
 KNOWN_AUTONOMY_PROFILES = {"strong", "agentic"}
 
 KNOWN_FLAGS = (
@@ -58,6 +57,7 @@ KNOWN_FLAGS = (
 )
 
 GLOBAL_OVERRIDE_ENV = "AIWIKI_DISABLE_AUTOMATION"
+PROFILE_OVERRIDE_ENV = "AIWIKI_AUTONOMY_PROFILE"
 
 
 @dataclass(frozen=True)
@@ -71,9 +71,9 @@ class AutonomyPolicy:
     auto_apply_light: bool = True
     auto_adopt_l1: bool = True
     auto_adopt_l2: bool = True
-    auto_adopt_l3: bool = False
+    auto_adopt_l3: bool = True
     auto_adopt_judgments: bool = True
-    auto_apply_heavy_semantic: bool = False
+    auto_apply_heavy_semantic: bool = True
     auto_adopt_core_l3: bool = False
     max_l3_apply_per_run: int = 1
     judgment_review_limit: int = 5
@@ -86,12 +86,17 @@ def policy_path(root: Path) -> Path:
     return root / POLICY_RELATIVE
 
 
-def load_policy(root: Path) -> AutonomyPolicy:
+def load_policy(root: Path, *, env: Mapping[str, str] | None = None) -> AutonomyPolicy:
     """Read the policy file. Missing → default; malformed/unreadable → fail closed."""
 
     path = policy_path(root)
     try:
         if not path.exists():
+            env_profile = _profile_override(env)
+            if env_profile is not None:
+                if env_profile not in KNOWN_AUTONOMY_PROFILES:
+                    return _disabled_policy(f"unsupported {PROFILE_OVERRIDE_ENV}: {env_profile}")
+                return _default_policy_for_profile(env_profile)
             return AutonomyPolicy()
         raw = json.loads(path.read_text(encoding="utf-8"))
     except OSError as e:
@@ -103,7 +108,7 @@ def load_policy(root: Path) -> AutonomyPolicy:
     schema_version = raw.get("schema_version", 1)
     if schema_version not in (1, 2, 3):
         return _disabled_policy(f"unsupported autonomy-policy schema_version: {schema_version}")
-    profile = str(raw.get("autonomy_profile") or DEFAULT_AUTONOMY_PROFILE)
+    profile = str(_profile_override(env) or raw.get("autonomy_profile") or DEFAULT_AUTONOMY_PROFILE)
     if profile not in KNOWN_AUTONOMY_PROFILES:
         return _disabled_policy(f"unsupported autonomy_profile: {profile}")
     profile_defaults = _profile_defaults(profile)
@@ -126,6 +131,18 @@ def load_policy(root: Path) -> AutonomyPolicy:
         require_clean_before_hash=bool(raw.get("require_clean_before_hash", True)),
         auto_revert_on_verify_failure=bool(raw.get("auto_revert_on_verify_failure", True)),
     )
+
+
+def _profile_override(env: Mapping[str, str] | None = None) -> str | None:
+    source = env if env is not None else os.environ
+    value = source.get(PROFILE_OVERRIDE_ENV)
+    if value is None:
+        return None
+    return value.strip().lower()
+
+
+def _default_policy_for_profile(profile: str) -> AutonomyPolicy:
+    return AutonomyPolicy(autonomy_profile=profile, **_profile_defaults(profile))
 
 
 def _disabled_policy(reason: str) -> AutonomyPolicy:
@@ -192,7 +209,7 @@ def is_disabled(
         return False
     if _env_global_override(env):
         return True
-    policy = load_policy(root)
+    policy = load_policy(root, env=env)
     return bool(getattr(policy, flag, False))
 
 
@@ -208,7 +225,7 @@ def disabled_reason(
         return None
     if _env_global_override(env):
         return f"{GLOBAL_OVERRIDE_ENV}=1 (global kill switch active)"
-    policy = load_policy(root)
+    policy = load_policy(root, env=env)
     if policy.load_error is not None:
         return f"autonomy-policy fail-closed: {policy.load_error}"
     if bool(getattr(policy, flag, False)):
@@ -277,11 +294,12 @@ def nightly_autonomy_flags(root: Path, *, env: Mapping[str, str] | None = None) 
     """Effective default-autonomy flags for run-nightly.
 
     Env variables remain explicit overrides. Missing env values fall back to the
-    v2 policy profile, whose default is strong autonomy. Corrupt policy or the
-    global kill switch fail closed.
+    v3 policy profile, whose default is agentic: non-core semantic work is
+    LLM-governed by default, while core prompt/policy/schema writes remain
+    proposal-only. Corrupt policy or the global kill switch fail closed.
     """
 
-    policy = load_policy(root)
+    policy = load_policy(root, env=env)
     globally_disabled = _env_global_override(env) or policy.load_error is not None
     defaults = {
         "auto_apply_light": bool(policy.auto_apply_light),
@@ -333,6 +351,9 @@ def policy_status(root: Path, *, env: Mapping[str, str] | None = None) -> dict:
           "policy_path": "<absolute>",
           "policy_file_exists": bool,
           "policy_load_error": str|None,
+          "policy_profile": str,
+          "profile_override_env": "AIWIKI_AUTONOMY_PROFILE",
+          "profile_override_value": str|None,
           "global_override_env": "AIWIKI_DISABLE_AUTOMATION",
           "global_override_active": bool,
           "flags": {
@@ -342,7 +363,8 @@ def policy_status(root: Path, *, env: Mapping[str, str] | None = None) -> dict:
     """
 
     path = policy_path(root)
-    file_policy = load_policy(root)
+    file_policy = load_policy(root, env=env)
+    profile_override = _profile_override(env)
     override = _env_global_override(env)
     flags: dict[str, dict] = {}
     for name in KNOWN_FLAGS:
@@ -357,6 +379,9 @@ def policy_status(root: Path, *, env: Mapping[str, str] | None = None) -> dict:
         "policy_path": str(path),
         "policy_file_exists": path.exists(),
         "policy_load_error": file_policy.load_error,
+        "policy_profile": file_policy.autonomy_profile,
+        "profile_override_env": PROFILE_OVERRIDE_ENV,
+        "profile_override_value": profile_override,
         "global_override_env": GLOBAL_OVERRIDE_ENV,
         "global_override_active": override,
         "flags": flags,

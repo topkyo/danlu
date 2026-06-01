@@ -33,7 +33,7 @@ related_docs:
 **含义**：炼丹炉在用户睡觉时也在工作，但工作内容受三条硬约束：
 
 - **deterministic-only watcher**：watcher 默认不主动调 LLM；只跑 deterministic compile / lint，确保 raw → wiki 的最低可用流水线长期 alive
-- **nightly 五层炼化**：runtime policy 缺省 `autonomy_profile=strong`，nightly 默认执行 L0/L1/L2/L3/Judgment 五层 auto apply/adopt；env / policy 可按层缩窄，但所有变更必须 receipt/audit/revert；fallback 仍默认关闭
+- **nightly 五层炼化**：runtime policy 缺省 `autonomy_profile=agentic`，nightly 默认执行 L0/L1/L2/L3/Judgment 和 heavy semantic 非核心自动化；env / policy 可按层缩窄，但所有变更必须 receipt/audit/revert；核心 prompt/policy/schema 写回仍 proposal-only；fallback 仍默认关闭
 - **LLM 隔离到受控入口**：要让 LLM 介入，必须走 `run-*` 命令或 nightly 的 `run-nightly` 路径；watcher 不会偷跑
 - **single writer**：任意时刻只允许一个 writer（watcher / nightly / 手动 CLI / Obsidian Plugin）持有 `runtime.lock`
 
@@ -116,17 +116,18 @@ else:
 ```
 
 关键 env：
+- `AIWIKI_AUTONOMY_PROFILE=agentic` —— runtime profile override；新安装 nightly env 默认写入，保证旧 vault 的 legacy policy 文件不会让 receipt 继续按旧 profile 记账
 - `AIWIKI_NIGHTLY_DETERMINISTIC_ONLY=0` —— 默认跑 LLM；设 `1` 强制不调 LLM
 - `AIWIKI_NIGHTLY_REQUIRE_LLM=0` —— 当没有任何 configured LLM path 可尝试时，默认允许 wrapper 跑 deterministic nightly；一旦 configured `run-nightly` 已失败，wrapper 会 fail closed，不把 deterministic nightly 当作本次 success proof
 - `AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT=1` —— **L0 维护层自动 apply**；agent_loop preview 完成后立即执行 receipted light primitives（compile/lint/nightly），写 receipt + audit
 - `AIWIKI_NIGHTLY_AUTO_ADOPT_L1=1` —— **L1 语义层自动采纳**：concept backlog → active、revisit → deferred、source-concept link 自动 accept + apply
 - `AIWIKI_NIGHTLY_AUTO_ADOPT_L2=1` —— **L2 结构层自动采纳**：overloaded-concept split 自动 accept + apply
-- `AIWIKI_NIGHTLY_AUTO_ADOPT_L3=1` —— **L3 策略层自动采纳**：默认关闭；开启后只自动登记 `metadata_only` candidate，核心 prompt/policy/schema 写回仍必须显式 human accept + 手动 `apply` + hash gate
+- `AIWIKI_NIGHTLY_AUTO_ADOPT_L3=1` —— **L3 策略层自动采纳**：默认开启；自动登记 `metadata_only` candidate，核心 prompt/policy/schema 写回仍必须显式 human accept + 手动 `apply` + hash gate
 - `AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS=1` —— **判断层自动复核**：LLM-powered counter-evidence review，读取反证来源页生成 upheld/weakened/refuted 结论
-- `AIWIKI_NIGHTLY_AUTO_APPLY_HEAVY_SEMANTIC=1` —— **heavy semantic phase 自动 apply**：默认关闭；开启后 signal pipeline 才会执行 heavy `review/distill/propose` 的 receipt-backed apply
+- `AIWIKI_NIGHTLY_AUTO_APPLY_HEAVY_SEMANTIC=1` —— **heavy semantic phase 自动 apply**：默认开启；signal pipeline 会执行 heavy `review/distill/propose` 的 receipt-backed 非核心 apply，核心写回继续走 proposal/human gate
 - `AIWIKI_NIGHTLY_AUTO_ADOPT_CORE_L3=1` —— **核心 L3 写回授权**：默认关闭；当前仍不允许无人值守改核心 prompt/policy/schema，仅作为未来显式 contract flag
 
-这些 env 是显式覆盖层；缺省值来自 `.aiwiki/state/autonomy-policy.json`，文件缺失时按 strong profile 启用维护、治理和 judgment review，但 L3 核心写回与 heavy semantic apply 默认关闭。`AIWIKI_DISABLE_AUTOMATION=1` 是全局 kill switch；policy 损坏时 fail-closed。预算字段 `max_l3_apply_per_run` 与 `judgment_review_limit` 分别限制单次 nightly 的 L3 apply 数和 judgment review 数。
+这些 env 是显式覆盖层；缺省值来自 `.aiwiki/state/autonomy-policy.json`，文件缺失或 `AIWIKI_AUTONOMY_PROFILE=agentic` 覆盖时按 agentic profile 启用维护、治理、judgment review、metadata-only L3 和 heavy semantic 非核心自动化，但核心 L3 写回默认关闭。`AIWIKI_DISABLE_AUTOMATION=1` 是全局 kill switch；policy 损坏时 fail-closed。预算字段 `max_l3_apply_per_run` 与 `judgment_review_limit` 分别限制单次 nightly 的 L3 apply 数和 judgment review 数。
 - `AIWIKI_NIGHTLY_COMPILE_LIMIT=5` —— LLM enrichment 单批上限
 - `AIWIKI_NIGHTLY_NO_SEMANTIC_LINT=0` —— 是否跑 semantic lint
 - `AIWIKI_NIGHTLY_FALLBACK_ENABLED=0` —— nightly wrapper 的 operator-approved fallback 开关；默认关闭，避免隐式跨 backend routing

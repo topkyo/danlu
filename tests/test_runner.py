@@ -2540,7 +2540,7 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(result["llm_used"])
         self.assertEqual(result["agent_loop"]["status"], "ok")
 
-    def test_run_nightly_auto_applies_light_lane_by_default_strong_policy(self) -> None:
+    def test_run_nightly_auto_applies_light_lane_by_default_agentic_policy(self) -> None:
         append_runtime_history(
             self.root,
             {

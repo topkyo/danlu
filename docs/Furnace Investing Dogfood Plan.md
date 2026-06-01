@@ -227,7 +227,7 @@ v2 dogfood 暴露：默认 planner replay 跑在 `observe_only` 模式，所有 
 
 - `aiwiki planner-log-replay --execute`：把 signals 以 execute-mode 写入 `planner-log.jsonl`，让 records 带 `side_effects_allowed: true`。这是 candidate 准入的前置条件，本身**不**生成 L3 proposal。
 - `aiwiki l3-proposal-generate --apply`：扫 planner-log（要求 `mode=execute` 记录）→ 产生 L3 proposal candidate → 写入 `output/_proposals/prompt/` 或 `output/_proposals/policy/`。这是真正生成 proposal 的入口。
-- `AIWIKI_NIGHTLY_AUTO_ADOPT_L3=1` + `aiwiki run-nightly`：作用于**已存在**的 candidate proposal，但只会自动登记 `metadata_only` candidate；不参与 candidate 生成，也不无人值守写核心 prompt/policy。
+- `AIWIKI_NIGHTLY_AUTO_ADOPT_L3=1` + `aiwiki run-nightly`：agentic 默认开启，作用于**已存在**的 candidate proposal，但只会自动登记 `metadata_only` candidate；不无人值守写核心 prompt/policy。
 
 **入口**：
 

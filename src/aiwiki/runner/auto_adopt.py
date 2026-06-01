@@ -8,13 +8,14 @@ design so that 炼丹炉 can silently auto-adopt safe-category items by default.
 Opt-in per level via env vars:
 - ``AIWIKI_NIGHTLY_AUTO_ADOPT_L1=1`` — auto-adopt L1 semantic candidates
 - ``AIWIKI_NIGHTLY_AUTO_ADOPT_L2=1`` — auto-adopt L2 machine-memory actions
-- ``AIWIKI_NIGHTLY_AUTO_ADOPT_L3=1`` — auto-adopt L3 proposals (prompt / policy)
+- ``AIWIKI_NIGHTLY_AUTO_ADOPT_L3=1`` — auto-adopt metadata-only L3 bookkeeping; core prompt/policy/schema writes stay human-gated
 - ``AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS=1`` — auto-adopt judgment reviews
 
 Policy (aligned with 炼丹炉 self-evolution philosophy):
   L1 — concept backlog / revisit / source-concept links
   L2 — concept splits (deterministic overloaded-concept proposals)
-  L3 — prompt / policy / schema proposals (auto-adopted with receipt for audit/revert)
+  L3 — metadata-only proposal bookkeeping (auto-adopted with receipt for audit/revert);
+       core prompt / policy / schema target writes remain proposal-only + human accepted
   Judgment — counter-evidence / judgment review (LLM-powered, nightly path)
 
 All auto-adopted items write receipts and support revert.

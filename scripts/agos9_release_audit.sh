@@ -55,7 +55,7 @@ else
   echo "[WARN] operational_maturity not pass yet (expected until 3 UTC days)" >&2
   FAIL=1
 fi
-if python3 -c 'import json, sys; payload=json.loads(sys.argv[1]); report=payload.get("agentic_autonomy_report", {}); sys.exit(0 if report.get("status") == "pass" and int(report.get("non_core_human_required_count") or 0) == 0 and int(report.get("core_auto_apply_count") or 0) == 0 else 1)' "$SUMMARY"; then
+if python3 -c 'import json, sys; payload=json.loads(sys.argv[1]); report=payload.get("agentic_autonomy_report", {}); sys.exit(0 if report.get("status") == "pass" and int(report.get("llm_governed_apply_count") or 0) > 0 and int(report.get("non_core_human_required_count") or 0) == 0 and int(report.get("core_auto_apply_count") or 0) == 0 else 1)' "$SUMMARY"; then
   echo "[OK] agentic autonomy report pass"
 else
   echo "[FAIL] agentic autonomy report not pass" >&2

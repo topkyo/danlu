@@ -21,9 +21,9 @@ def run_signal_pipeline(
 ) -> dict[str, Any]:
     """Replay signals, write planner decisions, and build semantic phase feedback.
 
-    Light maintenance can be applied unattended. Heavy semantic work defaults to
-    preview/proposal contracts only; explicit policy or caller opt-in is required
-    to apply receipt-backed heavy primitives.
+    Light maintenance can be applied unattended. Under the agentic default,
+    heavy non-core semantic work also applies when the policy allows it; callers
+    can still force preview by passing ``apply_heavy_semantic=False``.
     """
 
     collect_signals = import_module("aiwiki.signals.collector").collect_signals
@@ -106,8 +106,10 @@ def _semantic_phase_summary(result: dict[str, Any], *, applied: bool) -> dict[st
                         "elixir_refs": list(scope_preview.get("elixir_refs") or []),
                         "judgment_refs": list(scope_preview.get("judgment_refs") or []),
                     },
-                    "model_contract": "explicit_llm_or_human_contract_required_for_semantic_content",
-                    "human_required": True,
+                    "model_contract": "explicit_llm_governed_contract_required_for_semantic_content"
+                    if applied
+                    else "explicit_llm_or_human_contract_required_for_semantic_content",
+                    "human_required": not applied,
                     "target_surfaces": ["review_queue", "elixir_candidate_plane", "l3_proposal_plane"],
                     "receipt_required": True,
                     "rollback_policy": "receipt_or_newer_proposal; core prompt/policy/schema apply remains human-gated",

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Any, Mapping
 
+DEFAULT_AUTONOMY_PROFILE = "agentic"
 AUTONOMY_DOMAINS = {"maintenance", "governance", "non_core_semantic", "core", "external"}
 EXECUTION_STRATEGIES = {"auto_apply", "llm_decide_apply", "proposal_only", "human_required"}
 
@@ -61,13 +62,13 @@ def classify_autonomy_domain(
     subject_kind: str,
     operation: str = "",
     payload: Mapping[str, Any] | None = None,
-    autonomy_profile: str = "strong",
+    autonomy_profile: str = DEFAULT_AUTONOMY_PROFILE,
     revert_supported: bool = False,
 ) -> AutonomyClassification:
     payload = payload or {}
     subject = subject_kind.strip().lower()
     op = operation.strip().lower()
-    profile = autonomy_profile.strip().lower() or "strong"
+    profile = autonomy_profile.strip().lower() or DEFAULT_AUTONOMY_PROFILE
 
     domain, reason, revert_required = _domain_for_subject(subject, op, payload)
     strategy = _strategy_for_domain(domain, profile, revert_supported=revert_supported)
@@ -84,7 +85,7 @@ def classify_autonomy_domain(
 def classify_l3_proposal(
     proposal: Mapping[str, Any],
     *,
-    autonomy_profile: str = "strong",
+    autonomy_profile: str = DEFAULT_AUTONOMY_PROFILE,
     revert_supported: bool = True,
 ) -> AutonomyClassification:
     patch = proposal.get("patch") if isinstance(proposal.get("patch"), Mapping) else {}
@@ -104,7 +105,7 @@ def classify_l3_proposal(
 def classify_machine_memory_action(
     action: Mapping[str, Any],
     *,
-    autonomy_profile: str = "strong",
+    autonomy_profile: str = DEFAULT_AUTONOMY_PROFILE,
     revert_supported: bool = False,
 ) -> AutonomyClassification:
     return classify_autonomy_domain(
@@ -122,7 +123,7 @@ def classify_machine_memory_action(
 
 def classify_judgment_review(
     *,
-    autonomy_profile: str = "strong",
+    autonomy_profile: str = DEFAULT_AUTONOMY_PROFILE,
     revert_supported: bool,
 ) -> AutonomyClassification:
     return classify_autonomy_domain(
