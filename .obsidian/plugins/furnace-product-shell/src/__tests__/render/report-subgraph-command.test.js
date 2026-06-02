@@ -113,7 +113,7 @@ describe("runReportSubgraphCommand", () => {
     expect(actionsSrc).toMatch(/openProductShellReportSubgraphPicker[\s\S]{0,1200}collectReportCandidates/);
     expect(actionsSrc).toMatch(/artifact_quality/);
     expect(actionsSrc).toMatch(/contains_llm_placeholder/);
-    expect(actionsSrc).toMatch(/"timeout_or_unavailable", "pending", "failed", "degraded"/);
+    expect(actionsSrc).toMatch(/"timeout_or_unavailable", "validation_failed", "pending", "failed", "degraded"/);
     // Falls back to plain text input only when no candidates exist.
     const modalSpecsSrc = fs.readFileSync(
       path.resolve(__dirname, "../../modal_specs.js"),

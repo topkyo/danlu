@@ -1249,6 +1249,7 @@ function buildAutoAskQuestionLegacy(question, materialPaths) {
 function looksLikeUniversalMaterialPayload(value) {
   const text = String(value || "").trim();
   if (!text) return false;
+  if (/^\s*引用报告\s*[:：]/im.test(text)) return false;
   const lower = text.toLowerCase();
   if (lower.startsWith("obsidian://open")) return false;
   if (lower.startsWith("http://") || lower.startsWith("https://")) return true;
@@ -1294,6 +1295,7 @@ function normalizeWorkspaceLinkTarget(value) {
 function splitTextMaterialQuestion(value) {
   const text = String(value || "").trim();
   if (!text) return null;
+  if (/^\s*引用报告\s*[:：]/im.test(text)) return null;
   const nonEmptyLines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   if (nonEmptyLines.length >= 2 && looksLikeUniversalMaterialPayload(nonEmptyLines[0])) {
     return {
@@ -1753,6 +1755,7 @@ function isPendingSubmissionDegradedEntry(entry) {
   return deliveryMode === "deterministic-fallback"
     || deliveryMode === "llm-failed"
     || llmStatus === "timeout_or_unavailable"
+    || llmStatus === "validation_failed"
     || llmStatus === "failed"
     || llmStatus === "degraded"
     || backgroundStatus === "degraded"
@@ -2440,7 +2443,7 @@ function isDeliverableReportOutput(item) {
   const placeholder = firstText(item, "contains_llm_placeholder").toLowerCase();
   const title = firstText(item, "title");
   if (deliveryMode === "deterministic-fallback") return false;
-  if (["timeout_or_unavailable", "pending", "failed", "degraded"].includes(llmStatus)) return false;
+  if (["timeout_or_unavailable", "validation_failed", "pending", "failed", "degraded"].includes(llmStatus)) return false;
   if (["submitted", "running", "degraded"].includes(backgroundStatus)) return false;
   if (["degraded", "placeholder"].includes(artifactQuality)) return false;
   if (["1", "true", "yes"].includes(placeholder)) return false;
@@ -5391,6 +5394,7 @@ function pendingSubmissionIsDegraded(entry) {
   return deliveryMode === "deterministic-fallback"
     || deliveryMode === "llm-failed"
     || llmStatus === "timeout_or_unavailable"
+    || llmStatus === "validation_failed"
     || llmStatus === "failed"
     || llmStatus === "degraded"
     || backgroundStatus === "degraded"
@@ -8516,7 +8520,7 @@ function collectProductShellReportCandidates(plugin) {
     const containsPlaceholder = String(item.contains_llm_placeholder || "").trim().toLowerCase();
     const rawTitle = String(item.title || "").trim();
     if (deliveryMode === "deterministic-fallback" || deliveryMode === "llm-failed") continue;
-    if (["timeout_or_unavailable", "pending", "failed", "degraded"].includes(llmStatus)) continue;
+    if (["timeout_or_unavailable", "validation_failed", "pending", "failed", "degraded"].includes(llmStatus)) continue;
     if (["submitted", "running", "degraded"].includes(backgroundStatus)) continue;
     if (["degraded", "placeholder"].includes(artifactQuality)) continue;
     if (["1", "true", "yes"].includes(containsPlaceholder)) continue;

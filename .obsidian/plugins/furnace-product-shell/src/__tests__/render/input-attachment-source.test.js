@@ -23,7 +23,7 @@ function loadHelpers() {
     REWRITE_STATUS_LABELS: {},
     REVIEW_REASON_LABELS: {},
   };
-  vm.runInNewContext(`${src}\nmodule.exports = { resolvePluginFileSource, sanitizeDropFileName, collectMaterialPathsFromPayload, buildAutoAskQuestion, inferAutoAskFormat, splitTextMaterialQuestion };`, context);
+  vm.runInNewContext(`${src}\nmodule.exports = { resolvePluginFileSource, sanitizeDropFileName, collectMaterialPathsFromPayload, buildAutoAskQuestion, inferAutoAskFormat, looksLikeUniversalMaterialPayload, splitTextMaterialQuestion };`, context);
   return context.module.exports;
 }
 
@@ -273,12 +273,16 @@ describe("Universal Input attachment source handling", () => {
   });
 
   test("splitTextMaterialQuestion detects material plus question", () => {
-    const { splitTextMaterialQuestion } = loadHelpers();
+    const { looksLikeUniversalMaterialPayload, splitTextMaterialQuestion } = loadHelpers();
 
     expect(splitTextMaterialQuestion("https://example.com/report 重新分析下"))
       .toEqual({ payload: "https://example.com/report", question: "重新分析下" });
     expect(splitTextMaterialQuestion("https://example.com/report\n重新分析下\n给出结论"))
       .toEqual({ payload: "https://example.com/report", question: "重新分析下\n给出结论" });
+    expect(splitTextMaterialQuestion("引用报告：output/reports/r.md\n重新分析下"))
+      .toBeNull();
+    expect(looksLikeUniversalMaterialPayload("引用报告：output/reports/r.md"))
+      .toBe(false);
     expect(splitTextMaterialQuestion("重新分析下"))
       .toBeNull();
   });

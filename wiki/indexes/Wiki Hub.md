@@ -20,10 +20,7 @@ kind: "dashboard"
 
 ## 架构入口
 
-- [[docs/Furnace Agent Architecture|炼丹炉 Agent 架构]]：终局架构 SoT，定义 agent loop、persistent planes 与 L1/L2/L3 自主权边界
-- [[docs/Furnace Evolution Mechanics|进化机制]]：实现契约 SoT，定义 heavy/light alchemy、active corpus、金丹生命周期、L3 proposal
-- [[docs/Furnace Elixir|金丹机制]]：金丹产品思路 thesis
-- [[docs/archive/Furnace Product Shell Plugin|Product Shell 插件史料]]：Obsidian 桌面工作台设计史料；当前事实以 README / PROGRESS 为准
+- [[README|使用说明]]：当前产品和 runtime 入口
 - [[wiki/indexes/protocols|协议总览]]：当前 active protocol 和可用协议库
 - [[wiki/indexes/protocols|协议总览]]：当前 active protocol 和可用协议库
 - [[wiki/indexes/furnace-center|炉心面板]]：统一入口，先看今天该处理什么

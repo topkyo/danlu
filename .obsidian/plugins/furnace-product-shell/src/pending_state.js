@@ -96,6 +96,7 @@ function isPendingSubmissionDegradedEntry(entry) {
   return deliveryMode === "deterministic-fallback"
     || deliveryMode === "llm-failed"
     || llmStatus === "timeout_or_unavailable"
+    || llmStatus === "validation_failed"
     || llmStatus === "failed"
     || llmStatus === "degraded"
     || backgroundStatus === "degraded"

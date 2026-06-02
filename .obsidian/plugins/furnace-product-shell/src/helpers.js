@@ -187,6 +187,7 @@ function buildAutoAskQuestionLegacy(question, materialPaths) {
 function looksLikeUniversalMaterialPayload(value) {
   const text = String(value || "").trim();
   if (!text) return false;
+  if (/^\s*引用报告\s*[:：]/im.test(text)) return false;
   const lower = text.toLowerCase();
   if (lower.startsWith("obsidian://open")) return false;
   if (lower.startsWith("http://") || lower.startsWith("https://")) return true;
@@ -232,6 +233,7 @@ function normalizeWorkspaceLinkTarget(value) {
 function splitTextMaterialQuestion(value) {
   const text = String(value || "").trim();
   if (!text) return null;
+  if (/^\s*引用报告\s*[:：]/im.test(text)) return null;
   const nonEmptyLines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   if (nonEmptyLines.length >= 2 && looksLikeUniversalMaterialPayload(nonEmptyLines[0])) {
     return {

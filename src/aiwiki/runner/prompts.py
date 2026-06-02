@@ -784,15 +784,22 @@ def _dedupe_report_citations(markdown: str) -> str:
         return markdown
     seen_paths: set[str] = set()
     deduped: list[str] = []
+    changed = False
     for line in lines[citations_start:citations_end]:
         paths = _extract_report_citations([line])
         if paths:
             path = paths[0]
             if path in seen_paths:
+                changed = True
                 continue
             seen_paths.add(path)
+            stripped = line.strip()
+            if len(paths) == 1 and stripped.strip("`") == path:
+                deduped.append(f"- {path}")
+                changed = True
+                continue
         deduped.append(line)
-    if len(deduped) == citations_end - citations_start:
+    if not changed:
         return markdown
     return "\n".join(lines[:citations_start] + deduped + lines[citations_end:]) + "\n"
 
@@ -915,6 +922,7 @@ _REPORT_SECTION_BULLET_MINIMUMS: dict[str, int] = {
 _REPORT_PLACEHOLDER_MARKER = "_LLM:"
 
 _REPORT_CITATION_PATTERN = re.compile(r"wiki/sources/[a-z0-9._-]+\.md")
+_REPORT_ORDERED_LIST_PATTERN = re.compile(r"^[0-9]+[.)]\s+\S")
 
 
 def _validate_report_sections(markdown: str) -> None:
@@ -929,10 +937,10 @@ def _validate_report_sections(markdown: str) -> None:
          document (outside fenced code blocks). LLM is expected to replace
          every hint line before returning.
       3. For each required section listed in ``_REPORT_SECTION_BULLET_MINIMUMS``,
-         count column-0 ``- `` bullets in its body (the lines between its H2
+         count column-0 list items in its body (the lines between its H2
          and the next H2 or end-of-document), excluding fenced code blocks,
-         empty bullets, and ``_LLM:`` placeholder lines. Sub-bullets,
-         numbered lists, and continuation lines do not count.
+         empty bullets, and ``_LLM:`` placeholder lines. Top-level ``- `` and
+         ordered-list items count; sub-bullets and continuation lines do not.
       4. Citation integrity:
          - Dedup: every ``wiki/sources/*.md`` path under ``## 引用`` is
            unique (fence-aware; ``## 引用`` body stops at the next H2 to
@@ -966,7 +974,7 @@ def _validate_report_sections(markdown: str) -> None:
             h2_positions.append((index, line.strip()))
     # Phase 0: unclosed fence detection (uses the final state of the
     # same scan above so toggle semantics stay in lock-step with
-    # _count_report_bullets / _extract_report_citations).
+    # _count_report_list_items / _extract_report_citations).
     if in_fence:
         raise RuntimeError("Report has unclosed fenced code block.")
 
@@ -1021,11 +1029,11 @@ def _validate_report_sections(markdown: str) -> None:
 
     for heading, minimum in _REPORT_SECTION_BULLET_MINIMUMS.items():
         body_start, body_end = section_ranges[heading]
-        bullet_count = _count_report_bullets(lines[body_start:body_end])
-        if bullet_count < minimum:
+        list_item_count = _count_report_list_items(lines[body_start:body_end])
+        if list_item_count < minimum:
             raise RuntimeError(
-                f"Report section {heading} needs at least {minimum} '- ' bullets;"
-                f" found {bullet_count}."
+                f"Report section {heading} needs at least {minimum} top-level list items;"
+                f" found {list_item_count}."
             )
 
     # Phase 4: citation integrity.
@@ -1062,11 +1070,11 @@ def _validate_report_sections(markdown: str) -> None:
             )
 
 
-def _count_report_bullets(section_lines: list[str]) -> int:
-    """Count column-0 ``- `` bullets in a section body.
+def _count_report_list_items(section_lines: list[str]) -> int:
+    """Count column-0 list items in a section body.
 
-    Skips fenced code blocks, empty bullets (``- `` with no content), and
-    ``_LLM:`` placeholder lines. Numbered lists, sub-bullets, and
+    Skips fenced code blocks, empty bullets, and ``_LLM:`` placeholder lines.
+    Top-level ``- `` bullets and ordered-list items count. Sub-bullets and
     continuation lines are not counted.
     """
     count = 0
@@ -1078,9 +1086,12 @@ def _count_report_bullets(section_lines: list[str]) -> int:
             continue
         if in_fence:
             continue
-        if not line.startswith("- "):
+        if line.startswith("- "):
+            body = line[2:].strip()
+        elif _REPORT_ORDERED_LIST_PATTERN.match(line):
+            body = re.sub(r"^[0-9]+[.)]\s+", "", line, count=1).strip()
+        else:
             continue
-        body = line[2:].strip()
         if not body:
             continue
         if body.startswith(_REPORT_PLACEHOLDER_MARKER):

@@ -72,7 +72,14 @@ def sync_manifest_with_raw(root: Path) -> dict[str, Any]:
             current_source_type = metadata.get("source_type") or entry["source_type"]
             current_note_kind = metadata.get("note_kind") or str(entry.get("note_kind") or "")
             current_original_path = metadata.get("original_path") or entry["original_path"]
-            if (entry.get("sha256") != current_sha or entry.get("kind") != current_kind or entry.get("title") != current_title or entry.get("source_type") != current_source_type or entry.get("note_kind") != current_note_kind or entry.get("original_path") != current_original_path):
+            if (
+                entry.get("sha256") != current_sha
+                or entry.get("kind") != current_kind
+                or entry.get("title") != current_title
+                or entry.get("source_type") != current_source_type
+                or entry.get("note_kind") != current_note_kind
+                or entry.get("original_path") != current_original_path
+            ):
                 entry.update({"sha256": current_sha, "kind": current_kind, "title": current_title, "source_type": current_source_type, "note_kind": current_note_kind, "original_path": current_original_path, "updated_at": datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).replace(microsecond=0).isoformat()})
                 changed = True
             continue
@@ -238,7 +245,7 @@ def render_source_page_with_state(entry: dict[str, Any], preview: str, compiled_
         if stored_path.startswith("raw/")
         else ["- 暂无 raw 原料路径。"]
     )
-    frontmatter = render_frontmatter({"id": entry["id"], "kind": "source", "status": "compiled", "title": entry["title"], "source_files": [entry["stored_path"]], "source_sha256": entry["sha256"], "citations": citations, "concepts": concepts, "generated_by": "aiwiki-compile", "last_compiled_at": compiled_at, "confidence": confidence})
+    frontmatter = render_frontmatter({"id": entry["id"], "kind": "source", "status": "compiled", "title": entry["title"], "source_files": [entry["stored_path"]], "source_sha256": entry["sha256"], "source_updated_at": entry.get("updated_at") or entry["imported_at"], "citations": citations, "concepts": concepts, "generated_by": "aiwiki-compile", "last_compiled_at": compiled_at, "confidence": confidence})
     body = "\n".join(
         [
             frontmatter,
@@ -250,6 +257,7 @@ def render_source_page_with_state(entry: dict[str, Any], preview: str, compiled_
             f"- Original path: `{entry['original_path']}`",
             f"- Stored path: `{entry['stored_path']}`",
             f"- Imported at: `{entry['imported_at']}`",
+            f"- Updated at: `{entry.get('updated_at') or entry['imported_at']}`",
             f"- SHA256: `{entry['sha256']}`",
             "",
             "## 原料文件",
@@ -428,7 +436,7 @@ def collect_recent_output_artifacts(root: Path, *, limit: int = 12) -> list[dict
                     continue
                 degraded = (
                     delivery_mode == "deterministic-fallback"
-                    or llm_status in {"timeout_or_unavailable", "pending", "failed", "degraded"}
+                    or llm_status in {"timeout_or_unavailable", "validation_failed", "pending", "failed", "degraded"}
                     or background_status == "degraded"
                     or title.startswith("LLM 未完成")
                 )

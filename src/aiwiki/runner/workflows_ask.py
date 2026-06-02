@@ -35,6 +35,7 @@ from aiwiki.execution.receipts import write_execution_receipt
 from aiwiki.execution.run_notes import run_id_for_artifact, write_run_notes, write_run_notes_frontmatter
 from aiwiki.input_router import is_obsidian_open_link
 from aiwiki.llm import CompletionResult, LLMError, classify_backend_error
+from aiwiki.notify import notify_report_generated
 from aiwiki.runner.background import (
     job_manifest_path,
     new_job_id,
@@ -57,6 +58,7 @@ from aiwiki.runner.local_stats import (
     OUTPUT_OBSIDIAN_CSSCLASS,
     OUTPUT_REPORT_LEAF_CSSCLASS,
     clean_report_reference_question,
+    extract_report_reference_paths,
 )
 from aiwiki.runner.prompts import (
     _build_ask_prompt,
@@ -83,10 +85,36 @@ from aiwiki.runner.workflow_shared import (
 
 _logger = logging.getLogger(__name__)
 
-_REPORT_REFERENCE_RE = re.compile(
-    r"引用报告\s*[:：]\s*(?:`?)(output/reports/[^\s`]+(?:\.md)?)(?:`?)",
-    flags=re.IGNORECASE,
+_CONTRACT_VALIDATION_PREFIXES = (
+    "Ask response is missing",
+    "Report ",
 )
+
+_REPORT_SKELETON_REFERENCE_HEADINGS = {"## 参考"}
+
+
+def _refresh_shell_summary_fail_soft(root: Path) -> None:
+    try:
+        from aiwiki.app_shell import build_shell_summary, write_shell_summary
+
+        write_shell_summary(root, build_shell_summary(root))
+    except Exception as exc:
+        _logger.warning(
+            "shell summary refresh failed after run-ask background update: %s",
+            exc,
+        )
+
+
+def _run_ask_failure_llm_status(exc: Exception) -> str:
+    backend_error_class = classify_backend_error(str(exc))
+    if backend_error_class in {"quota", "timeout", "unavailable"}:
+        return "timeout_or_unavailable"
+    message = str(exc)
+    if any(message.startswith(prefix) for prefix in _CONTRACT_VALIDATION_PREFIXES):
+        return "validation_failed"
+    if _receipt_error_class(exc) == "parse_error":
+        return "validation_failed"
+    return "failed"
 
 def _effective_run_ask_timeout(output_format: str, timeout_seconds: int | None) -> int | None:
     if timeout_seconds is not None:
@@ -162,7 +190,13 @@ def _ensure_output_cssclass(target: Path) -> None:
     updated_lines = [lines[0], *header, *css_lines, lines[close_idx], *lines[close_idx + 1 :]]
     target.write_text("\n".join(updated_lines).rstrip() + "\n", encoding="utf-8")
 
-def _restore_run_ask_provenance_frontmatter(target: Path, deterministic_artifact: str) -> None:
+def _restore_run_ask_provenance_frontmatter(
+    target: Path,
+    deterministic_artifact: str,
+    *,
+    material_refs: list[str] | None = None,
+    used_context_refs: list[str] | None = None,
+) -> None:
     """Restore runtime-owned provenance fields after LLM overwrites an artifact.
 
     The LLM is allowed to rewrite the markdown body/frontmatter, but provenance used by
@@ -180,6 +214,17 @@ def _restore_run_ask_provenance_frontmatter(target: Path, deterministic_artifact
                 merged.append(item)
         if merged:
             restored[key] = merged
+    for key, refs in (
+        ("material_refs", material_refs or []),
+        ("used_context_refs", used_context_refs or []),
+    ):
+        merged = []
+        for item in refs:
+            normalized = str(item or "").strip()
+            if normalized and normalized not in merged:
+                merged.append(normalized)
+        if merged:
+            restored[key] = merged
 
     lines = current.splitlines()
     has_frontmatter = bool(lines) and lines[0].strip() == "---"
@@ -189,7 +234,7 @@ def _restore_run_ask_provenance_frontmatter(target: Path, deterministic_artifact
             if lines[idx].strip() == "---":
                 close_idx = idx
                 break
-    keys = {"derived_from", "source_files"}
+    keys = {"derived_from", "source_files", "material_refs", "used_context_refs"}
     restored_lines = _runtime_provenance_field_lines(restored)
     if not has_frontmatter or close_idx is None:
         if not restored_lines:
@@ -199,6 +244,75 @@ def _restore_run_ask_provenance_frontmatter(target: Path, deterministic_artifact
         header = _drop_frontmatter_keys(lines[1:close_idx], keys)
         updated_lines = [lines[0], *header, *restored_lines, lines[close_idx], *lines[close_idx + 1 :]]
     target.write_text("\n".join(updated_lines).rstrip() + "\n", encoding="utf-8")
+
+def _strip_report_skeleton_reference_hints(markdown: str) -> str:
+    lines = str(markdown or "").splitlines()
+    if not lines:
+        return markdown
+    h2_positions: list[tuple[int, str]] = []
+    in_fence = False
+    for index, line in enumerate(lines):
+        stripped = line.lstrip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if line.startswith("## ") and not line.startswith("### "):
+            h2_positions.append((index, line.strip()))
+    if not any(title in _REPORT_SKELETON_REFERENCE_HEADINGS for _index, title in h2_positions):
+        return markdown
+    remove_ranges: list[tuple[int, int]] = []
+    for position_index, (line_index, title) in enumerate(h2_positions):
+        if title not in _REPORT_SKELETON_REFERENCE_HEADINGS:
+            continue
+        end = h2_positions[position_index + 1][0] if position_index + 1 < len(h2_positions) else len(lines)
+        remove_ranges.append((line_index, end))
+    kept: list[str] = []
+    for index, line in enumerate(lines):
+        if any(start <= index < end for start, end in remove_ranges):
+            continue
+        kept.append(line)
+    return "\n".join(kept).rstrip() + "\n"
+
+def _append_visible_quoted_report_refs(markdown: str, refs: list[str]) -> str:
+    quoted_refs: list[str] = []
+    for ref in refs:
+        text = str(ref or "").strip()
+        if not text.startswith("output/reports/") or not text.endswith(".md"):
+            continue
+        if text not in quoted_refs:
+            quoted_refs.append(text)
+    if not quoted_refs:
+        return markdown
+
+    lines = str(markdown or "").splitlines()
+    h2_positions: list[tuple[int, str]] = []
+    in_fence = False
+    for index, line in enumerate(lines):
+        stripped = line.lstrip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if line.startswith("## ") and not line.startswith("### "):
+            h2_positions.append((index, line.strip()))
+
+    remove_ranges: list[tuple[int, int]] = []
+    for position_index, (line_index, title) in enumerate(h2_positions):
+        if title != "## 引用报告":
+            continue
+        end = h2_positions[position_index + 1][0] if position_index + 1 < len(h2_positions) else len(lines)
+        remove_ranges.append((line_index, end))
+
+    kept = [
+        line
+        for index, line in enumerate(lines)
+        if not any(start <= index < end for start, end in remove_ranges)
+    ]
+    section = ["", "## 引用报告", *[f"- {ref}" for ref in quoted_refs]]
+    return "\n".join(kept).rstrip() + "\n" + "\n".join(section).rstrip() + "\n"
 
 def _run_ask_prepared_context(root: Path, question: str, artifact: dict[str, Any]) -> dict[str, Any]:
     manifest = load_manifest(root)
@@ -308,6 +422,11 @@ def _complete_run_ask_artifact(
                 if isinstance(record, dict)
             ]
         )
+    provenance_event_fields: dict[str, Any] = {}
+    if material_refs:
+        provenance_event_fields["material_refs"] = material_refs
+    if material_context_refs:
+        provenance_event_fields["used_context_refs"] = material_context_refs
     prompt = _build_ask_prompt(
         root,
         target,
@@ -372,6 +491,8 @@ def _complete_run_ask_artifact(
             updated = _normalize_markdown(result.text)
             if output_format == "report":
                 updated = _dedupe_report_citations(updated)
+                updated = _strip_report_skeleton_reference_hints(updated)
+                updated = _append_visible_quoted_report_refs(updated, material_context_refs or material_refs)
             try:
                 _validate_output_markdown(updated, output_format, source_ids)
             except RuntimeError as exc:
@@ -404,6 +525,7 @@ def _complete_run_ask_artifact(
                 "prompt_profile": retry_profile or used_prompt_profile,
                 "retry_prompt_profile": retry_profile,
                 "no_cache": no_cache,
+                **provenance_event_fields,
             },
             failed_audit,
             status="failed",
@@ -413,11 +535,19 @@ def _complete_run_ask_artifact(
             raw_response_path=_raw_response_path(root, result, exc),
             error_class=_receipt_error_class(exc),
         )
+        llm_status = _run_ask_failure_llm_status(exc)
         _mark_run_ask_artifact_degraded(
             target,
             reason=str(exc),
             backend=str(failed_audit.get("backend_effective") or ""),
             model=str(failed_audit.get("model_final") or ""),
+            llm_status=llm_status,
+        )
+        _restore_run_ask_provenance_frontmatter(
+            target,
+            current_artifact,
+            material_refs=material_refs,
+            used_context_refs=material_context_refs,
         )
         _apply_graph_anchors_to_target()
         run_notes = write_run_notes(
@@ -444,6 +574,7 @@ def _complete_run_ask_artifact(
         )
         write_run_notes_frontmatter(target, run_id=run_notes["run_id"], run_notes_ref=run_notes["run_notes_path"])
         _ensure_output_cssclass(target)
+        _refresh_shell_summary_fail_soft(root)
         raise
 
     assert result is not None
@@ -467,7 +598,12 @@ def _complete_run_ask_artifact(
         "contract_validated": True,
     }
     try:
-        _restore_run_ask_provenance_frontmatter(target, current_artifact)
+        _restore_run_ask_provenance_frontmatter(
+            target,
+            current_artifact,
+            material_refs=material_refs,
+            used_context_refs=material_context_refs,
+        )
         reinject_candidate_frontmatter(target, corpus_id=str(artifact.get("active_corpus_id") or ""))
         _apply_graph_anchors_to_target()
         _stamped_record(
@@ -481,6 +617,7 @@ def _complete_run_ask_artifact(
                 "prompt_profile": retry_profile or used_prompt_profile,
                 "retry_prompt_profile": retry_profile,
                 "no_cache": no_cache,
+                **provenance_event_fields,
             },
             llm_audit,
             status="success",
@@ -530,8 +667,20 @@ def _complete_run_ask_artifact(
                 "response_id": result.response_id,
                 "usage": result.usage,
                 "background_job_id": background_job_id or "",
+                **provenance_event_fields,
             },
         )
+        notify_report_generated(
+            root,
+            {
+                "path": artifact_ref,
+                "title": question,
+                "protocol": str(artifact.get("protocol") or protocol or ""),
+                "format": output_format,
+                "created_at": str(artifact.get("created_at") or ""),
+            },
+        )
+        _refresh_shell_summary_fail_soft(root)
     except Exception:
         _restore_file_bytes(target, target_snapshot)
         _restore_file_bytes(notes_path, notes_snapshot)
@@ -575,10 +724,10 @@ def run_ask_submit(
 
     backend_compat = preflight_check_backend_chain(root)
     material_refs = _material_hint_paths(question)
-    material_refs.extend(_safe_quoted_report_reference_paths(root, _quoted_report_reference_paths(question)))
+    material_refs.extend(_quoted_report_material_refs(root, question))
     material_refs = list(dict.fromkeys(material_refs))
     clean_question = _clean_report_reference_question(question) if material_refs else question
-    ask_kwargs = {"protocol": protocol, "no_cache": no_cache, "write_graph_anchors": False}
+    ask_kwargs = {"protocol": protocol, "no_cache": no_cache, "write_graph_anchors": False, "notify": False}
     if corpus_id_override is not None:
         ask_kwargs["corpus_id_override"] = corpus_id_override
     artifact = ask_question(root, clean_question, output_format, **ask_kwargs)
@@ -611,7 +760,10 @@ def run_ask_submit(
         "run_notes_path": str(artifact.get("run_notes_path") or ""),
         "backend_preflight": backend_compat,
     }
+    if material_refs:
+        manifest["material_refs"] = material_refs
     write_job_manifest(root, manifest)
+    _refresh_shell_summary_fail_soft(root)
     spawn_result = spawn_background_resume(root, job_id) if spawn else {}
     if spawn_result:
         if artifact.get("path"):
@@ -620,7 +772,8 @@ def run_ask_submit(
         manifest["artifact"] = artifact
         manifest.update({"status": "running", "spawn": spawn_result, "updated_at": utc_now()})
         write_job_manifest(root, manifest)
-    return {
+        _refresh_shell_summary_fail_soft(root)
+    submitted_payload: dict[str, Any] = {
         "kind": "run-ask-background-job",
         "status": "submitted",
         "job_id": job_id,
@@ -635,6 +788,9 @@ def run_ask_submit(
         "spawn": spawn_result,
         "job_manifest_path": relative_path(root, job_manifest_path(root, job_id)),
     }
+    if material_refs:
+        submitted_payload["material_refs"] = material_refs
+    return submitted_payload
 
 @runtime_write_operation
 def run_ask_resume(root: Path, job_id: str, client: SupportsComplete | None = None) -> dict[str, Any]:
@@ -654,6 +810,7 @@ def run_ask_resume(root: Path, job_id: str, client: SupportsComplete | None = No
         )
     except Exception as exc:
         update_job_manifest(root, job_id, status="failed", error=str(exc))
+        _refresh_shell_summary_fail_soft(root)
         raise
     update_job_manifest(
         root,
@@ -664,9 +821,17 @@ def run_ask_resume(root: Path, job_id: str, client: SupportsComplete | None = No
         run_id=str(payload.get("run_id") or manifest.get("run_id") or ""),
         run_notes_path=str(payload.get("run_notes_path") or manifest.get("run_notes_path") or ""),
     )
+    _refresh_shell_summary_fail_soft(root)
     return {"job_id": job_id, **payload}
 
-def _mark_run_ask_artifact_degraded(target: Path, *, reason: str, backend: str, model: str) -> None:
+def _mark_run_ask_artifact_degraded(
+    target: Path,
+    *,
+    reason: str,
+    backend: str,
+    model: str,
+    llm_status: str = "timeout_or_unavailable",
+) -> None:
     """Replace the deterministic placeholder artifact with an explicit failed notice."""
 
     current = target.read_text(encoding="utf-8", errors="replace") if target.exists() else ""
@@ -682,7 +847,7 @@ def _mark_run_ask_artifact_degraded(target: Path, *, reason: str, backend: str, 
             title = "LLM 未完成：请重试或切换模型"
     frontmatter.update(
         {
-            "llm_status": "timeout_or_unavailable",
+            "llm_status": llm_status,
             "delivery_mode": "llm-failed",
             "background_status": "failed",
             "llm_failure_reason": reason,
@@ -692,6 +857,7 @@ def _mark_run_ask_artifact_degraded(target: Path, *, reason: str, backend: str, 
     )
     body = strip_frontmatter(current)
     references = body[body.find("## 参考") :].strip() if "## 参考" in body else body.strip()
+    references = _strip_report_skeleton_reference_hints(references).strip()
     lines = [
         render_frontmatter(frontmatter),
         "",
@@ -823,15 +989,7 @@ def _direct_ask_system_prompt() -> str:
     )
 
 def _quoted_report_reference_paths(question: str) -> list[str]:
-    paths: list[str] = []
-    seen: set[str] = set()
-    for match in _REPORT_REFERENCE_RE.finditer(str(question or "")):
-        path = match.group(1).strip().strip("` ")
-        if not path or path in seen:
-            continue
-        seen.add(path)
-        paths.append(path)
-    return paths
+    return extract_report_reference_paths(question)
 
 def _safe_quoted_report_reference_paths(root: Path, refs: list[str]) -> list[str]:
     safe_refs: list[str] = []
@@ -854,12 +1012,26 @@ def _safe_quoted_report_reference_paths(root: Path, refs: list[str]) -> list[str
             resolved.relative_to(reports_root)
         except (OSError, ValueError):
             continue
+        if not resolved.exists() or not resolved.is_file():
+            continue
         if resolved.suffix.lower() != ".md":
             continue
         if text in seen:
             continue
         seen.add(text)
         safe_refs.append(text)
+    return safe_refs
+
+def _quoted_report_material_refs(root: Path, question: str) -> list[str]:
+    quoted_refs = _quoted_report_reference_paths(question)
+    if not quoted_refs:
+        return []
+    safe_refs = _safe_quoted_report_reference_paths(root, quoted_refs)
+    safe_set = set(safe_refs)
+    invalid_refs = [ref for ref in quoted_refs if ref not in safe_set]
+    if invalid_refs:
+        missing = ", ".join(invalid_refs)
+        raise ValueError(f"quoted report reference is missing or unsafe: {missing}")
     return safe_refs
 
 def _clean_report_reference_question(question: str) -> str:
@@ -1141,7 +1313,7 @@ def run_ask(
         record_llm_attempt(root, base_event, llm_audit, **kwargs)
 
     material_refs = _material_hint_paths(question)
-    material_refs.extend(_safe_quoted_report_reference_paths(root, _quoted_report_reference_paths(question)))
+    material_refs.extend(_quoted_report_material_refs(root, question))
     material_refs = list(dict.fromkeys(material_refs))
     material_context_payload = _read_material_context(root, material_refs) if material_refs else {}
     material_context = str(material_context_payload.get("text") or "")
@@ -1380,7 +1552,7 @@ def run_ask(
         }
 
     clean_question = _clean_report_reference_question(question) if material_refs else question
-    ask_kwargs = {"protocol": protocol, "no_cache": no_cache, "write_graph_anchors": False}
+    ask_kwargs = {"protocol": protocol, "no_cache": no_cache, "write_graph_anchors": False, "notify": False}
     if corpus_id_override is not None:
         ask_kwargs["corpus_id_override"] = corpus_id_override
     artifact = ask_question(root, clean_question, output_format, **ask_kwargs)

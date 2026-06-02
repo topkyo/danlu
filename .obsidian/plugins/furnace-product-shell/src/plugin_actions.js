@@ -120,7 +120,7 @@ function collectProductShellReportCandidates(plugin) {
     const containsPlaceholder = String(item.contains_llm_placeholder || "").trim().toLowerCase();
     const rawTitle = String(item.title || "").trim();
     if (deliveryMode === "deterministic-fallback" || deliveryMode === "llm-failed") continue;
-    if (["timeout_or_unavailable", "pending", "failed", "degraded"].includes(llmStatus)) continue;
+    if (["timeout_or_unavailable", "validation_failed", "pending", "failed", "degraded"].includes(llmStatus)) continue;
     if (["submitted", "running", "degraded"].includes(backgroundStatus)) continue;
     if (["degraded", "placeholder"].includes(artifactQuality)) continue;
     if (["1", "true", "yes"].includes(containsPlaceholder)) continue;

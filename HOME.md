@@ -28,10 +28,6 @@ kind: "dashboard"
 - [[wiki/indexes/furnace-center|炉心面板索引]]
 - [[wiki/indexes/Outputs|输出面板]]
 - [[wiki/indexes/judgment-assets|判断资产]]
-- [[docs/Furnace Product Shell|Product Shell 设计]]
-- [[docs/Furnace Agent Architecture|炼丹炉 Agent 架构]]
-- [[docs/Furnace Evolution Mechanics|进化机制]]
-- [[docs/Furnace Elixir|金丹机制]]
 
 ## 备用命令
 

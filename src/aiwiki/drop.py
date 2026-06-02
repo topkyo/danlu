@@ -822,6 +822,21 @@ def _append_manifest_entry(
     relative = relative_path(root, stored_path)
     for entry in entries:
         if entry.get("stored_path") == relative:
+            updated_at = utc_now()
+            entry.update(
+                {
+                    "title": title,
+                    "source_type": source_type,
+                    "note_kind": note_kind,
+                    "original_path": original_path,
+                    "kind": detect_kind(stored_path),
+                    "sha256": sha256_file(stored_path),
+                    "updated_at": updated_at,
+                }
+            )
+            if ingest_metadata:
+                entry["ingest_metadata"] = ingest_metadata
+            save_manifest(root, manifest)
             return entry
     existing_ids = {str(entry.get("id") or "") for entry in entries}
     slug = slugify(title or stored_path.stem)

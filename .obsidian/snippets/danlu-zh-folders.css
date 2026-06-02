@@ -13,6 +13,14 @@
   display: none !important;
 }
 
+/* hide docs from the daily file tree */
+.nav-folder[data-path="docs"],
+.tree-item[data-path="docs"],
+.nav-folder-title[data-path="docs"],
+.tree-item-self[data-path="docs"] {
+  display: none !important;
+}
+
 /* hide wiki from the daily file tree */
 .nav-folder[data-path="wiki"],
 .tree-item[data-path="wiki"],
@@ -133,12 +141,33 @@
   display: none !important;
 }
 
-/* flatten output/reports: hide the redundant folder title but keep its report files visible under output/ */
-.nav-folder[data-path="output/reports"] > .nav-folder-title,
-.tree-item[data-path="output/reports"] > .tree-item-self,
-.nav-folder-title[data-path="output/reports"],
-.tree-item-self[data-path="output/reports"] {
-  display: none !important;
+/* output/reports -> 报告 */
+.nav-folder[data-path="output/reports"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="output/reports"] .nav-folder-title-content,
+.nav-folder-title[data-path="output/reports"] > .nav-folder-title-content,
+.tree-item[data-path="output/reports"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="output/reports"] .tree-item-inner,
+.tree-item-self[data-path="output/reports"] > .tree-item-inner,
+.tree-item[data-path="output/reports"] .tree-item-title,
+.tree-item-self[data-path="output/reports"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="output/reports"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="output/reports"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="output/reports"] > .nav-folder-title-content::after,
+.tree-item[data-path="output/reports"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="output/reports"] .tree-item-inner::after,
+.tree-item-self[data-path="output/reports"] > .tree-item-inner::after,
+.tree-item[data-path="output/reports"] .tree-item-title::after,
+.tree-item-self[data-path="output/reports"] .tree-item-title::after {
+  content: "报告";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
 }
 
 /* raw -> 原料 */
@@ -170,7 +199,7 @@
   vertical-align: middle;
 }
 
-/* output -> 报告 */
+/* output -> 产出 */
 .nav-folder[data-path="output"] > .nav-folder-title > .nav-folder-title-content,
 .nav-folder[data-path="output"] .nav-folder-title-content,
 .nav-folder-title[data-path="output"] > .nav-folder-title-content,
@@ -191,7 +220,7 @@
 .tree-item-self[data-path="output"] > .tree-item-inner::after,
 .tree-item[data-path="output"] .tree-item-title::after,
 .tree-item-self[data-path="output"] .tree-item-title::after {
-  content: "报告";
+  content: "产出";
   display: inline-block !important;
   font-size: var(--nav-item-size, 13px) !important;
   line-height: var(--line-height-normal, 1.4) !important;

@@ -370,6 +370,8 @@ def source_page_requires_compile(root: Path, entry: dict[str, Any], concepts: li
     if compiled_source_sha(content) != entry["sha256"]:
         return True
     frontmatter = parse_frontmatter(content)
+    if str(frontmatter.get("source_updated_at") or "") != str(entry.get("updated_at") or entry.get("imported_at") or ""):
+        return True
     existing_concepts = frontmatter.get("concepts", [])
     if not isinstance(existing_concepts, list):
         existing_concepts = []

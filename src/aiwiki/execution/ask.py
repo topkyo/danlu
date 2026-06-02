@@ -430,6 +430,7 @@ def ask_question(
     corpus_id_override: str | None = None,
     load_protocol_learnings: bool = False,
     write_graph_anchors: bool = True,
+    notify: bool = True,
 ) -> dict[str, Any]:
     from .. import app_compile as _app_compile
 
@@ -683,28 +684,29 @@ def ask_question(
         memory=memory,
     )
     write_shell_summary(root, build_shell_summary(root, generated_at=created_at))
-    try:
-        notify_report_generated(
-            root,
-            {
-                "path": artifact_ref,
-                "title": question,
-                "protocol": active_protocol,
-                "format": output_format,
-                "created_at": created_at,
-            },
-        )
-    except Exception as exc:
-        _append_run_event(
-            root,
-            {
-                "event": "notify_dispatch_failed",
-                "reason": str(exc),
-                "error_type": type(exc).__name__,
-                "artifact": artifact_ref,
-                "protocol": active_protocol,
-            },
-        )
+    if notify:
+        try:
+            notify_report_generated(
+                root,
+                {
+                    "path": artifact_ref,
+                    "title": question,
+                    "protocol": active_protocol,
+                    "format": output_format,
+                    "created_at": created_at,
+                },
+            )
+        except Exception as exc:
+            _append_run_event(
+                root,
+                {
+                    "event": "notify_dispatch_failed",
+                    "reason": str(exc),
+                    "error_type": type(exc).__name__,
+                    "artifact": artifact_ref,
+                    "protocol": active_protocol,
+                },
+            )
     append_wiki_log(
         root,
         "query",

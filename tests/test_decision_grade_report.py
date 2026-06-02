@@ -56,6 +56,13 @@ class DecisionGradeReportValidatorTests(unittest.TestCase):
     def test_all_six_sections_in_order_passes(self) -> None:
         _validate_output_markdown(_GOOD_REPORT_BODY, "report", ["source-1"])
 
+    def test_top_level_ordered_list_items_count_for_section_minimums(self) -> None:
+        report = _GOOD_REPORT_BODY.replace(
+            "## 行动建议\n- 下一步：复核 X。",
+            "## 行动建议\n1. 下一步：复核 X。",
+        )
+        _validate_output_markdown(report, "report", ["source-1"])
+
     def test_missing_counter_evidence_section_raises_with_name(self) -> None:
         bad = _GOOD_REPORT_BODY.replace("## 反证与不确定性\n- 未发现明显反证。\n\n", "")
         with self.assertRaises(RuntimeError) as ctx:
@@ -322,16 +329,12 @@ format: report
         self.assertIn("## 反证与不确定性", msg)
         self.assertIn("found 0", msg)
 
-    def test_numbered_list_does_not_count_as_bullet(self) -> None:
-        bad = _GOOD_REPORT_BODY.replace(
+    def test_numbered_list_counts_as_top_level_list_items(self) -> None:
+        report = _GOOD_REPORT_BODY.replace(
             "## 行动建议\n- 下一步：复核 X。\n",
             "## 行动建议\n1. 下一步：复核 X。\n2. 跟进 Y。\n",
         )
-        with self.assertRaises(RuntimeError) as ctx:
-            _validate_output_markdown(bad, "report", ["source-1"])
-        msg = str(ctx.exception)
-        self.assertIn("## 行动建议", msg)
-        self.assertIn("found 0", msg)
+        _validate_output_markdown(report, "report", ["source-1"])
 
     def test_subbullet_does_not_count_toward_parent_section(self) -> None:
         bad = _GOOD_REPORT_BODY.replace(

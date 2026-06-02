@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from aiwiki.app_compile import compile_wiki
 from aiwiki.app_content import ingest_source, sync_manifest_with_raw
-from aiwiki.app_protocol import ensure_layout
+from aiwiki.app_protocol import ensure_layout, save_manifest
 from aiwiki.app_state import append_runtime_history, load_machine_memory, load_output_candidates_state
 from aiwiki.app_utils import _RUNTIME_LOCKS, parse_frontmatter, relative_path
 from aiwiki.config import LLMConfig
@@ -57,6 +57,7 @@ from aiwiki.runner import (
     run_lint,
     run_nightly,
 )
+from aiwiki.runner.local_stats import clean_report_reference_question, extract_report_reference_paths
 from aiwiki.runner.workflows import _safe_quoted_report_reference_paths, run_ask_resume, run_ask_submit
 
 _VALID_REPORT_BODY = (
@@ -139,6 +140,20 @@ class _BackendFailoverAskClient:
         return CompletionResult(text=self.response_text, response_id="resp_failover", usage={"total_tokens": 6})
 
 
+class _StaticAskClient:
+    def __init__(self, response_text: str) -> None:
+        self.response_text = response_text
+        self.config = type(
+            "Config",
+            (),
+            {"model": "stub-model", "backend": "opencode-api", "backend_requested": "opencode-api", "timeout_seconds": 120},
+        )()
+
+    def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+        del system_prompt, user_prompt
+        return CompletionResult(text=self.response_text, response_id="resp_static", usage={"total_tokens": 6})
+
+
 class RunnerTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tempdir = tempfile.TemporaryDirectory()
@@ -160,6 +175,91 @@ class RunnerTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.tempdir.cleanup()
+
+    def test_run_id_for_cjk_report_path_keeps_stable_hash_suffix(self) -> None:
+        self.assertEqual(
+            run_id_for_artifact("output/reports/deterministic-source-a.md"),
+            "ask-output-reports-deterministic-source-a",
+        )
+
+        run_id = run_id_for_artifact("output/reports/分析评估下内容.md")
+
+        self.assertRegex(run_id, r"^ask-output-reports-[0-9a-f]{12}$")
+        self.assertNotEqual(run_id, "ask-output-reports")
+
+    def test_run_ask_report_writes_material_refs_and_strips_reference_skeleton(self) -> None:
+        entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
+        compile_wiki(self.root)
+        source_ref = f"wiki/sources/{entry['id']}.md"
+        report_body = (
+            "---\nid: query-stub\nkind: output\nformat: report\n---\n\n"
+            "# Stub answer\n\n"
+            "## 结论\nStubbed conclusion.\n\n"
+            "## 关键证据\n"
+            f"- See {source_ref}\n"
+            "- Secondary evidence point.\n"
+            "- Tertiary evidence point.\n\n"
+            "## 反证与不确定性\n- None observed in stub.\n\n"
+            "## 行动建议\n- Stub follow-up.\n\n"
+            "## 下次观察信号\n- Stub revisit signal.\n\n"
+            f"## 引用\n- {source_ref}\n\n"
+            "## 参考\n"
+            "- 还没有排好序的来源。\n"
+            "- 概念页还没有排好序。\n"
+        )
+        material_ref = str(entry["stored_path"])
+
+        result = run_ask(
+            self.root,
+            f"本次投喂材料路径：\n- {material_ref}\n用户问题：Compare transformer scale and inference cost",
+            "report",
+            client=_StaticAskClient(report_body),
+        )
+
+        report_path = self.root / result["path"]
+        report_content = report_path.read_text(encoding="utf-8")
+        frontmatter = parse_frontmatter(report_content)
+        self.assertEqual(frontmatter["material_refs"], [material_ref])
+        self.assertEqual(frontmatter["used_context_refs"], [material_ref])
+        self.assertNotIn("## 参考", report_content)
+        self.assertNotIn("还没有排好序的来源", report_content)
+        self.assertIn("## 引用", report_content)
+        self.assertNotIn("## 引用报告", report_content)
+
+        run_notes = (self.root / result["run_notes_path"]).read_text(encoding="utf-8")
+        self.assertIn(material_ref, run_notes)
+        llm_receipt = _load_jsonl_records(self.root / ".aiwiki" / "logs" / "llm-receipts.jsonl")[-1]
+        self.assertEqual(llm_receipt["material_refs"], [material_ref])
+        self.assertEqual(llm_receipt["used_context_refs"], [material_ref])
+        execution_receipts = _load_jsonl_records(self.root / ".aiwiki" / "state" / "execution-receipts.jsonl")
+        self.assertEqual(execution_receipts[-1]["material_refs"], [material_ref])
+        self.assertEqual(execution_receipts[-1]["used_context_refs"], [material_ref])
+
+    def test_sync_manifest_refreshes_same_sha_source_record_updated_at(self) -> None:
+        raw_path = self.root / "raw" / "inbox" / "alpha.md"
+        raw_path.parent.mkdir(parents=True, exist_ok=True)
+        raw_path.write_text("# Alpha\n\nSame body.\n", encoding="utf-8")
+        old_epoch = 1_700_000_000
+        os.utime(raw_path, (old_epoch, old_epoch))
+        manifest = sync_manifest_with_raw(self.root)
+        entry = manifest["entries"][0]
+        old_updated_at = str(entry["updated_at"])
+        compile_wiki(self.root)
+        source_path = self.root / "wiki" / "sources" / f"{entry['id']}.md"
+        before = source_path.read_text(encoding="utf-8")
+        self.assertIn(f"- Updated at: `{entry['updated_at']}`", before)
+
+        manifest["entries"][0]["updated_at"] = "2023-11-14T23:13:20+00:00"
+        save_manifest(self.root, manifest)
+        manifest = sync_manifest_with_raw(self.root)
+        refreshed_entry = manifest["entries"][0]
+        self.assertEqual(refreshed_entry["sha256"], entry["sha256"])
+        self.assertNotEqual(refreshed_entry["updated_at"], old_updated_at)
+        compile_wiki(self.root)
+
+        after = source_path.read_text(encoding="utf-8")
+        self.assertIn(f"- Imported at: `{refreshed_entry['imported_at']}`", after)
+        self.assertIn(f"- Updated at: `{refreshed_entry['updated_at']}`", after)
 
     def test_llm_status_and_create_client_delegate_to_backend_layers(self) -> None:
         fake_status = {"configured": True, "max_context_chars": 12345}
@@ -382,6 +482,7 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(artifact.name, "基于原投料-做个分析评估生成一份详细报告.md")
         content = artifact.read_text(encoding="utf-8")
         self.assertIn("# Stub answer", content)
+        self.assertIn("## 引用报告\n- output/reports/base-note.md", content)
         self.assertNotIn("引用报告：output/reports", content)
         run_notes = (self.root / result["run_notes_path"]).read_text(encoding="utf-8")
         self.assertIn("## Context References", run_notes)
@@ -391,11 +492,14 @@ class RunnerTests(unittest.TestCase):
         reports_dir = self.root / "output" / "reports"
         reports_dir.mkdir(parents=True, exist_ok=True)
         (reports_dir / "safe.md").write_text("# Safe report\n", encoding="utf-8")
+        (reports_dir / "with space.md").write_text("# Report with spaces\n", encoding="utf-8")
         secret = self.root / "raw" / "inbox" / "secret.md"
         secret.parent.mkdir(parents=True, exist_ok=True)
         secret.write_text("# Secret\n", encoding="utf-8")
         refs = [
             "output/reports/safe.md",
+            "output/reports/with space.md",
+            "output/reports/safe",
             "output/reports/../../raw/inbox/secret.md",
             r"output/reports/..\\..\\raw\\inbox\\secret.md",
         ]
@@ -407,7 +511,65 @@ class RunnerTests(unittest.TestCase):
         else:
             refs.append("output/reports/linked-secret.md")
 
-        self.assertEqual(_safe_quoted_report_reference_paths(self.root, refs), ["output/reports/safe.md"])
+        self.assertEqual(
+            _safe_quoted_report_reference_paths(self.root, refs),
+            ["output/reports/safe.md", "output/reports/with space.md"],
+        )
+
+    def test_quoted_report_reference_parser_accepts_obsidian_and_markdown_forms(self) -> None:
+        question = (
+            "引用报告：`output/reports/base-note.md`\n"
+            "引用报告：<output/reports/with space.md>\n"
+            "引用报告：[[output/reports/wiki-note.md|Wiki Note]]\n"
+            "引用报告：[Markdown Note](output/reports/encoded%20name.md)\n"
+            "引用报告：output/reports/no-ext\n"
+            "基于这些报告继续分析"
+        )
+
+        self.assertEqual(
+            extract_report_reference_paths(question),
+            [
+                "output/reports/base-note.md",
+                "output/reports/with space.md",
+                "output/reports/wiki-note.md",
+                "output/reports/encoded name.md",
+                "output/reports/no-ext.md",
+            ],
+        )
+        self.assertEqual(clean_report_reference_question(question), "基于这些报告继续分析")
+
+    def test_run_ask_quoted_report_markdown_link_is_not_blocked(self) -> None:
+        report = self.root / "output" / "reports" / "with space.md"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text(
+            "---\nformat: note\n---\n\n# With Space\n\n引用报告里的关键结论是：不要把引用行当作用户问题。\n",
+            encoding="utf-8",
+        )
+
+        class _ReportClient:
+            def __init__(self) -> None:
+                self.config = type("Config", (), {"model": "deepseek-v4-pro", "backend": "opencode-api", "timeout_seconds": 120})()
+                self.user_prompt = ""
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt
+                self.user_prompt = user_prompt
+                return CompletionResult(text=_VALID_REPORT_BODY, response_id="resp_report", usage={"total_tokens": 20})
+
+        question = "引用报告：[上一份报告](output/reports/with%20space.md)\n继续给出行动建议"
+        client = _ReportClient()
+        result = run_ask(self.root, question, "report", client=client, lean=True)
+
+        self.assertEqual(result["material_refs"], ["output/reports/with space.md"])
+        self.assertIn("## Quoted Report / Material Context", client.user_prompt)
+        self.assertIn("不要把引用行当作用户问题", client.user_prompt)
+        self.assertIn("继续给出行动建议", client.user_prompt)
+        self.assertNotIn("引用报告：", client.user_prompt)
+        self.assertNotIn("[上一份报告](output/reports/with%20space.md)", client.user_prompt)
+        content = (self.root / result["path"]).read_text(encoding="utf-8")
+        self.assertIn("## 引用报告\n- output/reports/with space.md", content)
+        run_notes = (self.root / result["run_notes_path"]).read_text(encoding="utf-8")
+        self.assertIn("`output/reports/with space.md`", run_notes)
 
     def test_run_ask_elixir_count_uses_llm_direct_path(self) -> None:
         elixir_dir = self.root / "wiki" / "elixirs"
@@ -1280,6 +1442,51 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(receipt_payload["artifact_status"], "completed")
         self.assertEqual(receipt_payload["background_job_id"], submitted["job_id"])
 
+    def test_run_ask_submit_keeps_quoted_report_material_refs(self) -> None:
+        report = self.root / "output" / "reports" / "with space.md"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text("# With Space\n\n后台引用报告材料。\n", encoding="utf-8")
+        backend_preflight = {"backend": "codex-cli", "model": "gpt-5.5", "compatibility": "compatible"}
+
+        with patch("aiwiki.runner.preflight.preflight_check_backend_chain", return_value=backend_preflight):
+            submitted = run_ask_submit(
+                self.root,
+                "引用报告：[[output/reports/with space.md|上一份报告]]\n继续分析",
+                "report",
+                lean=True,
+                spawn=False,
+            )
+
+        self.assertEqual(submitted["material_refs"], ["output/reports/with space.md"])
+        self.assertEqual(submitted["question"], "继续分析")
+        manifest = json.loads((self.root / submitted["job_manifest_path"]).read_text(encoding="utf-8"))
+        self.assertEqual(manifest["question"], "继续分析")
+        self.assertEqual(manifest["raw_question"], "引用报告：[[output/reports/with space.md|上一份报告]]\n继续分析")
+        self.assertEqual(manifest["material_refs"], ["output/reports/with space.md"])
+        self.assertEqual(manifest["artifact"]["material_refs"], ["output/reports/with space.md"])
+
+    def test_run_ask_submit_rejects_missing_or_unsafe_quoted_report_refs(self) -> None:
+        backend_preflight = {"backend": "codex-cli", "model": "gpt-5.5", "compatibility": "compatible"}
+
+        with patch("aiwiki.runner.preflight.preflight_check_backend_chain", return_value=backend_preflight):
+            with self.assertRaisesRegex(ValueError, "quoted report reference is missing or unsafe"):
+                run_ask_submit(
+                    self.root,
+                    "引用报告：output/reports/missing.md\n继续分析",
+                    "report",
+                    lean=True,
+                    spawn=False,
+                )
+
+        with self.assertRaisesRegex(ValueError, "quoted report reference is missing or unsafe"):
+            run_ask(
+                self.root,
+                "引用报告：output/reports/missing.md\n继续分析",
+                "report",
+                client=_StaticAskClient(_VALID_REPORT_BODY),
+                lean=True,
+            )
+
     def test_run_ask_timeout_override_is_scoped_to_single_client_creation(self) -> None:
         artifact_path = self.root / "output" / "reports" / "query-timeout-override.md"
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1407,13 +1614,21 @@ class RunnerTests(unittest.TestCase):
             protocol=None,
             no_cache=True,
             write_graph_anchors=False,
+            notify=False,
         )
         self.assertTrue(result["no_cache"])
 
     def test_run_ask_frontdoor_marks_artifact_failed_without_deterministic_fallback(self) -> None:
         artifact_path = self.root / "output" / "reports" / "query-frontdoor-fallback.md"
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
-        artifact_path.write_text("---\nid: query-frontdoor-fallback\nkind: report\n---\n\n# Placeholder\n", encoding="utf-8")
+        artifact_path.write_text(
+            "---\nid: query-frontdoor-fallback\nkind: report\n---\n\n"
+            "# Placeholder\n\n"
+            "## 参考\n"
+            "- 还没有排好序的来源。\n"
+            "- 概念页还没有排好序。\n",
+            encoding="utf-8",
+        )
         artifact = {
             "path": "output/reports/query-frontdoor-fallback.md",
             "format": "report",
@@ -1448,6 +1663,8 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("LLM 没有返回可用内容", content)
         self.assertIn("llm_status: \"timeout_or_unavailable\"", content)
         self.assertIn("delivery_mode: \"llm-failed\"", content)
+        self.assertNotIn("## 参考", content)
+        self.assertNotIn("还没有排好序的来源", content)
         self.assertIn("graph_anchor_node_ids:", content)
         self.assertIn('  - "source:source-1"', content)
         self.assertIn("## 关系图谱锚点", content)
@@ -1460,6 +1677,47 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(llm_receipts[-1]["event"], "run-ask")
         self.assertEqual(llm_receipts[-1]["status"], "failed")
         self.assertEqual(llm_receipts[-1]["delivery_mode"], "llm-failed")
+
+    def test_run_ask_contract_validation_failure_marks_validation_failed(self) -> None:
+        artifact_path = self.root / "output" / "reports" / "query-contract-fail.md"
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_text("---\nid: query-contract-fail\nkind: report\n---\n\n# Placeholder\n", encoding="utf-8")
+        artifact = {
+            "path": "output/reports/query-contract-fail.md",
+            "format": "report",
+            "protocol": "general",
+            "ranked_sources": ["source-1"],
+            "ranked_concepts": [],
+            "protocol_pages": [],
+            "index_pages": [],
+            "machine_memory_query": {},
+        }
+        invalid_report = _VALID_REPORT_BODY.replace(
+            "## 行动建议\n- Stub follow-up.",
+            "## 行动建议\nStub follow-up without a list item.",
+        )
+
+        class _InvalidReportClient:
+            def __init__(self) -> None:
+                self.config = type(
+                    "Config",
+                    (),
+                    {"model": "gpt-5.4", "backend": "codex-cli", "backend_requested": "codex-cli", "timeout_seconds": 120},
+                )()
+
+            def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+                del system_prompt
+                del user_prompt
+                return CompletionResult(text=invalid_report, response_id="resp_invalid", usage={})
+
+        with patch("aiwiki.runner.workflows_ask.ask_question", return_value=artifact):
+            with patch("aiwiki.runner.workflows_ask._build_ask_prompt", return_value="prompt"):
+                with self.assertRaisesRegex(RuntimeError, "top-level list items"):
+                    run_ask(self.root, "测试", "report", client=_InvalidReportClient())
+
+        content = artifact_path.read_text(encoding="utf-8")
+        self.assertIn("llm_status: \"validation_failed\"", content)
+        self.assertIn("delivery_mode: \"llm-failed\"", content)
 
     def test_run_ask_frontdoor_hard_fail_still_raises(self) -> None:
         artifact_path = self.root / "output" / "reports" / "query-frontdoor-hard-fail.md"
@@ -3127,6 +3385,15 @@ class RunnerTests(unittest.TestCase):
         deduped_report = _dedupe_report_citations(duplicate_citation_report)
         _validate_output_markdown(deduped_report, "report", ["source-1"])
         self.assertEqual(deduped_report.count("wiki/sources/source-1.md"), 2)
+        bare_citation_report = valid_report.replace(
+            "## 引用\n- wiki/sources/source-1.md\n",
+            "## 引用\n`wiki/sources/source-1.md`\n",
+        )
+        with self.assertRaisesRegex(RuntimeError, "## 引用"):
+            _validate_output_markdown(bare_citation_report, "report", ["source-1"])
+        normalized_citation_report = _dedupe_report_citations(bare_citation_report)
+        self.assertIn("## 引用\n- wiki/sources/source-1.md\n", normalized_citation_report)
+        _validate_output_markdown(normalized_citation_report, "report", ["source-1"])
         with self.assertRaises(RuntimeError):
             _validate_output_markdown("# no frontmatter\n", "report", ["source-1"])
         with self.assertRaises(RuntimeError):

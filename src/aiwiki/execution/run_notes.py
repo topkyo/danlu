@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import re
 from pathlib import Path
 from typing import Any
@@ -17,7 +18,14 @@ def run_id_for_artifact(artifact_ref: str) -> str:
     normalized = str(artifact_ref or "run").strip().replace("\\", "/") or "run"
     if normalized.endswith(".md"):
         normalized = normalized[:-3]
-    return f"ask-{slugify(normalized)}"
+    slug = slugify(normalized)
+    if any(not char.isascii() for char in normalized):
+        digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:12]
+        if not slug or slug == "item":
+            slug = digest
+        elif not slug.endswith(f"-{digest}"):
+            slug = f"{slug}-{digest}"
+    return f"ask-{slug}"
 
 
 def write_run_notes_frontmatter(path: Path, *, run_id: str, run_notes_ref: str) -> None:

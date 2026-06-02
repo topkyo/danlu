@@ -43,13 +43,10 @@ class ObsidianWorkspaceTests(unittest.TestCase):
         self.assertIn("输入端", home)
         self.assertIn("输出端", home)
         self.assertIn("更多工具", home)
-        self.assertIn("[[docs/Furnace Agent Architecture|", home)
-        self.assertIn("[[docs/Furnace Evolution Mechanics|", home)
-        self.assertIn("[[docs/Furnace Elixir|", home)
+        self.assertNotIn("[[docs/", home)
         self.assertIn("[[wiki/indexes/furnace-center|", home)
         wiki_hub = (self.root / "wiki" / "indexes" / "Wiki Hub.md").read_text(encoding="utf-8")
-        self.assertIn("[[docs/Furnace Agent Architecture|", wiki_hub)
-        self.assertIn("[[docs/Furnace Evolution Mechanics|", wiki_hub)
+        self.assertNotIn("[[docs/", wiki_hub)
         self.assertIn("[[wiki/indexes/Outputs|", home)
         self.assertIn("[[wiki/indexes/judgment-assets|", home)
         self.assertNotIn("## 今日信号", home)
@@ -58,9 +55,6 @@ class ObsidianWorkspaceTests(unittest.TestCase):
         for relative in (
             "wiki/indexes/Raw Inbox.md",
             "wiki/indexes/Wiki Hub.md",
-            "docs/Furnace Agent Architecture.md",
-            "docs/Furnace Evolution Mechanics.md",
-            "docs/Furnace Elixir.md",
             "wiki/indexes/furnace-center.md",
             "wiki/indexes/protocols.md",
             "wiki/indexes/review-center.md",
@@ -79,20 +73,6 @@ class ObsidianWorkspaceTests(unittest.TestCase):
         snippet = _render_folder_label_snippet()
         self.assertIn("hide docs from the daily file tree", snippet)
         self.assertIn('.nav-folder[data-path="docs"]', snippet)
-
-    def test_agent_architecture_keeps_core_invariants_visible(self) -> None:
-        text = (self.root / "docs" / "Furnace Agent Architecture.md").read_text(encoding="utf-8")
-        self.assertIn("Single writer", text)
-        self.assertIn("raw/", text)
-        self.assertIn("Agent Loop", text)
-        self.assertIn("L3", text)
-
-    def test_evolution_mechanics_keeps_runtime_state_guards(self) -> None:
-        evolution = (self.root / "docs" / "Furnace Evolution Mechanics.md").read_text(encoding="utf-8")
-        self.assertIn("active-corpora.json", evolution)
-        self.assertIn("runtime-history.jsonl", evolution)
-        self.assertIn("wiki/elixirs/", evolution)
-        self.assertIn("output/_proposals/", evolution)
 
 
 if __name__ == "__main__":

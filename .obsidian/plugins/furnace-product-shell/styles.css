@@ -1774,6 +1774,14 @@
   display: none !important;
 }
 
+.aiwiki-report-leaf .inline-title,
+.markdown-preview-view.aiwiki-report-leaf .inline-title,
+.markdown-reading-view.aiwiki-report-leaf .inline-title,
+.markdown-source-view.aiwiki-report-leaf .inline-title,
+.workspace-leaf-content[data-type="markdown"][data-path^="output/reports/"] .inline-title {
+  display: none !important;
+}
+
 .furnace-conversation-stream {
   display: flex;
   flex-direction: column;

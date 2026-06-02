@@ -206,7 +206,7 @@ function isDeliverableReportOutput(item) {
   const placeholder = firstText(item, "contains_llm_placeholder").toLowerCase();
   const title = firstText(item, "title");
   if (deliveryMode === "deterministic-fallback") return false;
-  if (["timeout_or_unavailable", "pending", "failed", "degraded"].includes(llmStatus)) return false;
+  if (["timeout_or_unavailable", "validation_failed", "pending", "failed", "degraded"].includes(llmStatus)) return false;
   if (["submitted", "running", "degraded"].includes(backgroundStatus)) return false;
   if (["degraded", "placeholder"].includes(artifactQuality)) return false;
   if (["1", "true", "yes"].includes(placeholder)) return false;

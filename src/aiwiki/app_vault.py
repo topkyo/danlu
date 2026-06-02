@@ -31,6 +31,7 @@ DEFAULT_OBSIDIAN_APP = {
     "showUnsupportedFiles": True,
     "useMarkdownLinks": False,
     "userIgnoreFilters": [
+        "docs/",
         "raw/normalized/",
         "wiki/derived/",
         "wiki/decisions/",
@@ -108,7 +109,7 @@ DEFAULT_OBSIDIAN_APPEARANCE = {
 
 FOLDER_LABEL_OVERRIDES: tuple[tuple[str, str], ...] = (
     ("raw", "原料"),
-    ("output", "报告"),
+    ("output", "产出"),
     ("schema", "规则 schema"),
     ("scripts", "脚本 scripts"),
     ("prompts", "提示词 prompts"),
@@ -134,6 +135,7 @@ FOLDER_LABEL_OVERRIDES: tuple[tuple[str, str], ...] = (
     ("output/packs/decision-memos", "决策备忘 decision-memos"),
     ("output/packs/sop-drafts", "SOP 草稿 sop-drafts"),
     ("output/pilots", "协议评分 pilots"),
+    ("output/reports", "报告"),
     ("output/review", "审阅 review"),
     ("output/figures", "图表 figures"),
     ("output/slides", "幻灯片 slides"),
@@ -165,11 +167,6 @@ USER_HIDDEN_FOLDER_PATHS: tuple[str, ...] = (
     "output/review",
     "output/slides",
 )
-
-USER_FLATTENED_FOLDER_TITLE_PATHS: tuple[str, ...] = (
-    "output/reports",
-)
-
 
 def _folder_label_selectors(path: str) -> tuple[str, ...]:
     return (
@@ -212,22 +209,6 @@ def _render_folder_label_snippet() -> str:
             [
                 f"/* hide {path} from the daily file tree */",
                 ",\n".join(_folder_container_selectors(path)) + " {",
-                "  display: none !important;",
-                "}",
-                "",
-            ]
-        )
-    for path in USER_FLATTENED_FOLDER_TITLE_PATHS:
-        title_selectors = (
-            f'.nav-folder[data-path="{path}"] > .nav-folder-title',
-            f'.tree-item[data-path="{path}"] > .tree-item-self',
-            f'.nav-folder-title[data-path="{path}"]',
-            f'.tree-item-self[data-path="{path}"]',
-        )
-        lines.extend(
-            [
-                f"/* flatten {path}: hide the redundant folder title but keep its report files visible under output/ */",
-                ",\n".join(title_selectors) + " {",
                 "  display: none !important;",
                 "}",
                 "",
@@ -421,8 +402,8 @@ def _render_vault_readme(runtime_root: Path) -> str:
                 "- 左侧文件树是用户视图：默认只保留投料收件箱和报告入口；`raw/wiki/schema/output` 的完整分层仍由 runtime 管理。",
                 "- Obsidian 与 CLI 共用同一个 runtime / state，遵守 `single writer, many readers`。",
                 "- Product Shell 默认界面语言为中文，可在插件设置里切到 English。",
-                "- Product Shell 默认 LLM route 是 `opencode-api/deepseek-v4-pro`；也可以选择 DeepSeek / OpenAI / Claude API。",
-                "- 常用 API provider：DeepSeek / OpenCode / OpenAI / Claude；旧 CLI、NVIDIA NIM 和 OpenRouter 后端不再作为 Shell/runtime 后端。",
+                "- Product Shell 默认 LLM route 是 `opencode-api/deepseek-v4-pro`；可以在设置里显式切换已配置 backend，但不会自动跨 backend fallback。",
+                "- 当前 dogfood 主路由以 OpenCode API 为准；旧 CLI、NVIDIA NIM 和 OpenRouter 后端不再作为 Shell/runtime 自动 fallback 后端。",
                 "- API key 只应放在本机未跟踪的 Product Shell `data.json` 或 repo 外 secret env 文件；不要写入 README、测试 fixture 或 git-tracked 文件。",
                 "",
                 "## 备用 CLI / 脚本入口",
@@ -431,7 +412,7 @@ def _render_vault_readme(runtime_root: Path) -> str:
                 "./scripts/aiwiki-launcher.sh shell-status",
                 "./scripts/aiwiki-launcher.sh compile",
                 "./scripts/aiwiki-launcher.sh drop markdown --title \"晨间观察\" --text \"记录今天的新线索\"",
-                "./scripts/aiwiki-launcher.sh ask \"今天最重要的变化是什么？\" --format report",
+                "./scripts/aiwiki-launcher.sh run-ask-submit \"今天最重要的变化是什么？\" --format report",
                 "./scripts/aiwiki-launcher.sh nightly",
                 "```",
                 "",
@@ -439,7 +420,7 @@ def _render_vault_readme(runtime_root: Path) -> str:
                 "",
                 "1. 默认在 Obsidian 中工作：主区 Product Shell 是日常入口，`HOME.md` 只做说明和关键链接。",
                 "2. 投料从 Product Shell 输入框或 CLI / agent 的 `drop url / drop pdf / drop image / drop repo / drop markdown` 开始；Markdown / 文本材料可直接投，不要从文件树理解 runtime 分层。",
-                "3. 提问也有两个入口：Obsidian Product Shell 的 `Ask`，以及 `./scripts/aiwiki-launcher.sh ask ...`；默认生成 `output/reports/*.md` 报告。",
+                "3. 提问也有两个入口：Obsidian Product Shell 的 `Ask`，以及 `./scripts/aiwiki-launcher.sh run-ask-submit ... --format report`；默认生成 `output/reports/*.md` 报告。",
                 "4. `compile / nightly / apply / revert` 这类写操作不要双开；同一时刻只保留一个写入口。",
                 "",
                 "## Runtime 目录职责",
@@ -500,17 +481,13 @@ def _render_vault_home() -> str:
                 "- [[wiki/indexes/furnace-center|炉心面板索引]]",
                 "- [[wiki/indexes/Outputs|输出面板]]",
                 "- [[wiki/indexes/judgment-assets|判断资产]]",
-                "- [[docs/Furnace Product Shell|Product Shell 设计]]",
-                "- [[docs/Furnace Agent Architecture|炼丹炉 Agent 架构]]",
-                "- [[docs/Furnace Evolution Mechanics|进化机制]]",
-                "- [[docs/Furnace Elixir|金丹机制]]",
                 "",
                 "## 备用命令",
                 "",
                 "```bash",
                 "./scripts/aiwiki-launcher.sh shell-status",
                 "./scripts/aiwiki-launcher.sh compile",
-                "./scripts/aiwiki-launcher.sh ask \"总结今天的关键变化\" --format report",
+                "./scripts/aiwiki-launcher.sh run-ask-submit \"总结今天的关键变化\" --format report",
                 "./scripts/aiwiki-launcher.sh nightly",
                 "```",
                 "",

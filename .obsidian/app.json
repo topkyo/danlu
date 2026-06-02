@@ -9,6 +9,7 @@
   "showUnsupportedFiles": true,
   "useMarkdownLinks": true,
   "userIgnoreFilters": [
+    "docs/",
     "wiki/derived/",
     "wiki/decisions/",
     "wiki/judgments/",
