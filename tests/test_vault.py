@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from aiwiki.app_vault import bootstrap_new_vault
+from aiwiki.app_vault import bootstrap_new_vault, sync_product_shell_plugin
 
 
 class VaultBootstrapTests(unittest.TestCase):
@@ -208,6 +208,31 @@ class VaultBootstrapTests(unittest.TestCase):
 
         with self.assertRaises(FileExistsError):
             bootstrap_new_vault(self.runtime_root, self.target)
+
+    def test_sync_product_shell_plugin_updates_release_files_and_preserves_data(self) -> None:
+        bootstrap_new_vault(self.runtime_root, self.target)
+        plugin_root = self.target / ".obsidian" / "plugins" / "furnace-product-shell"
+        data_path = plugin_root / "data.json"
+        preserved_data = {
+            "settings": {
+                "llmBackend": "deepseek-api",
+                "llmDeepseekApiKey": "local-secret-placeholder",
+                "locale": "zh",
+            }
+        }
+        data_path.write_text(json.dumps(preserved_data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        (plugin_root / "main.js").write_text("// old bundle\n", encoding="utf-8")
+
+        result = sync_product_shell_plugin(self.runtime_root, self.target)
+
+        self.assertEqual(result["status"], "ok")
+        self.assertIn(".obsidian/plugins/furnace-product-shell/main.js", result["changed_files"])
+        self.assertIn(".obsidian/plugins/furnace-product-shell/data.json", result["preserved_files"])
+        self.assertEqual(json.loads(data_path.read_text(encoding="utf-8")), preserved_data)
+        self.assertEqual(
+            (plugin_root / "main.js").read_text(encoding="utf-8"),
+            (self.runtime_root / ".obsidian" / "plugins" / "furnace-product-shell" / "main.js").read_text(encoding="utf-8"),
+        )
 
 
 if __name__ == "__main__":

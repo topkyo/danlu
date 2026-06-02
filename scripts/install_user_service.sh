@@ -10,6 +10,7 @@ if [[ -z "${AIWIKI_VAULT:-}" ]]; then
   exit 1
 fi
 VAULT_ROOT="$AIWIKI_VAULT"
+PYTHON_BIN="${PYTHON:-python3}"
 
 WATCH_SERVICE_NAME="aiwiki-watch.service"
 NIGHTLY_SERVICE_NAME="aiwiki-nightly.service"
@@ -83,6 +84,9 @@ truthy() {
 }
 
 mkdir -p "$SYSTEMD_USER_DIR" "$AIWIKI_CONFIG_DIR"
+
+PYTHONPATH="$PROJECT_ROOT/src${PYTHONPATH:+:$PYTHONPATH}" "$PYTHON_BIN" -m aiwiki.cli \
+  --root "$PROJECT_ROOT" sync-product-shell "$VAULT_ROOT" >/dev/null
 
 if [[ ! -f "$WATCH_ENV_PATH" ]]; then
   cat >"$WATCH_ENV_PATH" <<EOF
@@ -208,6 +212,7 @@ echo "      nightly svc:   $NIGHTLY_SERVICE_PATH"
 echo "      nightly timer: $NIGHTLY_TIMER_PATH"
 echo "      nightly env:   $NIGHTLY_ENV_PATH"
 echo "      on-calendar:   $NIGHTLY_ON_CALENDAR"
+echo "      plugin:        synced Product Shell release files (data.json preserved)"
 echo "      note:          change AIWIKI_NIGHTLY_ON_CALENDAR / AIWIKI_NIGHTLY_PERSISTENT and rerun this script to rewrite the timer"
 echo "Note: nightly auto-adopt/apply defaults are on for the full local furnace profile."
 echo "      Set AIWIKI_NIGHTLY_AUTO_* or legacy AUTO_* env vars to 0 before install to narrow automation."

@@ -77,7 +77,7 @@ launchd 写入：
 └── aiwiki-nightly.out.log / aiwiki-nightly.err.log
 ```
 
-macOS wrapper 走 vault 内 `scripts/aiwiki-launcher.sh`，所以 Product Shell 写入本机插件 `data.json` 的 LLM backend / key 能被 watcher 和 nightly 读取；plist 只保存 `AIWIKI_VAULT`、调度和非敏感运行参数，不保存 API key。
+macOS wrapper 走 vault 内 `scripts/aiwiki-launcher.sh`，所以 Product Shell 写入本机插件 `data.json` 的 LLM backend / key 能被 watcher 和 nightly 读取；plist 只保存 `AIWIKI_VAULT`、调度和非敏感运行参数，不保存 API key。`scripts/install_launchd_service.sh` 也是 Product Shell release 同步入口：它会更新目标 vault 的 `manifest.json` / `main.js` / `styles.css`，但不覆盖 `data.json`。
 
 ### 2.2 watcher 服务
 

@@ -98,8 +98,12 @@ def test_launchd_scripts_are_syntax_valid_and_secret_free() -> None:
     install_content = (PROJECT_ROOT / "scripts" / "install_launchd_service.sh").read_text(encoding="utf-8")
     assert "LaunchAgents" in install_content
     assert "AIWIKI_VAULT" in install_content
+    assert "sync-product-shell" in install_content
     assert "AIWIKI_OPENCODE_API_KEY" not in install_content
     assert "llmOpencodeApiKey" not in install_content
+
+    systemd_install_content = (PROJECT_ROOT / "scripts" / "install_user_service.sh").read_text(encoding="utf-8")
+    assert "sync-product-shell" in systemd_install_content
 
 
 def test_launchd_wrappers_use_vault_launcher() -> None:

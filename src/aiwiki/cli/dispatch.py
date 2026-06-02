@@ -43,7 +43,7 @@ from ..app_content import action_supports_low_risk_apply, ingest_source
 from ..app_protocol import ensure_layout, load_protocol_state
 from ..app_shell import build_shell_summary, rewrite_recovery_payload_for_paths, shell_search, shell_status_dashboard
 from ..app_state import load_machine_memory_action_state, load_today_snooze_state, save_today_snooze_state
-from ..app_vault import bootstrap_new_vault
+from ..app_vault import bootstrap_new_vault, sync_product_shell_plugin
 from ..drop import drop_image, drop_note, drop_pdf, drop_repo, drop_url
 from ..planner import write_planner_log
 from ..runner.alchemy import (
@@ -194,6 +194,8 @@ def _handle_vault_admin(args: argparse.Namespace, root: Path) -> tuple[object, s
         return _out({"root": str(root), "status": "ok"})
     if args.handler_command == "new-vault":
         return _out(bootstrap_new_vault(root, Path(args.target).resolve(), force=args.force))
+    if args.handler_command == "sync-product-shell":
+        return _out(sync_product_shell_plugin(root, Path(args.target).resolve()))
     if args.handler_command == "ingest":
         return _out(ingest_source(root, args.source, title=args.title))
     if args.handler_command == "sync-evidence-graph":
@@ -662,6 +664,7 @@ def _handle_ops(args: argparse.Namespace, root: Path) -> tuple[object, str | Non
 _VAULT_ADMIN_HANDLERS = {
     "layout": _handle_vault_admin,
     "new-vault": _handle_vault_admin,
+    "sync-product-shell": _handle_vault_admin,
     "ingest": _handle_vault_admin,
     "sync-evidence-graph": _handle_vault_admin,
 }

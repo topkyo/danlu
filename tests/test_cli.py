@@ -1759,6 +1759,7 @@ class CLITests(unittest.TestCase):
         cases = [
             ("layout", ["layout"], "ensure_layout", (self.root,), {}),
             ("new-vault", ["new-vault", "child-vault", "--force"], "bootstrap_new_vault", (self.root, Path("child-vault").resolve()), {"force": True}),
+            ("sync-product-shell", ["sync-product-shell", "child-vault"], "sync_product_shell_plugin", (self.root, Path("child-vault").resolve()), {}),
             ("ingest", ["ingest", "input.md", "--title", "Input"], "ingest_source", (self.root, "input.md"), {"title": "Input"}),
             ("drop-url", ["drop-url", "https://example.com"], "drop_url", (self.root, "https://example.com"), {"title": None}),
             ("drop-pdf", ["drop-pdf", "paper.pdf", "--title", "Paper"], "drop_pdf", (self.root, "paper.pdf"), {"title": "Paper"}),
@@ -2228,6 +2229,10 @@ class CLITests(unittest.TestCase):
                             mocked.assert_called_once_with(*expected_args, **expected_kwargs)
                     elif target == "bootstrap_new_vault":
                         with patch("aiwiki.cli.bootstrap_new_vault", return_value={"command": name}) as mocked:
+                            code = main(["--root", str(self.root), *argv])
+                            mocked.assert_called_once_with(*expected_args, **expected_kwargs)
+                    elif target == "sync_product_shell_plugin":
+                        with patch("aiwiki.cli.sync_product_shell_plugin", return_value={"command": name}) as mocked:
                             code = main(["--root", str(self.root), *argv])
                             mocked.assert_called_once_with(*expected_args, **expected_kwargs)
                     elif target in {"retire_concept", "reactivate_concept", "review_concept", "review_concepts_batch"}:

@@ -93,7 +93,7 @@ cd ../demo-furnace-vault
 
 当前推荐把它理解成**两个日常入口、同一 runtime**：
 
-- Obsidian Product Shell：极简工作台，首屏暴露交互（Ask 统一走 run-ask/LLM）、原料投入（投网址 / 投文件 / 投图片 / 记笔记）、最新产出和今日简报；更多工具折叠在面板底部，命令面板默认只注册核心投料/打开入口；界面默认中文，可切到 English
+- Obsidian Product Shell：极简工作台，首屏暴露交互（Ask 统一走 run-ask/LLM）、原料投入（投网址 / 投文件 / 投图片 / 投文字材料）、最新产出和今日简报；更多工具折叠在面板底部，命令面板默认只注册核心投料/打开入口；界面默认中文，可切到 English
 - `scripts/aiwiki-launcher.sh` / `aiwiki CLI`：脚本化入口，默认心智收敛为 `aiwiki drop ...` 投料与 `aiwiki today` 看产出；完整治理、执行、审计和调试能力保留在 `aiwiki advanced ...`
 - 普通用户视图默认把文件树收敛到报告入口：`raw/wiki/schema` 与 `output/` 的控制面、审阅、图谱导出等 runtime/operator 层仍存在，但不作为日常导航心智
 - 两边共享同一个 `.aiwiki/state` 与 `raw/wiki/output`，所以写命令遵守 `single writer, many readers`
@@ -244,9 +244,9 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . ask "Compare A and B" --format rep
 - `systemd --user` watcher + nightly timer
 - macOS `launchd` watcher + nightly calendar job
 
-默认本机服务只安装两条产品主线：`aiwiki-watch.service` 常驻等待投料，`aiwiki-nightly.timer` 每晚炼化。安装 systemd 服务必须显式提供 vault：`AIWIKI_VAULT=/path/to/vault scripts/install_user_service.sh`，不会把代码仓库当默认 vault。`dogfood maturity` timer 是成熟度验证 harness，不是默认产品服务；需要验证时显式 `AIWIKI_VAULT=/path/to/vault AIWIKI_INSTALL_DOGFOOD_MATURITY=1 scripts/install_user_service.sh`，验证结束后用 `scripts/uninstall_user_service.sh --dogfood-maturity-only` 移除 unit，保留 vault 数据和 receipt。
+默认本机服务只安装两条产品主线：`aiwiki-watch.service` 常驻等待投料，`aiwiki-nightly.timer` 每晚炼化。安装 systemd 服务必须显式提供 vault：`AIWIKI_VAULT=/path/to/vault scripts/install_user_service.sh`，不会把代码仓库当默认 vault。服务安装/更新会把仓库中的 Product Shell release 文件同步到目标 vault，但保留本机插件 `data.json`。`dogfood maturity` timer 是成熟度验证 harness，不是默认产品服务；需要验证时显式 `AIWIKI_VAULT=/path/to/vault AIWIKI_INSTALL_DOGFOOD_MATURITY=1 scripts/install_user_service.sh`，验证结束后用 `scripts/uninstall_user_service.sh --dogfood-maturity-only` 移除 unit，保留 vault 数据和 receipt。
 
-macOS 上没有 `systemd --user` 时，使用 launchd 安装同样的两条产品主线；launchd plist 只保存 vault 路径和运行参数，LLM key 仍由 vault launcher 从 Product Shell 本机 `data.json` 或当前环境读取，不写入 plist：
+macOS 上没有 `systemd --user` 时，使用 launchd 安装同样的两条产品主线；launchd plist 只保存 vault 路径和运行参数，LLM key 仍由 vault launcher 从 Product Shell 本机 `data.json` 或当前环境读取，不写入 plist；安装/更新同样会同步 Product Shell release 文件：
 
 ```bash
 AIWIKI_VAULT=/path/to/vault scripts/install_launchd_service.sh

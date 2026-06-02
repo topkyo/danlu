@@ -145,6 +145,12 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
         help="Allow writing managed scaffold files into an existing non-empty directory.",
     )
 
+    sync_product_shell_parser = subparsers.add_parser(
+        "sync-product-shell",
+        help="Sync Product Shell plugin release files from this runtime root into an existing Obsidian vault.",
+    )
+    sync_product_shell_parser.add_argument("target", help="Target vault directory to update.")
+
     ingest_parser = subparsers.add_parser("ingest", help="Ingest a local file or URL stub.")
     ingest_parser.add_argument("source", help="Local file path or URL.")
     ingest_parser.add_argument("--title", help="Optional display title.")

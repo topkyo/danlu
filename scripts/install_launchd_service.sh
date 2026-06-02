@@ -19,6 +19,7 @@ if [ ! -x "$VAULT_ROOT/scripts/aiwiki-launcher.sh" ]; then
   exit 1
 fi
 
+PYTHON_BIN="${PYTHON:-python3}"
 LAUNCH_AGENTS_DIR="$HOME/Library/LaunchAgents"
 AIWIKI_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/aiwiki"
 LOG_DIR="$AIWIKI_CONFIG_DIR/logs"
@@ -31,7 +32,10 @@ NIGHTLY_MINUTE="${AIWIKI_LAUNCHD_NIGHTLY_MINUTE:-0}"
 
 mkdir -p "$LAUNCH_AGENTS_DIR" "$LOG_DIR"
 
-python3 - "$WATCH_PLIST" "$NIGHTLY_PLIST" "$PROJECT_ROOT" "$VAULT_ROOT" "$LOG_DIR" "$WATCH_LABEL" "$NIGHTLY_LABEL" "$NIGHTLY_HOUR" "$NIGHTLY_MINUTE" <<'PY'
+PYTHONPATH="$PROJECT_ROOT/src${PYTHONPATH:+:$PYTHONPATH}" "$PYTHON_BIN" -m aiwiki.cli \
+  --root "$PROJECT_ROOT" sync-product-shell "$VAULT_ROOT" >/dev/null
+
+"$PYTHON_BIN" - "$WATCH_PLIST" "$NIGHTLY_PLIST" "$PROJECT_ROOT" "$VAULT_ROOT" "$LOG_DIR" "$WATCH_LABEL" "$NIGHTLY_LABEL" "$NIGHTLY_HOUR" "$NIGHTLY_MINUTE" <<'PY'
 import os
 import plistlib
 import sys
@@ -120,4 +124,5 @@ echo "      watch plist:   $WATCH_PLIST"
 echo "      nightly plist: $NIGHTLY_PLIST"
 echo "      vault:         $VAULT_ROOT"
 echo "      logs:          $LOG_DIR"
+echo "      plugin:        synced Product Shell release files (data.json preserved)"
 echo "      note:          LLM secrets are read by the vault launcher from Product Shell data or process env; they are not written to plist files."
