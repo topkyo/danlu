@@ -161,14 +161,9 @@ function stripQuotedReportLinesForIntent(question) {
 }
 
 function inferAutoAskFormat(question, materialPaths) {
-  const text = stripQuotedReportLinesForIntent(question).toLowerCase();
-  const paths = normalizeMaterialPaths(materialPaths);
-  if (!text) {
-    return "note";
-  }
-  const explicitReportIntent = /报告|研报|深度报告|研究报告|决策备忘录|投资备忘录|完整分析|系统分析|多源对比|对比报告|证据链|引用来源|citation|citations|report|memo/.test(text);
-  const multiSourceReportIntent = paths.length > 1 && /对比|比较|综合|归纳|证据|引用|出处|研究|投资|决策/.test(text);
-  return explicitReportIntent || multiSourceReportIntent ? "report" : "note";
+  void question;
+  void materialPaths;
+  return "report";
 }
 
 function buildAutoAskQuestionLegacy(question, materialPaths) {
@@ -199,6 +194,7 @@ function looksLikeUniversalMaterialPayload(value) {
   if (lower.startsWith("note:") && lower.slice("note:".length).trim()) return true;
   if (lower.endsWith(".git")) return true;
   if (lower.endsWith(".pdf")) return true;
+  if ([".md", ".markdown", ".txt"].some((suffix) => lower.endsWith(suffix))) return true;
   if ([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"].some((suffix) => lower.endsWith(suffix))) return true;
   return false;
 }

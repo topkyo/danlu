@@ -131,8 +131,8 @@ class ValidateNoteOutputTests(unittest.TestCase):
 
 class AskParserChoicesLockTests(unittest.TestCase):
     """Lock that `note` is a registered --format choice for both ask entries,
-    that default is `note` (EP-002b), and that explicit `--format report`
-    still works so the decision-grade path remains accessible."""
+    that explicit `note` remains a legacy/internal format, and that default
+    ask output is now report."""
 
     def _ns(self, argv: list[str]) -> argparse.Namespace:
         parser = build_parser()
@@ -142,10 +142,9 @@ class AskParserChoicesLockTests(unittest.TestCase):
         ns = self._ns(["ask", "Q", "--format", "note"])
         self.assertEqual(ns.format, "note")
 
-    def test_ask_default_is_note(self) -> None:
-        # EP-002b: default flipped from "report" to "note".
+    def test_ask_default_is_report(self) -> None:
         ns = self._ns(["ask", "Q"])
-        self.assertEqual(ns.format, "note")
+        self.assertEqual(ns.format, "report")
 
     def test_ask_explicit_report_still_works(self) -> None:
         # EP-002b regression: report path remains accessible via explicit flag.
@@ -156,14 +155,14 @@ class AskParserChoicesLockTests(unittest.TestCase):
         ns = self._ns(["run-ask", "Q", "--format", "note"])
         self.assertEqual(ns.format, "note")
 
-    def test_run_ask_default_is_note(self) -> None:
+    def test_run_ask_default_is_report(self) -> None:
         ns = self._ns(["run-ask", "Q"])
-        self.assertEqual(ns.format, "note")
+        self.assertEqual(ns.format, "report")
 
     def test_run_ask_accepts_direct_mode(self) -> None:
         ns = self._ns(["run-ask", "Q", "--direct"])
         self.assertTrue(ns.direct)
-        self.assertEqual(ns.format, "note")
+        self.assertEqual(ns.format, "report")
 
     def test_run_ask_explicit_report_still_works(self) -> None:
         ns = self._ns(["run-ask", "Q", "--format", "report"])

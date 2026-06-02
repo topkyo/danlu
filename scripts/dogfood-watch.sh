@@ -3,7 +3,7 @@
 # 用法：bash scripts/dogfood-watch.sh [attach|stop]
 #
 # 在 tmux session "danlu-dogfood" 里启 4 面板监控真实 vault：
-#   1. LLM receipts（每次 copilot-cli 调用：model/elapsed/preview）
+#   1. LLM receipts（每次 API backend 调用：model/elapsed/preview）
 #   2. Runner receipts（CLI run 状态）
 #   3. Runtime history（drift-scan / 状态机事件）
 #   4. Vault 文件落盘活动（raw/ wiki/ output/ 下 1 分钟内变更）

@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 import unittest
 
-_AIWIKI_PREFIXES = ("AIWIKI_", "OPENAI_", "ANTHROPIC_", "NVIDIA_")
+_AIWIKI_PREFIXES = ("AIWIKI_", "OPENAI_", "ANTHROPIC_", "DEEPSEEK_", "NVIDIA_")
 
 
 def _clean_env(monkeypatch_dict: dict[str, str] | None = None) -> None:
@@ -28,9 +28,8 @@ class ModelPolicyTests(unittest.TestCase):
         # Snapshot env so tearDown can restore.
         self._snapshot = {k: v for k, v in os.environ.items() if k.startswith(_AIWIKI_PREFIXES)}
         _clean_env({
-            # Provide a usable codex backend without needing real binary.
-            "AIWIKI_CODEX_PATH": "/usr/bin/true",
-            "AIWIKI_LLM_BACKEND": "codex-cli",
+            "AIWIKI_LLM_BACKEND": "opencode-api",
+            "AIWIKI_OPENCODE_API_KEY": "opencode_test_key",
         })
 
     def tearDown(self) -> None:
@@ -44,9 +43,9 @@ class ModelPolicyTests(unittest.TestCase):
 
         status = LLMConfig.status_from_env()
         self.assertIn("model_source", status)
-        # Default codex-cli without explicit model → backend_default
+        # Default API backend without explicit model → backend_default
         self.assertEqual(status["model_source"], "backend_default")
-        self.assertTrue(status["model"], "Effective model must be non-empty for codex-cli default")
+        self.assertTrue(status["model"], "Effective model must be non-empty for API backend default")
 
     def test_explicit_model_marks_source_explicit(self) -> None:
         from aiwiki.config import LLMConfig
@@ -67,7 +66,7 @@ class ModelPolicyTests(unittest.TestCase):
         self.assertIn("AIWIKI_LLM_MODEL", msg)
         # Message must surface the would-be fallback so users know what they
         # are rejecting.
-        self.assertIn("codex-cli", msg)
+        self.assertIn("opencode-api", msg)
 
     def test_strict_mode_passes_with_explicit_model(self) -> None:
         from aiwiki.config import LLMConfig

@@ -5,9 +5,12 @@ async function loadProductShellPluginState(plugin) {
   const rawSettings = data.settings && typeof data.settings === "object" ? data.settings : {};
   plugin.rawPluginData = data;
   plugin.settings = Object.assign({}, DEFAULT_SETTINGS, rawSettings);
-  if (plugin.settings.defaultAskFormat === "report") {
-    plugin.settings.defaultAskFormat = "note";
+  if (plugin.settings.defaultAskFormat !== "report") {
+    plugin.settings.defaultAskFormat = "report";
   }
+  const selectedProfile = llmProviderProfile(plugin.settings.llmBackend);
+  const llmBackendMigrated = plugin.settings.llmBackend !== selectedProfile.value;
+  plugin.settings.llmBackend = selectedProfile.value;
   const legacyShowHtmlShortcutsMigrated = Object.prototype.hasOwnProperty.call(plugin.settings, "showHtmlShortcuts");
   delete plugin.settings.showHtmlShortcuts;
   const legacyDefaultAskModeMigrated = Object.prototype.hasOwnProperty.call(plugin.settings, "defaultAskMode");
@@ -42,7 +45,7 @@ async function loadProductShellPluginState(plugin) {
   const recentRuns = normalizeProductShellRecentRuns(data.recentRuns);
   plugin.pluginState = { recentRuns };
   plugin.trimRecentRuns();
-  const defaultAskFormatMigrated = rawSettings.defaultAskFormat === "report";
+  const defaultAskFormatMigrated = rawSettings.defaultAskFormat !== "report";
   if (
     feishuWebhookUrlMigrated
     || wecomWebhookUrlMigrated
@@ -50,6 +53,7 @@ async function loadProductShellPluginState(plugin) {
     || lastViewedTimestampMigrated
     || legacyLlmSettingsMigrated
     || defaultAskFormatMigrated
+    || llmBackendMigrated
     || legacyShowHtmlShortcutsMigrated
     || legacyDefaultAskModeMigrated
     || advancedSectionsExpandedMigrated

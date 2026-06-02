@@ -21,15 +21,16 @@ function buildUniversalInputCommandSpec({ payload, title }) {
 }
 
 function buildAskCommandSpec({ question, format, mode, protocol }) {
-  const longRunning = mode === "run-ask" && format === "report";
+  const finalFormat = "report";
+  const longRunning = mode === "run-ask" && finalFormat === "report";
   const command = longRunning ? "run-ask-submit" : mode;
-  const args = [command, question, "--format", format];
+  const args = [command, question, "--format", finalFormat];
   if (protocol) {
     args.push("--protocol", protocol);
   }
   if (mode === "run-ask") {
     const directQuestion = String(question || "").trim();
-    const canUseDirect = format === "note"
+    const canUseDirect = false
       && !directQuestion.includes("材料路径供系统路由使用：")
       && !directQuestion.includes("本次投喂材料路径：");
     if (canUseDirect) {
@@ -75,8 +76,9 @@ function buildDropUrlCommandSpec({ url, title }) {
 
 function buildDropFileCommandSpec({ mode, source, title, maxFiles }) {
   const pathApi = nodePath();
-  const normalizedMode = String(mode || "pdf").trim() === "repo" ? "repo" : "pdf";
-  const args = ["drop", normalizedMode === "repo" ? "repo" : "pdf", source];
+  const rawMode = String(mode || "pdf").trim();
+  const normalizedMode = rawMode === "repo" || rawMode === "markdown" ? rawMode : "pdf";
+  const args = ["drop", normalizedMode === "repo" ? "repo" : normalizedMode === "markdown" ? "markdown" : "pdf", source];
   if (title) {
     args.push("--title", title);
   }
@@ -109,14 +111,14 @@ function buildDropImageCommandSpec({ source, title, noVision }) {
 }
 
 function buildDropNoteCommandSpec({ text, title, kind }) {
-  const args = ["drop", "note", "--text", text];
+  const args = ["drop", "markdown", "--text", text];
   if (title) {
     args.push("--title", title);
   }
-  args.push("--kind", kind || "note");
+  args.push("--kind", kind === "markdown" ? "note" : kind || "note");
   return {
     args,
-    labelKey: "Capture Note",
+    labelKey: "Capture Material",
     labelSubject: title || text,
     options: { refreshAfter: true },
   };

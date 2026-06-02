@@ -8,8 +8,6 @@ import json
 import mimetypes
 import os
 import socket
-import subprocess
-import tempfile
 import time
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
@@ -21,15 +19,10 @@ from aiwiki.app_utils import FetchPolicyError, atomic_write_text, safe_fetch
 
 from .config import (
     BACKEND_ANTHROPIC_API,
-    BACKEND_CLAUDE_CLI,
-    BACKEND_CODEX_CLI,
-    BACKEND_COPILOT_CLI,
-    BACKEND_NVIDIA_NIM_API,
+    BACKEND_DEEPSEEK_API,
     BACKEND_OPENAI_API,
     BACKEND_OPENCODE_API,
-    BACKEND_OPENROUTER_API,
-    DEFAULT_CODEX_MODEL,
-    DEFAULT_NVIDIA_NIM_MODEL,
+    DEFAULT_DEEPSEEK_MODEL,
     DEFAULT_OPENCODE_MODEL,
     LLMConfig,
 )
@@ -241,285 +234,6 @@ class OpenAICompatClient:
         )
 
 
-class CodexCLIClient:
-    """Use the local Codex CLI as the generation backend."""
-
-    def __init__(self, config: LLMConfig, workdir: Path) -> None:
-        self.config = config
-        self.workdir = workdir
-
-    def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
-        full_prompt = "\n\n".join(
-            [
-                "# System Instructions",
-                system_prompt,
-                "",
-                "# Task",
-                user_prompt,
-            ]
-        )
-        with tempfile.NamedTemporaryFile(prefix="aiwiki-codex-", suffix=".md", delete=False) as handle:
-            output_path = Path(handle.name)
-        command = [
-            self.config.codex_path or self.config.codex_command,
-            "exec",
-            "--skip-git-repo-check",
-            "--sandbox",
-            "read-only",
-            "--cd",
-            str(self.workdir),
-            "--color",
-            "never",
-            "--output-last-message",
-            str(output_path),
-        ]
-        if self.config.codex_reasoning_effort:
-            command.extend(["-c", f'model_reasoning_effort="{self.config.codex_reasoning_effort}"'])
-        if self.config.model:
-            command.extend(["--model", self.config.model])
-        command.append("-")
-        try:
-            completed = subprocess.run(
-                command,
-                input=full_prompt,
-                text=True,
-                capture_output=True,
-                cwd=self.workdir,
-                timeout=self.config.timeout_seconds,
-                check=False,
-            )
-        except subprocess.TimeoutExpired as exc:  # pragma: no cover - exercised via CLI/network usage
-            raw_text = (exc.stdout or "") if isinstance(exc.stdout, str) else ""
-            if isinstance(exc.stderr, str) and exc.stderr:
-                raw_text = f"{raw_text}\n{exc.stderr}" if raw_text else exc.stderr
-            raw_response_path = _write_raw_response(self.workdir, raw_text) if raw_text else None
-            raise LLMError(
-                f"Codex CLI timed out after {self.config.timeout_seconds} seconds.",
-                raw_response_path=raw_response_path,
-            ) from exc
-        except OSError as exc:  # pragma: no cover - exercised by environment failures
-            raise LLMError(f"Failed to launch Codex CLI: {exc}") from exc
-        finally:
-            text = output_path.read_text(encoding="utf-8", errors="replace") if output_path.exists() else ""
-            output_path.unlink(missing_ok=True)
-
-        if completed.returncode != 0:
-            details = completed.stderr.strip() or completed.stdout.strip() or text.strip()
-            raw_text = text or completed.stdout or completed.stderr or ""
-            raw_response_path = _write_raw_response(self.workdir, raw_text) if raw_text else None
-            raise LLMError(f"Codex CLI failed with exit code {completed.returncode}: {details}", raw_response_path=raw_response_path)
-        final_text = text.strip() or completed.stdout.strip()
-        if not final_text:
-            raise LLMError("Codex CLI returned no final content.", raw_response_path=_write_raw_response(self.workdir, ""))
-        raw_response_path = _write_raw_response(self.workdir, final_text)
-        return CompletionResult(text=final_text, response_id="codex-cli", usage={}, raw_response_path=raw_response_path)
-
-    def analyze_image(self, system_prompt: str, user_prompt: str, image_path: Path) -> CompletionResult:
-        full_prompt = "\n\n".join(
-            [
-                "# System Instructions",
-                system_prompt,
-                "",
-                "# Task",
-                user_prompt,
-            ]
-        )
-        with tempfile.NamedTemporaryFile(prefix="aiwiki-codex-", suffix=".md", delete=False) as handle:
-            output_path = Path(handle.name)
-        command = [
-            self.config.codex_path or self.config.codex_command,
-            "exec",
-            "--skip-git-repo-check",
-            "--sandbox",
-            "read-only",
-            "--cd",
-            str(self.workdir),
-            "--color",
-            "never",
-            "--output-last-message",
-            str(output_path),
-            "--image",
-            str(image_path),
-        ]
-        if self.config.codex_reasoning_effort:
-            command.extend(["-c", f'model_reasoning_effort="{self.config.codex_reasoning_effort}"'])
-        if self.config.model:
-            command.extend(["--model", self.config.model])
-        command.append("-")
-        try:
-            completed = subprocess.run(
-                command,
-                input=full_prompt,
-                text=True,
-                capture_output=True,
-                cwd=self.workdir,
-                timeout=self.config.timeout_seconds,
-                check=False,
-            )
-        except subprocess.TimeoutExpired as exc:  # pragma: no cover - exercised via CLI/network usage
-            raw_text = (exc.stdout or "") if isinstance(exc.stdout, str) else ""
-            if isinstance(exc.stderr, str) and exc.stderr:
-                raw_text = f"{raw_text}\n{exc.stderr}" if raw_text else exc.stderr
-            raw_response_path = _write_raw_response(self.workdir, raw_text) if raw_text else None
-            raise LLMError(
-                f"Codex CLI timed out after {self.config.timeout_seconds} seconds.",
-                raw_response_path=raw_response_path,
-            ) from exc
-        except OSError as exc:  # pragma: no cover - exercised by environment failures
-            raise LLMError(f"Failed to launch Codex CLI: {exc}") from exc
-        finally:
-            text = output_path.read_text(encoding="utf-8", errors="replace") if output_path.exists() else ""
-            output_path.unlink(missing_ok=True)
-
-        if completed.returncode != 0:
-            details = completed.stderr.strip() or completed.stdout.strip() or text.strip()
-            raw_text = text or completed.stdout or completed.stderr or ""
-            raw_response_path = _write_raw_response(self.workdir, raw_text) if raw_text else None
-            raise LLMError(f"Codex CLI failed with exit code {completed.returncode}: {details}", raw_response_path=raw_response_path)
-        final_text = text.strip() or completed.stdout.strip()
-        if not final_text:
-            raise LLMError("Codex CLI returned no final content.", raw_response_path=_write_raw_response(self.workdir, ""))
-        raw_response_path = _write_raw_response(self.workdir, final_text)
-        return CompletionResult(text=final_text, response_id="codex-cli", usage={}, raw_response_path=raw_response_path)
-
-
-class ClaudeCLIClient:
-    """Use the local Claude CLI as the generation backend."""
-
-    def __init__(self, config: LLMConfig, workdir: Path) -> None:
-        self.config = config
-        self.workdir = workdir
-
-    def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
-        command = [
-            self.config.claude_path or self.config.claude_command,
-            "--print",
-            "--output-format",
-            "text",
-            "--input-format",
-            "text",
-            "--tools",
-            "",
-            "--add-dir",
-            str(self.workdir),
-            "--system-prompt",
-            system_prompt,
-        ]
-        if self.config.model:
-            command.extend(["--model", self.config.model])
-        try:
-            completed = subprocess.run(
-                command,
-                input=user_prompt,
-                text=True,
-                capture_output=True,
-                cwd=self.workdir,
-                timeout=self.config.timeout_seconds,
-                check=False,
-            )
-        except subprocess.TimeoutExpired as exc:  # pragma: no cover - exercised via CLI/network usage
-            raw_text = (exc.stdout or "") if isinstance(exc.stdout, str) else ""
-            if isinstance(exc.stderr, str) and exc.stderr:
-                raw_text = f"{raw_text}\n{exc.stderr}" if raw_text else exc.stderr
-            raw_response_path = _write_raw_response(self.workdir, raw_text) if raw_text else None
-            raise LLMError(
-                f"Claude CLI timed out after {self.config.timeout_seconds} seconds.",
-                raw_response_path=raw_response_path,
-            ) from exc
-        except OSError as exc:  # pragma: no cover - exercised by environment failures
-            raise LLMError(f"Failed to launch Claude CLI: {exc}") from exc
-
-        if completed.returncode != 0:
-            details = completed.stderr.strip() or completed.stdout.strip()
-            raw_text = completed.stdout or completed.stderr or ""
-            raw_response_path = _write_raw_response(self.workdir, raw_text) if raw_text else None
-            raise LLMError(f"Claude CLI failed with exit code {completed.returncode}: {details}", raw_response_path=raw_response_path)
-        final_text = completed.stdout.strip()
-        if not final_text:
-            raise LLMError("Claude CLI returned no final content.", raw_response_path=_write_raw_response(self.workdir, ""))
-        raw_response_path = _write_raw_response(self.workdir, final_text)
-        return CompletionResult(text=final_text, response_id="claude-cli", usage={}, raw_response_path=raw_response_path)
-
-    def analyze_image(self, system_prompt: str, user_prompt: str, image_path: Path) -> CompletionResult:
-        del system_prompt
-        del user_prompt
-        del image_path
-        raise LLMError("Claude CLI image analysis is not supported by aiwiki yet.")
-
-
-class CopilotCLIClient:
-    """Use the local GitHub Copilot CLI in non-interactive prompt mode."""
-
-    def __init__(self, config: LLMConfig, workdir: Path) -> None:
-        self.config = config
-        self.workdir = workdir
-
-    def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
-        full_prompt = "\n\n".join(
-            [
-                "# System Instructions",
-                system_prompt,
-                "",
-                "# Task",
-                user_prompt,
-            ]
-        )
-        command = [
-            self.config.copilot_path or self.config.copilot_command,
-            "--prompt",
-            full_prompt,
-            "--silent",
-            "--output-format",
-            "text",
-            "--stream",
-            "off",
-            "--no-ask-user",
-            "--no-color",
-            "--allow-tool=read",
-            "--add-dir",
-            str(self.workdir),
-        ]
-        if self.config.model:
-            command.extend(["--model", self.config.model])
-        try:
-            completed = subprocess.run(
-                command,
-                text=True,
-                capture_output=True,
-                cwd=self.workdir,
-                timeout=self.config.timeout_seconds,
-                check=False,
-            )
-        except subprocess.TimeoutExpired as exc:  # pragma: no cover - exercised via CLI/network usage
-            raw_text = (exc.stdout or "") if isinstance(exc.stdout, str) else ""
-            if isinstance(exc.stderr, str) and exc.stderr:
-                raw_text = f"{raw_text}\n{exc.stderr}" if raw_text else exc.stderr
-            raw_response_path = _write_raw_response(self.workdir, raw_text) if raw_text else None
-            raise LLMError(
-                f"Copilot CLI timed out after {self.config.timeout_seconds} seconds.",
-                raw_response_path=raw_response_path,
-            ) from exc
-        except OSError as exc:  # pragma: no cover - exercised by environment failures
-            raise LLMError(f"Failed to launch Copilot CLI: {exc}") from exc
-
-        if completed.returncode != 0:
-            details = completed.stderr.strip() or completed.stdout.strip()
-            raw_text = completed.stdout or completed.stderr or ""
-            raw_response_path = _write_raw_response(self.workdir, raw_text) if raw_text else None
-            raise LLMError(f"Copilot CLI failed with exit code {completed.returncode}: {details}", raw_response_path=raw_response_path)
-        final_text = completed.stdout.strip()
-        if not final_text:
-            raise LLMError("Copilot CLI returned no final content.", raw_response_path=_write_raw_response(self.workdir, ""))
-        raw_response_path = _write_raw_response(self.workdir, final_text)
-        return CompletionResult(text=final_text, response_id="copilot-cli", usage={}, raw_response_path=raw_response_path)
-
-    def analyze_image(self, system_prompt: str, user_prompt: str, image_path: Path) -> CompletionResult:
-        del system_prompt
-        del user_prompt
-        del image_path
-        raise LLMError("Copilot CLI image analysis is not supported by aiwiki yet.")
-
-
 class AnthropicClient:
     """Call the Anthropic Messages API directly."""
 
@@ -662,18 +376,10 @@ def create_backend_client(config: LLMConfig, workdir: Path) -> Any:
     model_fallback_configs = _model_fallback_configs(config)
     if len(model_fallback_configs) > 1:
         return ModelFallbackClient(config, workdir, model_fallback_configs)
-    if config.backend in {BACKEND_OPENCODE_API, BACKEND_OPENROUTER_API, BACKEND_OPENAI_API}:
+    if config.backend in {BACKEND_DEEPSEEK_API, BACKEND_OPENCODE_API, BACKEND_OPENAI_API}:
         return OpenAICompatClient(config, workdir)
     if config.backend == BACKEND_ANTHROPIC_API:
         return AnthropicClient(config, workdir)
-    if config.backend == BACKEND_NVIDIA_NIM_API:
-        return OpenAICompatClient(config, workdir)
-    if config.backend == BACKEND_CODEX_CLI:
-        return CodexCLIClient(config, workdir)
-    if config.backend == BACKEND_COPILOT_CLI:
-        return CopilotCLIClient(config, workdir)
-    if config.backend == BACKEND_CLAUDE_CLI:
-        return ClaudeCLIClient(config, workdir)
     raise LLMError(f"Unsupported backend `{config.backend}`.")
 
 
@@ -745,28 +451,16 @@ def _available_probe_backends(config: LLMConfig) -> list[str]:
     ordered: list[str] = []
     for backend in (
         config.backend,
-        BACKEND_CODEX_CLI,
-        BACKEND_COPILOT_CLI,
-        BACKEND_CLAUDE_CLI,
+        BACKEND_DEEPSEEK_API,
         BACKEND_OPENCODE_API,
-        BACKEND_NVIDIA_NIM_API,
-        BACKEND_OPENROUTER_API,
         BACKEND_ANTHROPIC_API,
         BACKEND_OPENAI_API,
     ):
         if backend in ordered:
             continue
-        if backend == BACKEND_CODEX_CLI and config.codex_path:
-            ordered.append(backend)
-        elif backend == BACKEND_COPILOT_CLI and config.copilot_path:
-            ordered.append(backend)
-        elif backend == BACKEND_CLAUDE_CLI and config.claude_path:
-            ordered.append(backend)
-        elif backend == BACKEND_NVIDIA_NIM_API and config.nvidia_nim_api_key:
+        if backend == BACKEND_DEEPSEEK_API and config.deepseek_api_key:
             ordered.append(backend)
         elif backend == BACKEND_OPENCODE_API and config.opencode_api_key:
-            ordered.append(backend)
-        elif backend == BACKEND_OPENROUTER_API and config.openrouter_api_key:
             ordered.append(backend)
         elif backend == BACKEND_ANTHROPIC_API and config.anthropic_api_key:
             ordered.append(backend)
@@ -778,25 +472,23 @@ def _available_probe_backends(config: LLMConfig) -> list[str]:
 def _config_for_backend(config: LLMConfig, backend: str) -> LLMConfig:
     if backend == config.backend:
         model = config.model or _effective_backend_default_model(backend, config)
-    elif backend == BACKEND_CODEX_CLI:
-        model = DEFAULT_CODEX_MODEL
+    elif backend == BACKEND_DEEPSEEK_API:
+        model = DEFAULT_DEEPSEEK_MODEL
     elif backend == BACKEND_OPENCODE_API:
         model = DEFAULT_OPENCODE_MODEL
-    elif backend == BACKEND_NVIDIA_NIM_API:
-        model = DEFAULT_NVIDIA_NIM_MODEL
     elif backend == BACKEND_OPENAI_API:
         model = config.model or ""
     elif backend == BACKEND_ANTHROPIC_API:
         model = config.model or ""
     else:
         model = ""
-    if backend == BACKEND_NVIDIA_NIM_API:
+    if backend == BACKEND_DEEPSEEK_API:
         return replace(
             config,
             backend=backend,
             model=model,
-            api_key=config.nvidia_nim_api_key,
-            base_url=config.nvidia_nim_base_url,
+            api_key=config.deepseek_api_key,
+            base_url=config.deepseek_base_url,
         )
     if backend == BACKEND_OPENCODE_API:
         return replace(
@@ -806,38 +498,22 @@ def _config_for_backend(config: LLMConfig, backend: str) -> LLMConfig:
             api_key=config.opencode_api_key,
             base_url=config.opencode_base_url,
         )
-    if backend == BACKEND_OPENROUTER_API:
-        return replace(
-            config,
-            backend=backend,
-            model=model,
-            api_key=config.openrouter_api_key,
-            base_url=config.openrouter_base_url,
-        )
     return replace(config, backend=backend, model=model)
 
 
 def _effective_backend_default_model(backend: str, config: LLMConfig) -> str:
+    if backend == BACKEND_DEEPSEEK_API:
+        return DEFAULT_DEEPSEEK_MODEL
     if backend == BACKEND_OPENCODE_API:
         return DEFAULT_OPENCODE_MODEL
-    if backend == BACKEND_NVIDIA_NIM_API:
-        return DEFAULT_NVIDIA_NIM_MODEL
-    if backend == BACKEND_CODEX_CLI:
-        return DEFAULT_CODEX_MODEL
     return config.model or ""
 
 
 def _instantiate_cli_client(config: LLMConfig, workdir: Path) -> Any:
-    if config.backend == BACKEND_CODEX_CLI:
-        return CodexCLIClient(config, workdir)
-    if config.backend in {BACKEND_OPENCODE_API, BACKEND_OPENROUTER_API, BACKEND_OPENAI_API, BACKEND_NVIDIA_NIM_API}:
+    if config.backend in {BACKEND_DEEPSEEK_API, BACKEND_OPENCODE_API, BACKEND_OPENAI_API}:
         return OpenAICompatClient(config, workdir)
     if config.backend == BACKEND_ANTHROPIC_API:
         return AnthropicClient(config, workdir)
-    if config.backend == BACKEND_COPILOT_CLI:
-        return CopilotCLIClient(config, workdir)
-    if config.backend == BACKEND_CLAUDE_CLI:
-        return ClaudeCLIClient(config, workdir)
     raise LLMError(f"Unsupported backend `{config.backend}`.")
 
 

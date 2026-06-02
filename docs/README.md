@@ -14,7 +14,7 @@ updated_at: 2026-05-01
 | [Furnace Agent Architecture](<./Furnace Agent Architecture.md>) | **终局架构 SoT**：loop-first agent 模型、persistent planes、L1/L2/L3 自主权红线 |
 | [Furnace Evolution Mechanics](<./Furnace Evolution Mechanics.md>) | **实现契约 SoT**：heavy/light alchemy、active corpus、金丹生命周期、L3 proposal |
 | [Furnace Product Shell](<./Furnace Product Shell.md>) | **Obsidian Product Shell SoT**：一个输入端 + 一个输出端 + Advanced 抽屉 |
-| [Furnace Runtime Operations](<./Furnace Runtime Operations.md>) | **运行手册 SoT**：watcher、nightly、LLM worker、NV NIM fallback |
+| [Furnace Runtime Operations](<./Furnace Runtime Operations.md>) | **运行手册 SoT**：watcher、nightly、LLM worker、四 API 后端与 fail-closed 策略 |
 | [Furnace Next Direction Post-P4](<./Furnace Next Direction Post-P4.md>) | **当前方向 SoT**：Round 52 后的真实 gap、dogfood 和后续方向 |
 | [Furnace Investing Dogfood Plan](<./Furnace Investing Dogfood Plan.md>) | investing 协议端到端 dogfood flow 与 receipt index |
 | [Furnace Market Scan 2026Q2](<./Furnace Market Scan 2026Q2.md>) | 2026Q2 市场对标与差异化判断 |

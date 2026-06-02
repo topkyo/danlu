@@ -743,7 +743,7 @@ _LEGACY_DROP_REPLACEMENTS = {
     "drop-pdf": "drop pdf",
     "drop-image": "drop image",
     "drop-repo": "drop repo",
-    "drop-note": "drop note",
+    "drop-note": "drop markdown",
 }
 
 

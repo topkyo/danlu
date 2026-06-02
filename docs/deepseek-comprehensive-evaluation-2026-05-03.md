@@ -10,7 +10,7 @@ updates:
   - v1.0 (2026-05-03): 初版
 ---
 
-> **当前状态校准（2026-05-20）**：本文主体是 2026-05-03 的外部评估快照，不应当作当前 backend / CLI / dogfood proof 的唯一 SoT。当前普通 CLI/runtime 默认主路由是 `opencode-api/deepseek-v4-pro`；`codex-cli/gpt-5.5` 只作为显式手动 route 使用，不再作为隐藏 backend fallback。`scripts/run_nightly.sh` 仍保留 operator-approved unattended fallback wrapper，但默认关闭且必须显式配置 `AIWIKI_NIGHTLY_FALLBACK_*`。
+> **当前状态校准（2026-06-02）**：本文主体是 2026-05-03 的外部评估快照，不应当作当前 backend / CLI / dogfood proof 的唯一 SoT。当前普通 CLI/runtime 默认主路由是 `opencode-api/deepseek-v4-pro`，可选后端只保留 `deepseek-api / opencode-api / openai-api / anthropic-api`；不再支持 CLI backend，也不再做隐藏跨 backend fallback。`scripts/run_nightly.sh` 不再切换 fallback backend：已配置 LLM 执行失败后 fail closed，只有未配置 LLM 且未要求 LLM 时才跑 deterministic nightly。
 
 ## 1. 项目概览
 
@@ -25,7 +25,7 @@ updates:
 | 开发周期 | 2026-04-05 ~ 2026-05-03（约 1 个月密集迭代） |
 | 运行时依赖 | stdlib-first，0 个 PyPI 运行时依赖 |
 | 前端 | Obsidian 插件 furnace-product-shell（~7,400 行 main.js） |
-| LLM 后端 | codex-cli / nvidia-nim-api / copilot-cli / claude-cli |
+| LLM 后端 | 历史评估快照：codex-cli / nvidia-nim-api / copilot-cli / claude-cli；当前实现只保留四个 API 后端 |
 | 作者 | 单人项目 |
 
 ---
@@ -199,7 +199,7 @@ runner/workflows.py    → compile/ask/nightly 等高层工作流
 
 **评估**：
 - 显式 backend 选择 + 不做隐式 routing 的设计原则是**对的**，避免"模型能干活但输出污染了 frontmatter"这种隐式降级。
-- nightly fallback wrapper (`run_nightly.sh`) 是唯一跨 backend fallback 路径，且仅当 primary 失败 + 显式启用才触发——边界清晰。
+- 历史版本曾有 nightly fallback wrapper；当前 `run_nightly.sh` 已删除跨 backend fallback，configured LLM 失败后 fail closed。
 - 凭据安全：API key 落 `~/.aiwiki-secrets/<provider>.env` (mode 600/dir 700)，不进 git 或 systemd unit，符合最佳实践。
 
 ---

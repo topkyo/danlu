@@ -40,7 +40,7 @@
 
 **用户实际需要但被淹没/藏得深的元素（需提升）**：
 - Today Feed 入口（当前可能与各类卡片混杂）
-- 新 source 投喂入口（URL / file / note / question 统一进入 Universal Input）
+- 新 source 投喂入口（URL / PDF / Markdown / repo / question 统一进入 Universal Input）
 - 报告产出通知机制（当前完全缺失，依赖用户手动打开 vault 才发现新报告，覆盖不到"用户离开屏幕"场景）。
 
 **需要降级/折叠的视图清单**：
@@ -60,7 +60,7 @@
 |  | [Protocol] Report Title B                               [ Open ]  |  |
 |  +-------------------------------------------------------------------+  |
 |                                                                         |
-| [ Universal Input: URL / file / note / question... ]                    |
+| [ Universal Input: URL / PDF / Markdown / repo / question... ]           |
 +-------------------------------------------------------------------------+
 | > Advanced (operator diagnostics, hidden unless enabled)                 |
 +-------------------------------------------------------------------------+
@@ -73,7 +73,7 @@
 
 ### 组件清单
 - **TodayFeed**：默认输出端，只展示可交付输出、确认项和非降级活动。
-- **UniversalInput**：默认输入端，统一 URL / file / note / question。
+- **UniversalInput**：默认输入端，统一 URL / PDF / Markdown / repo / question。
 - **ReportCard** (借鉴 Notion)：清晰的 block 卡片，带标题和状态小徽章，注重阅读舒缓感；未读项做轻量视觉区分（加粗 / 左侧圆点）。
 - **AdvancedDrawer**：仅在 `showAdvancedCommands` 启用后出现，收纳 diagnostics/history、Recent Runs、Review Center、Execution Center 和 refresh。
 - **Notifier**（非 UI 组件，运行态侧 / sidecar）：飞书 + 企业微信 webhook 推送抽象，订阅"新报告生成"事件。

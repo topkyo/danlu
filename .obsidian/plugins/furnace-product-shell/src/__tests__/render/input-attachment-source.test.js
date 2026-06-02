@@ -159,7 +159,7 @@ describe("Universal Input attachment source handling", () => {
     expect(calls.map((item) => item[0])).toEqual(["drop", "drop", "ask"]);
     expect(plugin.runAskCommand).toHaveBeenCalledWith({
       question: expect.stringContaining("材料路径供系统路由使用："),
-      format: "note",
+      format: "report",
       mode: "run-ask",
       protocol: "research",
     });
@@ -169,7 +169,7 @@ describe("Universal Input attachment source handling", () => {
     expect(askQuestion).toContain("请总结");
     expect(askQuestion).not.toContain("/home/tim/private/b.pdf");
     expect(result.materialPaths).toEqual(["raw/inbox/a.md", "raw/assets/b.pdf"]);
-    expect(result.askFormat).toBe("note");
+    expect(result.askFormat).toBe("report");
   });
 
   test("auto ask passes dropped file names as CLI titles", async () => {
@@ -233,11 +233,11 @@ describe("Universal Input attachment source handling", () => {
     expect(result.askFormat).toBe("report");
   });
 
-  test("quoted report prefix does not force report mode for short follow-up questions", () => {
+  test("auto ask always uses report mode", () => {
     const { inferAutoAskFormat } = loadHelpers();
 
-    expect(inferAutoAskFormat("引用报告：output/reports/foo.md\n那好吧，你的llm是什么模型？", [])).toBe("note");
-    expect(inferAutoAskFormat("引用报告：output/reports/foo.md 那好吧，你的llm是什么模型？", [])).toBe("note");
+    expect(inferAutoAskFormat("引用报告：output/reports/foo.md\n那好吧，你的llm是什么模型？", [])).toBe("report");
+    expect(inferAutoAskFormat("引用报告：output/reports/foo.md 那好吧，你的llm是什么模型？", [])).toBe("report");
     expect(inferAutoAskFormat("引用报告：output/reports/foo.md\n请生成一份研究报告，包含证据链", [])).toBe("report");
   });
 

@@ -57,13 +57,14 @@ class VaultBootstrapTests(unittest.TestCase):
         self.assertIn("single writer, many readers", readme)
         self.assertIn("默认界面语言为中文", readme)
         self.assertIn("opencode-api/deepseek-v4-pro", readme)
-        self.assertIn("drop note --title", readme)
+        self.assertIn("drop markdown --title", readme)
         self.assertIn("runtime contract", readme)
         self.assertIn('$HOME/.local/npm/bin', launcher_text)
         self.assertIn("export PATH", launcher_text)
         self.assertIn('PLUGIN_DATA="$VAULT_ROOT/.obsidian/plugins/furnace-product-shell/data.json"', launcher_text)
+        self.assertIn('AIWIKI_DEEPSEEK_API_KEY', launcher_text)
         self.assertIn('AIWIKI_OPENCODE_API_KEY', launcher_text)
-        self.assertIn('AIWIKI_NVIDIA_NIM_API_KEY', launcher_text)
+        self.assertNotIn('AIWIKI_NVIDIA_NIM_API_KEY', launcher_text)
         self.assertEqual(appearance["enabledCssSnippets"], ["danlu-zh-folders"])
         self.assertIn("output/lint/", app_config["userIgnoreFilters"])
         self.assertIn("output/packs/", app_config["userIgnoreFilters"])
@@ -97,10 +98,10 @@ class VaultBootstrapTests(unittest.TestCase):
         self.assertIn('.nav-folder-title[data-path="output/control"] > .nav-folder-title-content', snippet)
         self.assertIn('content: "策略 policies";', snippet)
         self.assertIn('content: "研发协议 research";', snippet)
-        self.assertIn("Capture Note", plugin_source)
+        self.assertIn("投文字材料", plugin_source)
         self.assertNotIn("drop-note / drop-url", plugin_source)
         self.assertEqual(plugin_data["settings"]["locale"], "zh")
-        self.assertEqual(plugin_data["settings"]["defaultAskFormat"], "note")
+        self.assertEqual(plugin_data["settings"]["defaultAskFormat"], "report")
         self.assertNotIn("defaultAskMode", plugin_data["settings"])
         self.assertNotIn("showHtmlShortcuts", plugin_data["settings"])
         self.assertNotIn("devops", plugin_data["settings"].get("advancedSectionsExpanded", {}))
@@ -133,20 +134,21 @@ class VaultBootstrapTests(unittest.TestCase):
         self.assertEqual(payload["active_protocol"], "general")
         self.assertTrue((self.target / "output" / "control" / "product-shell.html").exists())
 
-    def test_bootstrap_new_vault_launcher_inherits_plugin_llm_settings(self) -> None:
+    def test_bootstrap_new_vault_launcher_inherits_deepseek_plugin_llm_settings(self) -> None:
         bootstrap_new_vault(self.runtime_root, self.target)
         plugin_data_path = self.target / ".obsidian" / "plugins" / "furnace-product-shell" / "data.json"
         plugin_data = json.loads(plugin_data_path.read_text(encoding="utf-8"))
-        plugin_data["settings"]["llmBackend"] = "nvidia-nim-api"
-        plugin_data["settings"]["llmNvidiaNimApiKey"] = "nvapi_fake_key"
+        plugin_data["settings"]["llmBackend"] = "deepseek-api"
+        plugin_data["settings"]["llmModel"] = "deepseek-chat"
+        plugin_data["settings"]["llmDeepseekApiKey"] = "deepseek_fake_key"
         plugin_data_path.write_text(json.dumps(plugin_data, ensure_ascii=False, indent=2), encoding="utf-8")
 
         env = os.environ.copy()
         for key in (
             "AIWIKI_LLM_BACKEND",
             "AIWIKI_LLM_MODEL",
-            "AIWIKI_NVIDIA_NIM_API_KEY",
-            "AIWIKI_NVIDIA_NIM_BASE_URL",
+            "AIWIKI_DEEPSEEK_API_KEY",
+            "AIWIKI_DEEPSEEK_BASE_URL",
         ):
             env.pop(key, None)
 
@@ -162,9 +164,9 @@ class VaultBootstrapTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
         payload = json.loads(result.stdout)
         self.assertTrue(payload["configured"])
-        self.assertEqual(payload["backend_requested"], "nvidia-nim-api")
-        self.assertEqual(payload["backend"], "nvidia-nim-api")
-        self.assertEqual(payload["effective_model"], "openai/gpt-oss-120b")
+        self.assertEqual(payload["backend_requested"], "deepseek-api")
+        self.assertEqual(payload["backend"], "deepseek-api")
+        self.assertEqual(payload["effective_model"], "deepseek-chat")
 
     def test_bootstrap_new_vault_launcher_inherits_opencode_plugin_key(self) -> None:
         bootstrap_new_vault(self.runtime_root, self.target)

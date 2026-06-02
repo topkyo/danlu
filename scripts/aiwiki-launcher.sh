@@ -38,26 +38,19 @@ if not isinstance(settings, dict):
     raise SystemExit(0)
 backend = str(settings.get("llmBackend") or "opencode-api").strip() or "opencode-api"
 profiles = {
+    "deepseek-api": {
+        "model": "deepseek-v4-pro",
+        "key_setting": "llmDeepseekApiKey",
+        "key_env": "AIWIKI_DEEPSEEK_API_KEY",
+        "base_setting": "llmDeepseekBaseUrl",
+        "base_env": "AIWIKI_DEEPSEEK_BASE_URL",
+    },
     "opencode-api": {
         "model": "deepseek-v4-pro",
         "key_setting": "llmOpencodeApiKey",
         "key_env": "AIWIKI_OPENCODE_API_KEY",
         "base_setting": "llmOpencodeBaseUrl",
         "base_env": "AIWIKI_OPENCODE_BASE_URL",
-    },
-    "nvidia-nim-api": {
-        "model": "openai/gpt-oss-120b",
-        "key_setting": "llmNvidiaNimApiKey",
-        "key_env": "AIWIKI_NVIDIA_NIM_API_KEY",
-        "base_setting": "llmNvidiaNimBaseUrl",
-        "base_env": "AIWIKI_NVIDIA_NIM_BASE_URL",
-    },
-    "openrouter-api": {
-        "model": "",
-        "key_setting": "llmOpenrouterApiKey",
-        "key_env": "AIWIKI_OPENROUTER_API_KEY",
-        "base_setting": "llmOpenrouterBaseUrl",
-        "base_env": "AIWIKI_OPENROUTER_BASE_URL",
     },
     "anthropic-api": {
         "model": "claude-sonnet-4-20250514",

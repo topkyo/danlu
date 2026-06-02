@@ -44,7 +44,7 @@ Obsidian 是前端/IDE；炼丹炉是整个系统；`aiwiki` 是底层 runtime�
 - `src/aiwiki/app_state.py`：**legacy central hub**，path / state / json-document primitives 的单点入口；改动半径大，需额外谨慎。
 - `src/aiwiki/app_protocol.py`：**legacy central hub**，layout、schema scaffolding、protocol runtime、review windows 和默认 runtime 规则。
 - `src/aiwiki/cli/`：CLI parser / dispatch / product-first command surface；普通入口固定为 `drop` / `today` / `metrics` / `advanced`，legacy top-level 命令只保留兼容。
-- `src/aiwiki/drop.py`：`drop-url` / `drop-pdf` / `drop-image` / `drop-repo` / `drop-note` 的 raw materialization owner。
+- `src/aiwiki/drop.py`：`drop-url` / `drop-pdf` / `drop-image` / `drop-repo` / `drop-note` 的 raw materialization owner；用户入口推荐 `drop markdown`。
 - `src/aiwiki/compile/`：compile pipeline phase owner（content/runtime/output/persist）；`app_compile.py` 仍是 legacy orchestration / compat hotspot，新逻辑优先下沉到 `compile/*` 或明确 owner module。
 - `src/aiwiki/content/`：source / concept / derived / memory output 的主要 owner；`app_content.py` 是 compatibility facade，保留旧 import / patch seam，不新增业务逻辑。
 - `src/aiwiki/app_lifecycle.py`：judgment / decision lifecycle、aging、review queue、knowledge lifecycle governance 的 residual owner。
@@ -104,7 +104,7 @@ cd ../demo-furnace-vault
 
 | Layer | Commands | Purpose |
 | --- | --- | --- |
-| `primary` | `drop`, `today` | 日常投料与读取产出；`drop` 下含 `url / pdf / image / repo / note`。 |
+| `primary` | `drop`, `today` | 日常投料与读取产出；`drop` 下含 `url / pdf / image / repo / markdown`。 |
 | `advanced` | `metrics`, `advanced ...` | 高级但仍可解释的健康度、治理、执行、审计、协议、LLM 和调试入口。 |
 | `operator/internal` | legacy top-level commands such as `compile`, `run-nightly`, `planner-log-list`, `l3-proposal-generate` | 为脚本、测试、dogfood 和旧自动化保留；默认 help 不再把它们与 `drop/today` 同权展示，完整列表见 `aiwiki advanced --help` 或旧命令自身 `--help`。 |
 
@@ -125,27 +125,27 @@ cd ../demo-furnace-vault
 1. 投料
 
 ```bash
-PYTHONPATH=src python3 -m aiwiki.cli --root . drop note --title "Morning note" --text "Capture the latest signal."
+PYTHONPATH=src python3 -m aiwiki.cli --root . drop markdown --title "Morning material" --text "Capture the latest signal."
 PYTHONPATH=src python3 -m aiwiki.cli --root . drop url https://example.com/article
 PYTHONPATH=src python3 -m aiwiki.cli --root . drop pdf /path/to/paper.pdf
 PYTHONPATH=src python3 -m aiwiki.cli --root . drop image /path/to/diagram.png
 PYTHONPATH=src python3 -m aiwiki.cli --root . drop repo https://github.com/user/repo.git
 ```
 
-Obsidian Product Shell 已内置投网址（Drop URL）、投文件（Drop File）、投图片（Drop Image）和记笔记（Capture Note）四种投料入口；文本、Markdown、URL 抓取和 repo snapshot 进入 `raw/inbox/`，PDF/image 原件进入 `raw/assets/`，不要把二进制原件放进 `raw/inbox/` 或转成 wrapper markdown。`drop repo` 仍以 launcher CLI 为主。
+Obsidian Product Shell 已内置投网址（Drop URL）、投文件（Drop File，含 PDF / Markdown / Repo）、投图片（Drop Image）和投文字材料四种投料入口；文本、Markdown、URL 抓取和 repo snapshot 进入 `raw/inbox/`，PDF/image 原件进入 `raw/assets/`，不要把二进制原件放进 `raw/inbox/` 或转成 wrapper markdown。`drop repo` 仍以 launcher CLI 为主。
 
 2. 编译
 
 ```bash
 PYTHONPATH=src python3 -m aiwiki.cli --root . compile
-AIWIKI_LLM_BACKEND=codex-cli PYTHONPATH=src python3 -m aiwiki.cli --root . run-compile --limit 3
+AIWIKI_LLM_BACKEND=opencode-api AIWIKI_OPENCODE_API_KEY=opencode-... PYTHONPATH=src python3 -m aiwiki.cli --root . run-compile --limit 3
 ```
 
 3. 提问并出结果
 
 ```bash
 PYTHONPATH=src python3 -m aiwiki.cli --root . run-ask "Compare company A and company B on thesis, catalyst, risk, and invalidation" --format report
-AIWIKI_LLM_BACKEND=codex-cli PYTHONPATH=src python3 -m aiwiki.cli --root . run-ask "Compare paper A and repo B on architecture tradeoffs and benchmark evidence" --format report
+AIWIKI_LLM_BACKEND=deepseek-api AIWIKI_DEEPSEEK_API_KEY=sk-... PYTHONPATH=src python3 -m aiwiki.cli --root . run-ask "Compare paper A and repo B on architecture tradeoffs and benchmark evidence"
 ```
 
 4. 回流高价值结果
@@ -269,43 +269,36 @@ LLM enrichment 仍然是炼丹炉主路径，但放在受控 worker 入口：`ru
 - **判断层**：counter-evidence / judgment review — LLM 驱动的语义复核，自动分析反证、写出审阅结论；judgment page、标准 execution receipt、execution history、audit stream 必须可互证，写失败回滚。通过 `AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS=1` 显式开启。
 - **策略层**：L3 proposal / prompt 变更 / schema 变更 — 非核心/metadata-only 学习默认由 agentic nightly 登记和消化；写回核心 prompt/policy/schema 前必须 `review proposal <id> --status accepted` 人工确认，再手动 `apply <proposal-id>` hash-gated 写 receipt。`AIWIKI_NIGHTLY_AUTO_ADOPT_CORE_L3=0` 是核心自改红线，不允许无人值守改核心 prompt/policy/schema。
 
-runtime policy 缺省采用 `autonomy_profile=agentic`：未写 `.aiwiki/state/autonomy-policy.json` 时，runtime 内部 profile 允许维护、治理、judgment review、metadata-only L3 和 heavy semantic 非核心自动化，但 `auto_adopt_core_l3` 默认关闭。新安装的 systemd nightly env 仍写入 `AIWIKI_AUTONOMY_PROFILE=agentic` 以保持 receipt 记账口径一致，但写入型 auto flags 默认写 `0`，必须由 operator 显式 opt-in；watcher 仍 deterministic-only，`AIWIKI_NIGHTLY_FALLBACK_ENABLED` 仍默认关闭。需要跨 backend unattended fallback 时必须显式开启并配置 repo 外凭据文件。是否已经达到“人只需事后审计 receipt 和异常”的成熟运行状态，以 `scripts/dogfood_maturity_gate.py summarize --days 3` 的 `operational_maturity.human_only_exceptions`、`agentic_autonomy_report.llm_governed_apply_count > 0`、`core_auto_apply_count=0`、`debt_autopilot_report.debt_remaining_count`、`debt_autopilot_report.debt_auto_resolved_count`、`elixir_quality_status` 和连续 receipt 为准。
+runtime policy 缺省采用 `autonomy_profile=agentic`：未写 `.aiwiki/state/autonomy-policy.json` 时，runtime 内部 profile 允许维护、治理、judgment review、metadata-only L3 和 heavy semantic 非核心自动化，但 `auto_adopt_core_l3` 默认关闭。新安装的 systemd nightly env 仍写入 `AIWIKI_AUTONOMY_PROFILE=agentic` 以保持 receipt 记账口径一致，但写入型 auto flags 默认写 `0`，必须由 operator 显式 opt-in；watcher 仍 deterministic-only，不再配置跨 backend unattended fallback。是否已经达到“人只需事后审计 receipt 和异常”的成熟运行状态，以 `scripts/dogfood_maturity_gate.py summarize --days 3` 的 `operational_maturity.human_only_exceptions`、`agentic_autonomy_report.llm_governed_apply_count > 0`、`core_auto_apply_count=0`、`debt_autopilot_report.debt_remaining_count`、`debt_autopilot_report.debt_auto_resolved_count`、`elixir_quality_status` 和连续 receipt 为准。
 
 ## LLM 后端
 
 支持：
-- 常用 API provider：`opencode-api`、`nvidia-nim-api`、`openrouter-api`、`anthropic-api`
-- 高级入口：`codex-cli`、`copilot-cli`、`claude-cli`、`openai-api`（自定义 OpenAI-compatible）
+- API provider：`deepseek-api`、`opencode-api`、`openai-api`、`anthropic-api`
 
 当前语义：
 - 新安装默认 route 是 canonical interactive profile：`opencode-api/deepseek-v4-pro` primary；Shell 与 CLI 共用同一组 `AIWIKI_LLM_*` 环境变量
+- `deepseek-api` 默认 base URL 是 `https://api.deepseek.com`，key 走 `AIWIKI_DEEPSEEK_API_KEY` 或 `DEEPSEEK_API_KEY`
 - `opencode-api` 默认 base URL 是 `https://opencode.ai/zen/go/v1`（DeepSeek V4 Pro 走 OpenCode Go endpoint，见 https://dev.opencode.ai/docs/go/ ），key 走 `AIWIKI_OPENCODE_API_KEY`，也可用通用 `AIWIKI_LLM_API_KEY`
-- `nvidia-nim-api` 保留为可显式选择的 unattended route，默认模型 `openai/gpt-oss-120b`
-- `openrouter-api` 默认 base URL 是 `https://openrouter.ai/api/v1`，key 走 `AIWIKI_OPENROUTER_API_KEY`
 - `anthropic-api` 走 Anthropic Messages API，key 走 `AIWIKI_ANTHROPIC_API_KEY`
-- `openai-api` 是高级自定义 OpenAI-compatible 入口，base URL 走 `AIWIKI_LLM_BASE_URL`，key 走 `AIWIKI_LLM_API_KEY`
-- 如果 backend 是 `codex-cli` 且没有显式设置 `AIWIKI_LLM_MODEL`，effective model 默认是 `gpt-5.5`（旧 `gpt-5.4` 仍可显式选）
-- `codex-cli` 默认会附带 `AIWIKI_CODEX_REASONING_EFFORT=medium`，避免非交互 `run-ask` / `run-compile` / `run-lint` 被 CLI 默认的高推理档位拖慢
+- `openai-api` 是 OpenAI / OpenAI-compatible 入口，base URL 走 `AIWIKI_LLM_BASE_URL`，key 走 `AIWIKI_LLM_API_KEY` 或 `OPENAI_API_KEY`
 - `llm-check`、`shell-summary.json`、Product Shell 会显示 requested/effective backend/model、model fallback 链，以及 usage 可见性/计费口径；backend fallback 链默认为空
 - 默认 `llm-check` 只做静态路由检查；显式加 `--probe` 后才会发一个极小真实请求，区分“backend 能解析出来”和“当前账号真能跑”
-- CLI 路径当前都无法给出精确 token usage，`usage_visibility` 会显示 `opaque-cli`；API provider 会尽量透传响应里的 usage
+- API provider 会尽量透传响应里的 usage
 - `run-ask` 现在会先用 balanced prompt；如果碰到 timeout，会自动再试一次 lean prompt；失败时写出可审计失败说明和 run notes，不再伪装为 deterministic fallback 成功
 - `run-ask` 现在也支持显式 `--lean` 与 `--timeout <seconds>`，用于直接选择稳优先 prompt 或覆盖单次调用 timeout，而不改动全局环境变量
 - 默认不做隐式 model fallback；需要同 backend 多模型 fallback 时必须显式传 `--model-fallback model_a,model_b`（可重复）或设置 `AIWIKI_MODEL_FALLBACK=model_a,model_b`，CLI 参数优先于 env
 - 默认不做跨 backend fallback；`AIWIKI_BACKEND_FALLBACK` / `AIWIKI_BACKEND_FALLBACK_MODEL` 不再驱动普通 CLI/runtime 的隐藏 backend routing。需要重跑到另一个 backend 时，显式设置 `AIWIKI_LLM_BACKEND` / `AIWIKI_LLM_MODEL` 后重新执行
-- `scripts/run_nightly.sh` 仍保留 operator unattended fallback wrapper：primary 由 `AIWIKI_LLM_BACKEND` 指定；当 unattended nightly 失败时，若 `AIWIKI_NIGHTLY_FALLBACK_ENABLED=1` 且 `AIWIKI_NIGHTLY_FALLBACK_ENV` 指向可读的 repo 外 NIM key 文件，会自动用 `nvidia-nim-api/openai/gpt-oss-120b` 重跑一次
+- `scripts/run_nightly.sh` 不再切换 fallback backend；已配置 LLM 执行失败后 fail closed，只有未配置 LLM 且未设置 `AIWIKI_NIGHTLY_REQUIRE_LLM=1` 时才跑 deterministic nightly
 
 常见配置：
 
 ```bash
+AIWIKI_LLM_BACKEND=deepseek-api AIWIKI_DEEPSEEK_API_KEY=sk-... PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
 AIWIKI_OPENCODE_API_KEY=opencode-... PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
 AIWIKI_LLM_BACKEND=opencode-api AIWIKI_OPENCODE_API_KEY=opencode-... PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
-AIWIKI_LLM_BACKEND=nvidia-nim-api AIWIKI_NVIDIA_NIM_API_KEY=nvapi-... PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
-AIWIKI_LLM_BACKEND=openrouter-api AIWIKI_OPENROUTER_API_KEY=sk-or-... AIWIKI_LLM_MODEL=provider/model PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
+AIWIKI_LLM_BACKEND=openai-api AIWIKI_LLM_API_KEY=sk-... PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
 AIWIKI_LLM_BACKEND=anthropic-api AIWIKI_ANTHROPIC_API_KEY=sk-ant-... PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
-AIWIKI_LLM_BACKEND=codex-cli PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
-AIWIKI_LLM_BACKEND=copilot-cli PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
-AIWIKI_LLM_BACKEND=claude-cli PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
 ```
 
 检查当前后端：
@@ -318,17 +311,11 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check --probe-all --probe-time
 
 认证说明：
 
-- `opencode-api`：走 `AIWIKI_OPENCODE_API_KEY` 或 `AIWIKI_LLM_API_KEY`；模型默认 `deepseek-v4-pro`。如果账号不可用或模型不可用，`llm-check --probe` 必须显式失败并显示 provider/model/base URL，不会静默伪装成 NIM fallback 成功
-- `codex-cli`：走 `codex login` 的本地会话；当前环境可用 `codex login status` 查看状态
-- `codex-cli`：可以通过 `AIWIKI_CODEX_REASONING_EFFORT=medium|high|xhigh` 调节非交互推理档位；当前默认是 `medium`
-- `nvidia-nim-api`：走 `AIWIKI_NVIDIA_NIM_API_KEY` 或 `NVIDIA_NIM_API_KEY`；base URL 默认 `https://integrate.api.nvidia.com/v1`
-- `nvidia-nim-api`：当前按 OpenAI-compatible `/v1/chat/completions` 接入；模型留空默认使用 `openai/gpt-oss-120b`
-- `nvidia-nim-api`：如需多模型重试，显式设置 `AIWIKI_LLM_MODEL` 并追加 `--model-fallback openai/gpt-oss-120b`（CLI 参数优先于 env）。注意 NIM 上多数 model 已 EOL 或装饰输出与 frontmatter 不兼容（如 `moonshotai/kimi-k2.5` 4-30 EOL、`meta/llama-3.3-70b-instruct` 输出装饰），先用 `llm-check --probe-all --format human` 确认目标 model `compatible` 再启用
-- `openrouter-api`：走 OpenAI-compatible `/chat/completions`，key 走 `AIWIKI_OPENROUTER_API_KEY`；通常需要显式 `AIWIKI_LLM_MODEL=provider/model`
+- `deepseek-api`：走 `AIWIKI_DEEPSEEK_API_KEY` 或 `DEEPSEEK_API_KEY`；模型默认 `deepseek-v4-pro`，base URL 默认 `https://api.deepseek.com`
+- `opencode-api`：走 `AIWIKI_OPENCODE_API_KEY` 或 `AIWIKI_LLM_API_KEY`；模型默认 `deepseek-v4-pro`。如果账号不可用或模型不可用，`llm-check --probe` 必须显式失败并显示 provider/model/base URL，不会静默伪装成备用后端成功
 - `anthropic-api`：走 Anthropic Messages API；模型留空默认 `claude-sonnet-4-20250514`
-- **本地凭据存放规范**：API key **不得**进入 README、测试 fixture、`.envrc.dogfood` 或任何 git-tracked 文件。Product Shell 里填写的 key 只落到本机未跟踪的插件 `data.json`；CLI/dogfood 推荐落到 `~/.aiwiki-secrets/<provider>.env`（mode 600 / 父目录 700）。nightly fallback 只保存 `AIWIKI_NIGHTLY_FALLBACK_ENV` 路径，运行时由 wrapper source，不把 key 写进 systemd unit 或 git-tracked 文件
-- `copilot-cli`：官方推荐 `copilot login` 的浏览器设备码 OAuth；也支持 `COPILOT_GITHUB_TOKEN -> GH_TOKEN -> GITHUB_TOKEN -> stored OAuth token -> gh auth token` 的优先链
-- `copilot-cli` 的 GitHub OAuth 路径"可行"不等于"当前账号可用"；seat / org policy / quota 不足时，probe 仍会失败
+- `openai-api`：走 OpenAI-compatible `/chat/completions`，key 走 `AIWIKI_LLM_API_KEY` 或 `OPENAI_API_KEY`
+- **本地凭据存放规范**：API key **不得**进入 README、测试 fixture、`.envrc.dogfood` 或任何 git-tracked 文件。Product Shell 里填写的 key 只落到本机未跟踪的插件 `data.json`；CLI/dogfood 推荐落到 `~/.aiwiki-secrets/<provider>.env`（mode 600 / 父目录 700）
 
 ## 使用边界
 
@@ -386,7 +373,7 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . protocol-status
 
 ```text
 cli/                       命令入口；只做参数解析与 dispatch
-├─ drop.py / input_router.py   外部投喂入口（drop url / drop pdf / drop image / drop repo / drop note）
+├─ drop.py / input_router.py   外部投喂入口（drop url / drop pdf / drop image / drop repo / drop markdown）
 ├─ runner/                 lifecycle / alchemy / nightly 等 high-level 编排
 └─ planner/                deterministic + LLM-assisted plan 生成
 
@@ -395,7 +382,7 @@ execution/                 事实层 mutation（promote / revert / demote / arch
 runner/alchemy.py          lane / primitive 编排，含 scope-honesty receipt（M9-P0.2）
 
 cli/                       product-first command surface + legacy compat dispatch
-drop.py                    raw materialization owner（url / pdf / image / repo / note）
+drop.py                    raw materialization owner（url / pdf / image / repo / markdown）
 
 compile/                   compile pipeline phases（content / runtime / output / persist）
 app_compile.py             legacy orchestration / compat hotspot；新逻辑优先下沉

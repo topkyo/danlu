@@ -23,57 +23,55 @@ test("default Product Shell LLM provider is OpenCode deepseek-v4-pro", () => {
 
 test("provider list puts curated providers before advanced entries", () => {
   expect(LLM_PROVIDER_PROFILES.slice(0, 4).map((profile) => profile.value)).toEqual([
+    "deepseek-api",
     "opencode-api",
-    "nvidia-nim-api",
-    "openrouter-api",
     "anthropic-api",
+    "openai-api",
   ]);
-  expect(LLM_PROVIDER_PROFILES.slice(4).every((profile) => profile.tier === "advanced")).toBe(true);
+  expect(LLM_PROVIDER_PROFILES.every((profile) => profile.tier === "common")).toBe(true);
 });
 
 test("buildLlmEnv only emits the selected provider secret and base URL", () => {
   const env = buildLlmEnv({
-    llmBackend: "openrouter-api",
-    llmModel: "anthropic/claude-sonnet-4",
+    llmBackend: "deepseek-api",
+    llmModel: "deepseek-chat",
+    llmDeepseekApiKey: "sk-current",
+    llmDeepseekBaseUrl: "https://deepseek.example",
     llmOpencodeApiKey: "opencode-stale",
-    llmNvidiaNimApiKey: "nvapi-stale",
-    llmOpenrouterApiKey: "sk-or-current",
-    llmOpenrouterBaseUrl: "https://router.example/v1",
   });
 
   expect(env).toEqual({
-    AIWIKI_LLM_BACKEND: "openrouter-api",
-    AIWIKI_LLM_MODEL: "anthropic/claude-sonnet-4",
-    AIWIKI_OPENROUTER_API_KEY: "sk-or-current",
-    AIWIKI_OPENROUTER_BASE_URL: "https://router.example/v1",
+    AIWIKI_LLM_BACKEND: "deepseek-api",
+    AIWIKI_LLM_MODEL: "deepseek-chat",
+    AIWIKI_DEEPSEEK_API_KEY: "sk-current",
+    AIWIKI_DEEPSEEK_BASE_URL: "https://deepseek.example",
   });
 });
 
 test("buildLlmEnv replaces stale default model when provider changes", () => {
-  expect(buildLlmEnv({ llmBackend: "nvidia-nim-api", llmModel: "deepseek-v4-pro" })).toEqual({
-    AIWIKI_LLM_BACKEND: "nvidia-nim-api",
-    AIWIKI_LLM_MODEL: "openai/gpt-oss-120b",
+  expect(buildLlmEnv({ llmBackend: "anthropic-api", llmModel: "deepseek-v4-pro" })).toEqual({
+    AIWIKI_LLM_BACKEND: "anthropic-api",
+    AIWIKI_LLM_MODEL: "claude-sonnet-4-20250514",
   });
 });
 
-test("CLI providers do not require model or API key fields", () => {
+test("removed providers migrate to the default API provider", () => {
   const profile = llmProviderProfile("codex-cli");
-  expect(profile.cliHint).toContain("codex login");
-  expect(llmProviderNeedsModel(profile)).toBe(false);
-  expect(buildLlmEnv({ llmBackend: "codex-cli", llmModel: "gpt-5.5", llmOpencodeApiKey: "stale" })).toEqual({
-    AIWIKI_LLM_BACKEND: "codex-cli",
+  expect(profile.value).toBe("opencode-api");
+  expect(llmProviderNeedsModel(profile)).toBe(true);
+  expect(buildLlmEnv({ llmBackend: "codex-cli", llmModel: "gpt-5.5", llmOpencodeApiKey: "current" })).toEqual({
+    AIWIKI_LLM_BACKEND: "opencode-api",
     AIWIKI_LLM_MODEL: "gpt-5.5",
+    AIWIKI_OPENCODE_API_KEY: "current",
   });
 });
 
 test("clearKnownLlmEnv removes stale provider keys before launcher spawn", () => {
   const env = {
     KEEP_ME: "1",
-    AIWIKI_LLM_BACKEND: "nvidia-nim-api",
+    AIWIKI_LLM_BACKEND: "deepseek-api",
     AIWIKI_MODEL_FALLBACK: "stale-model",
-    AIWIKI_BACKEND_FALLBACK: "stale-backend",
-    AIWIKI_BACKEND_FALLBACK_MODEL: "stale-model",
-    AIWIKI_NVIDIA_NIM_API_KEY: "stale",
+    AIWIKI_DEEPSEEK_API_KEY: "stale",
     AIWIKI_OPENCODE_API_KEY: "stale",
   };
   clearKnownLlmEnv(env);
@@ -97,10 +95,12 @@ test("dropLegacyLlmSettings removes old unused key fields", () => {
     llmGithubToken: "gh",
     llmGithubModelsBaseUrl: "https://models",
     llmApiKey: "old",
-    llmAnthropicApiKey: "old-ant",
+    llmNvidiaNimApiKey: "old-nim",
+    llmOpenrouterApiKey: "old-router",
+    llmAnthropicApiKey: "current-ant",
     llmOpencodeApiKey: "current",
   };
   expect(dropLegacyLlmSettings(settings)).toBe(true);
-  expect(settings).toEqual({ llmOpencodeApiKey: "current" });
+  expect(settings).toEqual({ llmAnthropicApiKey: "current-ant", llmOpencodeApiKey: "current" });
   expect(dropLegacyLlmSettings(settings)).toBe(false);
 });

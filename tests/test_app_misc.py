@@ -82,7 +82,7 @@ from aiwiki.app_state import (
 from aiwiki.app_utils import parse_frontmatter, relative_path, render_frontmatter, runtime_write_lock, strip_frontmatter
 from aiwiki.cli import main as cli_main
 from aiwiki.compile import compile_wiki as compile_wiki_owner
-from aiwiki.config import BACKEND_CODEX_CLI, BACKEND_COPILOT_CLI, LLMConfig
+from aiwiki.config import BACKEND_OPENAI_API, BACKEND_OPENCODE_API, LLMConfig
 from aiwiki.drop import _fetch_url, drop_image, drop_pdf, drop_repo, drop_url
 from aiwiki.llm import CompletionResult
 from aiwiki.runner import auto_process_once, run_ask, run_compile, run_lint, run_nightly, watch_inbox
@@ -1046,39 +1046,34 @@ class MiscFlowTests(AppFlowTestBase):
 
     def test_llm_status_defaults_to_opencode_and_reports_missing_key(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
-            with patch("aiwiki.config.shutil.which") as which_mock:
-                which_mock.side_effect = lambda name: "/usr/bin/codex" if name == "codex" else ""
-                status = LLMConfig.status_from_env()
+            status = LLMConfig.status_from_env()
         self.assertFalse(status["configured"])
         self.assertEqual(status["backend"], "")
         self.assertEqual(status["backend_requested"], "opencode-api")
-        self.assertEqual(status["available_backends"], [BACKEND_CODEX_CLI])
+        self.assertEqual(status["available_backends"], [])
         self.assertIn("Requested `opencode-api`", str(status["message"]))
 
-    def test_llm_config_uses_copilot_backend_when_explicitly_configured(self) -> None:
+    def test_llm_config_uses_openai_backend_when_explicitly_configured(self) -> None:
         env = {
-            "AIWIKI_LLM_BACKEND": "copilot-cli",
+            "AIWIKI_LLM_BACKEND": "openai-api",
             "AIWIKI_LLM_MODEL": "claude-haiku-4.5",
+            "OPENAI_API_KEY": "openai_test_key",
         }
         with patch.dict(os.environ, env, clear=True):
-            with patch("aiwiki.config.shutil.which", side_effect=lambda name: "/usr/bin/copilot" if name == "copilot" else ""):
-                config = LLMConfig.from_env()
-        self.assertEqual(config.backend, BACKEND_COPILOT_CLI)
+            config = LLMConfig.from_env()
+        self.assertEqual(config.backend, BACKEND_OPENAI_API)
         self.assertEqual(config.model, "claude-haiku-4.5")
 
-    def test_llm_status_marks_claude_image_analysis_as_unsupported(self) -> None:
+    def test_llm_status_marks_removed_claude_cli_as_unconfigured(self) -> None:
         with patch.dict(os.environ, {"AIWIKI_LLM_BACKEND": "claude-cli"}, clear=True):
-            with patch("aiwiki.config.shutil.which") as which_mock:
-                which_mock.side_effect = lambda name: "/usr/bin/claude" if name == "claude" else ""
-                status = LLMConfig.status_from_env()
-        self.assertTrue(status["configured"])
-        self.assertEqual(status["backend"], "claude-cli")
+            status = LLMConfig.status_from_env()
+        self.assertFalse(status["configured"])
+        self.assertEqual(status["backend"], "")
         self.assertFalse(status["image_analysis_supported"])
 
     def test_llm_status_marks_opencode_text_model_image_analysis_as_unsupported(self) -> None:
         with patch.dict(os.environ, {"AIWIKI_OPENCODE_API_KEY": "opencode_test_key"}, clear=True):
-            with patch("aiwiki.config.shutil.which", return_value=""):
-                status = LLMConfig.status_from_env()
+            status = LLMConfig.status_from_env()
 
         self.assertTrue(status["configured"])
         self.assertEqual(status["backend"], "opencode-api")
@@ -1090,8 +1085,7 @@ class MiscFlowTests(AppFlowTestBase):
             {"AIWIKI_OPENCODE_API_KEY": "opencode_test_key", "AIWIKI_LLM_MODEL": "gpt-4o"},
             clear=True,
         ):
-            with patch("aiwiki.config.shutil.which", return_value=""):
-                status = LLMConfig.status_from_env()
+            status = LLMConfig.status_from_env()
 
         self.assertTrue(status["configured"])
         self.assertEqual(status["backend"], "opencode-api")
@@ -1152,9 +1146,8 @@ class MiscFlowTests(AppFlowTestBase):
         self.assertIn('s|__VAULT__|$NIGHTLY_VAULT_ROOT|g', content)
         self.assertIn("AIWIKI_WATCH_DETERMINISTIC_ONLY=1", content)
         self.assertIn("AIWIKI_NIGHTLY_DETERMINISTIC_ONLY=0", content)
-        self.assertIn("AIWIKI_NIGHTLY_FALLBACK_ENABLED=${AIWIKI_NIGHTLY_FALLBACK_ENABLED:-0}", content)
-        self.assertIn("AIWIKI_NIGHTLY_FALLBACK_BACKEND=nvidia-nim-api", content)
-        self.assertIn("AIWIKI_NIGHTLY_FALLBACK_MODEL=openai/gpt-oss-120b", content)
+        self.assertNotIn("AIWIKI_NIGHTLY_FALLBACK_BACKEND", content)
+        self.assertNotIn("AIWIKI_NIGHTLY_FALLBACK_MODEL", content)
         self.assertIn("AIWIKI_AUTONOMY_PROFILE=${AIWIKI_AUTONOMY_PROFILE:-agentic}", content)
         self.assertIn("AIWIKI_NIGHTLY_AUTO_ADOPT_L1=${AIWIKI_NIGHTLY_AUTO_ADOPT_L1:-${AUTO_ADOPT_L1:-0}}", content)
         self.assertIn("AIWIKI_NIGHTLY_AUTO_ADOPT_L3=${AIWIKI_NIGHTLY_AUTO_ADOPT_L3:-${AUTO_ADOPT_L3:-0}}", content)
@@ -1179,7 +1172,7 @@ class MiscFlowTests(AppFlowTestBase):
         self.assertIn("aiwiki-dogfood-maturity.env", content)
         self.assertIn("AIWIKI_NIGHTLY_COMPILE_LIMIT", content)
         self.assertIn("AIWIKI_LLM_MODEL=deepseek-v4-pro", content)
-        self.assertIn("AIWIKI_NIGHTLY_FALLBACK_ENV", content)
+        self.assertNotIn("AIWIKI_NIGHTLY_FALLBACK_ENV", content)
         self.assertIn("AIWIKI_DOGFOOD_MATURITY_ON_CALENDAR", content)
         self.assertIn("*-*-* 00:15:00 UTC", content)
         self.assertIn("AIWIKI_INSTALL_DOGFOOD_MATURITY=1", content)

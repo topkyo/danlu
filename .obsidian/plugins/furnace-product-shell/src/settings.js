@@ -74,25 +74,6 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
         })
       );
 
-    // ── Ask Defaults ────────────────────────────────
-    containerEl.createEl("h3", { cls: "furnace-settings-section", text: t("Ask Defaults") });
-
-    new Setting(containerEl)
-      .setName(t("Default ask format"))
-      .setDesc(t("Advanced fallback for manual Ask. Daily questions use note unless they explicitly request report-grade output."))
-      .addDropdown((dropdown) =>
-        dropdown
-          .addOption("note", "note")
-          .addOption("report", "report")
-          .addOption("slides", "slides")
-          .addOption("figure", "figure")
-          .setValue(this.plugin.settings.defaultAskFormat)
-          .onChange(async (value) => {
-            this.plugin.settings.defaultAskFormat = value;
-            await this.plugin.savePluginState();
-          })
-      );
-
     // ── LLM Configuration ──────────────────────────
     containerEl.createEl("h3", { cls: "furnace-settings-section", text: t("LLM Configuration") });
     const selectedProfile = llmProviderProfile(this.plugin.settings.llmBackend);
@@ -134,7 +115,7 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
 
     if (selectedProfile.apiKeySetting) {
       new Setting(containerEl)
-        .setName(selectedProfile.value === "nvidia-nim-api" ? t("NVIDIA NIM API key") : t("API key"))
+        .setName(t("API key"))
         .setDesc(t("Stored only in local Obsidian plugin data. Leave empty to use an environment variable already available to the launcher."))
         .addText((text) => {
           text
@@ -151,7 +132,7 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
 
     if (selectedProfile.baseUrlSetting) {
       new Setting(containerEl)
-        .setName(selectedProfile.value === "nvidia-nim-api" ? t("NVIDIA NIM base URL") : t("Base URL"))
+        .setName(t("Base URL"))
         .setDesc(t("Override the provider endpoint. Leave empty to use the provider profile default."))
         .addText((text) =>
           text

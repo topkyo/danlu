@@ -6,6 +6,14 @@ PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"
 
 export PYTHONPATH="$PROJECT_ROOT/src"
+PYTHON="${PYTHON:-}"
+if [[ -z "$PYTHON" ]]; then
+  if [[ -x "$PROJECT_ROOT/.venv/bin/python" ]]; then
+    PYTHON="$PROJECT_ROOT/.venv/bin/python"
+  else
+    PYTHON="python3"
+  fi
+fi
 
 usage() {
   cat <<'USAGE'
@@ -47,18 +55,18 @@ verify_scripts() {
   done
   for script in scripts/*.py; do
     [[ -e "$script" ]] || continue
-    python3 -m py_compile "$script"
+    "$PYTHON" -m py_compile "$script"
   done
   bash scripts/docs_consistency_check.sh
 }
 
 verify_python_static() {
-  python3 -m ruff check src tests
-  python3 -m compileall src tests >/dev/null
+  "$PYTHON" -m ruff check src tests
+  "$PYTHON" -m compileall src tests >/dev/null
 }
 
 verify_unit() {
-  python3 -m pytest tests
+  "$PYTHON" -m pytest tests
 }
 
 verify_acceptance() {
@@ -66,7 +74,7 @@ verify_acceptance() {
 }
 
 verify_cli_smoke() {
-  python3 -m aiwiki.cli --help >/dev/null
+  "$PYTHON" -m aiwiki.cli --help >/dev/null
 }
 
 verify_product_shell_static() {
@@ -133,8 +141,8 @@ case "$TARGET" in
 esac
 
 verify_python_static
-python3 -m coverage erase
-python3 -m coverage run --branch -m pytest tests
-python3 -m coverage report --skip-covered --fail-under=92
+"$PYTHON" -m coverage erase
+"$PYTHON" -m coverage run --branch -m pytest tests
+"$PYTHON" -m coverage report --skip-covered --fail-under=92
 verify_cli_smoke
 verify_acceptance

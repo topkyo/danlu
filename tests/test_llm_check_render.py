@@ -27,15 +27,22 @@ class LLMCheckRenderTests(unittest.TestCase):
         self.assertIn("timeout_seconds", status)
 
     def test_llm_status_configured_json_shape_is_stable(self) -> None:
-        with patch("shutil.which", return_value="/usr/bin/codex"):
-            with patch.dict(os.environ, {"AIWIKI_LLM_BACKEND": "codex-cli", "AIWIKI_LLM_MODEL": "gpt-5.5"}, clear=True):
-                status = llm_status()
+        with patch.dict(
+            os.environ,
+            {
+                "AIWIKI_LLM_BACKEND": "opencode-api",
+                "AIWIKI_LLM_MODEL": "gpt-4o",
+                "AIWIKI_OPENCODE_API_KEY": "opencode_test_key",
+            },
+            clear=True,
+        ):
+            status = llm_status()
 
         self.assertTrue(status["configured"])
-        self.assertEqual(status["backend"], "codex-cli")
-        self.assertEqual(status["model"], "gpt-5.5")
-        self.assertEqual(status["effective_model"], "gpt-5.5")
-        self.assertIn("codex_available", status)
+        self.assertEqual(status["backend"], "opencode-api")
+        self.assertEqual(status["model"], "gpt-4o")
+        self.assertEqual(status["effective_model"], "gpt-4o")
+        self.assertIn("opencode_api_key_present", status)
         self.assertIn("base_url", status)
 
     def test_render_human_not_configured(self) -> None:

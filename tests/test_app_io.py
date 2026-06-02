@@ -80,7 +80,7 @@ from aiwiki.app_state import (
 from aiwiki.app_utils import parse_frontmatter, render_frontmatter, runtime_write_lock, strip_frontmatter
 from aiwiki.cli import main as cli_main
 from aiwiki.compile import compile_wiki as compile_wiki_owner
-from aiwiki.config import BACKEND_CODEX_CLI, BACKEND_COPILOT_CLI, LLMConfig
+from aiwiki.config import BACKEND_OPENAI_API, BACKEND_OPENCODE_API, LLMConfig
 from aiwiki.drop import _fetch_url, drop_image, drop_pdf, drop_repo, drop_url
 from aiwiki.llm import CompletionResult
 from aiwiki.runner import auto_process_once, run_ask, run_compile, run_lint, run_nightly, watch_inbox
@@ -600,7 +600,7 @@ class IoFlowTests(AppFlowTestBase):
         self.assertNotIn("note_path", result)
         self.assertEqual((self.root / result["asset_path"]).read_bytes(), png_bytes)
         self.assertTrue(result["visual_analysis_present"])
-        self.assertEqual(result["vision_backend"], "codex-cli")
+        self.assertEqual(result["vision_backend"], "opencode-api")
         self.assertEqual(result["vision_status"], "generated")
         entry = load_manifest(self.root)["entries"][-1]
         self.assertEqual(entry["source_type"], "image-drop")
@@ -620,7 +620,7 @@ class IoFlowTests(AppFlowTestBase):
         )
         self.assertNotIn("note_path", result)
         self.assertFalse(result["visual_analysis_present"])
-        self.assertEqual(result["vision_backend"], "codex-cli")
+        self.assertEqual(result["vision_backend"], "opencode-api")
         self.assertEqual(result["vision_status"], "failed")
 
     def test_drop_repo_snapshots_local_repository(self) -> None:

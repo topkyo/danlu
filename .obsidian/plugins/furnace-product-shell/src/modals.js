@@ -59,14 +59,6 @@ class AskCommandModal extends Modal {
     questionInput.addClass("furnace-shell-code");
     const questionError = questionSetting.controlEl.createDiv({ cls: "furnace-modal-error" });
 
-    const formatSetting = new Setting(contentEl).setName(t("格式"));
-    const formatSelect = formatSetting.controlEl.createEl("select");
-    ["note", "report", "slides", "figure"].forEach((item) => {
-      const option = formatSelect.createEl("option", { text: item, value: item });
-      option.value = item;
-    });
-    formatSelect.value = "note";
-
     const protocolSetting = new Setting(contentEl).setName(t("协议"));
     const protocolSelect = protocolSetting.controlEl.createEl("select");
     protocolSelect.createEl("option", { text: t("当前协议"), value: "" });
@@ -84,11 +76,10 @@ class AskCommandModal extends Modal {
       clearInlineError(questionError);
       setSubmitLoading(btn, t("分析中…"));
       const self = this;
-      const format = String(formatSelect.value || "note");
       const protocol = String(protocolSelect.value || "").trim();
       self.close();
       self.plugin.runUiAction(function () {
-        return self.plugin.runAskCommand({ question, format, mode: "run-ask", protocol });
+        return self.plugin.runAskCommand({ question, format: "report", mode: "run-ask", protocol });
       }, t("Ask modal"));
     }.bind(this), function () { this.close(); }.bind(this));
 
@@ -107,31 +98,31 @@ class CaptureNoteModal extends Modal {
     const t = this.plugin.t.bind(this.plugin);
     contentEl.empty();
     contentEl.addClass("furnace-shell-view");
-    contentEl.createEl("h2", { text: t("记录笔记") });
-    contentEl.createDiv({ cls: "furnace-modal-help", text: t("快速记录一条笔记、会议纪要或观察，直接投入炉子的收件箱。") });
+    contentEl.createEl("h2", { text: t("投 Markdown 材料") });
+    contentEl.createDiv({ cls: "furnace-modal-help", text: t("快速投入一段 Markdown、会议纪要或观察，作为原料进入炉子的收件箱。") });
 
     const titleSetting = new Setting(contentEl).setName(t("标题"));
     titleSetting.nameEl.addClass("furnace-modal-field-optional");
     const titleInput = titleSetting.controlEl.createEl("input", { type: "text" });
-    titleInput.placeholder = t("可选笔记标题……");
+    titleInput.placeholder = t("可选材料标题……");
     titleInput.addClass("furnace-shell-code");
 
     const kindSetting = new Setting(contentEl).setName(t("类型"));
     const kindSelect = kindSetting.controlEl.createEl("select");
     [
-      ["note", "note"],
+      ["markdown", "markdown"],
       ["transcript", "transcript"],
     ].forEach(([value, label]) => {
       const option = kindSelect.createEl("option", { text: label, value });
       option.value = value;
     });
-    kindSelect.value = "note";
+    kindSelect.value = "markdown";
 
     const textSetting = new Setting(contentEl).setName(t("正文"));
     textSetting.nameEl.addClass("furnace-modal-field-required");
     const textInput = textSetting.controlEl.createEl("textarea");
     textInput.rows = 8;
-    textInput.placeholder = t("记录笔记、会议纪要或快速观察……");
+    textInput.placeholder = t("输入 Markdown、会议纪要或快速观察……");
     textInput.addClass("furnace-shell-code");
     const textError = textSetting.controlEl.createDiv({ cls: "furnace-modal-error" });
 
@@ -145,11 +136,11 @@ class CaptureNoteModal extends Modal {
       clearInlineError(textError);
       setSubmitLoading(btn, t("记录中…"));
       const title = String(titleInput.value || "").trim();
-      const kind = String(kindSelect.value || "note");
+      const kind = String(kindSelect.value || "markdown");
       self.close();
       self.plugin.runUiAction(function () {
         return self.plugin.runDropNoteCommand({ text, title, kind });
-      }, t("记录笔记"));
+      }, t("投 Markdown 材料"));
     }, function () { self.close(); });
 
     textInput.focus();
@@ -287,7 +278,7 @@ class DropUrlModal extends Modal {
     const titleSetting = new Setting(contentEl).setName(t("标题"));
     titleSetting.nameEl.addClass("furnace-modal-field-optional");
     const titleInput = titleSetting.controlEl.createEl("input", { type: "text" });
-    titleInput.placeholder = t("可选笔记标题……");
+    titleInput.placeholder = t("可选材料标题……");
     titleInput.addClass("furnace-shell-code");
 
     const self = this;
@@ -320,7 +311,8 @@ class DropFileModal extends Modal {
   }
 
   setInitialMode(value) {
-    this.initialMode = String(value || "pdf").trim() === "repo" ? "repo" : "pdf";
+    const mode = String(value || "pdf").trim();
+    this.initialMode = mode === "repo" || mode === "markdown" ? mode : "pdf";
     return this;
   }
 
@@ -342,10 +334,11 @@ class DropFileModal extends Modal {
     contentEl.createEl("h2", { text: t("投文件") });
     contentEl.createDiv({ cls: "furnace-modal-help", text: t("投一个本地文件或远程地址：PDF 原件会进入 raw/assets，Repo 会抓取代码快照。") });
 
-    const kindSetting = new Setting(contentEl).setName(t("PDF 或 Repo"));
+    const kindSetting = new Setting(contentEl).setName(t("PDF、Markdown 或 Repo"));
     const kindSelect = kindSetting.controlEl.createEl("select");
     [
       ["pdf", t("PDF")],
+      ["markdown", t("Markdown")],
       ["repo", t("Repo")],
     ].forEach(([value, label]) => {
       const option = kindSelect.createEl("option", { text: label, value });
@@ -396,9 +389,13 @@ class DropFileModal extends Modal {
 
     const syncModeState = function () {
       const mode = String(kindSelect.value || "pdf");
-      sourceInput.placeholder = mode === "repo" ? t("本地 repo 路径或远程 git URL。") : t("本地 PDF 路径或 PDF URL。");
-      pickerInput.accept = mode === "pdf" ? ".pdf,application/pdf" : "";
-      if (pickLocalButton) { pickLocalButton.buttonEl.style.display = mode === "pdf" ? "" : "none"; }
+      sourceInput.placeholder = mode === "repo"
+        ? t("本地 repo 路径或远程 git URL。")
+        : mode === "markdown"
+          ? t("本地 Markdown / txt 文件路径。")
+          : t("本地 PDF 路径或 PDF URL。");
+      pickerInput.accept = mode === "markdown" ? ".md,.markdown,.txt,text/markdown,text/plain" : mode === "pdf" ? ".pdf,application/pdf" : "";
+      if (pickLocalButton) { pickLocalButton.buttonEl.style.display = mode === "repo" ? "none" : ""; }
       maxFilesSetting.settingEl.style.display = mode === "repo" ? "" : "none";
     };
     kindSelect.addEventListener("change", syncModeState);

@@ -22,7 +22,7 @@ export AIWIKI_DOGFOOD_VAULT=/home/tim/danlu/炼丹炉
 bash scripts/backend_probe_matrix.sh
 bash scripts/investing_dogfood_preflight.sh
 # 可选：写一条 note 并 compile
-bash scripts/investing_dogfood_preflight.sh --smoke-drop-note
+bash scripts/investing_dogfood_preflight.sh --smoke-drop-markdown
 ```
 
 ## 通过标准

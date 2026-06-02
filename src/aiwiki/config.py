@@ -4,41 +4,29 @@ from __future__ import annotations
 
 import logging
 import os
-import shutil
 from dataclasses import asdict, dataclass
 from typing import Any
 
 DEFAULT_BACKEND = "opencode-api"
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com"
-DEFAULT_NVIDIA_NIM_BASE_URL = "https://integrate.api.nvidia.com/v1"
+DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 DEFAULT_OPENCODE_BASE_URL = "https://opencode.ai/zen/go/v1"
-DEFAULT_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_MAX_CONTEXT_CHARS = 24000
-DEFAULT_CODEX_MODEL = "gpt-5.5"
 DEFAULT_OPENCODE_MODEL = "deepseek-v4-pro"
-DEFAULT_NVIDIA_NIM_MODEL = "openai/gpt-oss-120b"
-DEFAULT_CODEX_REASONING_EFFORT = "medium"
+DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-pro"
 DEFAULT_OPENAI_API_MODEL = "gpt-4.1-mini"
 DEFAULT_ANTHROPIC_API_MODEL = "claude-sonnet-4-20250514"
 DEFAULT_L3_AUTO_ADOPT_MIN_EVIDENCE = 5
+BACKEND_DEEPSEEK_API = "deepseek-api"
 BACKEND_OPENCODE_API = "opencode-api"
-BACKEND_OPENROUTER_API = "openrouter-api"
 BACKEND_OPENAI_API = "openai-api"
 BACKEND_ANTHROPIC_API = "anthropic-api"
-BACKEND_CODEX_CLI = "codex-cli"
-BACKEND_NVIDIA_NIM_API = "nvidia-nim-api"
-BACKEND_COPILOT_CLI = "copilot-cli"
-BACKEND_CLAUDE_CLI = "claude-cli"
 SUPPORTED_BACKENDS = {
+    BACKEND_DEEPSEEK_API,
     BACKEND_OPENCODE_API,
-    BACKEND_OPENROUTER_API,
     BACKEND_OPENAI_API,
     BACKEND_ANTHROPIC_API,
-    BACKEND_CODEX_CLI,
-    BACKEND_NVIDIA_NIM_API,
-    BACKEND_COPILOT_CLI,
-    BACKEND_CLAUDE_CLI,
 }
 
 _logger = logging.getLogger(__name__)
@@ -66,28 +54,18 @@ class LLMConfig:
     backend_fallback_chain: tuple[str, ...] = ()
     backend_fallback_model: str = ""
     api_key: str = ""
+    deepseek_api_key: str = ""
+    deepseek_api_key_source: str = ""
     anthropic_api_key: str = ""
     opencode_api_key: str = ""
     opencode_api_key_source: str = ""
-    openrouter_api_key: str = ""
-    openrouter_api_key_source: str = ""
-    nvidia_nim_api_key: str = ""
-    nvidia_nim_api_key_source: str = ""
     base_url: str = DEFAULT_BASE_URL
+    deepseek_base_url: str = DEFAULT_DEEPSEEK_BASE_URL
     anthropic_base_url: str = DEFAULT_ANTHROPIC_BASE_URL
     opencode_base_url: str = DEFAULT_OPENCODE_BASE_URL
-    openrouter_base_url: str = DEFAULT_OPENROUTER_BASE_URL
-    nvidia_nim_base_url: str = DEFAULT_NVIDIA_NIM_BASE_URL
     timeout_seconds: int = 120
     temperature: float = 0.2
     max_context_chars: int = DEFAULT_MAX_CONTEXT_CHARS
-    codex_reasoning_effort: str = DEFAULT_CODEX_REASONING_EFFORT
-    codex_command: str = "codex"
-    copilot_command: str = "copilot"
-    claude_command: str = "claude"
-    codex_path: str = ""
-    copilot_path: str = ""
-    claude_path: str = ""
 
     @classmethod
     def from_env(cls, *, model_fallback: Any | None = None) -> "LLMConfig":
@@ -110,38 +88,17 @@ class LLMConfig:
             _resolve_model_fallback_chain(values),
         )
         effective_max_context_chars = _effective_max_context_chars(values["max_context_chars_override"])
-        if backend == BACKEND_CODEX_CLI:
-            if not values["codex_path"]:
+        if backend == BACKEND_DEEPSEEK_API:
+            if not values["deepseek_api_key"]:
                 raise RuntimeError(
-                    f"Requested backend `{BACKEND_CODEX_CLI}` but `{values['codex_command']}` is not available."
-                )
-        elif backend == BACKEND_COPILOT_CLI:
-            if not values["copilot_path"]:
-                raise RuntimeError(
-                    f"Requested backend `{BACKEND_COPILOT_CLI}` but `{values['copilot_command']}` is not available."
-                )
-        elif backend == BACKEND_CLAUDE_CLI:
-            if not values["claude_path"]:
-                raise RuntimeError(
-                    f"Requested backend `{BACKEND_CLAUDE_CLI}` but `{values['claude_command']}` is not available."
-                )
-        elif backend == BACKEND_NVIDIA_NIM_API:
-            if not values["nvidia_nim_api_key"]:
-                raise RuntimeError(
-                    "Requested backend `nvidia-nim-api` but no NVIDIA NIM key was found via "
-                    "AIWIKI_NVIDIA_NIM_API_KEY or NVIDIA_NIM_API_KEY."
+                    "Requested backend `deepseek-api` but no DeepSeek API key was found via "
+                    "AIWIKI_DEEPSEEK_API_KEY or DEEPSEEK_API_KEY."
                 )
         elif backend == BACKEND_OPENCODE_API:
             if not values["opencode_api_key"]:
                 raise RuntimeError(
                     "Requested backend `opencode-api` but no OpenCode API key was found via "
                     "AIWIKI_OPENCODE_API_KEY or AIWIKI_LLM_API_KEY."
-                )
-        elif backend == BACKEND_OPENROUTER_API:
-            if not values["openrouter_api_key"]:
-                raise RuntimeError(
-                    "Requested backend `openrouter-api` but no OpenRouter API key was found via "
-                    "AIWIKI_OPENROUTER_API_KEY."
                 )
         elif backend == BACKEND_OPENAI_API:
             if not values["api_key"]:
@@ -160,15 +117,12 @@ class LLMConfig:
 
         effective_api_key = values["api_key"]
         effective_base_url = values["base_url"]
-        if backend == BACKEND_OPENCODE_API:
+        if backend == BACKEND_DEEPSEEK_API:
+            effective_api_key = values["deepseek_api_key"]
+            effective_base_url = values["deepseek_base_url"]
+        elif backend == BACKEND_OPENCODE_API:
             effective_api_key = values["opencode_api_key"]
             effective_base_url = values["opencode_base_url"]
-        elif backend == BACKEND_OPENROUTER_API:
-            effective_api_key = values["openrouter_api_key"]
-            effective_base_url = values["openrouter_base_url"]
-        elif backend == BACKEND_NVIDIA_NIM_API:
-            effective_api_key = values["nvidia_nim_api_key"]
-            effective_base_url = values["nvidia_nim_base_url"]
 
         return cls(
             backend=backend,
@@ -179,28 +133,18 @@ class LLMConfig:
             backend_fallback_chain=(),
             backend_fallback_model="",
             api_key=effective_api_key,
+            deepseek_api_key=values["deepseek_api_key"],
+            deepseek_api_key_source=values["deepseek_api_key_source"],
             anthropic_api_key=values["anthropic_api_key"],
             opencode_api_key=values["opencode_api_key"],
             opencode_api_key_source=values["opencode_api_key_source"],
-            openrouter_api_key=values["openrouter_api_key"],
-            openrouter_api_key_source=values["openrouter_api_key_source"],
-            nvidia_nim_api_key=values["nvidia_nim_api_key"],
-            nvidia_nim_api_key_source=values["nvidia_nim_api_key_source"],
             base_url=effective_base_url,
+            deepseek_base_url=values["deepseek_base_url"],
             anthropic_base_url=values["anthropic_base_url"],
             opencode_base_url=values["opencode_base_url"],
-            openrouter_base_url=values["openrouter_base_url"],
-            nvidia_nim_base_url=values["nvidia_nim_base_url"],
             timeout_seconds=values["timeout_seconds"],
             temperature=values["temperature"],
             max_context_chars=effective_max_context_chars,
-            codex_reasoning_effort=values["codex_reasoning_effort"],
-            codex_command=values["codex_command"],
-            copilot_command=values["copilot_command"],
-            claude_command=values["claude_command"],
-            codex_path=values["codex_path"],
-            copilot_path=values["copilot_path"],
-            claude_path=values["claude_path"],
         )
 
     @classmethod
@@ -220,15 +164,12 @@ class LLMConfig:
                 _resolve_model_fallback_chain(values),
             )
             effective_max_context_chars = _effective_max_context_chars(values["max_context_chars_override"])
-            if backend == BACKEND_NVIDIA_NIM_API:
-                effective_api_key_present = bool(values["nvidia_nim_api_key"])
-                effective_base_url = values["nvidia_nim_base_url"]
+            if backend == BACKEND_DEEPSEEK_API:
+                effective_api_key_present = bool(values["deepseek_api_key"])
+                effective_base_url = values["deepseek_base_url"]
             elif backend == BACKEND_OPENCODE_API:
                 effective_api_key_present = bool(values["opencode_api_key"])
                 effective_base_url = values["opencode_base_url"]
-            elif backend == BACKEND_OPENROUTER_API:
-                effective_api_key_present = bool(values["openrouter_api_key"])
-                effective_base_url = values["openrouter_base_url"]
             elif backend == BACKEND_ANTHROPIC_API:
                 effective_api_key_present = bool(values["anthropic_api_key"])
                 effective_base_url = values["anthropic_base_url"]
@@ -258,31 +199,18 @@ class LLMConfig:
             "backend_fallback_model": "",
             "backend_fallbacks": [],
             "api_key_present": effective_api_key_present,
+            "deepseek_api_key_present": bool(values["deepseek_api_key"]),
+            "deepseek_api_key_source": values["deepseek_api_key_source"],
             "anthropic_api_key_present": bool(values["anthropic_api_key"]),
             "opencode_api_key_present": bool(values["opencode_api_key"]),
             "opencode_api_key_source": values["opencode_api_key_source"],
-            "openrouter_api_key_present": bool(values["openrouter_api_key"]),
-            "openrouter_api_key_source": values["openrouter_api_key_source"],
-            "nvidia_nim_api_key_present": bool(values["nvidia_nim_api_key"]),
-            "nvidia_nim_api_key_source": values["nvidia_nim_api_key_source"],
             "base_url": effective_base_url,
+            "deepseek_base_url": values["deepseek_base_url"],
             "anthropic_base_url": values["anthropic_base_url"],
             "opencode_base_url": values["opencode_base_url"],
-            "openrouter_base_url": values["openrouter_base_url"],
-            "nvidia_nim_base_url": values["nvidia_nim_base_url"],
             "timeout_seconds": values["timeout_seconds"],
             "temperature": values["temperature"],
             "max_context_chars": effective_max_context_chars,
-            "codex_reasoning_effort": values["codex_reasoning_effort"],
-            "codex_command": values["codex_command"],
-            "codex_available": bool(values["codex_path"]),
-            "codex_path": values["codex_path"],
-            "copilot_command": values["copilot_command"],
-            "copilot_available": bool(values["copilot_path"]),
-            "copilot_path": values["copilot_path"],
-            "claude_command": values["claude_command"],
-            "claude_available": bool(values["claude_path"]),
-            "claude_path": values["claude_path"],
             "auth_mode": _auth_mode_for_backend(backend),
             "usage_visibility": _usage_visibility_for_backend(backend),
             "usage_accounting": _usage_accounting_for_backend(backend),
@@ -294,14 +222,12 @@ class LLMConfig:
         data = asdict(self)
         if data["api_key"]:
             data["api_key"] = "***"
+        if data["deepseek_api_key"]:
+            data["deepseek_api_key"] = "***"
         if data["anthropic_api_key"]:
             data["anthropic_api_key"] = "***"
         if data["opencode_api_key"]:
             data["opencode_api_key"] = "***"
-        if data["openrouter_api_key"]:
-            data["openrouter_api_key"] = "***"
-        if data["nvidia_nim_api_key"]:
-            data["nvidia_nim_api_key"] = "***"
         return data
 
 
@@ -312,22 +238,16 @@ def _read_env() -> dict[str, Any]:
     env_backend_fallback = ""
     env_backend_fallback_model = ""
     api_key = (os.environ.get("AIWIKI_LLM_API_KEY") or os.environ.get("OPENAI_API_KEY") or "").strip()
+    deepseek_api_key, deepseek_api_key_source = _resolve_deepseek_api_key()
     opencode_api_key, opencode_api_key_source = _resolve_opencode_api_key()
-    openrouter_api_key, openrouter_api_key_source = _resolve_openrouter_api_key()
     anthropic_api_key = (
         os.environ.get("AIWIKI_ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_API_KEY") or ""
     ).strip()
-    nvidia_nim_api_key, nvidia_nim_api_key_source = _resolve_nvidia_nim_api_key()
-    nvidia_nim_base_url = (
-        os.environ.get("AIWIKI_NVIDIA_NIM_BASE_URL") or os.environ.get("NVIDIA_NIM_BASE_URL") or DEFAULT_NVIDIA_NIM_BASE_URL
+    deepseek_base_url = (
+        os.environ.get("AIWIKI_DEEPSEEK_BASE_URL") or os.environ.get("DEEPSEEK_BASE_URL") or DEFAULT_DEEPSEEK_BASE_URL
     ).rstrip("/")
     opencode_base_url = (
         os.environ.get("AIWIKI_OPENCODE_BASE_URL") or DEFAULT_OPENCODE_BASE_URL
-    ).rstrip("/")
-    openrouter_base_url = (
-        os.environ.get("AIWIKI_OPENROUTER_BASE_URL")
-        or os.environ.get("OPENROUTER_BASE_URL")
-        or DEFAULT_OPENROUTER_BASE_URL
     ).rstrip("/")
     base_url = (
         os.environ.get("AIWIKI_LLM_BASE_URL") or os.environ.get("OPENAI_BASE_URL") or DEFAULT_BASE_URL
@@ -338,16 +258,6 @@ def _read_env() -> dict[str, Any]:
     timeout_seconds = int(os.environ.get("AIWIKI_LLM_TIMEOUT", "120"))
     temperature = float(os.environ.get("AIWIKI_LLM_TEMPERATURE", "0.2"))
     max_context_chars_override = (os.environ.get("AIWIKI_LLM_MAX_CONTEXT_CHARS") or "").strip()
-    codex_reasoning_effort = (os.environ.get("AIWIKI_CODEX_REASONING_EFFORT") or DEFAULT_CODEX_REASONING_EFFORT).strip().lower()
-    codex_command = (os.environ.get("AIWIKI_CODEX_COMMAND") or "codex").strip()
-    copilot_command = (os.environ.get("AIWIKI_COPILOT_COMMAND") or "copilot").strip()
-    claude_command = (os.environ.get("AIWIKI_CLAUDE_COMMAND") or "claude").strip()
-    explicit_codex_path = (os.environ.get("AIWIKI_CODEX_PATH") or "").strip()
-    explicit_copilot_path = (os.environ.get("AIWIKI_COPILOT_PATH") or "").strip()
-    explicit_claude_path = (os.environ.get("AIWIKI_CLAUDE_PATH") or "").strip()
-    codex_path = explicit_codex_path or shutil.which(codex_command) or ""
-    copilot_path = explicit_copilot_path or shutil.which(copilot_command) or ""
-    claude_path = explicit_claude_path or shutil.which(claude_command) or ""
     require_explicit_model = (os.environ.get("AIWIKI_REQUIRE_EXPLICIT_MODEL") or "").strip() == "1"
     return {
         "requested_backend": requested_backend,
@@ -357,28 +267,18 @@ def _read_env() -> dict[str, Any]:
         "env_backend_fallback": env_backend_fallback,
         "env_backend_fallback_model": env_backend_fallback_model,
         "api_key": api_key,
+        "deepseek_api_key": deepseek_api_key,
+        "deepseek_api_key_source": deepseek_api_key_source,
         "opencode_api_key": opencode_api_key,
         "opencode_api_key_source": opencode_api_key_source,
-        "openrouter_api_key": openrouter_api_key,
-        "openrouter_api_key_source": openrouter_api_key_source,
         "anthropic_api_key": anthropic_api_key,
-        "nvidia_nim_api_key": nvidia_nim_api_key,
-        "nvidia_nim_api_key_source": nvidia_nim_api_key_source,
-        "nvidia_nim_base_url": nvidia_nim_base_url,
+        "deepseek_base_url": deepseek_base_url,
         "opencode_base_url": opencode_base_url,
-        "openrouter_base_url": openrouter_base_url,
         "base_url": base_url,
         "anthropic_base_url": anthropic_base_url,
         "timeout_seconds": timeout_seconds,
         "temperature": temperature,
         "max_context_chars_override": max_context_chars_override,
-        "codex_reasoning_effort": codex_reasoning_effort,
-        "codex_command": codex_command,
-        "copilot_command": copilot_command,
-        "claude_command": claude_command,
-        "codex_path": codex_path,
-        "copilot_path": copilot_path,
-        "claude_path": claude_path,
         "require_explicit_model": require_explicit_model,
     }
 
@@ -394,28 +294,12 @@ def _resolve_backend(values: dict[str, Any]) -> str:
 
 
 def _validate_requested_backend(requested: str, values: dict[str, Any]) -> str:
-    if requested == BACKEND_CODEX_CLI:
-        if not values["codex_path"]:
-            raise RuntimeError(_missing_backend_message(values))
-        return requested
-    if requested == BACKEND_COPILOT_CLI:
-        if not values["copilot_path"]:
-            raise RuntimeError(_missing_backend_message(values))
-        return requested
-    if requested == BACKEND_CLAUDE_CLI:
-        if not values["claude_path"]:
-            raise RuntimeError(_missing_backend_message(values))
-        return requested
-    if requested == BACKEND_NVIDIA_NIM_API:
-        if not values["nvidia_nim_api_key"]:
+    if requested == BACKEND_DEEPSEEK_API:
+        if not values["deepseek_api_key"]:
             raise RuntimeError(_missing_backend_message(values))
         return requested
     if requested == BACKEND_OPENCODE_API:
         if not values["opencode_api_key"]:
-            raise RuntimeError(_missing_backend_message(values))
-        return requested
-    if requested == BACKEND_OPENROUTER_API:
-        if not values["openrouter_api_key"]:
             raise RuntimeError(_missing_backend_message(values))
         return requested
     if requested == BACKEND_OPENAI_API:
@@ -433,10 +317,10 @@ def _effective_model(requested_model: str, backend: str) -> str:
     model = requested_model.strip()
     if model:
         return model
+    if backend == BACKEND_DEEPSEEK_API:
+        return DEFAULT_DEEPSEEK_MODEL
     if backend == BACKEND_OPENCODE_API:
         return DEFAULT_OPENCODE_MODEL
-    if backend == BACKEND_NVIDIA_NIM_API:
-        return DEFAULT_NVIDIA_NIM_MODEL
     if backend == BACKEND_OPENAI_API:
         return DEFAULT_OPENAI_API_MODEL
     if backend == BACKEND_ANTHROPIC_API:
@@ -469,10 +353,10 @@ def _default_model_chain(backend: str, requested_model: str = "") -> tuple[str, 
     model = str(requested_model or "").strip()
     if model:
         return (model,)
+    if backend == BACKEND_DEEPSEEK_API:
+        return (DEFAULT_DEEPSEEK_MODEL,)
     if backend == BACKEND_OPENCODE_API:
         return (DEFAULT_OPENCODE_MODEL,)
-    if backend == BACKEND_CODEX_CLI:
-        return (DEFAULT_CODEX_MODEL,)
     if backend == BACKEND_OPENAI_API:
         return (DEFAULT_OPENAI_API_MODEL,)
     if backend == BACKEND_ANTHROPIC_API:
@@ -497,18 +381,10 @@ def _backend_fallback_statuses(values: dict[str, Any], *, primary_backend: str) 
 
 
 def _static_backend_available(values: dict[str, Any], backend: str) -> tuple[bool, str]:
-    if backend == BACKEND_CODEX_CLI:
-        return (bool(values.get("codex_path")), "codex command found" if values.get("codex_path") else "codex command not found")
-    if backend == BACKEND_COPILOT_CLI:
-        return (bool(values.get("copilot_path")), "copilot command found" if values.get("copilot_path") else "copilot command not found")
-    if backend == BACKEND_CLAUDE_CLI:
-        return (bool(values.get("claude_path")), "claude command found" if values.get("claude_path") else "claude command not found")
+    if backend == BACKEND_DEEPSEEK_API:
+        return (bool(values.get("deepseek_api_key")), "deepseek api key configured" if values.get("deepseek_api_key") else "deepseek api key missing")
     if backend == BACKEND_OPENCODE_API:
         return (bool(values.get("opencode_api_key")), "opencode api key configured" if values.get("opencode_api_key") else "opencode api key missing")
-    if backend == BACKEND_OPENROUTER_API:
-        return (bool(values.get("openrouter_api_key")), "openrouter api key configured" if values.get("openrouter_api_key") else "openrouter api key missing")
-    if backend == BACKEND_NVIDIA_NIM_API:
-        return (bool(values.get("nvidia_nim_api_key")), "nvidia nim api key configured" if values.get("nvidia_nim_api_key") else "nvidia nim api key missing")
     if backend == BACKEND_OPENAI_API:
         return (bool(values.get("api_key")), "openai-compatible api key configured" if values.get("api_key") else "openai-compatible api key missing")
     if backend == BACKEND_ANTHROPIC_API:
@@ -517,12 +393,10 @@ def _static_backend_available(values: dict[str, Any], backend: str) -> tuple[boo
 
 
 def _default_model_for_backend(backend: str, values: dict[str, Any]) -> str:
+    if backend == BACKEND_DEEPSEEK_API:
+        return DEFAULT_DEEPSEEK_MODEL
     if backend == BACKEND_OPENCODE_API:
         return DEFAULT_OPENCODE_MODEL
-    if backend == BACKEND_CODEX_CLI:
-        return DEFAULT_CODEX_MODEL
-    if backend == BACKEND_NVIDIA_NIM_API:
-        return DEFAULT_NVIDIA_NIM_MODEL
     if backend == BACKEND_OPENAI_API:
         return str(values.get("model") or DEFAULT_OPENAI_API_MODEL)
     if backend == BACKEND_ANTHROPIC_API:
@@ -562,22 +436,14 @@ def _effective_max_context_chars(raw_override: str) -> int:
 
 def _available_backends(values: dict[str, Any]) -> list[str]:
     available: list[str] = []
+    if values["deepseek_api_key"]:
+        available.append(BACKEND_DEEPSEEK_API)
     if values["opencode_api_key"]:
         available.append(BACKEND_OPENCODE_API)
-    if values["nvidia_nim_api_key"]:
-        available.append(BACKEND_NVIDIA_NIM_API)
-    if values["openrouter_api_key"]:
-        available.append(BACKEND_OPENROUTER_API)
     if values["anthropic_api_key"]:
         available.append(BACKEND_ANTHROPIC_API)
     if values["api_key"]:
         available.append(BACKEND_OPENAI_API)
-    if values["codex_path"]:
-        available.append(BACKEND_CODEX_CLI)
-    if values["copilot_path"]:
-        available.append(BACKEND_COPILOT_CLI)
-    if values["claude_path"]:
-        available.append(BACKEND_CLAUDE_CLI)
     return available
 
 
@@ -587,22 +453,14 @@ def _missing_items(values: dict[str, Any]) -> list[str]:
     if not requested:
         missing.append("Explicit `AIWIKI_LLM_BACKEND` selection")
         return missing
-    if requested == BACKEND_CODEX_CLI and not values["codex_path"]:
-        missing.append(f"CLI command `{values['codex_command']}`")
-    elif requested == BACKEND_NVIDIA_NIM_API and not values["nvidia_nim_api_key"]:
-        missing.append("NVIDIA NIM key via AIWIKI_NVIDIA_NIM_API_KEY|NVIDIA_NIM_API_KEY")
+    if requested == BACKEND_DEEPSEEK_API and not values["deepseek_api_key"]:
+        missing.append("DeepSeek API key via AIWIKI_DEEPSEEK_API_KEY|DEEPSEEK_API_KEY")
     elif requested == BACKEND_OPENCODE_API and not values["opencode_api_key"]:
         missing.append("OpenCode API key via AIWIKI_OPENCODE_API_KEY|AIWIKI_LLM_API_KEY")
-    elif requested == BACKEND_OPENROUTER_API and not values["openrouter_api_key"]:
-        missing.append("OpenRouter API key via AIWIKI_OPENROUTER_API_KEY")
     elif requested == BACKEND_OPENAI_API and not values["api_key"]:
         missing.append("OpenAI-compatible key via AIWIKI_LLM_API_KEY|OPENAI_API_KEY")
     elif requested == BACKEND_ANTHROPIC_API and not values["anthropic_api_key"]:
         missing.append("Anthropic API key via AIWIKI_ANTHROPIC_API_KEY|ANTHROPIC_API_KEY")
-    elif requested == BACKEND_COPILOT_CLI and not values["copilot_path"]:
-        missing.append(f"CLI command `{values['copilot_command']}`")
-    elif requested == BACKEND_CLAUDE_CLI and not values["claude_path"]:
-        missing.append(f"CLI command `{values['claude_command']}`")
     return missing
 
 
@@ -617,8 +475,7 @@ def _missing_backend_message(values: dict[str, Any]) -> str:
             )
         return (
             "No LLM backend selected. "
-            "Configure one of `opencode-api|nvidia-nim-api|openrouter-api|anthropic-api|openai-api|"
-            "codex-cli|copilot-cli|claude-cli`, "
+            "Configure one of `deepseek-api|opencode-api|anthropic-api|openai-api`, "
             "then set `AIWIKI_LLM_BACKEND` explicitly."
         )
     if available:
@@ -633,38 +490,26 @@ def _missing_backend_message(values: dict[str, Any]) -> str:
 
 
 def _auth_mode_for_backend(backend: str) -> str:
-    if backend in {BACKEND_CODEX_CLI, BACKEND_COPILOT_CLI, BACKEND_CLAUDE_CLI}:
-        return "cli-session"
-    if backend in {BACKEND_OPENCODE_API, BACKEND_OPENROUTER_API, BACKEND_OPENAI_API, BACKEND_ANTHROPIC_API, BACKEND_NVIDIA_NIM_API}:
+    if backend in {BACKEND_DEEPSEEK_API, BACKEND_OPENCODE_API, BACKEND_OPENAI_API, BACKEND_ANTHROPIC_API}:
         return "api-key"
     return ""
 
 
 def _usage_visibility_for_backend(backend: str) -> str:
-    if backend in {BACKEND_CODEX_CLI, BACKEND_COPILOT_CLI, BACKEND_CLAUDE_CLI}:
-        return "opaque-cli"
-    if backend in {BACKEND_OPENCODE_API, BACKEND_OPENROUTER_API, BACKEND_OPENAI_API, BACKEND_ANTHROPIC_API, BACKEND_NVIDIA_NIM_API}:
+    if backend in {BACKEND_DEEPSEEK_API, BACKEND_OPENCODE_API, BACKEND_OPENAI_API, BACKEND_ANTHROPIC_API}:
         return "response-usage"
     return ""
 
 
 def _usage_accounting_for_backend(backend: str) -> str:
-    if backend == BACKEND_CODEX_CLI:
-        return "codex-cli-session"
-    if backend == BACKEND_COPILOT_CLI:
-        return "copilot-cli-session"
-    if backend == BACKEND_CLAUDE_CLI:
-        return "claude-cli-session"
+    if backend == BACKEND_DEEPSEEK_API:
+        return "deepseek-api"
     if backend == BACKEND_OPENCODE_API:
         return "opencode-api"
-    if backend == BACKEND_OPENROUTER_API:
-        return "openrouter-api"
     if backend == BACKEND_OPENAI_API:
         return "openai-compatible-api"
     if backend == BACKEND_ANTHROPIC_API:
         return "anthropic-api"
-    if backend == BACKEND_NVIDIA_NIM_API:
-        return "nvidia-nim-api"
     return ""
 
 
@@ -698,11 +543,9 @@ _TEXT_ONLY_MODEL_MARKERS = (
 def _backend_supports_image_analysis(backend: str, model: str = "") -> bool:
     normalized_backend = str(backend or "").strip()
     normalized_model = str(model or "").strip().lower()
-    if normalized_backend == BACKEND_CODEX_CLI:
-        return True
     if normalized_backend == BACKEND_ANTHROPIC_API:
         return bool(normalized_model and "claude" in normalized_model)
-    if normalized_backend in {BACKEND_OPENCODE_API, BACKEND_OPENROUTER_API, BACKEND_OPENAI_API, BACKEND_NVIDIA_NIM_API}:
+    if normalized_backend in {BACKEND_DEEPSEEK_API, BACKEND_OPENCODE_API, BACKEND_OPENAI_API}:
         if not normalized_model:
             return False
         if any(marker in normalized_model for marker in _TEXT_ONLY_MODEL_MARKERS):
@@ -711,8 +554,8 @@ def _backend_supports_image_analysis(backend: str, model: str = "") -> bool:
     return False
 
 
-def _resolve_nvidia_nim_api_key() -> tuple[str, str]:
-    for env_name in ("AIWIKI_NVIDIA_NIM_API_KEY", "NVIDIA_NIM_API_KEY"):
+def _resolve_deepseek_api_key() -> tuple[str, str]:
+    for env_name in ("AIWIKI_DEEPSEEK_API_KEY", "DEEPSEEK_API_KEY"):
         value = (os.environ.get(env_name) or "").strip()
         if value:
             return value, env_name
@@ -721,14 +564,6 @@ def _resolve_nvidia_nim_api_key() -> tuple[str, str]:
 
 def _resolve_opencode_api_key() -> tuple[str, str]:
     for env_name in ("AIWIKI_OPENCODE_API_KEY", "AIWIKI_LLM_API_KEY"):
-        value = (os.environ.get(env_name) or "").strip()
-        if value:
-            return value, env_name
-    return "", ""
-
-
-def _resolve_openrouter_api_key() -> tuple[str, str]:
-    for env_name in ("AIWIKI_OPENROUTER_API_KEY", "OPENROUTER_API_KEY"):
         value = (os.environ.get(env_name) or "").strip()
         if value:
             return value, env_name

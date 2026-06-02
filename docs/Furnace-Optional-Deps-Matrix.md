@@ -14,11 +14,10 @@
 
 | Backend | 要求 |
 |---------|------|
+| `deepseek-api` | `AIWIKI_DEEPSEEK_API_KEY` 或 `DEEPSEEK_API_KEY` |
 | `opencode-api` | `AIWIKI_OPENCODE_API_KEY` 或 `AIWIKI_LLM_API_KEY` |
-| `nvidia-nim-api` | env 或 `~/.aiwiki-secrets/nvidia-nim.env` 中的 NIM API key |
-| `codex-cli` | PATH 上有 `codex` 二进制 |
-| `claude-cli` | PATH 上有 `claude` 二进制 |
-| `copilot-cli` | PATH 上有 `copilot` 二进制 |
+| `openai-api` | `AIWIKI_LLM_API_KEY` 或 `OPENAI_API_KEY` |
+| `anthropic-api` | `AIWIKI_ANTHROPIC_API_KEY` 或 `ANTHROPIC_API_KEY` |
 
 ## 凭据 SoT
 

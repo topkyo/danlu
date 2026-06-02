@@ -253,7 +253,7 @@ class CLITests(unittest.TestCase):
         drop_parser = action.choices["drop"]
         drop_action = next(item for item in drop_parser._actions if getattr(item, "dest", "") == "drop_command")
         self.assertEqual(
-            {"url", "pdf", "image", "repo", "note"},
+            {"url", "pdf", "image", "repo", "markdown", "md", "note"},
             set(drop_action.choices),
         )
 
@@ -1367,23 +1367,25 @@ class CLITests(unittest.TestCase):
         self.assertEqual(drop_args.title, legacy_args.title)
         self.assertEqual(drop_args.max_files, legacy_args.max_files)
 
-    def test_drop_note_dispatch(self) -> None:
+    def test_drop_markdown_dispatch(self) -> None:
         parser = build_parser()
 
         legacy_args = parser.parse_args(["drop-note", "notes.md", "--text", "hello", "--kind", "transcript"])
-        drop_args = parser.parse_args(["drop", "note", "notes.md", "--text", "hello", "--kind", "transcript"])
+        drop_args = parser.parse_args(["drop", "markdown", "notes.md", "--text", "hello", "--kind", "transcript"])
+        md_args = parser.parse_args(["drop", "md", "notes.md", "--text", "hello", "--kind", "transcript"])
 
         self.assertEqual(drop_args.handler_command, "drop-note")
         self.assertEqual(drop_args.handler_command, legacy_args.handler_command)
+        self.assertEqual(md_args.handler_command, "drop-note")
         self.assertEqual(drop_args.source, legacy_args.source)
         self.assertEqual(drop_args.text, legacy_args.text)
         self.assertEqual(drop_args.kind, legacy_args.kind)
         self.assertFalse(drop_args.allow_sensitive)
 
-    def test_drop_note_allow_sensitive_dispatch(self) -> None:
+    def test_drop_markdown_allow_sensitive_dispatch(self) -> None:
         parser = build_parser()
 
-        args = parser.parse_args(["drop", "note", "notes.md", "--allow-sensitive"])
+        args = parser.parse_args(["drop", "markdown", "notes.md", "--allow-sensitive"])
 
         self.assertEqual(args.handler_command, "drop-note")
         self.assertTrue(args.allow_sensitive)
@@ -1555,7 +1557,7 @@ class CLITests(unittest.TestCase):
         mocked.assert_called_once_with(
             self.root,
             "what is x?",
-            "note",
+            "report",
             protocol=None,
             no_cache=False,
             load_protocol_learnings=False,
@@ -1571,7 +1573,7 @@ class CLITests(unittest.TestCase):
         mocked.assert_called_once_with(
             self.root,
             "hello",
-            "note",
+            "report",
             protocol=None,
             no_cache=False,
             load_protocol_learnings=False,
@@ -1609,20 +1611,20 @@ class CLITests(unittest.TestCase):
         self.assertEqual(_rewrite_universal_drop_argv(["--root", str(self.root)]), ["--root", str(self.root)])
         self.assertEqual(_rewrite_universal_drop_argv(["today"]), ["today"])
 
-    def test_universal_drop_md_payload_routes_to_drop_note(self) -> None:
+    def test_universal_drop_md_payload_routes_to_drop_markdown(self) -> None:
         from aiwiki.cli import _rewrite_universal_drop_argv
 
         self.assertEqual(
             _rewrite_universal_drop_argv(["drop", "inbox/raw.md"]),
-            ["drop", "note", "inbox/raw.md"],
+            ["drop", "markdown", "inbox/raw.md"],
         )
 
-    def test_universal_drop_txt_payload_routes_to_drop_note(self) -> None:
+    def test_universal_drop_txt_payload_routes_to_drop_markdown(self) -> None:
         from aiwiki.cli import _rewrite_universal_drop_argv
 
         self.assertEqual(
             _rewrite_universal_drop_argv(["drop", "./notes/x.txt"]),
-            ["drop", "note", "./notes/x.txt"],
+            ["drop", "markdown", "./notes/x.txt"],
         )
 
     def test_universal_drop_path_like_unknown_fails_loud(self) -> None:
@@ -1778,7 +1780,7 @@ class CLITests(unittest.TestCase):
                 (self.root, "What changed?", "slides"),
                 {"protocol": "research", "no_cache": True, "load_protocol_learnings": False},
             ),
-            ("ask-load-learnings", ["ask", "What changed?", "--load-learnings"], "ask_question", (self.root, "What changed?", "note"), {"protocol": None, "no_cache": False, "load_protocol_learnings": True}),
+            ("ask-load-learnings", ["ask", "What changed?", "--load-learnings"], "ask_question", (self.root, "What changed?", "report"), {"protocol": None, "no_cache": False, "load_protocol_learnings": True}),
             (
                 "run-ask",
                 ["run-ask", "What changed?", "--format", "decision-memo"],
@@ -2253,13 +2255,13 @@ class CLITests(unittest.TestCase):
         mocked.assert_called_once_with(self.root, probe_all=False, timeout_seconds=9)
         self.assertTrue(payload["probe"]["ok"])
 
-        with patch("aiwiki.cli.llm_probe", return_value={"probes": [{"backend": "codex-cli"}]}) as mocked_all:
+        with patch("aiwiki.cli.llm_probe", return_value={"probes": [{"backend": "opencode-api"}]}) as mocked_all:
             code, payload, stderr = self._run_main(["llm-check", "--probe-all", "--probe-timeout", "14"])
 
         self.assertEqual(code, 0)
         self.assertEqual(stderr, "")
         mocked_all.assert_called_once_with(self.root, probe_all=True, timeout_seconds=14)
-        self.assertEqual(payload["probes"][0]["backend"], "codex-cli")
+        self.assertEqual(payload["probes"][0]["backend"], "opencode-api")
 
     def test_alchemy_start_requires_protocol_arg(self) -> None:
         parser = build_parser()

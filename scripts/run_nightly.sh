@@ -19,11 +19,6 @@ COMPILE_LIMIT="${AIWIKI_NIGHTLY_COMPILE_LIMIT:-5}"
 DETERMINISTIC_ONLY="${AIWIKI_NIGHTLY_DETERMINISTIC_ONLY:-0}"
 REQUIRE_LLM="${AIWIKI_NIGHTLY_REQUIRE_LLM:-0}"
 NO_SEMANTIC_LINT="${AIWIKI_NIGHTLY_NO_SEMANTIC_LINT:-0}"
-FALLBACK_ENABLED="${AIWIKI_NIGHTLY_FALLBACK_ENABLED:-0}"
-FALLBACK_BACKEND="${AIWIKI_NIGHTLY_FALLBACK_BACKEND:-nvidia-nim-api}"
-FALLBACK_MODEL="${AIWIKI_NIGHTLY_FALLBACK_MODEL:-openai/gpt-oss-120b}"
-FALLBACK_ENV="${AIWIKI_NIGHTLY_FALLBACK_ENV:-$HOME/.aiwiki-secrets/nvidia.env}"
-FALLBACK_MODEL_CHAIN="${AIWIKI_NIGHTLY_FALLBACK_MODEL_FALLBACK:-}"
 
 log() {
   printf '[aiwiki-nightly] %s\n' "$*" >&2
@@ -52,13 +47,6 @@ run_deterministic_nightly() {
   exec python3 -m aiwiki.cli "${ARGS[@]}"
 }
 
-fallback_enabled() {
-  case "$FALLBACK_ENABLED" in
-    0|false|False|FALSE|no|No|NO|off|Off|OFF) return 1 ;;
-    *) return 0 ;;
-  esac
-}
-
 require_llm() {
   case "$REQUIRE_LLM" in
     1|true|True|TRUE|yes|Yes|YES|on|On|ON) return 0 ;;
@@ -66,88 +54,11 @@ require_llm() {
   esac
 }
 
-validate_fallback_env_file() {
-  local env_path="$1"
-  local mode
-  local permissions
-
-  if [[ ! -f "$env_path" || -L "$env_path" ]]; then
-    log "fallback env $env_path must be a regular non-symlink file"
-    exit 2
-  fi
-  if [[ ! -O "$env_path" ]]; then
-    log "fallback env $env_path must be owned by the current user"
-    exit 2
-  fi
-  if ! mode="$(stat -c '%a' "$env_path" 2>/dev/null)"; then
-    if ! mode="$(stat -f '%Lp' "$env_path" 2>/dev/null)"; then
-      log "fallback env $env_path permissions could not be inspected"
-      exit 2
-    fi
-  fi
-  if [[ ! "$mode" =~ ^[0-7]+$ ]]; then
-    log "fallback env $env_path permissions could not be inspected"
-    exit 2
-  fi
-  permissions=$((8#$mode))
-  if (( (permissions & 0022) != 0 )); then
-    log "fallback env $env_path must not be group/world writable"
-    exit 2
-  fi
-}
-
-load_fallback_env() {
-  if [[ -e "$FALLBACK_ENV" ]]; then
-    validate_fallback_env_file "$FALLBACK_ENV"
-    # shellcheck disable=SC1090
-    set -a
-    source "$FALLBACK_ENV"
-    set +a
-  fi
-}
-
-primary_matches_fallback() {
-  local primary_backend="${AIWIKI_LLM_BACKEND:-}"
-  local primary_model="${AIWIKI_LLM_MODEL:-}"
-  [[ "$primary_backend" == "$FALLBACK_BACKEND" && ( -z "$primary_model" || "$primary_model" == "$FALLBACK_MODEL" ) ]]
-}
-
-run_fallback_nightly() {
-  fallback_enabled || return 1
-  if primary_matches_fallback; then
-    log "fallback skipped because primary backend already matches $FALLBACK_BACKEND/$FALLBACK_MODEL"
-    return 1
-  fi
-
-  load_fallback_env
-  export AIWIKI_LLM_BACKEND="$FALLBACK_BACKEND"
-  export AIWIKI_LLM_MODEL="$FALLBACK_MODEL"
-  if [[ -n "$FALLBACK_MODEL_CHAIN" ]]; then
-    export AIWIKI_MODEL_FALLBACK="$FALLBACK_MODEL_CHAIN"
-  fi
-
-  if ! llm_configured; then
-    if require_llm; then
-      log "fallback $FALLBACK_BACKEND/$FALLBACK_MODEL is not configured"
-    else
-      log "fallback $FALLBACK_BACKEND/$FALLBACK_MODEL is not configured; falling back to deterministic nightly"
-    fi
-    return 1
-  fi
-
-  ARGS=(--root "$TARGET_ROOT")
-  append_run_nightly_args
-  log "retrying nightly with fallback $FALLBACK_BACKEND/$FALLBACK_MODEL"
-  fallback_run_attempted=1
-  python3 -m aiwiki.cli "${ARGS[@]}"
-}
-
 if [[ "$DETERMINISTIC_ONLY" == "1" ]]; then
   run_deterministic_nightly
 else
   llm_attempted=0
   llm_failure_status=2
-  fallback_run_attempted=0
   if llm_configured; then
     llm_attempted=1
     ARGS=(--root "$TARGET_ROOT")
@@ -161,15 +72,6 @@ else
     fi
   else
     log "primary LLM backend is not configured"
-  fi
-
-  if fallback_enabled; then
-    if run_fallback_nightly; then
-      exit 0
-    fi
-    if [[ "$fallback_run_attempted" == "1" ]]; then
-      llm_attempted=1
-    fi
   fi
 
   if [[ "$llm_attempted" == "1" ]]; then

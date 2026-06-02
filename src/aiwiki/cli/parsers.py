@@ -51,7 +51,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="对比 7 天前 / 30 天前 baseline（基于 .aiwiki/state/metrics-history.jsonl）",
     )
     metrics_parser.set_defaults(handler_command="metrics")
-    drop_parser = subparsers.add_parser("drop", help="炼丹炉输入端：投喂 URL / PDF / 图片 / 仓库 / 笔记 / 问题")
+    drop_parser = subparsers.add_parser("drop", help="炼丹炉输入端：投喂 URL / PDF / 图片 / 仓库 / Markdown / 问题")
     drop_subparsers = drop_parser.add_subparsers(dest="drop_command", required=True)
     _register_drop_subcommand_parsers(drop_subparsers)
     advanced_parser = subparsers.add_parser(
@@ -156,7 +156,10 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
     )
     _configure_drop_repo_parser(subparsers.add_parser("drop-repo", help="Snapshot a local or remote repo into raw/inbox."))
     _configure_drop_note_parser(
-        subparsers.add_parser("drop-note", help="Capture inline text or copy a local text file into raw/inbox without metadata wrapping.")
+        subparsers.add_parser(
+            "drop-note",
+            help="Legacy alias for capturing markdown/text into raw/inbox; prefer `drop markdown`.",
+        )
     )
 
     subparsers.add_parser("compile", help="Compile manifest entries into wiki source pages and indexes.")
@@ -345,7 +348,7 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
     run_ask_parser.add_argument(
         "--format",
         choices=("report", "decision-memo", "sop", "slides", "figure", "note"),
-        default="note",
+        default="report",
         help="Output artifact format.",
     )
     run_ask_parser.add_argument("--protocol", help="Optional protocol override for this query.")
@@ -1201,7 +1204,18 @@ def _register_drop_subcommand_parsers(subparsers: argparse._SubParsersAction) ->
     _configure_drop_repo_parser(drop_repo_parser)
     drop_repo_parser.set_defaults(handler_command="drop-repo")
 
-    drop_note_parser = subparsers.add_parser("note", help="Capture inline text or copy a local text file into raw/inbox without metadata wrapping.")
+    drop_markdown_parser = subparsers.add_parser(
+        "markdown",
+        aliases=("md",),
+        help="Capture inline markdown/text or copy a local markdown/text file into raw/inbox without metadata wrapping.",
+    )
+    _configure_drop_note_parser(drop_markdown_parser)
+    drop_markdown_parser.set_defaults(handler_command="drop-note")
+
+    drop_note_parser = subparsers.add_parser(
+        "note",
+        help="Legacy alias for `drop markdown`; preserved for old automation.",
+    )
     _configure_drop_note_parser(drop_note_parser)
     drop_note_parser.set_defaults(handler_command="drop-note")
 
@@ -1270,7 +1284,7 @@ def _configure_ask_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--format",
         choices=("report", "decision-memo", "sop", "slides", "figure", "note"),
-        default="note",
+        default="report",
         help="Output artifact format.",
     )
     parser.add_argument("--protocol", help="Optional protocol override for this query.")

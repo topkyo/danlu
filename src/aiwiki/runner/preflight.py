@@ -101,10 +101,6 @@ def preflight_check_backend_chain(root: Path, *, timeout_seconds: int = 10) -> d
     fallbacks: list[dict[str, Any]] = []
     for backend in getattr(config, "backend_fallback_chain", ()) or ():
         fallback_config = _config_for_backend(config, backend)
-        if backend == "codex-cli" and getattr(config, "backend_fallback_model", ""):
-            from dataclasses import replace
-
-            fallback_config = replace(fallback_config, model=config.backend_fallback_model)
         fallbacks.append(_probe_chain_item(fallback_config, root, timeout_seconds=timeout_seconds, role="fallback"))
     return {
         "kind": "backend-chain-preflight",

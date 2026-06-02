@@ -150,8 +150,8 @@ def test_happy_run_ask_replay(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
 
     _write_or_compare(case / "expected" / "stdout" / "01-run-ask.json", out)
     if not REFRESH:
-        assert payload["backend_requested"] == "codex-cli"
-        assert payload["backend_effective"] == "codex-cli"
+        assert payload["backend_requested"] == "opencode-api"
+        assert payload["backend_effective"] == "opencode-api"
         assert payload["model_selected"] == "stub-model"
         assert payload["model_final"] == "stub-model"
         assert payload["contract_validated"] is True
@@ -169,7 +169,7 @@ def test_happy_run_ask_replay(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     receipt = receipts[0]
     assert receipt["event"] == "run-ask"
     assert receipt["status"] == "success"
-    assert receipt["backend_effective"] == "codex-cli"
+    assert receipt["backend_effective"] == "opencode-api"
     assert receipt["model_final"] == "stub-model"
     assert receipt["response_id"] == "stub-response-id"
     assert receipt["usage"] == {"input_tokens": 10, "output_tokens": 20}
@@ -503,7 +503,7 @@ def test_backend_failure_replay(  # pragma: no cover - explicit pytest acceptanc
     receipt = receipts[0]
     assert receipt["event"] == "run-ask"
     assert receipt["status"] == "failed"
-    assert receipt["backend_effective"] == "codex-cli"
+    assert receipt["backend_effective"] == "opencode-api"
     assert receipt["model_final"] == "stub-model"
     assert "simulated backend timeout" in str(receipt.get("error", ""))
     assert receipt["fallback_used"] is True
@@ -542,7 +542,7 @@ def test_backend_failure_replay(  # pragma: no cover - explicit pytest acceptanc
 def test_universal_input_routing(  # pragma: no cover - explicit pytest acceptance gate
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """B4: bare aiwiki drop <payload> routes into the typed drop-note handler."""
+    """B4: bare aiwiki drop <payload> routes into the typed markdown handler."""
     _, vault = _copy_case_and_fix_clock_from("M6.2", "case_universal_input", tmp_path, monkeypatch)
 
     bare_source = str(vault / "inputs" / "universal-note.md")

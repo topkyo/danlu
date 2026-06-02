@@ -21,6 +21,12 @@ When the artifact's frontmatter shows `format: note`, treat it as a **note-grade
 
 When the artifact's frontmatter shows `format: report`, the filled markdown MUST contain the following 6 H2 sections, **in this exact order**, using the exact Chinese headings shown:
 
+Before writing, choose the report depth from the actual question and supplied material, without changing the file type:
+
+- Use a short report when the user asks a narrow/direct question or the evidence set is thin: keep `## 结论` brief, use the minimum required bullets, and avoid padding.
+- Use a long report when the user asks for deep analysis, comparison, synthesis, planning, or multiple source materials: expand the evidence, uncertainty, actions, and observation signals enough for review.
+- Do not create separate `note` outputs or alternate filenames; both depths are Markdown reports under the same report contract.
+
 1. `## 结论` — One-sentence direct answer to the query (max 3 lines). State your judgment clearly; do not hedge into a non-answer.
 2. `## 关键证据` — At least 3 bullets. Each bullet must include at least one `wiki/sources/*.md` citation.
 3. `## 反证与不确定性` — At least 1 bullet. If the evidence set is genuinely strong, explicitly state so (e.g. "未发现明显反证；证据集合覆盖 N 份来源，覆盖面 …") rather than fabricating a counter-point.

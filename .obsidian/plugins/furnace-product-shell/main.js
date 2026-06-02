@@ -25,6 +25,18 @@ const DEFAULT_PRODUCT_LLM_MODEL = "deepseek-v4-pro";
 
 const LLM_PROVIDER_PROFILES = [
   {
+    value: "deepseek-api",
+    label: "DeepSeek",
+    tier: "common",
+    apiKeySetting: "llmDeepseekApiKey",
+    apiKeyEnv: "AIWIKI_DEEPSEEK_API_KEY",
+    baseUrlSetting: "llmDeepseekBaseUrl",
+    baseUrlEnv: "AIWIKI_DEEPSEEK_BASE_URL",
+    defaultBaseUrl: "https://api.deepseek.com",
+    defaultModel: DEFAULT_PRODUCT_LLM_MODEL,
+    keyPlaceholder: "sk-...",
+  },
+  {
     value: "opencode-api",
     label: "OpenCode",
     tier: "common",
@@ -37,32 +49,8 @@ const LLM_PROVIDER_PROFILES = [
     keyPlaceholder: "opencode-...",
   },
   {
-    value: "nvidia-nim-api",
-    label: "NVIDIA NIM",
-    tier: "common",
-    apiKeySetting: "llmNvidiaNimApiKey",
-    apiKeyEnv: "AIWIKI_NVIDIA_NIM_API_KEY",
-    baseUrlSetting: "llmNvidiaNimBaseUrl",
-    baseUrlEnv: "AIWIKI_NVIDIA_NIM_BASE_URL",
-    defaultBaseUrl: "https://integrate.api.nvidia.com/v1",
-    defaultModel: "openai/gpt-oss-120b",
-    keyPlaceholder: "nvapi-...",
-  },
-  {
-    value: "openrouter-api",
-    label: "OpenRouter",
-    tier: "common",
-    apiKeySetting: "llmOpenrouterApiKey",
-    apiKeyEnv: "AIWIKI_OPENROUTER_API_KEY",
-    baseUrlSetting: "llmOpenrouterBaseUrl",
-    baseUrlEnv: "AIWIKI_OPENROUTER_BASE_URL",
-    defaultBaseUrl: "https://openrouter.ai/api/v1",
-    defaultModel: "",
-    keyPlaceholder: "sk-or-...",
-  },
-  {
     value: "anthropic-api",
-    label: "Anthropic",
+    label: "Claude",
     tier: "common",
     apiKeySetting: "llmAnthropicApiKey",
     apiKeyEnv: "AIWIKI_ANTHROPIC_API_KEY",
@@ -73,27 +61,9 @@ const LLM_PROVIDER_PROFILES = [
     keyPlaceholder: "sk-ant-...",
   },
   {
-    value: "codex-cli",
-    label: "Codex CLI",
-    tier: "advanced",
-    cliHint: "Run `codex login` in a terminal session visible to Obsidian.",
-  },
-  {
-    value: "copilot-cli",
-    label: "Copilot CLI",
-    tier: "advanced",
-    cliHint: "Run `copilot login`; org policy and seat availability are checked by `llm-check --probe`.",
-  },
-  {
-    value: "claude-cli",
-    label: "Claude CLI",
-    tier: "advanced",
-    cliHint: "Run `claude` login/session setup before using this backend.",
-  },
-  {
     value: "openai-api",
-    label: "Custom OpenAI-compatible",
-    tier: "advanced",
+    label: "OpenAI",
+    tier: "common",
     apiKeySetting: "llmCustomOpenaiApiKey",
     apiKeyEnv: "AIWIKI_LLM_API_KEY",
     baseUrlSetting: "llmCustomOpenaiBaseUrl",
@@ -112,14 +82,10 @@ const LLM_ENV_KEYS = [
   "AIWIKI_LLM_BACKEND",
   "AIWIKI_LLM_MODEL",
   "AIWIKI_MODEL_FALLBACK",
-  "AIWIKI_BACKEND_FALLBACK",
-  "AIWIKI_BACKEND_FALLBACK_MODEL",
+  "AIWIKI_DEEPSEEK_API_KEY",
+  "AIWIKI_DEEPSEEK_BASE_URL",
   "AIWIKI_OPENCODE_API_KEY",
   "AIWIKI_OPENCODE_BASE_URL",
-  "AIWIKI_NVIDIA_NIM_API_KEY",
-  "AIWIKI_NVIDIA_NIM_BASE_URL",
-  "AIWIKI_OPENROUTER_API_KEY",
-  "AIWIKI_OPENROUTER_BASE_URL",
   "AIWIKI_ANTHROPIC_API_KEY",
   "AIWIKI_ANTHROPIC_BASE_URL",
   "AIWIKI_LLM_API_KEY",
@@ -129,7 +95,10 @@ const LEGACY_LLM_SETTING_KEYS = [
   "llmGithubToken",
   "llmGithubModelsBaseUrl",
   "llmApiKey",
-  "llmAnthropicApiKey",
+  "llmNvidiaNimApiKey",
+  "llmNvidiaNimBaseUrl",
+  "llmOpenrouterApiKey",
+  "llmOpenrouterBaseUrl",
 ];
 
 function llmProviderProfile(value) {
@@ -226,18 +195,16 @@ const DEFAULT_PROTOCOLS = ["general", "investing", "research", "product", "ops"]
 const DEFAULT_LOCALE = "zh";
 const DEFAULT_SETTINGS = {
   launcherPath: "scripts/aiwiki-launcher.sh",
-  defaultAskFormat: "note",
+  defaultAskFormat: "report",
   recentRunsLimit: 8,
   showAdvancedCommands: false,
   locale: DEFAULT_LOCALE,
   llmBackend: "opencode-api",
   llmModel: "deepseek-v4-pro",
+  llmDeepseekApiKey: "",
+  llmDeepseekBaseUrl: "",
   llmOpencodeApiKey: "",
   llmOpencodeBaseUrl: "",
-  llmNvidiaNimApiKey: "",
-  llmNvidiaNimBaseUrl: "",
-  llmOpenrouterApiKey: "",
-  llmOpenrouterBaseUrl: "",
   llmAnthropicApiKey: "",
   llmAnthropicBaseUrl: "",
   llmCustomOpenaiApiKey: "",
@@ -261,15 +228,13 @@ const ZH_TEXT = {
   English: "英文",
   "Aiwiki launcher": "Aiwiki 启动器",
   "Vault-local or absolute launcher path. This vault may point at an external runtime root.": "vault 内相对路径或绝对 launcher 路径。这个 vault 可以指向外部 runtime root。",
-  "Default ask format": "默认 Ask 格式",
-  "Default output format for the Ask modal.": "Ask 模态框的默认输出格式。",
   "Recent runs limit": "最近运行保留数",
   "How many plugin-triggered runs to keep in the Product Shell.": "Product Shell 中保留多少条插件触发的运行记录。",
   "Show advanced commands": "显示高级命令",
   "Register diagnostics, history, Review Center, and Execution Center commands in the command palette. Reload Obsidian after changing this toggle.": "是否把诊断、历史、Review Center 与 Execution Center 命令注册到命令面板中。修改后需要重载 Obsidian。",
   "Advanced command visibility refreshes after reloading Obsidian.": "高级命令可见性会在重载 Obsidian 后刷新。",
   "LLM backend": "LLM 后端",
-  "Select the LLM provider used by run-compile / run-ask / run-nightly. Common providers are listed first; advanced entries are for local CLI sessions or custom OpenAI-compatible endpoints.": "选择 run-compile / run-ask / run-nightly 使用的 LLM provider。常用 provider 排在前面；高级项用于本地 CLI 会话或自定义 OpenAI-compatible 端点。",
+  "Select the LLM provider used by run-compile / run-ask / run-nightly. Common providers are listed first; advanced entries are for local CLI sessions or custom OpenAI-compatible endpoints.": "选择 run-compile / run-ask / run-nightly 使用的 LLM API provider。",
   "LLM model": "LLM 模型",
   "Model for the selected API provider. Empty uses that provider profile default when one exists.": "所选 API provider 的模型。留空时使用该 provider profile 的默认模型（如果有）。",
   "API key": "API Key",
@@ -277,11 +242,7 @@ const ZH_TEXT = {
   "Base URL": "Base URL",
   "Override the provider endpoint. Leave empty to use the provider profile default.": "覆盖 provider endpoint。留空则使用 provider profile 默认值。",
   "CLI session": "CLI 会话",
-  "This backend uses a local CLI login/session. API key fields are not used.": "该后端使用本地 CLI 登录/会话，不使用 API key 字段。",
-  "NVIDIA NIM API key": "NVIDIA NIM API Key",
-  "Optional key for nvidia-nim-api. Stored locally in plugin data. Empty = use AIWIKI_NVIDIA_NIM_API_KEY / NVIDIA_NIM_API_KEY.": "nvidia-nim-api 的可选 API key。本地存储于插件数据中。留空 = 使用 AIWIKI_NVIDIA_NIM_API_KEY / NVIDIA_NIM_API_KEY。",
-  "NVIDIA NIM base URL": "NVIDIA NIM Base URL",
-  "Override the NVIDIA NIM endpoint. Empty = https://integrate.api.nvidia.com/v1.": "覆盖 NVIDIA NIM 端点。留空 = https://integrate.api.nvidia.com/v1。",
+  "This backend uses a local CLI login/session. API key fields are not used.": "该后端已不再作为 Product Shell 后端使用。",
   "LLM settings saved. New runs will use the updated configuration.": "LLM 设置已保存。新的运行将使用更新后的配置。",
   "Notifications (webhook)": "通知（webhook）",
   "Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports.": "Webhook 设置仅保存在本地插件数据中。失败不会重试。通知只用于新报告。",
@@ -292,8 +253,7 @@ const ZH_TEXT = {
   "Universal input": "统一输入",
   "Universal Input": "统一输入",
   "Universal input cannot be empty.": "统一输入不能为空。",
-  "Drop URL, PDF, image, repo, note, or question...": "投网址、文件、图片，或直接提问……",
-  "投网址、文件、图片，或直接提问……": "投网址、文件、图片，或直接提问……",
+  "投网址、文件、图片，或直接提问……": "投 URL、PDF、Markdown、图片、repo，或直接提问生成报告……",
   "Ctrl+Enter 提交 · 也可拖入文件": "Ctrl+Enter 提交 · 也可拖入文件",
   "Drop file here": "把文件拖到这里",
   Submit: "提交",
@@ -350,8 +310,6 @@ const ZH_TEXT = {
   "Product Shell ask history matches the current route.": "Product Shell 的 Ask 历史与当前路由一致。",
   "Latest Product Shell ask used {latest}; current route is {current}.": "最近一次 Product Shell Ask 使用的是 {latest}；当前路由是 {current}。",
   "requested {requested} · effective {effective} · available {available}": "请求 {requested} · 生效 {effective} · 可见 {available}",
-  "Product Shell runtime can see codex-cli.": "Product Shell 当前 runtime 能看到 codex-cli。",
-  "Product Shell runtime cannot see codex-cli. GUI PATH may differ from terminal PATH.": "Product Shell 当前 runtime 看不到 codex-cli，GUI 进程的 PATH 很可能和终端不一致。",
   "No explicit LLM backend is selected. Choose one in Product Shell settings or set AIWIKI_LLM_BACKEND.": "当前没有显式选择 LLM 后端。请在 Product Shell 设置里选择，或设置 AIWIKI_LLM_BACKEND。",
   "Product Shell runtime can see the selected backend {backend}.": "Product Shell 当前 runtime 能看到所选后端 {backend}。",
   "Product Shell runtime cannot see the selected backend {backend}.": "Product Shell 当前 runtime 看不到所选后端 {backend}。",
@@ -360,10 +318,10 @@ const ZH_TEXT = {
   "launcher {launcher} · root {root}": "launcher {launcher} · 根目录 {root}",
   Fallback: "回退",
   "Ask modal": "Ask 模态框",
-  "Capture Note": "记录笔记",
+  "Capture Material": "投文字材料",
   "欢迎使用炼丹炉": "欢迎使用炼丹炉",
   投料: "投料",
-  "拖入 URL、PDF 或图片，或直接在输入框提问": "拖入 URL、PDF 或图片，或直接在输入框提问",
+  "拖入 URL、PDF 或图片，或直接在输入框提问": "拖入 URL、PDF、Markdown 或图片，或直接在输入框提问",
   等待编译: "等待编译",
   "炉子会自动处理原料，抽概念、建关联": "炉子会自动处理原料，抽概念、建关联",
   看报告: "看报告",
@@ -399,8 +357,8 @@ const ZH_TEXT = {
   "LLM Configuration": "LLM 配置",
   Notifications: "通知",
   "刷新炉子": "刷新炉子",
-  "记录笔记": "记录笔记",
-  "快速记录一条笔记、会议纪要或观察，直接投入炉子的收件箱。": "快速记录一条笔记、会议纪要或观察，直接投入炉子的收件箱。",
+  "投 Markdown 材料": "投 Markdown 材料",
+  "快速投入一段 Markdown、会议纪要或观察，作为原料进入炉子的收件箱。": "快速投入一段 Markdown、会议纪要或观察，作为原料进入炉子的收件箱。",
   "正文不能为空。": "正文不能为空。",
   "记录中…": "记录中…",
   "记录": "记录",
@@ -410,8 +368,8 @@ const ZH_TEXT = {
   "网址不能为空。": "网址不能为空。",
   "抓取中…": "抓取中…",
   "投文件": "投文件",
-  "投一个本地文件或远程地址：PDF 原件会进入 raw/assets，Repo 会抓取代码快照。": "投一个本地文件或远程地址：PDF 原件会进入 raw/assets，Repo 会抓取代码快照。",
-  "PDF 或 Repo": "PDF 或 Repo",
+  "投一个本地文件或远程地址：PDF 原件会进入 raw/assets，Repo 会抓取代码快照。": "投一个本地文件或远程地址：Markdown 进入 raw/inbox，PDF 原件进入 raw/assets，Repo 会抓取代码快照。",
+  "PDF、Markdown 或 Repo": "PDF、Markdown 或 Repo",
   "来源不能为空。": "来源不能为空。",
   "投料中…": "投料中…",
   "投图片": "投图片",
@@ -479,10 +437,10 @@ const ZH_TEXT = {
   "最近执行事件": "最近执行事件",
   "暂无最近执行事件。": "暂无最近执行事件。",
   Title: "标题",
-  "Optional note title...": "可选笔记标题……",
+  "可选材料标题……": "可选材料标题……",
   Kind: "类型",
   Text: "正文",
-  "Capture a note, meeting log, or quick observation...": "记录笔记、会议纪要或快速观察……",
+  "输入 Markdown、会议纪要或快速观察……": "输入 Markdown、会议纪要或快速观察……",
   "This writes into raw/inbox through the same launcher/runtime used by CLI commands.": "这会通过与 CLI 相同的 launcher/runtime 写入 raw/inbox。",
   Capture: "记录",
   "Text cannot be empty.": "正文不能为空。",
@@ -748,7 +706,6 @@ const ZH_TEXT = {
   " | syncing": " | 同步中",
   " | running {count}": " | 运行中 {count}",
   "Command failed with exit code {code}": "命令失败，退出码 {code}",
-  "Capture note modal": "记录笔记模态框",
   "unknown error": "未知错误",
   "No plugin-triggered commands yet.": "当前还没有插件触发的命令。",
   "No shell summary recent runs are available.": "当前没有 shell summary recent runs。",
@@ -1018,16 +975,18 @@ const ZH_TEXT = {
   "Source": "来源",
   "Source path or URL": "来源路径或 URL",
   "Select local file": "选择本地文件",
-  "PDF or Repo": "PDF 或 Repo",
+  "PDF, Markdown, or Repo": "PDF、Markdown 或 Repo",
   PDF: "PDF",
+  Markdown: "Markdown",
   Repo: "Repo",
   "Local PDF path or PDF URL.": "本地 PDF 路径或 PDF URL。",
+  "Local Markdown / txt file path.": "本地 Markdown / txt 文件路径。",
   "Local repo path or remote git URL.": "本地仓库路径或远端 git URL。",
   "Local image path or image URL.": "本地图片路径或图片 URL。",
   "Repo max files": "Repo 最大文件数",
   "Skip vision analysis": "跳过视觉分析",
   "Drop this web page into raw/inbox.": "把网页抓取进 raw/inbox。",
-  "Import a PDF asset into raw/assets or a repo snapshot into raw/inbox.": "PDF 原件进 raw/assets；仓库快照进 raw/inbox。",
+  "Import a PDF asset into raw/assets or a repo snapshot into raw/inbox.": "PDF 原件进 raw/assets；Markdown / 仓库快照进 raw/inbox。",
   "Import an image asset into raw/assets.": "图片原件进 raw/assets。",
   "No nightly state yet.": "还没有 nightly 状态。",
   "Recovery command": "恢复命令",
@@ -1257,14 +1216,9 @@ function stripQuotedReportLinesForIntent(question) {
 }
 
 function inferAutoAskFormat(question, materialPaths) {
-  const text = stripQuotedReportLinesForIntent(question).toLowerCase();
-  const paths = normalizeMaterialPaths(materialPaths);
-  if (!text) {
-    return "note";
-  }
-  const explicitReportIntent = /报告|研报|深度报告|研究报告|决策备忘录|投资备忘录|完整分析|系统分析|多源对比|对比报告|证据链|引用来源|citation|citations|report|memo/.test(text);
-  const multiSourceReportIntent = paths.length > 1 && /对比|比较|综合|归纳|证据|引用|出处|研究|投资|决策/.test(text);
-  return explicitReportIntent || multiSourceReportIntent ? "report" : "note";
+  void question;
+  void materialPaths;
+  return "report";
 }
 
 function buildAutoAskQuestionLegacy(question, materialPaths) {
@@ -1295,6 +1249,7 @@ function looksLikeUniversalMaterialPayload(value) {
   if (lower.startsWith("note:") && lower.slice("note:".length).trim()) return true;
   if (lower.endsWith(".git")) return true;
   if (lower.endsWith(".pdf")) return true;
+  if ([".md", ".markdown", ".txt"].some((suffix) => lower.endsWith(suffix))) return true;
   if ([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"].some((suffix) => lower.endsWith(suffix))) return true;
   return false;
 }
@@ -1588,15 +1543,16 @@ function buildUniversalInputCommandSpec({ payload, title }) {
 }
 
 function buildAskCommandSpec({ question, format, mode, protocol }) {
-  const longRunning = mode === "run-ask" && format === "report";
+  const finalFormat = "report";
+  const longRunning = mode === "run-ask" && finalFormat === "report";
   const command = longRunning ? "run-ask-submit" : mode;
-  const args = [command, question, "--format", format];
+  const args = [command, question, "--format", finalFormat];
   if (protocol) {
     args.push("--protocol", protocol);
   }
   if (mode === "run-ask") {
     const directQuestion = String(question || "").trim();
-    const canUseDirect = format === "note"
+    const canUseDirect = false
       && !directQuestion.includes("材料路径供系统路由使用：")
       && !directQuestion.includes("本次投喂材料路径：");
     if (canUseDirect) {
@@ -1642,8 +1598,9 @@ function buildDropUrlCommandSpec({ url, title }) {
 
 function buildDropFileCommandSpec({ mode, source, title, maxFiles }) {
   const pathApi = nodePath();
-  const normalizedMode = String(mode || "pdf").trim() === "repo" ? "repo" : "pdf";
-  const args = ["drop", normalizedMode === "repo" ? "repo" : "pdf", source];
+  const rawMode = String(mode || "pdf").trim();
+  const normalizedMode = rawMode === "repo" || rawMode === "markdown" ? rawMode : "pdf";
+  const args = ["drop", normalizedMode === "repo" ? "repo" : normalizedMode === "markdown" ? "markdown" : "pdf", source];
   if (title) {
     args.push("--title", title);
   }
@@ -1676,14 +1633,14 @@ function buildDropImageCommandSpec({ source, title, noVision }) {
 }
 
 function buildDropNoteCommandSpec({ text, title, kind }) {
-  const args = ["drop", "note", "--text", text];
+  const args = ["drop", "markdown", "--text", text];
   if (title) {
     args.push("--title", title);
   }
-  args.push("--kind", kind || "note");
+  args.push("--kind", kind === "markdown" ? "note" : kind || "note");
   return {
     args,
-    labelKey: "Capture Note",
+    labelKey: "Capture Material",
     labelSubject: title || text,
     options: { refreshAfter: true },
   };
@@ -2810,14 +2767,6 @@ class AskCommandModal extends Modal {
     questionInput.addClass("furnace-shell-code");
     const questionError = questionSetting.controlEl.createDiv({ cls: "furnace-modal-error" });
 
-    const formatSetting = new Setting(contentEl).setName(t("格式"));
-    const formatSelect = formatSetting.controlEl.createEl("select");
-    ["note", "report", "slides", "figure"].forEach((item) => {
-      const option = formatSelect.createEl("option", { text: item, value: item });
-      option.value = item;
-    });
-    formatSelect.value = "note";
-
     const protocolSetting = new Setting(contentEl).setName(t("协议"));
     const protocolSelect = protocolSetting.controlEl.createEl("select");
     protocolSelect.createEl("option", { text: t("当前协议"), value: "" });
@@ -2835,11 +2784,10 @@ class AskCommandModal extends Modal {
       clearInlineError(questionError);
       setSubmitLoading(btn, t("分析中…"));
       const self = this;
-      const format = String(formatSelect.value || "note");
       const protocol = String(protocolSelect.value || "").trim();
       self.close();
       self.plugin.runUiAction(function () {
-        return self.plugin.runAskCommand({ question, format, mode: "run-ask", protocol });
+        return self.plugin.runAskCommand({ question, format: "report", mode: "run-ask", protocol });
       }, t("Ask modal"));
     }.bind(this), function () { this.close(); }.bind(this));
 
@@ -2858,31 +2806,31 @@ class CaptureNoteModal extends Modal {
     const t = this.plugin.t.bind(this.plugin);
     contentEl.empty();
     contentEl.addClass("furnace-shell-view");
-    contentEl.createEl("h2", { text: t("记录笔记") });
-    contentEl.createDiv({ cls: "furnace-modal-help", text: t("快速记录一条笔记、会议纪要或观察，直接投入炉子的收件箱。") });
+    contentEl.createEl("h2", { text: t("投 Markdown 材料") });
+    contentEl.createDiv({ cls: "furnace-modal-help", text: t("快速投入一段 Markdown、会议纪要或观察，作为原料进入炉子的收件箱。") });
 
     const titleSetting = new Setting(contentEl).setName(t("标题"));
     titleSetting.nameEl.addClass("furnace-modal-field-optional");
     const titleInput = titleSetting.controlEl.createEl("input", { type: "text" });
-    titleInput.placeholder = t("可选笔记标题……");
+    titleInput.placeholder = t("可选材料标题……");
     titleInput.addClass("furnace-shell-code");
 
     const kindSetting = new Setting(contentEl).setName(t("类型"));
     const kindSelect = kindSetting.controlEl.createEl("select");
     [
-      ["note", "note"],
+      ["markdown", "markdown"],
       ["transcript", "transcript"],
     ].forEach(([value, label]) => {
       const option = kindSelect.createEl("option", { text: label, value });
       option.value = value;
     });
-    kindSelect.value = "note";
+    kindSelect.value = "markdown";
 
     const textSetting = new Setting(contentEl).setName(t("正文"));
     textSetting.nameEl.addClass("furnace-modal-field-required");
     const textInput = textSetting.controlEl.createEl("textarea");
     textInput.rows = 8;
-    textInput.placeholder = t("记录笔记、会议纪要或快速观察……");
+    textInput.placeholder = t("输入 Markdown、会议纪要或快速观察……");
     textInput.addClass("furnace-shell-code");
     const textError = textSetting.controlEl.createDiv({ cls: "furnace-modal-error" });
 
@@ -2896,11 +2844,11 @@ class CaptureNoteModal extends Modal {
       clearInlineError(textError);
       setSubmitLoading(btn, t("记录中…"));
       const title = String(titleInput.value || "").trim();
-      const kind = String(kindSelect.value || "note");
+      const kind = String(kindSelect.value || "markdown");
       self.close();
       self.plugin.runUiAction(function () {
         return self.plugin.runDropNoteCommand({ text, title, kind });
-      }, t("记录笔记"));
+      }, t("投 Markdown 材料"));
     }, function () { self.close(); });
 
     textInput.focus();
@@ -3038,7 +2986,7 @@ class DropUrlModal extends Modal {
     const titleSetting = new Setting(contentEl).setName(t("标题"));
     titleSetting.nameEl.addClass("furnace-modal-field-optional");
     const titleInput = titleSetting.controlEl.createEl("input", { type: "text" });
-    titleInput.placeholder = t("可选笔记标题……");
+    titleInput.placeholder = t("可选材料标题……");
     titleInput.addClass("furnace-shell-code");
 
     const self = this;
@@ -3071,7 +3019,8 @@ class DropFileModal extends Modal {
   }
 
   setInitialMode(value) {
-    this.initialMode = String(value || "pdf").trim() === "repo" ? "repo" : "pdf";
+    const mode = String(value || "pdf").trim();
+    this.initialMode = mode === "repo" || mode === "markdown" ? mode : "pdf";
     return this;
   }
 
@@ -3093,10 +3042,11 @@ class DropFileModal extends Modal {
     contentEl.createEl("h2", { text: t("投文件") });
     contentEl.createDiv({ cls: "furnace-modal-help", text: t("投一个本地文件或远程地址：PDF 原件会进入 raw/assets，Repo 会抓取代码快照。") });
 
-    const kindSetting = new Setting(contentEl).setName(t("PDF 或 Repo"));
+    const kindSetting = new Setting(contentEl).setName(t("PDF、Markdown 或 Repo"));
     const kindSelect = kindSetting.controlEl.createEl("select");
     [
       ["pdf", t("PDF")],
+      ["markdown", t("Markdown")],
       ["repo", t("Repo")],
     ].forEach(([value, label]) => {
       const option = kindSelect.createEl("option", { text: label, value });
@@ -3147,9 +3097,13 @@ class DropFileModal extends Modal {
 
     const syncModeState = function () {
       const mode = String(kindSelect.value || "pdf");
-      sourceInput.placeholder = mode === "repo" ? t("本地 repo 路径或远程 git URL。") : t("本地 PDF 路径或 PDF URL。");
-      pickerInput.accept = mode === "pdf" ? ".pdf,application/pdf" : "";
-      if (pickLocalButton) { pickLocalButton.buttonEl.style.display = mode === "pdf" ? "" : "none"; }
+      sourceInput.placeholder = mode === "repo"
+        ? t("本地 repo 路径或远程 git URL。")
+        : mode === "markdown"
+          ? t("本地 Markdown / txt 文件路径。")
+          : t("本地 PDF 路径或 PDF URL。");
+      pickerInput.accept = mode === "markdown" ? ".md,.markdown,.txt,text/markdown,text/plain" : mode === "pdf" ? ".pdf,application/pdf" : "";
+      if (pickLocalButton) { pickLocalButton.buttonEl.style.display = mode === "repo" ? "none" : ""; }
       maxFilesSetting.settingEl.style.display = mode === "repo" ? "" : "none";
     };
     kindSelect.addEventListener("change", syncModeState);
@@ -3843,25 +3797,6 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
         })
       );
 
-    // ── Ask Defaults ────────────────────────────────
-    containerEl.createEl("h3", { cls: "furnace-settings-section", text: t("Ask Defaults") });
-
-    new Setting(containerEl)
-      .setName(t("Default ask format"))
-      .setDesc(t("Advanced fallback for manual Ask. Daily questions use note unless they explicitly request report-grade output."))
-      .addDropdown((dropdown) =>
-        dropdown
-          .addOption("note", "note")
-          .addOption("report", "report")
-          .addOption("slides", "slides")
-          .addOption("figure", "figure")
-          .setValue(this.plugin.settings.defaultAskFormat)
-          .onChange(async (value) => {
-            this.plugin.settings.defaultAskFormat = value;
-            await this.plugin.savePluginState();
-          })
-      );
-
     // ── LLM Configuration ──────────────────────────
     containerEl.createEl("h3", { cls: "furnace-settings-section", text: t("LLM Configuration") });
     const selectedProfile = llmProviderProfile(this.plugin.settings.llmBackend);
@@ -3903,7 +3838,7 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
 
     if (selectedProfile.apiKeySetting) {
       new Setting(containerEl)
-        .setName(selectedProfile.value === "nvidia-nim-api" ? t("NVIDIA NIM API key") : t("API key"))
+        .setName(t("API key"))
         .setDesc(t("Stored only in local Obsidian plugin data. Leave empty to use an environment variable already available to the launcher."))
         .addText((text) => {
           text
@@ -3920,7 +3855,7 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
 
     if (selectedProfile.baseUrlSetting) {
       new Setting(containerEl)
-        .setName(selectedProfile.value === "nvidia-nim-api" ? t("NVIDIA NIM base URL") : t("Base URL"))
+        .setName(t("Base URL"))
         .setDesc(t("Override the provider endpoint. Leave empty to use the provider profile default."))
         .addText((text) =>
           text
@@ -4103,7 +4038,7 @@ function renderMaterialPanel(plugin, container) {
   const panel = plugin.renderPanel(container, "Materials", "Push new material into the furnace.");
   const grid = panel.createDiv({ cls: "furnace-shell-material-grid" });
   [
-    { icon: "📝", label: "Capture Note", onClick: async () => new CaptureNoteModal(plugin.app, plugin).open() },
+    { icon: "📝", label: "投文字材料", onClick: async () => new CaptureNoteModal(plugin.app, plugin).open() },
     { icon: "🔗", label: "Drop URL", onClick: async () => new DropUrlModal(plugin.app, plugin).open() },
     { icon: "📄", label: "Drop File", onClick: async () => new DropFileModal(plugin.app, plugin).open() },
     { icon: "📷", label: "Drop Image", onClick: async () => new DropImageModal(plugin.app, plugin).open() },
@@ -4498,7 +4433,7 @@ function renderUniversalInput(plugin, container) {
     attr: { "aria-label": plugin.t("Universal input") }
   });
   
-  textarea.placeholder = plugin.t("投 URL / PDF / 图片 / repo，或直接问一个问题；炼丹炉会生成报告");
+  textarea.placeholder = plugin.t("投 URL / PDF / Markdown / 图片 / repo，或直接问一个问题；炼丹炉会生成报告");
   textarea.rows = 1;
 
   const submitButton = form.createEl("button", { 
@@ -8065,9 +8000,12 @@ async function loadProductShellPluginState(plugin) {
   const rawSettings = data.settings && typeof data.settings === "object" ? data.settings : {};
   plugin.rawPluginData = data;
   plugin.settings = Object.assign({}, DEFAULT_SETTINGS, rawSettings);
-  if (plugin.settings.defaultAskFormat === "report") {
-    plugin.settings.defaultAskFormat = "note";
+  if (plugin.settings.defaultAskFormat !== "report") {
+    plugin.settings.defaultAskFormat = "report";
   }
+  const selectedProfile = llmProviderProfile(plugin.settings.llmBackend);
+  const llmBackendMigrated = plugin.settings.llmBackend !== selectedProfile.value;
+  plugin.settings.llmBackend = selectedProfile.value;
   const legacyShowHtmlShortcutsMigrated = Object.prototype.hasOwnProperty.call(plugin.settings, "showHtmlShortcuts");
   delete plugin.settings.showHtmlShortcuts;
   const legacyDefaultAskModeMigrated = Object.prototype.hasOwnProperty.call(plugin.settings, "defaultAskMode");
@@ -8102,7 +8040,7 @@ async function loadProductShellPluginState(plugin) {
   const recentRuns = normalizeProductShellRecentRuns(data.recentRuns);
   plugin.pluginState = { recentRuns };
   plugin.trimRecentRuns();
-  const defaultAskFormatMigrated = rawSettings.defaultAskFormat === "report";
+  const defaultAskFormatMigrated = rawSettings.defaultAskFormat !== "report";
   if (
     feishuWebhookUrlMigrated
     || wecomWebhookUrlMigrated
@@ -8110,6 +8048,7 @@ async function loadProductShellPluginState(plugin) {
     || lastViewedTimestampMigrated
     || legacyLlmSettingsMigrated
     || defaultAskFormatMigrated
+    || llmBackendMigrated
     || legacyShowHtmlShortcutsMigrated
     || legacyDefaultAskModeMigrated
     || advancedSectionsExpandedMigrated

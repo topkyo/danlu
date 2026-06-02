@@ -38,7 +38,7 @@
 |---|---|---|---|
 | 金丹 Stage 3 复利 | DAG / wiki/derived 锚定 / counter_evidence gate 已强制；unit test 覆盖 `include_elixir_ids` 拒绝 candidate（`tests/test_alchemy.py:376`） | **acceptance fixture 缺 “新丹 derived_from 含旧丹 + wiki/derived anchor 同时通过校验 + trace 反查复利链” 的端到端** | P1 |
 | Investing protocol 端到端 | 5 protocol schema 全在；research / general / ops 有 dogfood receipt | **investing 路径从未跑通过完整 drop 研报 → judgment → distill → ask 复用金丹 → L3 改 prompt** | P1（外部 LLM 依赖） |
-| LLM backend 可用性 | P4-1 系列已落 4-state probe + receipt 注入 + preflight warning | **当前真实可跑的本地 backend 仍只有 nvidia-nim-api**；codex-cli/gpt-5.x 与 copilot-cli 在 dogfood receipt 中仍间歇失败 | P2（外部依赖） |
+| LLM backend 可用性 | P4-1 系列已落 4-state probe + receipt 注入 + preflight warning；2026-06-02 已收敛到 `deepseek-api / opencode-api / openai-api / anthropic-api` 四 API 后端 | 真实可跑性现在取决于本机 API key / 账号权限；CLI backend 与 NIM fallback 已移出当前运行面 | P2（外部依赖） |
 | PROGRESS / plans 体量 | 287KB / 6013 行 | pre-Round 1 内容（M0-M9 / M-PS / M-UX / M6 / P0~P4）与当前世代失联；`.codex/plans/active.md` 含废弃 EP-001~021 | P2 |
 | Signal 闭环“执行驱动” | observe-only / execute-mode 都已落地；scheduler 可消费 deterministic primitives | **signal severity / budget_hint 实质参与 routing 决策的密度仍低**；典型 “生产 signal 但无下游 lane apply” 局面 | P3（待 P2 dogfood 后再判断是否值得动） |
 
@@ -124,7 +124,7 @@
   - 6 步 flow（drop → compile → judgment → distill → ask 复用 → L3 改 prompt）
   - 验收：摩擦报告（receipt 引用）+ 至少 1 个 settled investing elixir + 至少 1 条 `investing` protocol L3 proposal
   - 显式记录 backend、cost、token usage
-- **不在本 session 实跑**（依赖外部 LLM backend 可用；P4-1 receipt 已经能识别 unavailable 状态，但 codex-cli quota 仍是阻塞）。
+- **不在本 session 实跑**（依赖外部 API backend 可用；P4-1 receipt 已经能识别 unavailable 状态，当前阻塞通常是 API key / 账号权限）。
 
 **Size**：S（contract）；L（实跑，多 session）。
 **依赖**：D-1；外部 LLM backend ready。
@@ -168,7 +168,7 @@ D-3 是本 session 真正写代码 / 加 fixture 的一轮；D-2 / D-4 是文档
 
 - 真实投资研报 PDF 多份 dogfood（用户提供）
 - 多周自然运行验证 review_after expiration 触发 drift
-- copilot-cli rate limit 重置后再测能否进 fallback 池
+- 配置可用 API key 后重跑 `llm-check --probe`，再实测 report / nightly 路径
 
 ---
 

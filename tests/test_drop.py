@@ -644,10 +644,10 @@ class DropTests(unittest.TestCase):
         self.assertEqual(_jpeg_dimensions(jpeg), (3, 2))
         self.assertEqual(_image_dimensions(jpeg), (3, 2))
 
-        bad_client = type("ConfigHolder", (), {"backend": "copilot-cli", "model": "gpt-5.5"})()
+        bad_client = type("ConfigHolder", (), {"backend": "opencode-api", "model": "deepseek-v4-pro"})()
         with patch("aiwiki.drop.LLMConfig.from_env", return_value=bad_client):
             self.assertIsNone(_maybe_create_image_client(self.root))
-        good_client = type("ConfigHolder", (), {"backend": "codex-cli", "model": "gpt-5.5"})()
+        good_client = type("ConfigHolder", (), {"backend": "opencode-api", "model": "gpt-4o"})()
         with patch("aiwiki.drop.LLMConfig.from_env", return_value=good_client):
             with patch("aiwiki.drop.create_backend_client", return_value="client") as factory:
                 self.assertEqual(_maybe_create_image_client(self.root), "client")

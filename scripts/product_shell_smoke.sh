@@ -123,9 +123,9 @@ run_json "ask" ask "$ASK_QUERY" --format report
 run_json "run-ask" run-ask "$RUN_ASK_QUERY" --format report
 
 if [[ "$WITH_NOTE_WRITE" == "1" ]]; then
-  run_json "drop note" drop note --title "$DROP_TITLE" --text "$DROP_TEXT" --kind note
+  run_json "drop markdown" drop markdown --title "$DROP_TITLE" --text "$DROP_TEXT" --kind note
 else
-  echo "[smoke] drop note skipped (pass --with-note-write to include write-path validation)"
+  echo "[smoke] drop markdown skipped (pass --with-note-write to include write-path validation)"
 fi
 
 echo "[smoke] Product Shell smoke passed for $ROOT"

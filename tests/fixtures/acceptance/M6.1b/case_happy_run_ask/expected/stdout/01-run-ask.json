@@ -1,7 +1,7 @@
 {
   "active_corpus_id": "general-deterministic-source-a-b78c37f7",
-  "backend_effective": "codex-cli",
-  "backend_requested": "codex-cli",
+  "backend_effective": "opencode-api",
+  "backend_requested": "opencode-api",
   "contract_validated": true,
   "delivery_mode": "llm-success",
   "fallback_command": "",

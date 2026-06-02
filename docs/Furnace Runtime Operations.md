@@ -1,5 +1,5 @@
 ---
-title: "炼丹炉运行机制与 Fallback 操作手册"
+title: "炼丹炉运行机制与 LLM 后端操作手册"
 kind: "ops-runbook"
 status: "active"
 owner: "tim"
@@ -15,7 +15,7 @@ related_docs:
 本文档回答三个问题：
 1. **炼丹炉是不是"自动一直在跑"？** — 是；机制见 §1
 2. **它怎么跑？** — `systemd --user` 或 macOS `launchd` watcher + nightly timer + 显式 LLM-backed worker 入口（§2 / §3）
-3. **当主 backend 不可用时，nightly 怎么显式开启 NV NIM fallback？** — §5 操作手册
+3. **LLM backend 不可用时应该怎么处理？** — §5 操作手册
 
 ---
 
@@ -121,15 +121,9 @@ if AIWIKI_NIGHTLY_DETERMINISTIC_ONLY == 1:
     aiwiki nightly                          ← deterministic only
 elif LLM 已 configured:
     aiwiki run-nightly --compile-limit 5    ← primary LLM-backed full path
-    if failed and fallback enabled:
-        source AIWIKI_NIGHTLY_FALLBACK_ENV
-        AIWIKI_LLM_BACKEND=nvidia-nim-api
-        AIWIKI_LLM_MODEL=openai/gpt-oss-120b
-        aiwiki run-nightly --compile-limit 5
-    if any configured LLM run-nightly failed:
+    if configured LLM run-nightly failed:
         fail closed; do not convert to deterministic success
 else:
-    try configured fallback LLM
     if no LLM path and AIWIKI_NIGHTLY_REQUIRE_LLM == 1:
         fail without deterministic fallback
     else:
@@ -151,10 +145,7 @@ else:
 这些 env 是显式覆盖层；缺省值来自 `.aiwiki/state/autonomy-policy.json`，文件缺失或 `AIWIKI_AUTONOMY_PROFILE=agentic` 覆盖时 runtime profile 允许维护、治理、judgment review、metadata-only L3 和 heavy semantic 非核心自动化，但核心 L3 写回默认关闭。systemd installer 为防止安装即写入，把上述写入型 auto env 默认落为 `0`；operator 要无人值守写入时必须在 env 文件中显式改成 `1`。`AIWIKI_DISABLE_AUTOMATION=1` 是全局 kill switch；policy 损坏时 fail-closed。预算字段 `max_l3_apply_per_run` 与 `judgment_review_limit` 分别限制单次 nightly 的 L3 apply 数和 judgment review 数。
 - `AIWIKI_NIGHTLY_COMPILE_LIMIT=5` —— LLM enrichment 单批上限
 - `AIWIKI_NIGHTLY_NO_SEMANTIC_LINT=0` —— 是否跑 semantic lint
-- `AIWIKI_NIGHTLY_FALLBACK_ENABLED=0` —— nightly wrapper 的 operator-approved fallback 开关；默认关闭，避免隐式跨 backend routing
-- `AIWIKI_NIGHTLY_FALLBACK_BACKEND=nvidia-nim-api`
-- `AIWIKI_NIGHTLY_FALLBACK_MODEL=openai/gpt-oss-120b`
-- `AIWIKI_NIGHTLY_FALLBACK_ENV=~/.aiwiki-secrets/nvidia.env` —— repo 外凭据文件，脚本运行时 source
+- `scripts/run_nightly.sh` 不再配置跨 backend fallback；需要换模型或后端时显式设置 `AIWIKI_LLM_BACKEND` / `AIWIKI_LLM_MODEL` 后重跑
 
 ### 2.4 dogfood maturity 验证 harness（opt-in）
 
@@ -226,72 +217,54 @@ watcher 不调 LLM，那 LLM 在哪发生？三条路径：
 
 ## 4. LLM Backend 选择策略
 
-| Backend | 状态（2026-05-01 实测）| 用途 |
+| Backend | 状态 | 用途 |
 |---|---|---|
 | **opencode-api/deepseek-v4-pro** | compatible ✓ | 默认 primary（systemd env 默认） |
-| **codex-cli/gpt-5.5** | compatible ✓ | 手动 interactive route；不再作为普通 CLI/runtime 的隐藏 backend fallback |
-| **nvidia-nim-api/openai/gpt-oss-120b** | compatible ✓ | nightly operator fallback（需要 secrets file，默认关闭） |
-| nvidia-nim-api/meta/llama-3.3-70b-instruct | degraded | 输出有装饰 |
-| nvidia-nim-api/qwen / deepseek / kimi-k2.5 | unavailable | model 已 EOL 或 NIM 不支持 |
-| copilot-cli/gpt-5.4-mini | unavailable | 周限额（5/4 8:00 重置后变化） |
-| copilot-cli/auto | degraded | `●` 装饰破坏 frontmatter |
-| claude-cli | requires_credential | org policy 禁止 |
+| **deepseek-api/deepseek-v4-pro** | supported | 直接 DeepSeek API key route |
+| **openai-api/gpt-4.1-mini** | supported | OpenAI / OpenAI-compatible API route |
+| **anthropic-api/claude-sonnet-4-20250514** | supported | Claude API route |
 
-按 9+ feasibility contract，**runtime core 永不做 cross-backend 自动 routing**——普通 CLI 切 backend 必须显式（env 或 CLI flag）。唯一例外是 `scripts/run_nightly.sh` 这个 operator wrapper：它只在 nightly env 已显式启用 `AIWIKI_NIGHTLY_FALLBACK_ENABLED=1` 并配置 `AIWIKI_NIGHTLY_FALLBACK_*` 时，把失败的 unattended nightly 重试到 NV NIM，并在 systemd 日志中暴露 fallback 行为。
+按 9+ feasibility contract，**runtime core 永不做 cross-backend 自动 routing**——普通 CLI 切 backend 必须显式（env 或 CLI flag）。`scripts/run_nightly.sh` 也不再提供跨 backend fallback wrapper。
 
 ---
 
-## 5. NV NIM Fallback 操作手册（key 已就位）
+## 5. LLM API 后端操作手册
 
-### 5.1 当前 key 位置
+### 5.1 凭据位置
 
 ```text
-~/.aiwiki-secrets/nvidia.env       ← mode 600，父目录 700，repo 外，永不入 git
+~/.aiwiki-secrets/<provider>.env   ← mode 600，父目录 700，repo 外，永不入 git
 内容（脱敏示例）：
-  export AIWIKI_NVIDIA_NIM_API_KEY="nvapi-...your-key..."
+  export AIWIKI_DEEPSEEK_API_KEY="sk-...your-key..."
 ```
 
 > **凭据安全规范**：见 README §"认证说明" 与 AGENTS.md。本文档不写明文 key。
 
-### 5.2 临时切到 NV 跑一条命令
+### 5.2 临时切到 DeepSeek 跑一条命令
 
 ```bash
-source ~/.aiwiki-secrets/nvidia.env
-AIWIKI_LLM_BACKEND=nvidia-nim-api \
-AIWIKI_LLM_MODEL=openai/gpt-oss-120b \
+source ~/.aiwiki-secrets/deepseek.env
+AIWIKI_LLM_BACKEND=deepseek-api \
+AIWIKI_LLM_MODEL=deepseek-v4-pro \
 PYTHONPATH=src \
-python3 -m aiwiki.cli --root "$AIWIKI_VAULT" run-ask "..." --format report
+python3 -m aiwiki.cli --root "$AIWIKI_VAULT" run-ask "..."
 ```
 
-### 5.3 临时切到 NV 跑 run-compile（推荐 + paths 显式过滤）
+### 5.3 临时切到 DeepSeek 跑 run-compile（推荐 + paths 显式过滤）
 
 ```bash
-source ~/.aiwiki-secrets/nvidia.env
-AIWIKI_LLM_BACKEND=nvidia-nim-api \
-AIWIKI_LLM_MODEL=openai/gpt-oss-120b \
+source ~/.aiwiki-secrets/deepseek.env
+AIWIKI_LLM_BACKEND=deepseek-api \
+AIWIKI_LLM_MODEL=deepseek-v4-pro \
 PYTHONPATH=src \
 python3 -m aiwiki.cli --root "$AIWIKI_VAULT" run-compile \
   --paths "discovered-20260501001505-http-v20250903-1" \
   --limit 1
 ```
 
-### 5.4 systemd nightly 显式开启 NV 备用
+### 5.4 systemd nightly 后端选择
 
-`scripts/install_user_service.sh` 必须以 `AIWIKI_VAULT=/path/to/vault` 运行，不会默认使用项目根目录。它会在 `~/.config/aiwiki/aiwiki-nightly.env` 中补齐 fallback 字段，但开关默认是 `0`。要启用 NV 备用，显式改为：
-
-```text
-AIWIKI_NIGHTLY_FALLBACK_ENABLED=1
-AIWIKI_NIGHTLY_FALLBACK_BACKEND=nvidia-nim-api
-AIWIKI_NIGHTLY_FALLBACK_MODEL=openai/gpt-oss-120b
-AIWIKI_NIGHTLY_FALLBACK_ENV=/home/tim/.aiwiki-secrets/nvidia.env
-```
-
-语义：
-- primary 仍是 `AIWIKI_LLM_BACKEND` / `AIWIKI_LLM_MODEL`（默认 `opencode-api/deepseek-v4-pro`）
-- primary `run-nightly` 失败后，wrapper source fallback env file，再用 `nvidia-nim-api/openai/gpt-oss-120b` 重跑一次
-- fallback key 不进入 systemd unit、不进入 repo、不进入 nightly env；只保留 repo 外 path
-- 如果 primary 或 fallback 的 configured `run-nightly` 已实际尝试并失败，wrapper 直接 fail closed；不会再跑 deterministic `aiwiki nightly` 伪造成成功
-- 只有在 primary/fallback 都未配置为可尝试的 LLM path，且 `AIWIKI_NIGHTLY_REQUIRE_LLM=0` 时，才跑 deterministic `aiwiki nightly`
+`scripts/install_user_service.sh` 必须以 `AIWIKI_VAULT=/path/to/vault` 运行，不会默认使用项目根目录。它默认写入 `opencode-api/deepseek-v4-pro`。要切换到 DeepSeek / OpenAI / Claude，直接改 `~/.config/aiwiki/aiwiki-nightly.env` 里的 `AIWIKI_LLM_BACKEND`、`AIWIKI_LLM_MODEL` 和对应 API key 环境变量。
 
 验证：
 
@@ -316,31 +289,18 @@ journalctl --user -u aiwiki-nightly.service --since "1 minute ago"
 
 恢复原则：corrupt JSON/JSONL 用 fault-injection tests 锁定；**不**默认删除历史 receipt 解决磁盘膨胀。watcher 仍 deterministic-only。
 
-### 5.5 关闭或调整 fallback
+### 5.5 后端切换
 
-关闭：
-
-```bash
-AIWIKI_NIGHTLY_FALLBACK_ENABLED=0
-```
-
-调整 fallback model：
-
-```bash
-AIWIKI_NIGHTLY_FALLBACK_MODEL=openai/gpt-oss-120b
-AIWIKI_NIGHTLY_FALLBACK_MODEL_FALLBACK=meta/llama-3.3-70b-instruct
-```
-
-不建议把 primary env 改成 NV；保持默认 primary + 显式 NV NIM fallback，更容易看清 nightly 失败来源。
+后端切换只通过显式 env 完成，不再有 wrapper fallback。支持值：`deepseek-api`、`opencode-api`、`openai-api`、`anthropic-api`。
 
 ### 5.6 Fallback chain（同 backend 内多 model 重试）
 
-NIM 上同 backend 多 model 重试用 `AIWIKI_MODEL_FALLBACK` 或 `--model-fallback`（**不**做跨 backend）：
+同 backend 多 model 重试用 `AIWIKI_MODEL_FALLBACK` 或 `--model-fallback`（**不**做跨 backend）：
 
 ```bash
-AIWIKI_LLM_BACKEND=nvidia-nim-api \
-AIWIKI_LLM_MODEL=openai/gpt-oss-120b \
-AIWIKI_MODEL_FALLBACK="meta/llama-3.3-70b-instruct" \
+AIWIKI_LLM_BACKEND=deepseek-api \
+AIWIKI_LLM_MODEL=deepseek-v4-pro \
+AIWIKI_MODEL_FALLBACK="deepseek-chat" \
 ... run-ask "..."
 ```
 

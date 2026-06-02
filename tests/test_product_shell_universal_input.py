@@ -14,7 +14,7 @@ class ProductShellUniversalInputContractTests(unittest.TestCase):
         for marker in ["renderUniversalInput", "runUniversalInputCommand", "Universal Input"]:
             self.assertIn(marker, text)
 
-        for keyword in ["URL", "PDF", "image", "repo", "note", "question"]:
+        for keyword in ["URL", "PDF", "Markdown", "repo", "question"]:
             self.assertIn(keyword, text, f"placeholder missing keyword: {keyword}")
 
         self.assertNotIn("renderDropZone", text)
@@ -45,7 +45,7 @@ class ProductShellUniversalInputContractTests(unittest.TestCase):
         self.assertIn('await plugin.runAskCommand({', text)
         self.assertIn('mode: "run-ask"', text)
         self.assertIn('format: askFormat', text)
-        self.assertIn('const canUseDirect = format === "note"', text)
+        self.assertIn("const canUseDirect = false", text)
         self.assertIn('!directQuestion.includes("材料路径供系统路由使用：")', text)
         self.assertIn('--direct', text)
         self.assertIn('--lean', text)
@@ -56,12 +56,13 @@ class ProductShellUniversalInputContractTests(unittest.TestCase):
         self.assertIn('autoAsk: Boolean(normalizedQuestion)', text)
         self.assertIn('question: normalizedQuestion', text)
 
-    def test_direct_questions_infer_note_instead_of_persisted_report(self) -> None:
+    def test_direct_questions_use_report_contract_without_format_picker(self) -> None:
         text = (PLUGIN_ROOT / "main.js").read_text(encoding="utf-8")
 
         self.assertIn("inferAutoAskFormat(normalizedQuestion, [])", text)
         self.assertNotIn('const askFormat = String(plugin.settings && plugin.settings.defaultAskFormat || "note").trim() || "note";', text)
-        self.assertIn('formatSelect.value = "note"', text)
+        self.assertNotIn("formatSelect", text)
+        self.assertIn('format: "report"', text)
 
     def test_retry_logic_preserves_auto_ask_metadata(self) -> None:
         text = (PLUGIN_ROOT / "main.js").read_text(encoding="utf-8")

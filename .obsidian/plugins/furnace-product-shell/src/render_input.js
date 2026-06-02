@@ -14,7 +14,7 @@ function renderUniversalInput(plugin, container) {
     attr: { "aria-label": plugin.t("Universal input") }
   });
   
-  textarea.placeholder = plugin.t("投 URL / PDF / 图片 / repo，或直接问一个问题；炼丹炉会生成报告");
+  textarea.placeholder = plugin.t("投 URL / PDF / Markdown / 图片 / repo，或直接问一个问题；炼丹炉会生成报告");
   textarea.rows = 1;
 
   const submitButton = form.createEl("button", { 

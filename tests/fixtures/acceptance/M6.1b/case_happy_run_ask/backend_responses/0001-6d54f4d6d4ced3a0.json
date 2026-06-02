@@ -1,5 +1,5 @@
 {
-  "backend": "codex-cli",
+  "backend": "opencode-api",
   "model": "stub-model",
   "prompt_hash": "9c7b366ae433159b",
   "response_id": "stub-response-id",

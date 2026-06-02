@@ -1,7 +1,7 @@
 """Universal-input rewrite for the aiwiki CLI.
 
 Encapsulates the rules that translate top-level `drop <payload>` invocations
-into typed subcommands (`drop url|pdf|image|repo|note`) or the `ask` command,
+into typed subcommands (`drop url|pdf|image|repo|markdown`) or the `ask` command,
 based on payload classification. See EP-001/EP-003a/EP-003c history for the
 fail-loud rejection path for ambiguous local-path-like payloads.
 """
@@ -13,7 +13,7 @@ import sys
 
 from ..input_router import UniversalRoute, classify_universal_input
 
-_DROP_TYPED_SUBCOMMANDS = {"url", "pdf", "image", "repo", "note"}
+_DROP_TYPED_SUBCOMMANDS = {"url", "pdf", "image", "repo", "markdown", "md", "note"}
 
 
 def _looks_like_local_path(value: str) -> bool:
@@ -83,7 +83,7 @@ def _rewrite_universal_drop_argv(argv: list[str] | None) -> list[str] | None:
         if _looks_like_local_path(routed_payload):
             print(
                 f"error: drop payload looks like a file path but matches no known type: {routed_payload!r}\n"
-                "hint: use 'drop note <path>' for plain-text notes, "
+                "hint: use 'drop markdown <path>' for markdown/text files, "
                 "or prefix with 'ask:' to force a question.",
                 file=sys.stderr,
             )
@@ -95,7 +95,7 @@ def _rewrite_universal_drop_argv(argv: list[str] | None) -> list[str] | None:
             UniversalRoute.PDF: "pdf",
             UniversalRoute.IMAGE: "image",
             UniversalRoute.REPO: "repo",
-            UniversalRoute.NOTE: "note",
+            UniversalRoute.NOTE: "markdown",
         }[decision.route]
         rewritten[drop_index:] = ["drop", routed_subcommand, routed_payload, *rest]
     return rewritten

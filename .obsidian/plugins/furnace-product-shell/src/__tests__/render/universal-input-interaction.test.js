@@ -282,16 +282,8 @@ const SHELL_SUMMARY_FIXTURE = {
     configured: true,
     backend: "opencode-api",
     model: "deepseek-v4-pro",
-    available_backends: ["opencode-api", "codex-cli"],
-    backend_fallbacks: [
-      {
-        backend: "codex-cli",
-        model: "gpt-5.5",
-        configured: true,
-        available: true,
-        reason: "command found",
-      },
-    ],
+    available_backends: ["opencode-api"],
+    backend_fallbacks: [],
   },
   suggested_next_actions: [],
   metrics_history_delta: { available: false },
@@ -469,7 +461,7 @@ test("plain question goes through run-ask instead of deterministic universal dro
       locale: "zh",
       defaultAskFormat: "note",
     },
-    runAskCommand: jest.fn().mockResolvedValue({ run_notes_path: "output/control/runs/ask/thinking.md", run_id: "ask-note" }),
+    runAskCommand: jest.fn().mockResolvedValue({ run_notes_path: "output/control/runs/ask/thinking.md", run_id: "ask-report" }),
   });
   const container = document.createElement("div");
 
@@ -485,28 +477,28 @@ test("plain question goes through run-ask instead of deterministic universal dro
   expect(plugin.runUniversalInputCommand).not.toHaveBeenCalled();
   expect(plugin.runAskCommand).toHaveBeenCalledWith({
     question: "问你个问题，你是什么大模型？",
-    format: "note",
+    format: "report",
     mode: "run-ask",
   });
   expect(plugin.updatePendingSubmissionRetryArgs).toHaveBeenCalledWith("pending-1", expect.objectContaining({
     kind: "auto-ask",
-    format: "note",
+    format: "report",
     runNotesPath: "output/control/runs/ask/thinking.md",
-    runId: "ask-note",
+    runId: "ask-report",
   }));
 });
 
 test("ctrl enter submits the composer through the form path", async () => {
   const context = loadRenderContext();
   const plugin = makePlugin({
-    runAskCommand: jest.fn().mockResolvedValue({ run_notes_path: "output/control/runs/ask/thinking.md", run_id: "ask-note" }),
+    runAskCommand: jest.fn().mockResolvedValue({ run_notes_path: "output/control/runs/ask/thinking.md", run_id: "ask-report" }),
   });
   const container = document.createElement("div");
 
   context.renderUniversalInput(plugin, container);
 
   const textarea = container.querySelector(".furnace-universal-input-textarea");
-  textarea.value = "请用 note 回答这个问题";
+  textarea.value = "请回答这个问题";
   const event = new KeyboardEvent("keydown", {
     key: "Enter",
     code: "Enter",
@@ -521,8 +513,8 @@ test("ctrl enter submits the composer through the form path", async () => {
   expect(event.defaultPrevented).toBe(true);
   expect(plugin.runAskCommand).toHaveBeenCalledTimes(1);
   expect(plugin.runAskCommand).toHaveBeenCalledWith({
-    question: "请用 note 回答这个问题",
-    format: "note",
+    question: "请回答这个问题",
+    format: "report",
     mode: "run-ask",
   });
   expect(plugin.markPendingSubmissionReceived).toHaveBeenCalledWith("pending-1");
@@ -559,7 +551,7 @@ test("ctrl enter keyup fallback submits once when requestSubmit is unavailable",
   expect(textarea.value).toBe("");
 });
 
-test("plain question ignores persisted report default and stays note", async () => {
+test("plain question ignores stale persisted format and stays report", async () => {
   const context = loadRenderContext();
   const plugin = makePlugin({
     settings: {
@@ -584,7 +576,7 @@ test("plain question ignores persisted report default and stays note", async () 
   expect(plugin.runUniversalInputCommand).not.toHaveBeenCalled();
   expect(plugin.runAskCommand).toHaveBeenCalledWith({
     question: "你是什么大模型？",
-    format: "note",
+    format: "report",
     mode: "run-ask",
   });
 });
@@ -878,8 +870,8 @@ test("reconcile pending report prefers run_id and stores delivery metadata", () 
         run_notes_path: "output/control/runs/ask-report-1/thinking.md",
         delivery_mode: "deterministic-fallback",
         llm_status: "timeout_or_unavailable",
-        llm_backend: "codex-cli",
-        llm_model: "gpt-5.5",
+        llm_backend: "opencode-api",
+        llm_model: "deepseek-v4-pro",
       },
     ],
     recent_receipts: [],
@@ -896,8 +888,8 @@ test("reconcile pending report prefers run_id and stores delivery metadata", () 
     runNotesPath: "output/control/runs/ask-report-1/thinking.md",
     deliveryMode: "deterministic-fallback",
     llmStatus: "timeout_or_unavailable",
-    llmBackend: "codex-cli",
-    llmModel: "gpt-5.5",
+    llmBackend: "opencode-api",
+    llmModel: "deepseek-v4-pro",
   }));
 });
 
@@ -984,7 +976,7 @@ test("shell summary fixture builds today DOM headings and furnace center keeps o
   expect(homeContainer.textContent).not.toContain("Repair Backlog");
 });
 
-test("advanced status panel renders backup LLM fallback readiness", () => {
+test("advanced status panel omits backup LLM fallback readiness when no fallback is configured", () => {
   const context = loadRenderContext();
   const container = document.createElement("div");
   const plugin = makePlugin({
@@ -997,8 +989,8 @@ test("advanced status panel renders backup LLM fallback readiness", () => {
 
   context.renderFurnaceCenter(plugin, container);
 
-  expect(container.textContent).toContain("Backup LLM route ready: 1/1");
-  expect(container.textContent).toContain("codex-cli/gpt-5.5: available");
+  expect(container.textContent).not.toContain("Backup LLM route ready");
+  expect(container.textContent).not.toContain("codex-cli");
 });
 
 test("llm-check unconfigured summary renders operable UI degradation", () => {

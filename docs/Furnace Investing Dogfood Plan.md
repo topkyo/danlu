@@ -7,7 +7,7 @@
 > - v0 (2026-04-30, 9 min, 3 demo notes, codex-cli/gpt-5.5)：dogfood vault `output/reports/dogfood-receipt-investing-v0.md`
 > - v1 (2026-05-01, +PDF + 双 backend)：dogfood vault `output/reports/dogfood-receipt-investing-v1.md`
 
-> **当前状态校准（2026-05-20）**：本文是 investing dogfood 的原始 contract + receipt index，不代表当前唯一运行口径。v2 / v2.1 后续已在 2026-05-12 跑通并写入 `PROGRESS.md`：v2 真实研报 dogfood 7/7 收官，v2.1 自动 L3 proposal 周期与 accept→apply→revert 真链路收口。当前普通 CLI/runtime 默认主路由已变为 `opencode-api/deepseek-v4-pro`，`codex-cli/gpt-5.5` 只作为显式手动 route；历史 v0/v1 backend 记录保留为当时 receipt 事实。
+> **当前状态校准（2026-06-02）**：本文是 investing dogfood 的原始 contract + receipt index，不代表当前唯一运行口径。v2 / v2.1 后续已在 2026-05-12 跑通并写入 `PROGRESS.md`：v2 真实研报 dogfood 7/7 收官，v2.1 自动 L3 proposal 周期与 accept→apply→revert 真链路收口。当前普通 CLI/runtime 默认主路由是 `opencode-api/deepseek-v4-pro`，可选后端只保留 `deepseek-api / opencode-api / openai-api / anthropic-api`；历史 v0/v1 backend 记录保留为当时 receipt 事实。
 
 ---
 
@@ -33,14 +33,14 @@
 - 输入素材类型：
   - A 股 / 美股研报 PDF
   - 公司年报 / 季报 PDF
-  - 行业访谈 / 电话会议纪要（手工 paste 到 `drop note`）
+  - 行业访谈 / 电话会议纪要（手工 paste 到 `drop markdown`）
   - 关键 URL（招股书披露、监管公告）
 - 输出资产：
   - 至少 1 个 `settled` investing elixir（含完整 provenance + DAG）
   - 至少 1 条 investing protocol L3 prompt proposal（手工 reject 也算闭环）
   - 至少 1 条 investing judgment 走完 review-page 全状态机（tentative → tracking → confirmed）
   - 完整 dogfood 摩擦报告（receipt 引用）
-- LLM backend：显式 nvidia-nim-api 或 codex-cli/gpt-5.x（视当时可用度）；不允许隐式切换
+- LLM backend：显式选择 `deepseek-api / opencode-api / openai-api / anthropic-api`；不允许隐式切换或伪装 fallback 成功
 
 ### 1.2 Out-of-Scope
 
@@ -89,7 +89,7 @@ aiwiki drop pdf /path/to/research-report-2025q4-YYY.pdf
 aiwiki drop pdf /path/to/company-annual-2024.pdf
 
 # 行业访谈纪要（paste 模式）
-aiwiki drop note --title "行业访谈：XX 行业增长动能" --text "$(< /tmp/transcript.md)"
+aiwiki drop markdown --title "行业访谈：XX 行业增长动能" --text "$(< /tmp/transcript.md)"
 
 # URL 公告
 aiwiki drop url https://example.com/announcement-2025
@@ -97,7 +97,7 @@ aiwiki drop url https://example.com/announcement-2025
 
 **摩擦记录点**：
 - F-INV-1：`drop pdf` 是否只保留 PDF 原件到 `raw/assets`，后续 compile/analysis 不把抽取文本写回 raw 原料
-- F-INV-2：`drop note` 文本超过 N 字时是否截断或异常
+- F-INV-2：`drop markdown` 文本超过 N 字时是否截断或异常
 - F-INV-3：manifest/runtime history 是否包含完整原始文件指针，raw 原料文件本身不写入 frontmatter / capture metadata
 
 ### 2.3 Compile
@@ -107,7 +107,7 @@ aiwiki drop url https://example.com/announcement-2025
 aiwiki compile
 
 # LLM enrichment（受控 worker 入口）
-AIWIKI_LLM_BACKEND=nvidia-nim-api aiwiki run-compile --limit 5
+AIWIKI_LLM_BACKEND=opencode-api aiwiki run-compile --limit 5
 
 # 检查 compile 结果
 aiwiki today
@@ -372,7 +372,7 @@ F-INV-1 ~ F-INV-19，每条：
 
 ### 8.1 v0（2026-04-30，Round 56）
 - 投料：3 条 demo investing note（NVDA Q4 thesis / 推理芯片格局 / TSMC CoWoS）
-- Backend：codex-cli/gpt-5.5（唯一 compatible）
+- Backend：历史记录为 codex-cli/gpt-5.5（当时唯一 compatible；当前已移出 runtime 支持面）
 - 产出：1 settled investing elixir + 1 confirmed judgment + 1 rejected L3 proposal
 - 19 条 F-INV-* 摩擦点首次盘点
 - Receipt：dogfood vault `output/reports/dogfood-receipt-investing-v0.md`
@@ -380,7 +380,7 @@ F-INV-1 ~ F-INV-19，每条：
 
 ### 8.2 v1（2026-05-01，Round 58–59）
 - 新增投料：1 条 Q1'26 update note + 1 条 ALERT counter-evidence note + 1 份真实中文 PDF（340KB robotics API 文档）
-- Backend：codex-cli/gpt-5.5（主）+ nvidia-nim-api/openai/gpt-oss-120b（备）双 compatible
+- Backend：历史记录为 codex-cli/gpt-5.5（主）+ nvidia-nim-api/openai/gpt-oss-120b（备）双 compatible；当前已统一到四个 API 后端
 - 新增产出：
   - **首个跨周期复利 settled elixir**（`elixir-nvda-q1-26-thesis-squeeze-risk-b157a58a` 引用 `elixir-nvda-4-thesis-invalidation-8fa6db3f`）
   - 8 条 counter-evidence cards 浮入 today（修了 silent breakage）

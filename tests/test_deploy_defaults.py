@@ -72,9 +72,11 @@ def test_run_nightly_requires_vault() -> None:
     assert "AIWIKI_VAULT" in completed.stderr
 
 
-def test_run_nightly_fallback_default_off() -> None:
+def test_run_nightly_backend_fallback_removed() -> None:
     content = (PROJECT_ROOT / "scripts" / "run_nightly.sh").read_text(encoding="utf-8")
-    assert "AIWIKI_NIGHTLY_FALLBACK_ENABLED:-0" in content
+    assert "AIWIKI_NIGHTLY_FALLBACK_ENABLED" not in content
+    assert "AIWIKI_NIGHTLY_FALLBACK_BACKEND" not in content
+    assert "AIWIKI_NIGHTLY_FALLBACK_MODEL" not in content
 
 
 def test_launchd_scripts_are_syntax_valid_and_secret_free() -> None:
@@ -380,7 +382,7 @@ def load_tests(
         test_install_user_service_auto_adopt_defaults_require_explicit_opt_in,
         test_run_watch_requires_vault,
         test_run_nightly_requires_vault,
-        test_run_nightly_fallback_default_off,
+        test_run_nightly_backend_fallback_removed,
         test_launchd_scripts_are_syntax_valid_and_secret_free,
         test_launchd_wrappers_use_vault_launcher,
         test_run_dogfood_maturity_requires_explicit_vault_and_skips_same_day,

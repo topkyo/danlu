@@ -34,7 +34,7 @@ class ProductShellEmptyStateContract(unittest.TestCase):
 
     def test_universal_input_placeholder_keywords(self) -> None:
         text = MAIN_JS.read_text(encoding="utf-8")
-        for keyword in ["URL", "PDF", "image", "repo", "note", "question"]:
+        for keyword in ["URL", "PDF", "Markdown", "image", "repo", "question"]:
             self.assertIn(keyword, text, f"universal input placeholder keyword missing: {keyword}")
 
     def test_runtime_unavailable_fallback(self) -> None:

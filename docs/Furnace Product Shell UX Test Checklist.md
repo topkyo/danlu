@@ -118,7 +118,7 @@ bash scripts/product_shell_smoke.sh --with-note-write
 
 - [ ] `aiwiki shell-status` 输出插件需要的 `shell-summary` contract。
 - [ ] `shell-summary` 包含 active protocol、today reports、review controls、recent receipts、recent raw inputs。
-- [ ] `drop note` 返回可 reconcile 的路径字段。
+- [ ] `drop markdown` 返回可 reconcile 的路径字段。
 - [ ] `drop url` 返回可 reconcile 的路径字段。
 - [ ] `drop pdf` 返回可 reconcile 的路径字段。
 - [ ] `drop image` 返回可 reconcile 的路径字段。
@@ -152,8 +152,8 @@ bash scripts/product_shell_smoke.sh --with-note-write
 
 写路径 smoke：
 
-- [ ] `drop note` 写入 raw inbox。
-- [ ] `drop note` 后 `shell-status` 能看到 recent raw input。
+- [ ] `drop markdown` 写入 raw inbox。
+- [ ] `drop markdown` 后 `shell-status` 能看到 recent raw input。
 - [ ] Product Shell pending reconcile 可命中 raw path。
 
 命令：

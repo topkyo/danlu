@@ -1,5 +1,5 @@
 {
-  "backend": "codex-cli",
+  "backend": "opencode-api",
   "failure": "simulated backend timeout",
   "model": "stub-model",
   "prompt_hash": "3c5abda47181b44f",

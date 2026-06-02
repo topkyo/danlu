@@ -67,7 +67,7 @@ related_docs:
 下列概念**对用户全部隐藏**，只对 operator / debugger / agent loop 可见：
 
 - 5 个 protocol（general / investing / research / product / ops）的内部路由
-- 4 个 backend（codex-cli / nvidia-nim-api / copilot-cli / claude-cli）的选择与切换
+- 4 个 API backend（deepseek-api / opencode-api / openai-api / anthropic-api）的选择与切换
 - 8+ phase（compile / lint / nightly / review / distill / propose / judge / aging / repair / escalation）的调度
 - candidate plane / settled plane / receipt / audit stream / planner-log / signal stream / rollback marker
 - L1 / L2 / L3 自主权边界（用户只感知"是否需要我拍板"，不感知层级编号）
@@ -157,7 +157,7 @@ related_docs:
 - **`raw/` 是唯一事实输入层**：任何派生层都不得覆盖或改写 `raw/`。
 - **Provenance 必须保留**：所有派生资产都应回溯到 `raw/` 或上游 wiki 证据。
 - **Deterministic baseline**：核心 runtime 行为不依赖 LLM；LLM 只在显式 `run-*`、可选 vision 分析或未来 LLM-backed alchemy 路径下被调用。
-- **Backend 与 model 显式手动选择**：`codex-cli / nvidia-nim-api / copilot-cli / claude-cli` 之间的切换由操作者控制，planner 不做 backend auto-routing。Model 选择同样由操作者显式控制：runtime 不在 backend 内部做隐式 model fallback chain；要换 model 必须通过显式 `--model` / `AIWIKI_LLM_MODEL` 或显式 `--model-fallback model_a,model_b` 指定。任何 backend 内部的"留空时按链尝试"策略都被视为 hidden routing，不允许默认开启。
+- **Backend 与 model 显式手动选择**：`deepseek-api / opencode-api / openai-api / anthropic-api` 之间的切换由操作者控制，planner 不做 backend auto-routing。Model 选择同样由操作者显式控制：runtime 不在 backend 内部做隐式 model fallback chain；要换 model 必须通过显式 `--model` / `AIWIKI_LLM_MODEL` 或显式 `--model-fallback model_a,model_b` 指定。任何 backend 内部的"留空时按链尝试"策略都被视为 hidden routing，不允许默认开启。
 - **Review / apply / revert / audit 闭环不破坏**：任何写回 `wiki/` 或 `prompts/` 或 `schema/policies/` 的动作都必须产生可回滚的 receipt 和 audit。
 - **Runtime 不生成语义判断/学习/提示内容**：`judge / distill / review / propose` 等 phase 的 runtime 实现只负责 deterministic 调度、scoped preview、proposal-preview artifact、managed marker、accepted block 落盘等结构性写入；语义内容（判断结论、distill summary、review verdict、prompt body）必须由 human 或显式被调用的 external model 在 proposal/accepted block 中提供。runtime 不在这些 phase 内部隐式调用 LLM 生成结论。要让 LLM 介入语义生成，必须走显式 `run-*` 或 propose-preview → human/external accept 链路，且每一步都留 receipt 和 audit。
 

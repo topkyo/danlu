@@ -81,7 +81,7 @@ from aiwiki.app_state import (
 from aiwiki.app_utils import parse_frontmatter, render_frontmatter, runtime_write_lock, strip_frontmatter
 from aiwiki.cli import main as cli_main
 from aiwiki.compile import compile_wiki as compile_wiki_owner
-from aiwiki.config import BACKEND_CODEX_CLI, BACKEND_COPILOT_CLI, LLMConfig
+from aiwiki.config import BACKEND_OPENAI_API, BACKEND_OPENCODE_API, LLMConfig
 from aiwiki.drop import _fetch_url, drop_image, drop_pdf, drop_repo, drop_url
 from aiwiki.llm import CompletionResult
 from aiwiki.runner import auto_process_once, run_ask, run_compile, run_lint, run_nightly, watch_inbox
@@ -377,8 +377,8 @@ class ShellFlowTests(AppFlowTestBase):
             'created_at: "2026-05-18T00:00:00Z"\n'
             'delivery_mode: "deterministic-fallback"\n'
             'llm_status: "timeout_or_unavailable"\n'
-            'llm_backend: "codex-cli"\n'
-            'llm_model: "gpt-5.5"\n'
+            'llm_backend: "opencode-api"\n'
+            'llm_model: "deepseek-v4-pro"\n'
             'llm_failure_reason: "timeout"\n'
             "---\n\n"
             "# Degraded report\n",
@@ -391,8 +391,8 @@ class ShellFlowTests(AppFlowTestBase):
         self.assertEqual(artifacts[0]["path"], "output/reports/degraded-report.md")
         self.assertEqual(artifacts[0]["delivery_mode"], "deterministic-fallback")
         self.assertEqual(artifacts[0]["llm_status"], "timeout_or_unavailable")
-        self.assertEqual(artifacts[0]["llm_backend"], "codex-cli")
-        self.assertEqual(artifacts[0]["llm_model"], "gpt-5.5")
+        self.assertEqual(artifacts[0]["llm_backend"], "opencode-api")
+        self.assertEqual(artifacts[0]["llm_model"], "deepseek-v4-pro")
         self.assertEqual(artifacts[0]["artifact_quality"], "degraded")
         self.assertEqual(artifacts[0]["contains_llm_placeholder"], "false")
 
@@ -488,19 +488,19 @@ class ShellFlowTests(AppFlowTestBase):
 
         report_markdown = _VALID_REPORT_BODY
 
-        with patch.dict(os.environ, {"AIWIKI_LLM_BACKEND": "codex-cli"}, clear=False):
+        with patch.dict(os.environ, {"AIWIKI_LLM_BACKEND": "opencode-api", "AIWIKI_OPENCODE_API_KEY": "opencode_test_key"}, clear=False):
             ask_result = run_ask(
                 self.root,
                 "Check shell summary llm health",
                 "report",
-                client=StubClient([report_markdown], backend="codex-cli", backend_requested="codex-cli"),
+                client=StubClient([report_markdown], backend="opencode-api", backend_requested="opencode-api"),
             )
             result = shell_status(self.root)
 
         self.assertEqual(result["latest_llm_run"]["event"], "run-ask")
         self.assertEqual(result["latest_llm_run"]["status"], "success")
-        self.assertEqual(result["latest_llm_run"]["backend_requested"], "codex-cli")
-        self.assertEqual(result["latest_llm_run"]["backend_effective"], "codex-cli")
+        self.assertEqual(result["latest_llm_run"]["backend_requested"], "opencode-api")
+        self.assertEqual(result["latest_llm_run"]["backend_effective"], "opencode-api")
         self.assertEqual(result["latest_llm_run"]["model_selected"], "stub-model")
         self.assertEqual(result["latest_llm_run"]["model_final"], "stub-model")
         self.assertTrue(result["latest_llm_run"]["contract_validated"])
@@ -510,8 +510,8 @@ class ShellFlowTests(AppFlowTestBase):
         self.assertIn("./scripts/aiwiki-launcher.sh run-ask", result["latest_llm_run"]["recovery_command"])
 
         self.assertEqual(result["llm_health"]["status"], "healthy")
-        self.assertEqual(result["llm_health"]["backend_requested"], "codex-cli")
-        self.assertEqual(result["llm_health"]["backend_effective"], "codex-cli")
+        self.assertEqual(result["llm_health"]["backend_requested"], "opencode-api")
+        self.assertEqual(result["llm_health"]["backend_effective"], "opencode-api")
         self.assertEqual(result["llm_health"]["model_selected"], "stub-model")
         self.assertEqual(result["llm_health"]["model_final"], "stub-model")
         self.assertFalse(result["llm_health"]["route_drift"])
@@ -528,7 +528,7 @@ class ShellFlowTests(AppFlowTestBase):
             "model": "deepseek-v4-pro",
             "effective_model": "deepseek-v4-pro",
             "codex_reasoning_effort": "",
-            "available_backends": ["opencode-api", "codex-cli"],
+            "available_backends": ["opencode-api", "opencode-api"],
             "image_analysis_supported": False,
             "auth_mode": "api-key",
             "usage_visibility": "visible",
@@ -536,7 +536,7 @@ class ShellFlowTests(AppFlowTestBase):
             "message": "configured",
             "backend_fallbacks": [
                 {"backend": "opencode-api", "available": True, "reason": "configured"},
-                {"backend": "codex-cli", "available": True, "reason": "fallback"},
+                {"backend": "opencode-api", "available": True, "reason": "fallback"},
             ],
         }
 
@@ -609,29 +609,28 @@ class ShellFlowTests(AppFlowTestBase):
 
         report_markdown = _VALID_REPORT_BODY
 
-        with patch.dict(os.environ, {"AIWIKI_LLM_BACKEND": "codex-cli"}, clear=False):
+        with patch.dict(os.environ, {"AIWIKI_LLM_BACKEND": "opencode-api", "AIWIKI_OPENCODE_API_KEY": "opencode_test_key"}, clear=False):
             run_ask(
                 self.root,
                 "Check llm route drift",
                 "report",
-                client=StubClient([report_markdown], backend="codex-cli", backend_requested="codex-cli"),
+                client=StubClient([report_markdown], backend="opencode-api", backend_requested="opencode-api"),
             )
 
-        with patch.dict(os.environ, {"AIWIKI_LLM_BACKEND": "copilot-cli"}, clear=False):
-            with patch("aiwiki.config.shutil.which", side_effect=lambda name: "/usr/bin/copilot" if name == "copilot" else ""):
-                result = shell_status(self.root)
+        with patch.dict(os.environ, {"AIWIKI_LLM_BACKEND": "openai-api", "OPENAI_API_KEY": "openai_test_key"}, clear=False):
+            result = shell_status(self.root)
 
         self.assertTrue(result["llm_health"]["route_drift"])
         self.assertEqual(result["llm_health"]["status"], "unknown")
-        self.assertEqual(result["llm_health"]["backend"], "copilot-cli")
-        self.assertEqual(result["llm_health"]["backend_effective"], "codex-cli")
+        self.assertEqual(result["llm_health"]["backend"], "openai-api")
+        self.assertEqual(result["llm_health"]["backend_effective"], "opencode-api")
         self.assertIn("Current route changed", result["llm_health"]["reason"])
 
     def test_shell_status_surfaces_historical_frontdoor_failure_lineage_without_recovery_fallback(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
 
-        with patch.dict(os.environ, {"AIWIKI_LLM_BACKEND": "codex-cli"}, clear=False):
+        with patch.dict(os.environ, {"AIWIKI_LLM_BACKEND": "opencode-api", "AIWIKI_OPENCODE_API_KEY": "opencode_test_key"}, clear=False):
             with patch(
                 "aiwiki.app_shell.load_llm_receipt_history",
                 return_value=[
@@ -643,8 +642,8 @@ class ShellFlowTests(AppFlowTestBase):
                         "format": "report",
                         "protocol": "general",
                         "target": "output/reports/query-frontdoor.md",
-                        "backend_requested": "codex-cli",
-                        "backend_effective": "codex-cli",
+                        "backend_requested": "opencode-api",
+                        "backend_effective": "opencode-api",
                         "model_selected": "stub-model",
                         "model_final": "stub-model",
                         "fallback_stage": "",
@@ -677,7 +676,7 @@ class ShellFlowTests(AppFlowTestBase):
         self.assertIn("fell back to deterministic ask", result["llm_health"]["reason"])
 
     def test_shell_status_marks_compile_summary_chain_fallback_as_degraded(self) -> None:
-        with patch.dict(os.environ, {"AIWIKI_LLM_BACKEND": "codex-cli"}, clear=False):
+        with patch.dict(os.environ, {"AIWIKI_LLM_BACKEND": "opencode-api", "AIWIKI_OPENCODE_API_KEY": "opencode_test_key"}, clear=False):
             with patch(
                 "aiwiki.app_shell.load_llm_receipt_history",
                 return_value=[
@@ -685,8 +684,8 @@ class ShellFlowTests(AppFlowTestBase):
                         "created_at": "2026-04-22T00:00:00+00:00",
                         "event": "run-compile-summary",
                         "status": "success",
-                        "backend_requested": "codex-cli",
-                        "backend_effective": "codex-cli",
+                        "backend_requested": "opencode-api",
+                        "backend_effective": "opencode-api",
                         "model_selected": "stub-model",
                         "model_final": "stub-model",
                         "fallback_stage": "model-chain",
@@ -709,7 +708,7 @@ class ShellFlowTests(AppFlowTestBase):
         self.assertEqual(result["llm_health"]["reason"], "LLM completed via model-chain fallback.")
 
     def test_shell_status_marks_compile_summary_skip_as_healthy(self) -> None:
-        with patch.dict(os.environ, {"AIWIKI_LLM_BACKEND": "codex-cli"}, clear=False):
+        with patch.dict(os.environ, {"AIWIKI_LLM_BACKEND": "opencode-api", "AIWIKI_OPENCODE_API_KEY": "opencode_test_key"}, clear=False):
             with patch(
                 "aiwiki.app_shell.load_llm_receipt_history",
                 return_value=[
@@ -717,8 +716,8 @@ class ShellFlowTests(AppFlowTestBase):
                         "created_at": "2026-04-22T00:00:00+00:00",
                         "event": "run-compile-summary",
                         "status": "success",
-                        "backend_requested": "codex-cli",
-                        "backend_effective": "codex-cli",
+                        "backend_requested": "opencode-api",
+                        "backend_effective": "opencode-api",
                         "model_selected": "stub-model",
                         "model_final": "stub-model",
                         "delivery_mode": "skipped",
@@ -732,7 +731,7 @@ class ShellFlowTests(AppFlowTestBase):
         self.assertEqual(result["llm_health"]["reason"], "Recent run-compile-summary skipped (no LLM invocation).")
 
     def test_shell_status_uses_prompt_profile_reason_for_fallback_chain(self) -> None:
-        with patch.dict(os.environ, {"AIWIKI_LLM_BACKEND": "codex-cli"}, clear=False):
+        with patch.dict(os.environ, {"AIWIKI_LLM_BACKEND": "opencode-api", "AIWIKI_OPENCODE_API_KEY": "opencode_test_key"}, clear=False):
             with patch(
                 "aiwiki.app_shell.load_llm_receipt_history",
                 return_value=[
@@ -740,8 +739,8 @@ class ShellFlowTests(AppFlowTestBase):
                         "created_at": "2026-04-22T00:00:00+00:00",
                         "event": "run-lint",
                         "status": "success",
-                        "backend_requested": "codex-cli",
-                        "backend_effective": "codex-cli",
+                        "backend_requested": "opencode-api",
+                        "backend_effective": "opencode-api",
                         "model_selected": "stub-model",
                         "model_final": "stub-model",
                         "fallback_stage": "prompt-profile",
@@ -764,7 +763,7 @@ class ShellFlowTests(AppFlowTestBase):
         self.assertEqual(result["llm_health"]["reason"], "LLM completed via prompt-profile retry.")
 
     def test_shell_status_uses_custom_fallback_stage_reason(self) -> None:
-        with patch.dict(os.environ, {"AIWIKI_LLM_BACKEND": "codex-cli"}, clear=False):
+        with patch.dict(os.environ, {"AIWIKI_LLM_BACKEND": "opencode-api", "AIWIKI_OPENCODE_API_KEY": "opencode_test_key"}, clear=False):
             with patch(
                 "aiwiki.app_shell.load_llm_receipt_history",
                 return_value=[
@@ -772,8 +771,8 @@ class ShellFlowTests(AppFlowTestBase):
                         "created_at": "2026-04-22T00:00:00+00:00",
                         "event": "run-compile",
                         "status": "success",
-                        "backend_requested": "codex-cli",
-                        "backend_effective": "codex-cli",
+                        "backend_requested": "opencode-api",
+                        "backend_effective": "opencode-api",
                         "model_selected": "stub-model",
                         "model_final": "stub-model",
                         "fallback_stage": "prompt-profile+model-chain",

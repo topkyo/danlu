@@ -91,7 +91,7 @@ function renderMaterialPanel(plugin, container) {
   const panel = plugin.renderPanel(container, "Materials", "Push new material into the furnace.");
   const grid = panel.createDiv({ cls: "furnace-shell-material-grid" });
   [
-    { icon: "📝", label: "Capture Note", onClick: async () => new CaptureNoteModal(plugin.app, plugin).open() },
+    { icon: "📝", label: "投文字材料", onClick: async () => new CaptureNoteModal(plugin.app, plugin).open() },
     { icon: "🔗", label: "Drop URL", onClick: async () => new DropUrlModal(plugin.app, plugin).open() },
     { icon: "📄", label: "Drop File", onClick: async () => new DropFileModal(plugin.app, plugin).open() },
     { icon: "📷", label: "Drop Image", onClick: async () => new DropImageModal(plugin.app, plugin).open() },
