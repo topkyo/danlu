@@ -245,6 +245,26 @@ test("buildTodayFeed surfaces today reports only", () => {
   expect(reports[0].title).toBe("Today Report");
 });
 
+test("buildTodayFeed renders user-facing raw input source labels", () => {
+  const summary = makeSummary({
+    recent_raw_inputs: [
+      {
+        stored_path: "raw/inbox/readme.md",
+        title: "README.md",
+        source_type: "note-drop",
+        occurred_at: "2026-05-03T08:00:00Z",
+      },
+    ],
+  });
+
+  const feed = buildTodayFeed(summary);
+  const rawInputs = feed.filter((e) => e.target === "raw/inbox/readme.md");
+
+  expect(rawInputs).toHaveLength(1);
+  expect(rawInputs[0].summary).toBe("已接收 文本材料，等待编译/刷新");
+  expect(rawInputs[0].summary).not.toContain("note-drop");
+});
+
 test("buildTodayFeed hides degraded and placeholder reports", () => {
   const summary = makeSummary({
     recent_outputs: [

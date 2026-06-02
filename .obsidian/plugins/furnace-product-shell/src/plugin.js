@@ -7,6 +7,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     this.pluginState = { recentRuns: [] };
     this.pendingSubmissions = []; // R89: 持久化 + runtime; status: running | received | done | failed | degraded; { id, payloadFingerprint, displayText, status, startedAt, finishedAt, error, reconcileTarget }
     this.longRunningPollTimer = null;
+    this.longRunningPollRefreshInFlight = false;
     this.shellSummary = null;
     this.repoState = { valid: false, root: "", launcherPath: "", missingPaths: ["vault-root"] };
     this.openViews = new Set();

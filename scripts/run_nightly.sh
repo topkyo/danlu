@@ -11,6 +11,7 @@ fi
 SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 TARGET_ROOT="$AIWIKI_VAULT"
+LAUNCHER="$TARGET_ROOT/scripts/aiwiki-launcher.sh"
 cd "$PROJECT_ROOT"
 
 export PYTHONPATH="$PROJECT_ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
@@ -24,7 +25,19 @@ log() {
   printf '[aiwiki-nightly] %s\n' "$*" >&2
 }
 
+run_aiwiki() {
+  if [ -x "$LAUNCHER" ]; then
+    "$LAUNCHER" "$@"
+    return $?
+  fi
+  python3 -m aiwiki.cli --root "$TARGET_ROOT" "$@"
+}
+
 llm_configured() {
+  if [ -x "$LAUNCHER" ]; then
+    "$LAUNCHER" llm-check | python3 -c 'import json, sys; payload = json.load(sys.stdin); sys.exit(0 if payload.get("configured") else 1)'
+    return $?
+  fi
   python3 - <<'PY'
 from aiwiki.config import LLMConfig
 import sys
@@ -42,9 +55,11 @@ append_run_nightly_args() {
 }
 
 run_deterministic_nightly() {
-  ARGS=(--root "$TARGET_ROOT" nightly)
   log "running deterministic nightly"
-  exec python3 -m aiwiki.cli "${ARGS[@]}"
+  if [ -x "$LAUNCHER" ]; then
+    exec "$LAUNCHER" nightly
+  fi
+  exec python3 -m aiwiki.cli --root "$TARGET_ROOT" nightly
 }
 
 require_llm() {
@@ -61,9 +76,9 @@ else
   llm_failure_status=2
   if llm_configured; then
     llm_attempted=1
-    ARGS=(--root "$TARGET_ROOT")
+    ARGS=()
     append_run_nightly_args
-    if python3 -m aiwiki.cli "${ARGS[@]}"; then
+    if run_aiwiki "${ARGS[@]}"; then
       exit 0
     else
       primary_status=$?

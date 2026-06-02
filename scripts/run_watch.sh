@@ -11,6 +11,7 @@ fi
 SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 TARGET_ROOT="$AIWIKI_VAULT"
+LAUNCHER="$TARGET_ROOT/scripts/aiwiki-launcher.sh"
 cd "$PROJECT_ROOT"
 
 export PYTHONPATH="$PROJECT_ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
@@ -35,6 +36,10 @@ fi
 
 if [[ "${AIWIKI_WATCH_SKIP_INITIAL:-0}" == "1" ]]; then
   ARGS+=(--skip-initial)
+fi
+
+if [ -x "$LAUNCHER" ]; then
+  exec "$LAUNCHER" "${ARGS[@]:2}"
 fi
 
 exec python3 -m aiwiki.cli "${ARGS[@]}"

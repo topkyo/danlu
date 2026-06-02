@@ -64,6 +64,8 @@ class VaultBootstrapTests(unittest.TestCase):
         self.assertIn('PLUGIN_DATA="$VAULT_ROOT/.obsidian/plugins/furnace-product-shell/data.json"', launcher_text)
         self.assertIn('AIWIKI_DEEPSEEK_API_KEY', launcher_text)
         self.assertIn('AIWIKI_OPENCODE_API_KEY', launcher_text)
+        self.assertIn('unset "$env_name"', launcher_text)
+        self.assertNotIn("os.environ.get(env_name)", launcher_text)
         self.assertNotIn('AIWIKI_NVIDIA_NIM_API_KEY', launcher_text)
         self.assertEqual(appearance["enabledCssSnippets"], ["danlu-zh-folders"])
         self.assertIn("output/lint/", app_config["userIgnoreFilters"])
@@ -185,6 +187,42 @@ class VaultBootstrapTests(unittest.TestCase):
             "AIWIKI_LLM_API_KEY",
         ):
             env.pop(key, None)
+
+        result = subprocess.run(
+            [str(self.target / "scripts" / "aiwiki-launcher.sh"), "llm-check"],
+            cwd=self.target,
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
+        payload = json.loads(result.stdout)
+        self.assertTrue(payload["configured"])
+        self.assertEqual(payload["backend_requested"], "opencode-api")
+        self.assertEqual(payload["backend"], "opencode-api")
+        self.assertEqual(payload["effective_model"], "deepseek-v4-pro")
+
+    def test_bootstrap_new_vault_launcher_prefers_plugin_settings_over_stale_env(self) -> None:
+        bootstrap_new_vault(self.runtime_root, self.target)
+        plugin_data_path = self.target / ".obsidian" / "plugins" / "furnace-product-shell" / "data.json"
+        plugin_data = json.loads(plugin_data_path.read_text(encoding="utf-8"))
+        plugin_data["settings"]["llmBackend"] = "opencode-api"
+        plugin_data["settings"]["llmModel"] = "deepseek-v4-pro"
+        plugin_data["settings"]["llmOpencodeApiKey"] = "opencode_ui_key"
+        plugin_data_path.write_text(json.dumps(plugin_data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        env = os.environ.copy()
+        env.update(
+            {
+                "AIWIKI_LLM_BACKEND": "deepseek-api",
+                "AIWIKI_LLM_MODEL": "deepseek-chat",
+                "AIWIKI_DEEPSEEK_API_KEY": "stale_deepseek_key",
+                "AIWIKI_OPENCODE_API_KEY": "stale_opencode_key",
+                "AIWIKI_LLM_API_KEY": "stale_generic_key",
+            }
+        )
 
         result = subprocess.run(
             [str(self.target / "scripts" / "aiwiki-launcher.sh"), "llm-check"],

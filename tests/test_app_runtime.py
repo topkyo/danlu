@@ -1412,6 +1412,8 @@ class RuntimeFlowTests(AppFlowTestBase):
         self.assertIn('TARGET_ROOT="$AIWIKI_VAULT"', content)
         self.assertIn('export PYTHONPATH="$PROJECT_ROOT/src${PYTHONPATH:+:$PYTHONPATH}"', content)
         self.assertIn('--root "$TARGET_ROOT"', content)
+        self.assertIn('LAUNCHER="$TARGET_ROOT/scripts/aiwiki-launcher.sh"', content)
+        self.assertIn('exec "$LAUNCHER" "${ARGS[@]:2}"', content)
         self.assertIn('AIWIKI_WATCH_DETERMINISTIC_ONLY:-1', content)
         self.assertIn('exec python3 -m aiwiki.cli "${ARGS[@]}"', content)
 
@@ -1423,7 +1425,10 @@ class RuntimeFlowTests(AppFlowTestBase):
         self.assertIn('TARGET_ROOT="$AIWIKI_VAULT"', content)
         self.assertIn('export PYTHONPATH="$PROJECT_ROOT/src${PYTHONPATH:+:$PYTHONPATH}"', content)
         self.assertIn('--root "$TARGET_ROOT"', content)
-        self.assertIn('exec python3 -m aiwiki.cli "${ARGS[@]}"', content)
+        self.assertIn('LAUNCHER="$TARGET_ROOT/scripts/aiwiki-launcher.sh"', content)
+        self.assertIn('"$LAUNCHER" llm-check', content)
+        self.assertIn('exec "$LAUNCHER" nightly', content)
+        self.assertIn('python3 -m aiwiki.cli --root "$TARGET_ROOT" "$@"', content)
         self.assertIn("run-nightly", content)
         self.assertIn("nightly", content)
         self.assertNotIn("AIWIKI_NIGHTLY_FALLBACK_BACKEND", content)
@@ -1432,6 +1437,95 @@ class RuntimeFlowTests(AppFlowTestBase):
         self.assertNotIn("retrying nightly with fallback", content)
         self.assertIn("deterministic nightly fallback suppressed after run-nightly failure", content)
         self.assertNotIn(",,}", content)
+
+    def test_run_watch_script_prefers_vault_launcher_without_root_args(self) -> None:
+        script = PROJECT_ROOT / "scripts/run_watch.sh"
+        with tempfile.TemporaryDirectory() as tempdir:
+            temp_root = Path(tempdir)
+            vault = temp_root / "vault"
+            scripts_dir = vault / "scripts"
+            scripts_dir.mkdir(parents=True)
+            log_path = temp_root / "launcher.log"
+            launcher = scripts_dir / "aiwiki-launcher.sh"
+            launcher.write_text(
+                f"""#!/usr/bin/env bash
+printf '%s\\n' "$*" >>{str(log_path)!r}
+exit 0
+""",
+                encoding="utf-8",
+            )
+            launcher.chmod(0o755)
+            env = os.environ.copy()
+            env.update(
+                {
+                    "AIWIKI_VAULT": str(vault),
+                    "AIWIKI_WATCH_INTERVAL": "7",
+                    "AIWIKI_WATCH_COMPILE_LIMIT": "3",
+                    "AIWIKI_WATCH_SKIP_INITIAL": "1",
+                }
+            )
+
+            completed = subprocess.run(
+                ["bash", str(script)],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=10,
+            )
+            lines = log_path.read_text(encoding="utf-8").splitlines()
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(lines, ["watch --interval 7 --compile-limit 3 --skip-initial"])
+
+    def test_run_nightly_script_prefers_vault_launcher_for_llm_route(self) -> None:
+        script = PROJECT_ROOT / "scripts/run_nightly.sh"
+        with tempfile.TemporaryDirectory() as tempdir:
+            temp_root = Path(tempdir)
+            vault = temp_root / "vault"
+            scripts_dir = vault / "scripts"
+            scripts_dir.mkdir(parents=True)
+            log_path = temp_root / "launcher.log"
+            launcher = scripts_dir / "aiwiki-launcher.sh"
+            launcher.write_text(
+                f"""#!/usr/bin/env bash
+printf '%s\\n' "$*" >>{str(log_path)!r}
+if [[ "${{1:-}}" == "llm-check" ]]; then
+  printf '{{"configured": true}}\\n'
+  exit 0
+fi
+if [[ "${{1:-}}" == "run-nightly" ]]; then
+  exit 42
+fi
+exit 0
+""",
+                encoding="utf-8",
+            )
+            launcher.chmod(0o755)
+            env = os.environ.copy()
+            env.update(
+                {
+                    "AIWIKI_VAULT": str(vault),
+                    "AIWIKI_NIGHTLY_COMPILE_LIMIT": "4",
+                    "AIWIKI_NIGHTLY_NO_SEMANTIC_LINT": "1",
+                }
+            )
+
+            completed = subprocess.run(
+                ["bash", str(script)],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=10,
+            )
+            lines = log_path.read_text(encoding="utf-8").splitlines()
+
+        self.assertEqual(completed.returncode, 42, completed.stderr)
+        self.assertEqual(lines, ["llm-check", "run-nightly --compile-limit 4 --no-semantic-lint"])
+        self.assertIn("deterministic nightly fallback suppressed after run-nightly failure", completed.stderr)
 
     def test_run_nightly_script_ignores_obsolete_fallback_env_after_llm_failure(self) -> None:
         script = PROJECT_ROOT / "scripts/run_nightly.sh"

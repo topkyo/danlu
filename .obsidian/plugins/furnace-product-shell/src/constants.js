@@ -53,7 +53,7 @@ const ZH_TEXT = {
   "LLM model": "LLM 模型",
   "Model for the selected API provider. Empty uses that provider profile default when one exists.": "所选 API provider 的模型。留空时使用该 provider profile 的默认模型（如果有）。",
   "API key": "API Key",
-  "Stored only in local Obsidian plugin data. Leave empty to use an environment variable already available to the launcher.": "仅存放在本机 Obsidian 插件数据中。留空则使用 launcher 已能读取到的环境变量。",
+  "Stored only in local Obsidian plugin data. New runs use the key saved here and ignore stale LLM environment variables.": "仅存放在本机 Obsidian 插件数据中。新的运行会使用这里保存的 key，并忽略旧的 LLM 环境变量。",
   "Base URL": "Base URL",
   "Override the provider endpoint. Leave empty to use the provider profile default.": "覆盖 provider endpoint。留空则使用 provider profile 默认值。",
   "CLI session": "CLI 会话",

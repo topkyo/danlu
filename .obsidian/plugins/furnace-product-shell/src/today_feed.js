@@ -309,16 +309,31 @@ function buildRawInputEntries(summary, todayDate) {
     const originalPath = firstText(item, "original_path");
     const title = firstText(item, "title");
     const sourceType = firstText(item, "source_type");
+    const sourceLabel = rawInputSourceTypeLabel(sourceType);
     entries.push({
       kind: "action",
       title: `已投料：${title || originalPath || storedPath}`,
-      summary: `已接收 ${sourceType || "材料"}，等待编译/刷新`,
+      summary: `已接收 ${sourceLabel}，等待编译/刷新`,
       target: storedPath,
       timestamp: occurredAt,
       protocol: firstText(item, "protocol"),
     });
   }
   return entries;
+}
+
+function rawInputSourceTypeLabel(sourceType) {
+  const normalized = String(sourceType || "").trim();
+  const labels = {
+    "note-drop": "文本材料",
+    note: "文本材料",
+    markdown: "Markdown 材料",
+    "url-drop": "网页材料",
+    "pdf-drop": "PDF 材料",
+    "image-drop": "图片材料",
+    "repo-drop": "代码仓库材料",
+  };
+  return labels[normalized] || "材料";
 }
 
 function isMaintenanceCommandAction(target, reason) {

@@ -128,7 +128,15 @@ function startProductShellLongRunningPoller(plugin) {
       plugin.stopLongRunningPoller();
       return;
     }
-    void plugin.refreshShellSummarySilently();
+    if (plugin.longRunningPollRefreshInFlight) {
+      return;
+    }
+    plugin.longRunningPollRefreshInFlight = true;
+    Promise.resolve(plugin.refreshShellSummarySilently())
+      .catch(() => {})
+      .finally(() => {
+        plugin.longRunningPollRefreshInFlight = false;
+      });
   }, 15000);
 }
 
@@ -136,6 +144,7 @@ function stopProductShellLongRunningPoller(plugin) {
   if (!plugin || !plugin.longRunningPollTimer) return;
   window.clearInterval(plugin.longRunningPollTimer);
   plugin.longRunningPollTimer = null;
+  plugin.longRunningPollRefreshInFlight = false;
 }
 
 function productShellLastSummaryRefreshLabel(plugin) {

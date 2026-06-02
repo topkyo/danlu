@@ -73,6 +73,9 @@ test("clearKnownLlmEnv removes stale provider keys before launcher spawn", () =>
     AIWIKI_MODEL_FALLBACK: "stale-model",
     AIWIKI_DEEPSEEK_API_KEY: "stale",
     AIWIKI_OPENCODE_API_KEY: "stale",
+    DEEPSEEK_API_KEY: "stale-deepseek-fallback",
+    OPENAI_API_KEY: "stale-openai-fallback",
+    ANTHROPIC_API_KEY: "stale-anthropic-fallback",
   };
   clearKnownLlmEnv(env);
   expect(env).toEqual({ KEEP_ME: "1" });

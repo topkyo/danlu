@@ -1161,6 +1161,8 @@ class MiscFlowTests(AppFlowTestBase):
         self.assertIn("AIWIKI_DOGFOOD_MATURITY_NO_SEMANTIC_LINT=1", content)
         self.assertIn("AIWIKI_DOGFOOD_MATURITY_ENVRC", content)
         self.assertIn('set_env_key "$DOGFOOD_MATURITY_ENV_PATH" "AIWIKI_DOGFOOD_MATURITY_ENVRC"', content)
+        self.assertNotIn("AIWIKI_LLM_BACKEND=opencode-api", content)
+        self.assertNotIn("AIWIKI_LLM_MODEL=deepseek-v4-pro", content)
 
     def test_user_service_install_script_mentions_nightly_timer(self) -> None:
         script = PROJECT_ROOT / "scripts/install_user_service.sh"
@@ -1171,7 +1173,7 @@ class MiscFlowTests(AppFlowTestBase):
         self.assertIn("aiwiki-dogfood-maturity.timer", content)
         self.assertIn("aiwiki-dogfood-maturity.env", content)
         self.assertIn("AIWIKI_NIGHTLY_COMPILE_LIMIT", content)
-        self.assertIn("AIWIKI_LLM_MODEL=deepseek-v4-pro", content)
+        self.assertIn("Product Shell UI via scripts/aiwiki-launcher.sh", content)
         self.assertNotIn("AIWIKI_NIGHTLY_FALLBACK_ENV", content)
         self.assertIn("AIWIKI_DOGFOOD_MATURITY_ON_CALENDAR", content)
         self.assertIn("*-*-* 00:15:00 UTC", content)

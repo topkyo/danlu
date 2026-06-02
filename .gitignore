@@ -19,6 +19,7 @@ PROGRESS.md
 .agentstack/evidence/
 .agentstack/local/
 .agentstack/render-conflicts/
+.codegraph/
 
 # Runtime state and generated outputs
 .aiwiki/state/*.json

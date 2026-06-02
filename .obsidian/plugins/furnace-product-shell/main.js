@@ -90,6 +90,13 @@ const LLM_ENV_KEYS = [
   "AIWIKI_ANTHROPIC_BASE_URL",
   "AIWIKI_LLM_API_KEY",
   "AIWIKI_LLM_BASE_URL",
+  "DEEPSEEK_API_KEY",
+  "DEEPSEEK_BASE_URL",
+  "OPENAI_API_KEY",
+  "OPENAI_BASE_URL",
+  "OPENAI_MODEL",
+  "ANTHROPIC_API_KEY",
+  "ANTHROPIC_BASE_URL",
 ];
 const LEGACY_LLM_SETTING_KEYS = [
   "llmGithubToken",
@@ -238,7 +245,7 @@ const ZH_TEXT = {
   "LLM model": "LLM 模型",
   "Model for the selected API provider. Empty uses that provider profile default when one exists.": "所选 API provider 的模型。留空时使用该 provider profile 的默认模型（如果有）。",
   "API key": "API Key",
-  "Stored only in local Obsidian plugin data. Leave empty to use an environment variable already available to the launcher.": "仅存放在本机 Obsidian 插件数据中。留空则使用 launcher 已能读取到的环境变量。",
+  "Stored only in local Obsidian plugin data. New runs use the key saved here and ignore stale LLM environment variables.": "仅存放在本机 Obsidian 插件数据中。新的运行会使用这里保存的 key，并忽略旧的 LLM 环境变量。",
   "Base URL": "Base URL",
   "Override the provider endpoint. Leave empty to use the provider profile default.": "覆盖 provider endpoint。留空则使用 provider profile 默认值。",
   "CLI session": "CLI 会话",
@@ -2117,7 +2124,15 @@ function startProductShellLongRunningPoller(plugin) {
       plugin.stopLongRunningPoller();
       return;
     }
-    void plugin.refreshShellSummarySilently();
+    if (plugin.longRunningPollRefreshInFlight) {
+      return;
+    }
+    plugin.longRunningPollRefreshInFlight = true;
+    Promise.resolve(plugin.refreshShellSummarySilently())
+      .catch(() => {})
+      .finally(() => {
+        plugin.longRunningPollRefreshInFlight = false;
+      });
   }, 15000);
 }
 
@@ -2125,6 +2140,7 @@ function stopProductShellLongRunningPoller(plugin) {
   if (!plugin || !plugin.longRunningPollTimer) return;
   window.clearInterval(plugin.longRunningPollTimer);
   plugin.longRunningPollTimer = null;
+  plugin.longRunningPollRefreshInFlight = false;
 }
 
 function productShellLastSummaryRefreshLabel(plugin) {
@@ -2527,16 +2543,31 @@ function buildRawInputEntries(summary, todayDate) {
     const originalPath = firstText(item, "original_path");
     const title = firstText(item, "title");
     const sourceType = firstText(item, "source_type");
+    const sourceLabel = rawInputSourceTypeLabel(sourceType);
     entries.push({
       kind: "action",
       title: `已投料：${title || originalPath || storedPath}`,
-      summary: `已接收 ${sourceType || "材料"}，等待编译/刷新`,
+      summary: `已接收 ${sourceLabel}，等待编译/刷新`,
       target: storedPath,
       timestamp: occurredAt,
       protocol: firstText(item, "protocol"),
     });
   }
   return entries;
+}
+
+function rawInputSourceTypeLabel(sourceType) {
+  const normalized = String(sourceType || "").trim();
+  const labels = {
+    "note-drop": "文本材料",
+    note: "文本材料",
+    markdown: "Markdown 材料",
+    "url-drop": "网页材料",
+    "pdf-drop": "PDF 材料",
+    "image-drop": "图片材料",
+    "repo-drop": "代码仓库材料",
+  };
+  return labels[normalized] || "材料";
 }
 
 function isMaintenanceCommandAction(target, reason) {
@@ -3839,7 +3870,7 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
     if (selectedProfile.apiKeySetting) {
       new Setting(containerEl)
         .setName(t("API key"))
-        .setDesc(t("Stored only in local Obsidian plugin data. Leave empty to use an environment variable already available to the launcher."))
+        .setDesc(t("Stored only in local Obsidian plugin data. New runs use the key saved here and ignore stale LLM environment variables."))
         .addText((text) => {
           text
             .setPlaceholder(selectedProfile.keyPlaceholder || "sk-...")
@@ -9042,6 +9073,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     this.pluginState = { recentRuns: [] };
     this.pendingSubmissions = []; // R89: 持久化 + runtime; status: running | received | done | failed | degraded; { id, payloadFingerprint, displayText, status, startedAt, finishedAt, error, reconcileTarget }
     this.longRunningPollTimer = null;
+    this.longRunningPollRefreshInFlight = false;
     this.shellSummary = null;
     this.repoState = { valid: false, root: "", launcherPath: "", missingPaths: ["vault-root"] };
     this.openViews = new Set();

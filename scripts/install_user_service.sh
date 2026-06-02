@@ -91,8 +91,6 @@ PYTHONPATH="$PROJECT_ROOT/src${PYTHONPATH:+:$PYTHONPATH}" "$PYTHON_BIN" -m aiwik
 if [[ ! -f "$WATCH_ENV_PATH" ]]; then
   cat >"$WATCH_ENV_PATH" <<EOF
 AIWIKI_VAULT=$VAULT_ROOT
-AIWIKI_LLM_BACKEND=opencode-api
-AIWIKI_LLM_MODEL=deepseek-v4-pro
 AIWIKI_LLM_TIMEOUT=120
 AIWIKI_LLM_MAX_CONTEXT_CHARS=24000
 AIWIKI_WATCH_INTERVAL=5
@@ -106,8 +104,6 @@ fi
 if [[ ! -f "$NIGHTLY_ENV_PATH" ]]; then
   cat >"$NIGHTLY_ENV_PATH" <<EOF
 AIWIKI_VAULT=$VAULT_ROOT
-AIWIKI_LLM_BACKEND=opencode-api
-AIWIKI_LLM_MODEL=deepseek-v4-pro
 AIWIKI_LLM_TIMEOUT=120
 AIWIKI_LLM_MAX_CONTEXT_CHARS=24000
 AIWIKI_NIGHTLY_COMPILE_LIMIT=5
@@ -216,7 +212,7 @@ echo "      plugin:        synced Product Shell release files (data.json preserv
 echo "      note:          change AIWIKI_NIGHTLY_ON_CALENDAR / AIWIKI_NIGHTLY_PERSISTENT and rerun this script to rewrite the timer"
 echo "Note: nightly auto-adopt/apply defaults are on for the full local furnace profile."
 echo "      Set AIWIKI_NIGHTLY_AUTO_* or legacy AUTO_* env vars to 0 before install to narrow automation."
-echo "      Backend fallback is not configured; switch AIWIKI_LLM_BACKEND explicitly when needed."
+echo "      LLM backend/key are read from the vault Product Shell UI via scripts/aiwiki-launcher.sh."
 if truthy "$INSTALL_DOGFOOD_MATURITY"; then
   echo "      maturity svc:  $DOGFOOD_MATURITY_SERVICE_PATH"
   echo "      maturity timer:$DOGFOOD_MATURITY_TIMER_PATH"

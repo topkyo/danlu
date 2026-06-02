@@ -109,9 +109,15 @@ def test_launchd_scripts_are_syntax_valid_and_secret_free() -> None:
 def test_launchd_wrappers_use_vault_launcher() -> None:
     watch_content = (PROJECT_ROOT / "scripts" / "run_launchd_watch.sh").read_text(encoding="utf-8")
     nightly_content = (PROJECT_ROOT / "scripts" / "run_launchd_nightly.sh").read_text(encoding="utf-8")
+    systemd_watch_content = (PROJECT_ROOT / "scripts" / "run_watch.sh").read_text(encoding="utf-8")
+    systemd_nightly_content = (PROJECT_ROOT / "scripts" / "run_nightly.sh").read_text(encoding="utf-8")
 
     assert 'LAUNCHER="$AIWIKI_VAULT/scripts/aiwiki-launcher.sh"' in watch_content
     assert 'LAUNCHER="$AIWIKI_VAULT/scripts/aiwiki-launcher.sh"' in nightly_content
+    assert 'LAUNCHER="$TARGET_ROOT/scripts/aiwiki-launcher.sh"' in systemd_watch_content
+    assert 'LAUNCHER="$TARGET_ROOT/scripts/aiwiki-launcher.sh"' in systemd_nightly_content
+    assert 'exec "$LAUNCHER"' in systemd_watch_content
+    assert '"$LAUNCHER" llm-check' in systemd_nightly_content
     assert "--with-llm" in watch_content
     assert "run-nightly" in nightly_content
 

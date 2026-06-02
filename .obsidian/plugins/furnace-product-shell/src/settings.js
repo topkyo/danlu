@@ -116,7 +116,7 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
     if (selectedProfile.apiKeySetting) {
       new Setting(containerEl)
         .setName(t("API key"))
-        .setDesc(t("Stored only in local Obsidian plugin data. Leave empty to use an environment variable already available to the launcher."))
+        .setDesc(t("Stored only in local Obsidian plugin data. New runs use the key saved here and ignore stale LLM environment variables."))
         .addText((text) => {
           text
             .setPlaceholder(selectedProfile.keyPlaceholder || "sk-...")
