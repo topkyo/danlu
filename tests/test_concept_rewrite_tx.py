@@ -200,12 +200,12 @@ class ApplyConceptRewriteTransactionTests(unittest.TestCase):
         # forward write and state save) to raise — file must be restored.
         import contextlib
 
-        from aiwiki import app_compile as _app_compile
+        from aiwiki import app_utils as _app_utils
 
         with contextlib.ExitStack() as stack:
             self._stub_validation(stack)
             stack.enter_context(
-                patch.object(_app_compile, "utc_now", side_effect=RuntimeError("clock boom"))
+                patch.object(_app_utils, "utc_now", side_effect=RuntimeError("clock boom"))
             )
             with self.assertRaises(RuntimeError) as ctx:
                 cr_mod.apply_concept_rewrite(self.root, self.slug, note="trigger")

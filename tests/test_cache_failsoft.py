@@ -8,7 +8,6 @@ from unittest.mock import patch
 
 import pytest
 
-from aiwiki.app_content import ingest_source
 from aiwiki.app_memory import build_machine_memory_query
 from aiwiki.app_protocol import ensure_layout
 from aiwiki.app_state import (
@@ -19,6 +18,7 @@ from aiwiki.app_state import (
     load_material_state,
 )
 from aiwiki.compile import compile_wiki
+from aiwiki.content.io import ingest_source
 
 
 def _prepare_project(root: Path) -> str:

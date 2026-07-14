@@ -95,8 +95,8 @@ def sync_manifest_with_raw(root: Path) -> dict[str, Any]:
         known_paths.add(stored_path)
         changed = True
     if changed:
-        from .. import app_content as _facade
-        _facade.save_manifest(root, manifest)
+        from ..app_protocol import save_manifest
+        save_manifest(root, manifest)
     return manifest
 
 
@@ -152,8 +152,8 @@ def ingest_source(root: Path, source: str, title: str | None = None) -> dict[str
     imported_at = utc_now()
     entry = {"id": entry_id, "title": display_title, "source_type": source_type, "original_path": original_path, "stored_path": relative_path(root, destination), "kind": detect_kind(destination), "sha256": sha256_file(destination), "imported_at": imported_at}
     manifest["entries"].append(entry)
-    from .. import app_content as _facade
-    _facade.save_manifest(root, manifest)
+    from ..app_protocol import save_manifest
+    save_manifest(root, manifest)
     append_runtime_history(
         root,
         {
@@ -168,7 +168,7 @@ def ingest_source(root: Path, source: str, title: str | None = None) -> dict[str
             "title": display_title,
         },
     )
-    from ..app_render import append_wiki_log as _append_wiki_log
+    from ..render.paths import append_wiki_log as _append_wiki_log
     _append_wiki_log(
         root,
         "ingest",
@@ -484,8 +484,8 @@ def annotate_recurring_promotion(root: Path, page_path: Path, *, kind: str, prot
                     seen_citations.add(citation)
                     citations.append(citation)
     formats = sorted({artifact["format"] for artifact in artifacts})
-    from .. import app_content as _facade
-    title = _facade.promotion_page_title(kind, query, protocol)
+    from .outputs import promotion_page_title
+    title = promotion_page_title(kind, query, protocol)
     citation_snapshots = build_citation_snapshots(root, citations)
     frontmatter.update({"title": title, "protocol": protocol, "source_files": source_files, "citations": citations, "citation_snapshots": citation_snapshots, "promotion_origin": "nightly-recurring-output", "promotion_query": query, "promotion_query_signature": query_signature, "promotion_count": str(len(artifacts)), "promotion_formats": formats, "promotion_last_artifact": artifacts[-1]["path"], "last_compiled_at": generated_at})
     body = replace_first_markdown_heading(strip_frontmatter(content).strip(), title).strip()

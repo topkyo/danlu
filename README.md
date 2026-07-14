@@ -37,20 +37,19 @@ Obsidian 是前端/IDE；炼丹炉是整个系统；`aiwiki` 是底层 runtime�
 
 ## 当前 runtime 实现（repo 视角）
 
-当前 `aiwiki` runtime 已完成一轮更彻底的边界重构。当前 owner map 按代码现实分为 **core hubs / owner packages / compatibility facades / residual hotspots**：
+当前 `aiwiki` runtime owner map 按代码现实分为 **core hubs / owner packages / residual hotspots**。纯 re-export facade（`app.py` / `app_content` / `app_render` / `app_surfaces` / `app_memory_surfaces`）已按 `AGENTS.md` 定案删除；请直引 owner 模块。
 
-- `src/aiwiki/app.py`：**静态兼容 shim**，继续保留 `aiwiki.app` import surface；不要在这里新增逻辑。
 - `src/aiwiki/app_utils.py`：runtime write lock、hash、frontmatter、markdown / JSON helpers、`safe_fetch` 等底层 primitives。
 - `src/aiwiki/app_state.py`：**legacy central hub**，path / state / json-document primitives 的单点入口；改动半径大，需额外谨慎。
 - `src/aiwiki/app_protocol.py`：**legacy central hub**，layout、schema scaffolding、protocol runtime、review windows 和默认 runtime 规则。
 - `src/aiwiki/cli/`：CLI parser / dispatch / product-first command surface；普通入口固定为 `drop` / `today` / `metrics` / `advanced`，legacy top-level 命令只保留兼容。
 - `src/aiwiki/drop.py`：`drop-url` / `drop-pdf` / `drop-image` / `drop-repo` / `drop-note` 的 raw materialization owner；用户入口推荐 `drop markdown`。
-- `src/aiwiki/compile/`：compile pipeline phase owner（content/runtime/output/persist）；`app_compile.py` 仍是 legacy orchestration / compat hotspot，新逻辑优先下沉到 `compile/*` 或明确 owner module。
-- `src/aiwiki/content/`：source / concept / derived / memory output 的主要 owner；`app_content.py` 是 compatibility facade，保留旧 import / patch seam，不新增业务逻辑。
+- `src/aiwiki/compile/`：compile pipeline phase owner（content/runtime/output/persist）；`app_compile.py` 仍是 legacy orchestration hotspot，新逻辑优先下沉到 `compile/*` 或明确 owner module。
+- `src/aiwiki/content/`：source / concept / derived / memory output 的主要 owner。
 - `src/aiwiki/app_lifecycle.py`：judgment / decision lifecycle、aging、review queue、knowledge lifecycle governance 的 residual owner。
-- `src/aiwiki/render/`：index / dashboard / output pack / domain pilot / judgment asset render owner；`app_render.py` 是 compatibility facade。
-- `src/aiwiki/memory/`：machine memory graph、execution surfaces、trace/recall/batch 相关 owner；`app_memory.py` 仍是 legacy residual hotspot，`app_memory_query.py` / `app_memory_surfaces.py` 保留 query / surface seam。
-- `src/aiwiki/execution/`：execution bundles、receipts、apply/revert/audit、alchemy proposal mutation 的事实层 owner；`app_execution.py` 保留 receipt / bundle assembly 的兼容入口。
+- `src/aiwiki/render/`：index / dashboard / output pack / domain pilot / judgment asset render owner。
+- `src/aiwiki/memory/`：machine memory graph、execution surfaces、trace/recall/batch 相关 owner；`app_memory.py` 仍是 legacy residual hotspot，query helpers 在 `app_memory_query.py`。
+- `src/aiwiki/execution/`：execution bundles、receipts、apply/revert/audit、alchemy proposal mutation 的事实层 owner；`app_execution.py` 保留 receipt / bundle assembly 入口。
 - `src/aiwiki/runner/`：`run-compile` / `run-ask` / `nightly` / `watch` / alchemy 等 high-level workflow owner；`runner/alchemy.py` 是 deferred residual hotspot。
 - `src/aiwiki/planner/` 与 `src/aiwiki/signals/`：planner dry-run / log / safe primitive policy，以及 review / repair / aging / escalation signal source。
 - 金丹主链路已落地：`alchemy-start / alchemy-distill / alchemy-finalize / alchemy-promote` 覆盖 candidate plane、settled plane、DAG/provenance gate、promote/revert/demote receipt、Stage-3 compounding acceptance 与 maturity gate 的 `elixir_quality_proof`；剩余 planned 只指显式 LLM/human contract 下的 semantic distillation。
@@ -61,7 +60,7 @@ Obsidian 是前端/IDE；炼丹炉是整个系统；`aiwiki` 是底层 runtime�
 - `src/aiwiki/app_vault.py`：new-vault scaffold 与 Obsidian bootstrap owner。
 - `src/aiwiki/app_types.py`：稳定 TypedDict contracts（如 `ManifestEntry` / `CompileState` / `ShellSummary`）。
 
-这次重构没有改变 CLI 或 `aiwiki.app` 的外部使用方式，但已经把 runtime 从“动态 facade + 隐式跨模块注入”推进成“静态 shim + owner packages + phase orchestration”的结构。后续新增逻辑优先进入明确 owner package；`app_state.py`、`app_protocol.py`、`app_compile.py`、`app_memory.py`、`runner/alchemy.py` 与 Product Shell `plugin.js` 继续按 seam map 小步削薄，不做 broad rewrite。
+后续新增逻辑优先进入明确 owner package；`app_state.py`、`app_protocol.py`、`app_compile.py`、`app_memory.py`、`runner/alchemy.py` 与 Product Shell `plugin.js` 继续按 seam map 小步削薄，不做 broad rewrite。禁止再引入纯 re-export facade。
 
 ## 更适合谁
 
@@ -380,17 +379,13 @@ app_queries.py             ranking / report / slides / decision-memo / sop query
 app_linting/               lint phases / repair backlog / nightly health helpers
 
 content/                   source / concept / derived / memory output 物化 owner
-app_content.py             compatibility facade；不要新增业务逻辑
 app_lifecycle.py           judgments / decisions / aging / review queue governance
 
 render/                    views / packs / pilots / judgment asset render owner
-app_render.py              compatibility facade
-app_surfaces.py            dashboard / HTML / shell surface render exports
 
 memory/                    machine memory（graph / trace / recall / execution surfaces）
 app_memory.py              legacy residual hotspot
-app_memory_query.py        private query helpers
-app_memory_surfaces.py     public/tested query / topology / execution surface facade
+app_memory_query.py        query helpers owner
 
 execution/                 execution bundles / receipts / apply / revert / audit owner
 app_execution.py           receipt / bundle assembly compat entry

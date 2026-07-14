@@ -58,11 +58,16 @@ def _copy_case_and_fix_clock_from(  # pragma: no cover - exercised by explicit p
     case = Path(__file__).resolve().parent.parent / "fixtures" / "acceptance" / group / case_name
     vault = tmp_path / "vault"
     shutil.copytree(case / "root", vault)
+    # Git checkout mtimes are "now"; pin vault files so sync_manifest/compile
+    # provenance fields stay deterministic across hosts and facade cleanups.
+    fixed_epoch = FIXED_NOW.timestamp()
+    for path in vault.rglob("*"):
+        if path.is_file():
+            os.utime(path, (fixed_epoch, fixed_epoch))
     monkeypatch.setattr("aiwiki.clock.utc_now", lambda: FIXED_NOW)
     monkeypatch.setattr("aiwiki.runner.alchemy.utc_now", lambda: FIXED_NOW.isoformat())
     monkeypatch.setattr("aiwiki.execution.alchemy.utc_now", lambda: FIXED_NOW.isoformat())
     monkeypatch.setattr("aiwiki.app_utils.utc_now", lambda: FIXED_NOW.isoformat())
-    monkeypatch.setattr("aiwiki.app_compile.utc_now", lambda: FIXED_NOW.isoformat())
     monkeypatch.setattr("aiwiki.drop.utc_now", lambda: FIXED_NOW.isoformat())
     monkeypatch.setattr("aiwiki.content.io.utc_now", lambda: FIXED_NOW.isoformat())
     monkeypatch.setattr("aiwiki.render.paths.utc_now", lambda: FIXED_NOW.isoformat())

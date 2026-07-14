@@ -9,29 +9,9 @@ used to live in ``aiwiki.app_compile``:
 - ``_build_batch_id``
 - ``_load_latest_action_apply_batch_receipt``
 
-Migration invariants (same as B1..B6):
-
-- Dependencies imported from their **true origin** module, not via a
-  re-export chain. In particular:
-  * ``append_wiki_log`` comes from ``..render.paths``; legacy facades
-    keep re-exporting it for external compatibility.
-- ``utc_now`` is resolved lazily at **call time** via
-  ``from .. import app_compile as _app_compile; _app_compile.utc_now()``
-  so that ``patch("aiwiki.app_compile.utc_now", ...)`` in
-  ``tests/test_app.py`` continues to take effect after the owner flip.
-  There are **four** call sites in this module:
-  - ``_build_batch_id``
-  - ``review_pages_batch``
-  - ``apply_machine_memory_actions_batch``
-  - ``revert_machine_memory_action_batch``
-- **Cross-owner execution calls** (``review_page``,
-  ``apply_machine_memory_action``, ``revert_machine_memory_action``)
-  are also resolved lazily through ``aiwiki.app_compile`` so that
-  pre-migration patch semantics (e.g. ``patch("aiwiki.app_compile.
-  review_page", ...)``) continue to be visible to batch callers.
-  Before B6/B7 these were same-module global lookups inside
-  ``app_compile``; binding them at module-import time here would
-  silently break that compatibility surface (oracle B7 MF1).
+Dependencies come from true owner modules (``render.paths``, ``app_utils``,
+sibling execution owners). ``utc_now`` is resolved lazily via ``app_utils``
+so ``patch("aiwiki.app_utils.utc_now", ...)`` remains effective.
 """
 
 from __future__ import annotations
@@ -55,6 +35,8 @@ from ..app_state import (
 from ..app_utils import relative_path, runtime_write_operation, slugify
 from ..content.memory import action_supports_low_risk_apply
 from ..render.paths import append_wiki_log
+from . import machine_memory_actions as _machine_memory_actions
+from . import review as _review
 from .alchemy import _restore_file_bytes, _snapshot_file_bytes
 from .audit_preview import AUDIT_STREAM_PATH
 
@@ -68,10 +50,10 @@ class MachineMemoryActionApplyBatchReceiptHalfWriteError(RuntimeError):
 
 
 def _build_batch_id(prefix: str, subjects: list[str]) -> str:
-    from .. import app_compile as _app_compile
+    from .. import app_utils as _app_utils
 
     first_subject = next((subject for subject in subjects if subject), "item")
-    return f"{prefix}-{_app_compile.utc_now()}-{slugify(first_subject)}"
+    return f"{prefix}-{_app_utils.utc_now()}-{slugify(first_subject)}"
 
 
 def _load_latest_action_apply_batch_receipt(root: Path, batch_id: str | None) -> dict[str, Any]:
@@ -108,7 +90,7 @@ def review_pages_batch(
     note: str | None = None,
     confidence: str | None = None,
 ) -> dict[str, Any]:
-    from .. import app_compile as _app_compile
+    from .. import app_utils as _app_utils
 
     ensure_layout(root)
     ordered_pages: list[str] = []
@@ -122,10 +104,10 @@ def review_pages_batch(
     if not ordered_pages:
         raise ValueError("Batch review requires at least one page.")
     items = [
-        _app_compile.review_page(root, page, status, note=note, confidence=confidence)
+        _review.review_page(root, page, status, note=note, confidence=confidence)
         for page in ordered_pages
     ]
-    generated_at = _app_compile.utc_now()
+    generated_at = _app_utils.utc_now()
     batch_id = _build_batch_id("review-page-batch", ordered_pages)
     receipt = build_execution_batch_receipt(
         root,
@@ -178,7 +160,7 @@ def apply_machine_memory_actions_batch(
     note: str | None = None,
     dry_run: bool = False,
 ) -> dict[str, Any]:
-    from .. import app_compile as _app_compile
+    from .. import app_utils as _app_utils
 
     ensure_layout(root)
     ordered_ids: list[str] = []
@@ -206,18 +188,18 @@ def apply_machine_memory_actions_batch(
     items: list[dict[str, Any]] = []
     operation = "action-dry-run-batch" if dry_run else "action-apply-batch"
     for action_id in ordered_ids:
-        preview = _app_compile.apply_machine_memory_action(root, action_id, note=note, dry_run=True)
+        preview = _machine_memory_actions.apply_machine_memory_action(root, action_id, note=note, dry_run=True)
         if dry_run:
             items.append(preview)
             continue
-        applied = _app_compile.apply_machine_memory_action(
+        applied = _machine_memory_actions.apply_machine_memory_action(
             root,
             action_id,
             note=note,
             bundle_path=str(preview.get("bundle_path") or ""),
         )
         items.append(applied)
-    generated_at = _app_compile.utc_now()
+    generated_at = _app_utils.utc_now()
     batch_id = _build_batch_id(operation, ordered_ids)
     receipt = build_execution_batch_receipt(
         root,
@@ -295,7 +277,7 @@ def revert_machine_memory_action_batch(
     batch_id: str | None = None,
     note: str | None = None,
 ) -> dict[str, Any]:
-    from .. import app_compile as _app_compile
+    from .. import app_utils as _app_utils
 
     ensure_layout(root)
     target_receipt = _load_latest_action_apply_batch_receipt(root, batch_id)
@@ -312,10 +294,10 @@ def revert_machine_memory_action_batch(
     if not action_ids:
         raise RuntimeError("Action apply batch receipt is empty.")
     items = [
-        _app_compile.revert_machine_memory_action(root, action_id, note=note)
+        _machine_memory_actions.revert_machine_memory_action(root, action_id, note=note)
         for action_id in reversed(action_ids)
     ]
-    generated_at = _app_compile.utc_now()
+    generated_at = _app_utils.utc_now()
     revert_batch_id = _build_batch_id("action-revert-batch", action_ids)
     receipt = build_execution_batch_receipt(
         root,

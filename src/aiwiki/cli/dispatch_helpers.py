@@ -990,7 +990,7 @@ def _resolve_review_concept_slugs(
     if not all_pending:
         raise ValueError("Provide at least one slug or pass --all-pending.")
     # Lazy import to avoid heavy app_compile import at module load time.
-    from ..app_compile import refresh_knowledge_lifecycle_runtime as _refresh
+    from ..execution.lifecycle import refresh_knowledge_lifecycle_runtime as _refresh
 
     lifecycle = _refresh(root)
     pending: list[str] = []

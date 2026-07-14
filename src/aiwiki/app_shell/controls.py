@@ -6,27 +6,16 @@ import os
 from pathlib import Path
 from typing import Any
 
-from ..app_content import (
-    action_priority_rank,
-    action_status_rank,
-    action_supports_low_risk_apply,
+from ..app_lifecycle import (
     action_transition_profile,
     archive_transition_profile,
     collect_aging_signals,
     collect_curated_pages,
-    collect_recent_output_artifacts,
     curated_page_transition_profile,
-    execution_bundle_path,
-    execution_proposal_path,
-    judgment_asset_attention_sort_key,
-    judgment_asset_shell_record,
-    judgment_asset_summary,
     knowledge_lifecycle_governance_summary,
-    load_execution_receipt_history,
     review_queue,
     rewrite_proposal_status_rank,
     rewrite_transition_profile,
-    summarize_runtime_event_for_shell,
     transition_profile,
     valid_curated_statuses,
 )
@@ -79,8 +68,27 @@ from ..app_utils import (
     write_json_document_if_changed_ignoring_generated_timestamps,
 )
 from ..config import LLMConfig
+from ..content.io import (
+    collect_recent_output_artifacts,
+    summarize_runtime_event_for_shell,
+)
+from ..content.memory import (
+    action_priority_rank,
+    action_status_rank,
+    action_supports_low_risk_apply,
+    load_execution_receipt_history,
+)
 from ..execution.l3_proposals import list_l3_proposals
 from ..llm import classify_backend_error
+from ..render.paths import (
+    execution_bundle_path,
+    execution_proposal_path,
+)
+from ..render.views import (
+    judgment_asset_attention_sort_key,
+    judgment_asset_shell_record,
+    judgment_asset_summary,
+)
 
 
 def shell_review_controls(

@@ -7,12 +7,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 import aiwiki.runner.alchemy as runner_alchemy
-from aiwiki.app_compile import ask_question
 from aiwiki.app_protocol import ensure_layout
 from aiwiki.app_state import execution_receipt_history_path
 from aiwiki.app_utils import parse_frontmatter, render_frontmatter, sha256_bytes
 from aiwiki.execution import alchemy as alchemy_mod
 from aiwiki.execution.alchemy import CANDIDATE_ELIXIR_DIR, ELIXIR_DIR, PromoteHalfWriteError, PromoteReceiptError
+from aiwiki.execution.ask import ask_question
 from aiwiki.execution.audit_preview import AUDIT_STREAM_PATH
 from aiwiki.execution.candidates import promote_candidate
 from aiwiki.render.paths import execution_receipts_dir

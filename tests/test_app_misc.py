@@ -14,48 +14,14 @@ from typing import Any
 from unittest.mock import patch
 
 from aiwiki.app_cache import CACHE_SCHEMA_VERSION, drop_query_cache, force_rebuild_query_cache
-from aiwiki.app_compile import (
-    _save_machine_memory_action_records,
-    apply_concept_rewrite,
-    apply_machine_memory_action,
-    apply_material_archive,
-    ask_question,
-    compile_wiki,
-    file_back,
-    lint_wiki,
-    nightly_health,
-    rank_concepts,
-    rank_sources,
-    reactivate_concept,
-    retire_concept,
-    revert_concept_rewrite,
-    revert_machine_memory_action,
-    revert_material_archive,
-    review_concept,
-    review_concept_rewrite,
-    review_concepts_batch,
-    review_machine_memory_action,
-    review_machine_memory_actions_batch,
-    review_page,
-    set_active_protocol,
-    shell_status,
-    verify_concept_rewrite,
-)
-from aiwiki.app_content import (
-    collect_machine_memory_actions,
-    entry_concept_terms,
-    ingest_source,
-    load_execution_policy_decision_history,
-    placeholder_concept_slugs,
-    protocol_related_concept_lifecycle_summary,
-)
+from aiwiki.app_compile import compile_wiki, lint_wiki, rank_concepts, rank_sources, set_active_protocol
 from aiwiki.app_execution import append_execution_receipt_history
+from aiwiki.app_lifecycle import protocol_related_concept_lifecycle_summary
 from aiwiki.app_memory import (
     active_corpus_bridge_evidence_ids,
     build_archive_candidate_state,
     build_machine_memory_query,
 )
-from aiwiki.app_memory_surfaces import render_machine_memory_graph_html
 from aiwiki.app_protocol import ensure_layout, load_protocol_state, save_manifest
 from aiwiki.app_state import (
     execution_receipt_history_path,
@@ -83,8 +49,48 @@ from aiwiki.app_utils import parse_frontmatter, relative_path, render_frontmatte
 from aiwiki.cli import main as cli_main
 from aiwiki.compile import compile_wiki as compile_wiki_owner
 from aiwiki.config import BACKEND_OPENAI_API, BACKEND_OPENCODE_API, LLMConfig
+from aiwiki.content.concepts import entry_concept_terms
+from aiwiki.content.io import ingest_source
+from aiwiki.content.memory import (
+    collect_machine_memory_actions,
+    load_execution_policy_decision_history,
+    placeholder_concept_slugs,
+)
 from aiwiki.drop import _fetch_url, drop_image, drop_pdf, drop_repo, drop_url
+from aiwiki.execution.archive import (
+    apply_material_archive,
+    revert_material_archive,
+)
+from aiwiki.execution.ask import (
+    ask_question,
+    file_back,
+)
+from aiwiki.execution.concept_rewrite import (
+    apply_concept_rewrite,
+    revert_concept_rewrite,
+    review_concept_rewrite,
+    verify_concept_rewrite,
+)
+from aiwiki.execution.lifecycle import (
+    reactivate_concept,
+    retire_concept,
+    review_concept,
+    review_concepts_batch,
+)
+from aiwiki.execution.machine_memory_actions import (
+    _save_machine_memory_action_records,
+    apply_machine_memory_action,
+    revert_machine_memory_action,
+    review_machine_memory_action,
+    review_machine_memory_actions_batch,
+)
+from aiwiki.execution.review import review_page
+from aiwiki.execution.runtime_surfaces import (
+    nightly_health,
+    shell_status,
+)
 from aiwiki.llm import CompletionResult
+from aiwiki.memory.graph import render_machine_memory_graph_html
 from aiwiki.runner import auto_process_once, run_ask, run_compile, run_lint, run_nightly, watch_inbox
 from tests.test_app import AppFlowTestBase, CapturingClient, FailingVisionClient, StubClient, StubVisionClient
 
@@ -716,32 +722,25 @@ class MiscFlowTests(AppFlowTestBase):
             }
         ]
 
-        with patch("aiwiki.app_memory_surfaces.build_machine_memory_query_routes", return_value=patched_routes):
+        with patch("aiwiki.app_memory_query.build_machine_memory_query_routes", return_value=patched_routes):
             machine_query = build_machine_memory_query(memory, "agent workflow", protocol="research")
 
         self.assertEqual(machine_query["query_routes"], patched_routes)
         self.assertIn("agent", machine_query["ranked_concept_slugs"])
         self.assertIn("src-1", machine_query["ranked_source_ids"])
 
-    def test_private_query_helpers_are_not_reexported_from_memory_surfaces(self) -> None:
-        import aiwiki.app_memory_surfaces as memory_surfaces
-        from aiwiki.app_memory_query import _machine_memory_query_payload_hash, _route_anchor_candidates
-        from aiwiki.app_memory_surfaces import build_machine_memory_query_routes
+    def test_private_query_helpers_live_on_memory_query_owner(self) -> None:
+        from aiwiki.app_memory_query import (
+            _machine_memory_query_payload_hash,
+            _route_anchor_candidates,
+            build_machine_memory_query_routes,
+        )
 
         self.assertTrue(callable(_machine_memory_query_payload_hash))
         self.assertTrue(callable(_route_anchor_candidates))
         self.assertTrue(callable(build_machine_memory_query_routes))
-        self.assertFalse(hasattr(memory_surfaces, "_machine_memory_query_payload_hash"))
-        self.assertFalse(hasattr(memory_surfaces, "_route_anchor_candidates"))
-
-        with self.assertRaises(ImportError):
-            exec(
-                "from aiwiki.app_memory_surfaces import _machine_memory_query_payload_hash",
-                {},
-                {},
-            )
-        with self.assertRaises(ImportError):
-            exec("from aiwiki.app_memory_surfaces import _route_anchor_candidates", {}, {})
+        with self.assertRaises(ModuleNotFoundError):
+            __import__("aiwiki.app_memory_surfaces")
 
     def test_machine_memory_query_ignores_stale_cache_snapshot(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
@@ -1402,7 +1401,7 @@ class MiscFlowTests(AppFlowTestBase):
                 self.assertIn("path", entry)
 
     def test_render_graph_html_without_report_anchors_does_not_break(self) -> None:
-        from aiwiki.app_memory_surfaces import render_machine_memory_graph_html
+        from aiwiki.memory.graph import render_machine_memory_graph_html
 
         memory = {
             "compiled_at": "2026-04-30T00:00:00+00:00",

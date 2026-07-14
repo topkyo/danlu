@@ -10,41 +10,52 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from ..app_cache import cache_status_summary, drop_query_cache, force_rebuild_query_cache
-from ..app_compile import (
-    apply_concept_rewrite,
-    apply_machine_memory_action,
-    apply_machine_memory_actions_batch,
-    apply_material_archive,
-    ask_question,
-    auto_resolve_machine_memory_actions,
-    compile_wiki,
-    file_back,
-    lint_wiki,
-    nightly_health,
-    reactivate_concept,
-    resolve_machine_memory_action_query,
-    retire_concept,
-    revert_concept_rewrite,
-    revert_machine_memory_action,
-    revert_machine_memory_action_batch,
-    revert_material_archive,
-    review_concept,
-    review_concept_rewrite,
-    review_concepts_batch,
-    review_machine_memory_action,
-    review_machine_memory_actions_batch,
-    review_page,
-    review_pages_batch,
-    set_active_protocol,
-    shell_status,
-    verify_concept_rewrite,
-)
-from ..app_content import action_supports_low_risk_apply, ingest_source
+from ..app_compile import compile_wiki, lint_wiki, set_active_protocol
 from ..app_protocol import ensure_layout, load_protocol_state
 from ..app_shell import build_shell_summary, rewrite_recovery_payload_for_paths, shell_search, shell_status_dashboard
 from ..app_state import load_machine_memory_action_state, load_today_snooze_state, save_today_snooze_state
 from ..app_vault import bootstrap_new_vault, sync_product_shell_plugin
+from ..content.io import ingest_source
+from ..content.memory import action_supports_low_risk_apply
 from ..drop import drop_image, drop_note, drop_pdf, drop_repo, drop_url
+from ..execution.archive import (
+    apply_material_archive,
+    revert_material_archive,
+)
+from ..execution.ask import (
+    ask_question,
+    file_back,
+)
+from ..execution.concept_rewrite import (
+    apply_concept_rewrite,
+    revert_concept_rewrite,
+    review_concept_rewrite,
+    verify_concept_rewrite,
+)
+from ..execution.lifecycle import (
+    reactivate_concept,
+    retire_concept,
+    review_concept,
+    review_concepts_batch,
+)
+from ..execution.machine_memory_actions import (
+    apply_machine_memory_action,
+    auto_resolve_machine_memory_actions,
+    resolve_machine_memory_action_query,
+    revert_machine_memory_action,
+    review_machine_memory_action,
+    review_machine_memory_actions_batch,
+)
+from ..execution.machine_memory_batch import (
+    apply_machine_memory_actions_batch,
+    revert_machine_memory_action_batch,
+    review_pages_batch,
+)
+from ..execution.review import review_page
+from ..execution.runtime_surfaces import (
+    nightly_health,
+    shell_status,
+)
 from ..planner import write_planner_log
 from ..runner.alchemy import (
     run_alchemy_auto,

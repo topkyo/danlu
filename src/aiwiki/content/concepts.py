@@ -948,20 +948,19 @@ def build_concept_quality(root: Path, memory: dict[str, Any]) -> dict[str, Any]:
 
 
 def _entry_concept_terms_via_facade(entry: dict[str, Any], context: str) -> list[str]:
-    from .. import app_content as _facade
-    return _facade.entry_concept_terms(entry, context)
+    return entry_concept_terms(entry, context)
 
 
 def _active_manual_source_concept_links(root: Path) -> dict[str, set[str]]:
-    from .. import app_content as _facade
-    return _facade.active_manual_source_concept_links(root)
+    from .io import active_manual_source_concept_links
+    return active_manual_source_concept_links(root)
 
 
 def _placeholder_concept_slugs(root: Path) -> list[str]:
-    from .. import app_content as _facade
-    return _facade.placeholder_concept_slugs(root)
+    from .memory import placeholder_concept_slugs
+    return placeholder_concept_slugs(root)
 
 
 def _action_priority_rank(priority: str) -> int:
-    from .. import app_content as _facade
-    return _facade.action_priority_rank(priority)
+    from .memory import action_priority_rank
+    return action_priority_rank(priority)

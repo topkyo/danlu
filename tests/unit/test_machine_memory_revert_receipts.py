@@ -6,10 +6,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-from aiwiki.app_content import ingest_source
 from aiwiki.app_protocol import ensure_layout
 from aiwiki.app_state import save_machine_memory_action_state
 from aiwiki.compile.pipeline import compile_wiki
+from aiwiki.content.io import ingest_source
 from aiwiki.execution.machine_memory_actions import apply_machine_memory_action, revert_machine_memory_action
 
 

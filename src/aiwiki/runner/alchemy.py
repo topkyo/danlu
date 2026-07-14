@@ -20,8 +20,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from aiwiki import app_compile as _app_compile
-from aiwiki.app_compile import compile_wiki, lint_wiki, nightly_health
+from aiwiki.app_compile import compile_wiki, lint_wiki
 from aiwiki.app_execution import append_execution_receipt_history, compute_file_sha256
 from aiwiki.app_protocol import ensure_layout
 from aiwiki.app_state import append_runtime_history, execution_receipt_history_path
@@ -40,7 +39,9 @@ from aiwiki.app_utils import (
     strip_frontmatter,
     utc_now,
 )
+from aiwiki.execution import machine_memory_batch as _machine_memory_batch
 from aiwiki.execution.audit_preview import AUDIT_STREAM_PATH
+from aiwiki.execution.runtime_surfaces import nightly_health
 from aiwiki.render.paths import execution_receipt_path
 from aiwiki.runner import alchemy_distill as _alchemy_distill
 from aiwiki.runner import alchemy_judge as _alchemy_judge
@@ -748,7 +749,7 @@ def _alchemy_lane_dependencies() -> dict[str, Any]:
         "compile_runner": compile_wiki,
         "lint_runner": lint_wiki,
         "nightly_runner": nightly_health,
-        "apply_machine_memory_actions_batch": _app_compile.apply_machine_memory_actions_batch,
+        "apply_machine_memory_actions_batch": _machine_memory_batch.apply_machine_memory_actions_batch,
         "append_runtime_history": append_runtime_history,
         "append_execution_receipt_history": append_execution_receipt_history,
         "atomic_write_text": atomic_write_text,

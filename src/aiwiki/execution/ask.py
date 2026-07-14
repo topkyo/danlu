@@ -18,7 +18,7 @@ this module). No caller needs to change.
 
 Note: ``utc_now`` is imported from ``aiwiki.app_compile`` (not
 ``aiwiki.app_utils``) because ``tests/test_app.py`` patches
-``aiwiki.app_compile.utc_now`` as a hot-patch seam. Resolving through the
+``aiwiki.app_utils.utc_now`` as a hot-patch seam. Resolving through the
 re-export keeps those patches effective.
 
 ``rank_concepts`` stays in ``aiwiki.app_compile`` (out of EP-018B scope) —
@@ -162,7 +162,7 @@ def _file_back_entry_seed(kind: str, title: str) -> str:
 # ``aiwiki.app_compile`` inside each function body. Reasons:
 #
 # - ``utc_now`` is a hot-patch target. ``tests/test_app.py`` patches it as
-#   ``patch("aiwiki.app_compile.utc_now", ...)``. A module-level
+#   ``patch("aiwiki.app_utils.utc_now", ...)``. A module-level
 #   ``from ..app_compile import utc_now`` would bind ``ask.utc_now`` to the
 #   original callable at import time and defeat that patch everywhere in
 #   this module.
@@ -433,6 +433,7 @@ def ask_question(
     notify: bool = True,
 ) -> dict[str, Any]:
     from .. import app_compile as _app_compile
+    from .. import app_utils as _app_utils
 
     if is_obsidian_open_link(question):
         raise ValueError("obsidian open links are navigation targets, not questions")
@@ -478,7 +479,7 @@ def ask_question(
             if isinstance(source_page, str) and source_page.startswith("wiki/sources/") and source_page.endswith(".md"):
                 boosted_ids.add(Path(source_page).stem)
     ranked = rank_sources(root, entries, question, boost_source_ids=boosted_ids, protocol=active_protocol)
-    created_at = _app_compile.utc_now()
+    created_at = _app_utils.utc_now()
     artifact_seed = _output_artifact_seed(question, output_format)
 
     if output_format == "report":
@@ -820,7 +821,7 @@ def file_back(
     kind: str = "derived",
     protocol: str | None = None,
 ) -> dict[str, Any]:
-    from .. import app_compile as _app_compile
+    from .. import app_utils as _app_utils
 
     ensure_layout(root)
     root_resolved = root.resolve(strict=False)
@@ -834,7 +835,7 @@ def file_back(
     if kind not in {"derived", "decision", "judgment"}:
         raise ValueError(f"Unsupported filed-back kind: {kind}")
 
-    filed_at = _app_compile.utc_now()
+    filed_at = _app_utils.utc_now()
     artifact_ref = relative_path(root, artifact_path) if artifact_path.is_relative_to(root_resolved) else str(artifact_path)
     original = artifact_path.read_text(encoding="utf-8", errors="replace")
     original_frontmatter = parse_frontmatter(original)

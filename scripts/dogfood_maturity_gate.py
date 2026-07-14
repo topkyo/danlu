@@ -1184,7 +1184,7 @@ def _build_human_required_report(root: Path, review_backlog_counts: dict[str, An
 
 
 def collect_metrics(root: Path, *, preview_limit: int = 20) -> dict[str, Any]:
-    from aiwiki.app_content import (
+    from aiwiki.app_lifecycle import (
         collect_aging_signals,
         collect_curated_pages,
         knowledge_lifecycle_governance_summary,

@@ -190,7 +190,7 @@ def resolve_report_native_anchors(
 
 def render_plain_concept_link_lines(concepts: list[str]) -> list[str]:
     """Plain-text concept index lines — no wikilinks (keeps Obsidian evidence graph clean)."""
-    from . import app_content as _facade
+    from .content.concepts import concept_label_to_slug, concept_label_to_title
 
     cleaned = [str(item).strip() for item in concepts if str(item).strip()]
     if not cleaned:
@@ -200,8 +200,8 @@ def render_plain_concept_link_lines(concepts: list[str]) -> list[str]:
         "",
     ]
     for label in cleaned:
-        slug = _facade.concept_label_to_slug(label)
-        title = _facade.concept_label_to_title(label)
+        slug = concept_label_to_slug(label)
+        title = concept_label_to_title(label)
         lines.append(f"- `{title}`（`wiki/concepts/{slug}.md`）")
     return lines
 

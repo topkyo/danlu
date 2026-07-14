@@ -20,31 +20,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .app_content import (
-    action_supports_low_risk_apply,
+from .app_lifecycle import (
     action_transition_profile,
     archive_transition_profile,
     collect_aging_signals,
     collect_curated_pages,
-    collect_recent_output_artifacts,
     curated_page_transition_profile,
     display_action_status,
-    entry_ids_from_paths,
-    entry_lookup_maps,
-    execution_band_label,
-    execution_bundle_path,
-    execution_policy_profile,
-    execution_proposal_path,
-    judgment_asset_attention_sort_key,
-    judgment_asset_shell_record,
-    judgment_asset_summary,
     knowledge_lifecycle_governance_summary,
-    load_execution_policy_decision_history,
-    load_execution_receipt_history,
-    preserved_section,
     review_queue,
     rewrite_transition_profile,
-    summarize_runtime_event_for_shell,
     transition_profile,
     valid_curated_statuses,
 )
@@ -106,6 +91,20 @@ from .app_utils import (
     utc_now,
 )
 from .config import LLMConfig
+from .content.io import (
+    collect_recent_output_artifacts,
+    entry_ids_from_paths,
+    entry_lookup_maps,
+    preserved_section,
+    summarize_runtime_event_for_shell,
+)
+from .content.memory import (
+    action_supports_low_risk_apply,
+    execution_band_label,
+    execution_policy_profile,
+    load_execution_policy_decision_history,
+    load_execution_receipt_history,
+)
 from .memory.actions import reconcile_machine_memory_actions as _reconcile_machine_memory_actions
 from .memory.build_plan import plan_machine_memory_build as _plan_machine_memory_build
 from .memory.builder import build_machine_memory as _build_machine_memory
@@ -135,6 +134,15 @@ from .memory.scoring import (
 )
 from .memory.source_records import (
     machine_memory_source_runtime_record as _machine_memory_source_runtime_record,
+)
+from .render.paths import (
+    execution_bundle_path,
+    execution_proposal_path,
+)
+from .render.views import (
+    judgment_asset_attention_sort_key,
+    judgment_asset_shell_record,
+    judgment_asset_summary,
 )
 
 
@@ -277,7 +285,7 @@ def store_concept_rewrite_candidate(
 # surface/query/routing helpers via ``aiwiki.app_memory.<name>`` as if this
 # module were a flat facade. The previous eager ``from .app_memory_surfaces
 # import ...`` block here created a real import-time cycle — surfaces imports
-# app_memory at its top, so cold ``import aiwiki.app_memory_surfaces`` raised
+# app_memory at its top, so cold ``import owner modules`` raised
 # ImportError for names not yet bound in the half-initialized module.
 #
 # PEP 562 ``__getattr__`` gives us the flat namespace without the cycle: names
@@ -286,29 +294,29 @@ def store_concept_rewrite_candidate(
 # ---------------------------------------------------------------------------
 
 _LAZY_OWNERS: dict[str, str] = {
-    # Owned by app_memory_surfaces
-    "append_machine_memory_history": "aiwiki.app_memory_surfaces",
-    "build_execution_audit_snapshot": "aiwiki.app_memory_surfaces",
-    "build_machine_memory_query": "aiwiki.app_memory_surfaces",
-    "collect_execution_consistency_signals": "aiwiki.app_memory_surfaces",
-    "concept_rewrite_proposal_digest": "aiwiki.app_memory_surfaces",
-    "reconcile_concept_rewrite_proposals": "aiwiki.app_memory_surfaces",
-    "render_concept_quality": "aiwiki.app_memory_surfaces",
-    "render_concept_rewrite_index": "aiwiki.app_memory_surfaces",
-    "render_concept_rewrite_proposal_page": "aiwiki.app_memory_surfaces",
-    "render_drift_report": "aiwiki.app_memory_surfaces",
-    "render_execution_audit": "aiwiki.app_memory_surfaces",
-    "render_execution_audit_html": "aiwiki.app_memory_surfaces",
-    "render_execution_center": "aiwiki.app_memory_surfaces",
-    "render_execution_center_html": "aiwiki.app_memory_surfaces",
-    "render_execution_proposal_page": "aiwiki.app_memory_surfaces",
-    "render_graph_health": "aiwiki.app_memory_surfaces",
-    "render_machine_memory_actions": "aiwiki.app_memory_surfaces",
-    "render_machine_memory_graph_html": "aiwiki.app_memory_surfaces",
-    "render_machine_memory_index": "aiwiki.app_memory_surfaces",
-    "render_machine_memory_repair_plan": "aiwiki.app_memory_surfaces",
-    "render_machine_memory_topology": "aiwiki.app_memory_surfaces",
-    "summarize_machine_memory_transition": "aiwiki.app_memory_surfaces",
+    # Owned by memory.* / app_memory_query (was app_memory_surfaces facade)
+    "append_machine_memory_history": "aiwiki.memory.graph",
+    "build_execution_audit_snapshot": "aiwiki.memory.execution_surfaces",
+    "build_machine_memory_query": "aiwiki.memory.graph",
+    "collect_execution_consistency_signals": "aiwiki.memory.execution_surfaces",
+    "concept_rewrite_proposal_digest": "aiwiki.memory.execution_surfaces",
+    "reconcile_concept_rewrite_proposals": "aiwiki.memory.execution_surfaces",
+    "render_concept_quality": "aiwiki.memory.execution_surfaces",
+    "render_concept_rewrite_index": "aiwiki.memory.execution_surfaces",
+    "render_concept_rewrite_proposal_page": "aiwiki.memory.execution_surfaces",
+    "render_drift_report": "aiwiki.memory.status",
+    "render_execution_audit": "aiwiki.memory.execution_surfaces",
+    "render_execution_audit_html": "aiwiki.memory.execution_surfaces",
+    "render_execution_center": "aiwiki.memory.execution_surfaces",
+    "render_execution_center_html": "aiwiki.memory.execution_surfaces",
+    "render_execution_proposal_page": "aiwiki.memory.execution_surfaces",
+    "render_graph_health": "aiwiki.memory.status",
+    "render_machine_memory_actions": "aiwiki.memory.status",
+    "render_machine_memory_graph_html": "aiwiki.memory.graph",
+    "render_machine_memory_index": "aiwiki.memory.status",
+    "render_machine_memory_repair_plan": "aiwiki.memory.status",
+    "render_machine_memory_topology": "aiwiki.memory.topology",
+    "summarize_machine_memory_transition": "aiwiki.memory.graph",
     # Owned by app_memory_query (EP-011 split)
     "_machine_memory_query_payload_hash": "aiwiki.app_memory_query",
     "_route_anchor_candidates": "aiwiki.app_memory_query",

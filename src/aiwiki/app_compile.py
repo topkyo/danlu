@@ -21,90 +21,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from .app_content import (
-    action_needs_review,
-    action_supports_low_risk_apply,
-    active_manual_source_concept_links,
-    annotate_recurring_promotion,
-    append_execution_policy_decisions,
-    append_review_history_entry,
-    append_wiki_log,
-    build_concept_quality,
-    build_concept_records,
-    build_domain_pilots,
-    build_domain_pilots_incremental,
-    build_knowledge_lifecycle_document,
-    build_machine_memory_repair_plan,
-    build_output_packs,
-    build_output_packs_incremental,
-    build_page_patch_plan,
-    classify_recurring_output_kind,
-    collect_aging_signals,
-    collect_curated_pages,
-    collect_output_artifacts,
-    collect_output_density_artifacts,
-    collect_recent_output_artifacts,
-    concept_render_signature,
-    concept_source_pages,
-    concept_summary_is_placeholder,
-    curated_asset_section_snapshot,
-    curated_page_template,
-    curated_page_transition_profile,
-    decision_memos_dir,
-    default_curated_status,
-    display_action_status,
-    display_curated_status,
-    display_knowledge_lifecycle_state,
-    display_rewrite_proposal_status,
-    domain_pilots_index_path,
-    ensure_wiki_log,
-    entry_concept_terms,
-    entry_ids_from_paths,
-    entry_lookup_maps,
-    evaluate_page_aging,
-    execution_bundle_path,
-    execution_policy_decision_record,
-    execution_proposal_path,
-    execution_receipt_path,
-    find_promoted_curated_page,
-    frontmatter_string_list,
-    judgment_lifecycle_profile,
-    knowledge_lifecycle_governance_summary,
-    load_execution_receipt_history,
-    manifest_change_summary,
-    pilot_scorecards_dir,
-    placeholder_concept_slugs,
-    recurring_promotion_needs_refresh,
-    refresh_knowledge_lifecycle_state,
-    remove_stale_generated_concept_pages,
-    remove_stale_generated_execution_bundle_files,
-    remove_stale_generated_execution_proposal_pages,
-    remove_stale_generated_markdown_files,
-    render_agent_pack,
-    render_agent_workbench,
-    render_aging_report,
-    render_concept_page,
-    render_concepts_index,
-    render_curated_index,
-    render_domain_pilots_index,
-    render_knowledge_lifecycle_entry_summary,
-    render_master_index,
-    render_output_packs_index,
-    render_review_queue,
-    render_source_page_with_state,
-    render_sources_index,
-    repair_execution_proposals,
-    review_history_entries,
-    review_packs_dir,
-    review_queue,
-    routing_snapshot_for_protocol,
-    safe_apply_preview,
-    sop_drafts_dir,
-    source_summary_or_preview,
-    sync_manifest_with_raw,
-    valid_curated_statuses,
-    validate_low_risk_action_targets,
-)
 from .app_execution import (
     append_execution_receipt_history,
     build_execution_batch_receipt,
@@ -117,6 +33,27 @@ from .app_execution import (
     write_execution_batch_receipt_document,
     write_execution_bundle_document,
     write_execution_dry_run_document,
+)
+from .app_lifecycle import (
+    action_needs_review,
+    build_knowledge_lifecycle_document,
+    collect_aging_signals,
+    collect_curated_pages,
+    curated_page_template,
+    curated_page_transition_profile,
+    default_curated_status,
+    display_action_status,
+    display_curated_status,
+    display_knowledge_lifecycle_state,
+    display_rewrite_proposal_status,
+    evaluate_page_aging,
+    frontmatter_string_list,
+    judgment_lifecycle_profile,
+    knowledge_lifecycle_governance_summary,
+    refresh_knowledge_lifecycle_state,
+    render_knowledge_lifecycle_entry_summary,
+    review_queue,
+    valid_curated_statuses,
 )
 from .app_memory import (
     active_corpus_bridge_evidence_ids,
@@ -260,18 +197,6 @@ from .app_state import (
     save_material_archive_state,
     shell_summary_path,
 )
-from .app_surfaces import (
-    render_cognitive_history,
-    render_execution_audit,
-    render_execution_audit_html,
-    render_execution_center,
-    render_execution_center_html,
-    render_furnace_center,
-    render_furnace_center_html,
-    render_judgment_assets,
-    render_machine_memory_graph_html,
-    render_review_center_html,
-)
 from .app_utils import (
     analyze_citation_snapshots,
     build_citation_snapshots,
@@ -296,6 +221,97 @@ from .app_utils import (
 )
 from .compile import CompileContext, compile_wiki, start_compile_context
 from .config import LLMConfig
+from .content.concepts import (
+    build_concept_quality,
+    build_concept_records,
+    concept_render_signature,
+    concept_source_pages,
+    entry_concept_terms,
+    render_concept_page,
+    render_concepts_index,
+    render_sources_index,
+)
+from .content.io import (
+    active_manual_source_concept_links,
+    annotate_recurring_promotion,
+    append_review_history_entry,
+    collect_output_artifacts,
+    collect_output_density_artifacts,
+    collect_recent_output_artifacts,
+    curated_asset_section_snapshot,
+    entry_ids_from_paths,
+    entry_lookup_maps,
+    find_promoted_curated_page,
+    manifest_change_summary,
+    recurring_promotion_needs_refresh,
+    render_source_page_with_state,
+    review_history_entries,
+    routing_snapshot_for_protocol,
+    source_summary_or_preview,
+    sync_manifest_with_raw,
+)
+from .content.memory import (
+    action_supports_low_risk_apply,
+    append_execution_policy_decisions,
+    build_machine_memory_repair_plan,
+    build_page_patch_plan,
+    concept_summary_is_placeholder,
+    execution_policy_decision_record,
+    load_execution_receipt_history,
+    placeholder_concept_slugs,
+    remove_stale_generated_execution_bundle_files,
+    remove_stale_generated_execution_proposal_pages,
+    remove_stale_generated_markdown_files,
+    repair_execution_proposals,
+    safe_apply_preview,
+    validate_low_risk_action_targets,
+)
+from .content.outputs import classify_recurring_output_kind
+from .memory.execution_surfaces import (
+    render_execution_audit,
+    render_execution_audit_html,
+    render_execution_center,
+    render_execution_center_html,
+)
+from .memory.graph import render_machine_memory_graph_html
+from .render.cognitive_history import render_cognitive_history
+from .render.furnace_center import (
+    render_furnace_center,
+    render_furnace_center_html,
+)
+from .render.judgment_assets import render_judgment_assets
+from .render.packs import (
+    build_output_packs,
+    build_output_packs_incremental,
+    render_output_packs_index,
+)
+from .render.paths import (
+    append_wiki_log,
+    decision_memos_dir,
+    ensure_wiki_log,
+    execution_bundle_path,
+    execution_proposal_path,
+    execution_receipt_path,
+    remove_stale_generated_concept_pages,
+    review_packs_dir,
+    sop_drafts_dir,
+)
+from .render.pilots import (
+    build_domain_pilots,
+    build_domain_pilots_incremental,
+    domain_pilots_index_path,
+    pilot_scorecards_dir,
+)
+from .render.review_center import render_review_center_html
+from .render.views import (
+    render_agent_pack,
+    render_agent_workbench,
+    render_aging_report,
+    render_curated_index,
+    render_domain_pilots_index,
+    render_master_index,
+    render_review_queue,
+)
 
 _CompileContext = CompileContext
 _start_compile_context = start_compile_context
@@ -565,26 +581,9 @@ def rank_concepts(
     return [item for _score, item in ranked[:5]]
 
 
-# ---------------------------------------------------------------------------
-# EP-018B migration complete: every execution-layer entry point that used to
-# live in this module now has a dedicated owner under ``aiwiki.execution.*``.
-# The _LAZY_OWNERS table + PEP 562 ``__getattr__`` seam below keep the legacy
-# ``aiwiki.app_compile.<name>`` import surface working for external callers
-# (tests, scripts, third-party integrations) by forwarding attribute access
-# to the owner module. No new execution logic should be added here; extend
-# the relevant ``aiwiki.execution.*`` owner instead.
-#
-# Owner mapping (see ``_LAZY_OWNERS`` below for the exact name list):
-#   - B1 runtime surfaces       -> aiwiki.execution.runtime_surfaces
-#   - B2 ask / file-back        -> aiwiki.execution.ask
-#   - B3 lifecycle              -> aiwiki.execution.lifecycle
-#   - B4 material archive       -> aiwiki.execution.archive
-#   - B5 concept rewrite        -> aiwiki.execution.concept_rewrite
-#   - B6 machine-memory action  -> aiwiki.execution.machine_memory_actions
-#   - B7 review / batch         -> aiwiki.execution.review /
-#                                   aiwiki.execution.machine_memory_batch
-#   - M3.6 L3 proposals         -> aiwiki.execution.l3_proposals
-# ---------------------------------------------------------------------------
+
+# EP-018B: execution entry points live under ``aiwiki.execution.*``.
+# Import them from owner modules directly; this module no longer lazy-forwards.
 
 from .app_compile_ops import (  # noqa: E402
     build_agent_packs,
@@ -612,106 +611,3 @@ from .app_queries import (  # noqa: E402
     source_page_requires_compile,
     wiki_requires_compile,
 )
-
-# ---------------------------------------------------------------------------
-# Execution owner lazy compat seam (PEP 562)
-#
-# Goal: keep ``aiwiki.app_compile.<name>`` importable after EP-018B migrated
-# every execution function into dedicated ``aiwiki.execution.*`` owner
-# modules. Each ``_LAZY_OWNERS`` entry below names the real owner module;
-# ``__getattr__`` imports it on first access and caches the resolved binding
-# back onto this module's globals for subsequent lookups.
-#
-# Hot names that ``tests/test_app.py`` currently ``patch("aiwiki.app_compile.
-# <name>")`` on (``utc_now``, ``entry_concept_terms``, ``build_machine_memory``,
-# ``build_ranking_source_record``, ``build_ranking_concept_record``) are
-# deliberately **not** listed here — they stay directly bound to this module's
-# globals so ``unittest.mock.patch`` resolves them immediately, with no
-# first-access / caching subtlety.
-# ---------------------------------------------------------------------------
-
-_LAZY_OWNERS: dict[str, str] = {
-    # Ask / file-back (EP-018B group 2) — migrated to aiwiki.execution.ask
-    "ask_question": "aiwiki.execution.ask",
-    "file_back": "aiwiki.execution.ask",
-    # Concept rewrite pipeline (EP-018B group 5) — migrated to aiwiki.execution.concept_rewrite
-    "review_concept_rewrite": "aiwiki.execution.concept_rewrite",
-    "apply_concept_rewrite": "aiwiki.execution.concept_rewrite",
-    "verify_concept_rewrite": "aiwiki.execution.concept_rewrite",
-    "revert_concept_rewrite": "aiwiki.execution.concept_rewrite",
-    "_load_concept_rewrite_proposals": "aiwiki.execution.concept_rewrite",
-    "_find_concept_rewrite_proposal": "aiwiki.execution.concept_rewrite",
-    "_save_concept_rewrite_proposals": "aiwiki.execution.concept_rewrite",
-    "_evaluate_concept_rewrite_verification": "aiwiki.execution.concept_rewrite",
-    "_persist_concept_rewrite_verification": "aiwiki.execution.concept_rewrite",
-    # Knowledge lifecycle (EP-018B group 3)
-    "refresh_knowledge_lifecycle_runtime": "aiwiki.execution.lifecycle",
-    "retire_concept": "aiwiki.execution.lifecycle",
-    "reactivate_concept": "aiwiki.execution.lifecycle",
-    "review_concept": "aiwiki.execution.lifecycle",
-    "review_concepts_batch": "aiwiki.execution.lifecycle",
-    # Machine-memory action (EP-018B group 6) — migrated to aiwiki.execution.machine_memory_actions
-    "resolve_machine_memory_action_query": "aiwiki.execution.machine_memory_actions",
-    "review_machine_memory_action": "aiwiki.execution.machine_memory_actions",
-    "review_machine_memory_actions_batch": "aiwiki.execution.machine_memory_actions",
-    "apply_machine_memory_action": "aiwiki.execution.machine_memory_actions",
-    "auto_resolve_machine_memory_actions": "aiwiki.execution.machine_memory_actions",
-    "revert_machine_memory_action": "aiwiki.execution.machine_memory_actions",
-    "_save_machine_memory_action_records": "aiwiki.execution.machine_memory_actions",
-    # Archive (EP-018B group 4)
-    "apply_material_archive": "aiwiki.execution.archive",
-    "revert_material_archive": "aiwiki.execution.archive",
-    # Review page (EP-018B group 7) — migrated to aiwiki.execution.review
-    "review_page": "aiwiki.execution.review",
-    # Machine-memory batch (EP-018B group 7) — migrated to aiwiki.execution.machine_memory_batch
-    "review_pages_batch": "aiwiki.execution.machine_memory_batch",
-    "apply_machine_memory_actions_batch": "aiwiki.execution.machine_memory_batch",
-    "revert_machine_memory_action_batch": "aiwiki.execution.machine_memory_batch",
-    "_build_batch_id": "aiwiki.execution.machine_memory_batch",
-    "_load_latest_action_apply_batch_receipt": "aiwiki.execution.machine_memory_batch",
-    # L3 prompt/policy proposals (M3.6)
-    "create_l3_proposal": "aiwiki.execution.l3_proposals",
-    "list_l3_proposals": "aiwiki.execution.l3_proposals",
-    "preview_l3_proposal_generation": "aiwiki.execution.l3_proposals",
-    "apply_l3_proposal": "aiwiki.execution.l3_proposals",
-    "reject_l3_proposal": "aiwiki.execution.l3_proposals",
-    "revert_l3_proposal": "aiwiki.execution.l3_proposals",
-    "load_l3_proposal_state": "aiwiki.execution.l3_proposals",
-    "save_l3_proposal_state": "aiwiki.execution.l3_proposals",
-    # Runtime surfaces (EP-018B group 1) — migrated to aiwiki.execution.runtime_surfaces
-    "nightly_health": "aiwiki.execution.runtime_surfaces",
-    "shell_status": "aiwiki.execution.runtime_surfaces",
-}
-
-
-# Note: intentionally no module-level ``__all__`` here. Defining one would
-# replace the implicit ``*``-export surface (currently all public globals)
-# and both drop existing public names (e.g. ``compile_wiki``, ``lint_wiki``)
-# and expose private ``_LAZY_OWNERS`` helpers. EP-018A only needs attribute
-# forwarding, not a star-import contract change.
-
-
-def __getattr__(name: str) -> Any:
-    owner_path = _LAZY_OWNERS.get(name)
-    if owner_path is None:
-        raise AttributeError(
-            f"module 'aiwiki.app_compile' has no attribute {name!r}"
-        )
-    if owner_path == __name__:
-        # Defensive branch: no entry in _LAZY_OWNERS currently self-references
-        # this module (EP-018B migrated every execution name to an
-        # aiwiki.execution.* owner). If a future entry is ever reintroduced
-        # with a self-reference and no concrete binding in globals, surface
-        # that mistake instead of silently returning ``None``.
-        if name not in globals():
-            raise AttributeError(
-                f"'aiwiki.app_compile.{name}' is registered in _LAZY_OWNERS "
-                f"but has no concrete binding; owner migration may be incomplete"
-            )
-        return globals()[name]
-    import importlib
-
-    owner = importlib.import_module(owner_path)
-    value = getattr(owner, name)
-    globals()[name] = value  # cache for subsequent accesses
-    return value

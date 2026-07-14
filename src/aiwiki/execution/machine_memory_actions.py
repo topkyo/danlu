@@ -24,8 +24,8 @@ Migration invariants (same as B1..B5):
   * ``compile_wiki`` comes from ``..compile.pipeline``, not from the
     ``..compile`` package ``__init__`` re-export (B4 oracle rule).
 - ``utc_now`` is resolved lazily at **call time** via
-  ``from .. import app_compile as _app_compile; _app_compile.utc_now()``
-  so that ``patch("aiwiki.app_compile.utc_now", ...)`` in
+  ``from .. import app_utils as _app_utils; _app_utils.utc_now()``
+  so that ``patch("aiwiki.app_utils.utc_now", ...)`` in
   ``tests/test_app.py`` continues to take effect after the owner flip.
 """
 
@@ -35,13 +35,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-from ..app_content import (
-    action_supports_low_risk_apply,
-    build_page_patch_plan,
-    repair_execution_proposals,
-    safe_apply_preview,
-    validate_low_risk_action_targets,
-)
 from ..app_execution import (
     append_execution_receipt_history,
     build_execution_bundle,
@@ -61,12 +54,6 @@ from ..app_protocol import (
     ensure_layout,
     load_protocol_state,
     schedule_review_windows,
-)
-from ..app_render import (
-    append_wiki_log,
-    execution_bundle_path,
-    execution_proposal_path,
-    execution_receipt_path,
 )
 from ..app_state import (
     DEFAULT_PROTOCOL,
@@ -94,6 +81,19 @@ from ..app_utils import (
     strip_frontmatter,
 )
 from ..compile.pipeline import compile_wiki
+from ..content.memory import (
+    action_supports_low_risk_apply,
+    build_page_patch_plan,
+    repair_execution_proposals,
+    safe_apply_preview,
+    validate_low_risk_action_targets,
+)
+from ..render.paths import (
+    append_wiki_log,
+    execution_bundle_path,
+    execution_proposal_path,
+    execution_receipt_path,
+)
 from .audit_preview import AUDIT_STREAM_PATH
 
 AUTO_RESOLUTION_RECEIPTS_DIR = Path("output") / "control" / "execution-receipts" / "auto-resolution"
@@ -335,10 +335,10 @@ def _apply_auto_resolution_escalation(
     decision: dict[str, Any],
     note: str | None,
 ) -> dict[str, Any]:
-    from .. import app_compile as _app_compile
+    from .. import app_utils as _app_utils
 
     action_id = str(target.get("id") or "")
-    generated_at = _app_compile.utc_now()
+    generated_at = _app_utils.utc_now()
     receipt_path = _auto_resolution_receipt_path(root, action_id)
     receipt_history = execution_receipt_history_path(root)
     audit_stream = root / AUDIT_STREAM_PATH
@@ -675,9 +675,9 @@ def review_machine_memory_action(
     *,
     note: str | None = None,
 ) -> dict[str, Any]:
-    # Lazy-resolve utc_now so patch("aiwiki.app_compile.utc_now", ...) still
+    # Lazy-resolve utc_now so patch("aiwiki.app_utils.utc_now", ...) still
     # takes effect after B6 flip.
-    from .. import app_compile as _app_compile
+    from .. import app_utils as _app_utils
 
     ensure_layout(root)
     if status not in ACTION_STATUSES:
@@ -689,7 +689,7 @@ def review_machine_memory_action(
     actions = [dict(action) for action in state.get("actions", []) if isinstance(action, dict)]
     target = resolve_machine_memory_action_query(actions, action_id)
     resolved_action_id = str(target.get("id") or action_id.strip())
-    reviewed_at = _app_compile.utc_now()
+    reviewed_at = _app_utils.utc_now()
     _update_action_review_state(root, target, status, note=note, reviewed_at=reviewed_at)
     save_machine_memory_action_state(root, {"version": 1, "actions": actions})
     append_wiki_log(
@@ -727,7 +727,7 @@ def review_machine_memory_actions_batch(
     then runs one compile to refresh derived policy/apply_ready fields and wiki
     surfaces.
     """
-    from .. import app_compile as _app_compile
+    from .. import app_utils as _app_utils
 
     ensure_layout(root)
     if status not in ACTION_STATUSES:
@@ -762,7 +762,7 @@ def review_machine_memory_actions_batch(
     if not targets:
         raise ValueError("Batch review-action requires at least one resolved action.")
 
-    reviewed_at = _app_compile.utc_now()
+    reviewed_at = _app_utils.utc_now()
     receipts: list[dict[str, Any]] = []
     for target, resolved_id in zip(targets, resolved_ids, strict=True):
         _update_action_review_state(root, target, status, note=note, reviewed_at=reviewed_at)
@@ -816,7 +816,7 @@ def apply_machine_memory_action(
     dry_run: bool = False,
     bundle_path: str | None = None,
 ) -> dict[str, Any]:
-    from .. import app_compile as _app_compile
+    from .. import app_utils as _app_utils
 
     ensure_layout(root)
     state = load_machine_memory_action_state_strict(root)
@@ -853,7 +853,7 @@ def apply_machine_memory_action(
     preview_apply_mode = str(preview.get("apply_mode") or "")
     if not preview_apply_mode:
         raise RuntimeError("Safe apply preview is missing an apply mode.")
-    previewed_at = _app_compile.utc_now()
+    previewed_at = _app_utils.utc_now()
     bundle = build_execution_bundle(root, proposal, compiled_at=previewed_at)
     if dry_run:
         selected_bundle_path = root / str(
@@ -932,7 +932,7 @@ def apply_machine_memory_action(
             f"then rerun `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {resolved_action_id}`."
         )
 
-    applied_at = _app_compile.utc_now()
+    applied_at = _app_utils.utc_now()
     stored_preview = stored_bundle.get("safe_apply_preview")
     if not isinstance(stored_preview, dict):
         raise RuntimeError("Execution bundle is missing the safe apply preview.")
@@ -1127,7 +1127,7 @@ def apply_machine_memory_action(
                     root,
                     {
                         "event_type": "action-auto-revert-on-verify-failure",
-                        "occurred_at": _app_compile.utc_now(),
+                        "occurred_at": _app_utils.utc_now(),
                         "action_id": resolved_action_id,
                         "apply_receipt_path": relative_path(root, receipt_path),
                         "revert_receipt_path": str(revert_result.get("receipt_path") or ""),
@@ -1169,7 +1169,7 @@ def revert_machine_memory_action(
     note: str | None = None,
     verify: bool = True,
 ) -> dict[str, Any]:
-    from .. import app_compile as _app_compile
+    from .. import app_utils as _app_utils
 
     ensure_layout(root)
     state = load_machine_memory_action_state_strict(root)
@@ -1192,7 +1192,7 @@ def revert_machine_memory_action(
     preview = receipt.get("safe_apply_preview")
     if not isinstance(preview, dict):
         raise RuntimeError("Execution receipt is missing the safe apply preview.")
-    reverted_at = _app_compile.utc_now()
+    reverted_at = _app_utils.utc_now()
     apply_mode = str(preview.get("apply_mode") or "")
 
     # R92-MM-ACTION-TX: snapshot every file we may mutate before any write.

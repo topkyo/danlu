@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..app_content import routing_snapshot_for_protocol
+from ..content.io import routing_snapshot_for_protocol
 from .scoring import recency_score_for_timestamp
 
 

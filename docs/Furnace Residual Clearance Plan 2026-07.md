@@ -51,3 +51,7 @@ cd .obsidian/plugins/furnace-product-shell && npm test -- --testPathPattern='run
 - C4 14/30-day：`scripts/long_window_proof_probe.py` 只探测；demo vault 当前 `not-yet`。
 - M-MOBILE-3：vault-queue settings mode = thin companion path；非独立 iOS 插件包。
 - M-MOBILE-4：商业包装文案已写入 Demo Pack / RuntimeClient docs。
+
+## Follow-up completed
+
+- 纯 facade 一次清除：见后续 PR / `AGENTS.md` 定案执行。

@@ -17,7 +17,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-
 # Whitelist maps Stop Line keywords (substring, case-insensitive) to glob
 # patterns. Patterns must reflect actual repo paths; non-existent paths cause
 # silent misses.

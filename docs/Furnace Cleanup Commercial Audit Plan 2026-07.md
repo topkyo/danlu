@@ -341,7 +341,7 @@ Obsidian UI → Node spawn → aiwiki-launcher.sh → Python CLI → vault write
 - C3：`demos/investing-demo-pack/` 脱敏 fixture + 截图/视频脚本已交付；Spec=`delivered-fixture`。
 - C4：仍只能等真实 wall-clock；探测入口 `scripts/long_window_proof_probe.py`（当前 demo/vault 为 not-yet）。
 - C5：RuntimeClient + VaultQueue + desktop drain 已落地；主插件仍 Desktop-only；独立 iOS 商店包不在范围。
-- facade 全量迁移：仍保留 facade/patch seam；本轮未强求删文件。
+- 纯 facade：已按 `AGENTS.md` 一次清除（`app.py` / `app_content` / `app_render` / `app_surfaces` / `app_memory_surfaces`）；legacy hub 与 CLI dual-register 仍保留。
 - 详见 `docs/Furnace Residual Clearance Plan 2026-07.md`。
 
 ---

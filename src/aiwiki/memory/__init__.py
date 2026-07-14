@@ -1,4 +1,4 @@
-"""Machine-memory render surfaces split out of app_memory_surfaces.
+"""Machine-memory render surfaces split out of memory package owners.
 
 Submodules (EP-017B):
 - graph: machine-memory graph HTML / query JSON / transition / history

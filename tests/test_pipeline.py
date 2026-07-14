@@ -6,22 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from aiwiki.app_compile import (
-    apply_concept_rewrite,
-    apply_machine_memory_action,
-    ask_question,
-    compile_wiki,
-    file_back,
-    lint_wiki,
-    nightly_health,
-    revert_concept_rewrite,
-    revert_machine_memory_action,
-    review_concept_rewrite,
-    review_machine_memory_action,
-    review_page,
-    verify_concept_rewrite,
-)
-from aiwiki.app_content import ingest_source, sync_manifest_with_raw
+from aiwiki.app_compile import compile_wiki, lint_wiki
 from aiwiki.app_protocol import ensure_layout
 from aiwiki.app_state import (
     load_concept_rewrite_state,
@@ -30,7 +15,28 @@ from aiwiki.app_state import (
     load_runtime_history,
 )
 from aiwiki.app_utils import parse_frontmatter
+from aiwiki.content.io import (
+    ingest_source,
+    sync_manifest_with_raw,
+)
 from aiwiki.drop import drop_url
+from aiwiki.execution.ask import (
+    ask_question,
+    file_back,
+)
+from aiwiki.execution.concept_rewrite import (
+    apply_concept_rewrite,
+    revert_concept_rewrite,
+    review_concept_rewrite,
+    verify_concept_rewrite,
+)
+from aiwiki.execution.machine_memory_actions import (
+    apply_machine_memory_action,
+    revert_machine_memory_action,
+    review_machine_memory_action,
+)
+from aiwiki.execution.review import review_page
+from aiwiki.execution.runtime_surfaces import nightly_health
 from aiwiki.llm import CompletionResult
 from aiwiki.runner import run_compile
 

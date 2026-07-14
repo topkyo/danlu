@@ -7,10 +7,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from aiwiki.app_compile import ask_question
 from aiwiki.app_protocol import ensure_layout
 from aiwiki.app_utils import parse_frontmatter, render_frontmatter, runtime_write_lock
 from aiwiki.cli import build_parser, main
+from aiwiki.execution.ask import ask_question
 from aiwiki.execution.candidates import promote_candidate
 from aiwiki.planner.dry_run import (
     preview_alchemy_lane,
@@ -623,7 +623,7 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
         self._seed_lane_records()
 
         with (
-            patch("aiwiki.app_compile.apply_machine_memory_actions_batch") as mocked_action_batch,
+            patch("aiwiki.execution.machine_memory_batch.apply_machine_memory_actions_batch") as mocked_action_batch,
             patch("aiwiki.runner.alchemy.compile_wiki") as mocked_compile,
         ):
             with self.assertRaisesRegex(RuntimeError, "requires an ok dry-run plan"):
@@ -642,7 +642,7 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
     def test_apply_dispatches_to_receipted_action_batch_after_preview(self) -> None:
         self._seed_lane_records()
 
-        with patch("aiwiki.app_compile.apply_machine_memory_actions_batch", return_value={"receipt_path": "receipt.json"}) as mocked:
+        with patch("aiwiki.execution.machine_memory_batch.apply_machine_memory_actions_batch", return_value={"receipt_path": "receipt.json"}) as mocked:
             result = run_alchemy_lane_apply(
                 self.root,
                 lane="heavy",
@@ -661,7 +661,7 @@ class AlchemyLaneDryRunTests(unittest.TestCase):
     def test_apply_writes_lane_runtime_history_audit_events(self) -> None:
         self._seed_lane_records()
 
-        with patch("aiwiki.app_compile.apply_machine_memory_actions_batch", return_value={"receipt_path": "receipt.json"}):
+        with patch("aiwiki.execution.machine_memory_batch.apply_machine_memory_actions_batch", return_value={"receipt_path": "receipt.json"}):
             result = run_alchemy_lane_apply(
                 self.root,
                 lane="heavy",

@@ -10,7 +10,6 @@ from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
 
-from aiwiki.app_compile import ask_question
 from aiwiki.app_protocol import ensure_layout
 from aiwiki.app_state import save_machine_memory_action_state
 from aiwiki.app_utils import parse_frontmatter
@@ -23,6 +22,7 @@ from aiwiki.cli import (
 )
 from aiwiki.cli.legacy_argv import rewrite_legacy_top_level_argv
 from aiwiki.cli.parsers import PRIMARY_SURFACE_COMMANDS
+from aiwiki.execution.ask import ask_question
 from aiwiki.execution.candidates import promote_candidate
 from aiwiki.today_feed import build_today_feed as real_build_today_feed
 
@@ -851,7 +851,7 @@ class CLITests(unittest.TestCase):
             ]
         }
         with patch(
-            "aiwiki.app_compile.refresh_knowledge_lifecycle_runtime",
+            "aiwiki.execution.lifecycle.refresh_knowledge_lifecycle_runtime",
             return_value=lifecycle,
         ), patch(
             "aiwiki.cli.review_concepts_batch",
@@ -871,7 +871,7 @@ class CLITests(unittest.TestCase):
         """--all-pending 且 lifecycle 中无 revisit/review 概念 → exit 1。"""
         lifecycle = {"entries": []}
         with patch(
-            "aiwiki.app_compile.refresh_knowledge_lifecycle_runtime",
+            "aiwiki.execution.lifecycle.refresh_knowledge_lifecycle_runtime",
             return_value=lifecycle,
         ):
             with self.assertRaises(SystemExit) as ctx:

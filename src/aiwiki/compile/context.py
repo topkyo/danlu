@@ -118,7 +118,7 @@ def start_compile_context(root: Path) -> CompileContext:
     manifest = sync_manifest_with_raw(root)
     entries: list[dict[str, Any]] = manifest["entries"]
     # Preserve the long-lived test seam that patches `aiwiki.app_compile.utc_now`.
-    from .. import app_compile as compile_facade
+    from .. import app_utils as compile_facade
 
     return CompileContext(
         root=root,

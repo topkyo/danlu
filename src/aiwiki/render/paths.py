@@ -4,7 +4,7 @@ Extracted from aiwiki.app_render (EP-017A). Pure path/log primitives
 shared by output-pack builders, pilot builders, dashboard renderers,
 and execution owner modules under aiwiki.execution.
 
-External callers should continue importing via aiwiki.app_render facade
+External callers should import from aiwiki.render.paths directly
 to preserve B2/B5/B6/B7 true-origin convention; direct imports from
 aiwiki.render.paths are also valid for new code.
 """

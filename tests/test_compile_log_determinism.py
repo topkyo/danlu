@@ -7,9 +7,9 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from aiwiki.app_compile import compile_wiki
-from aiwiki.app_content import ingest_source
 from aiwiki.app_protocol import ensure_layout
 from aiwiki.compile.persist_step import finalize_compile_phase
+from aiwiki.content.io import ingest_source
 
 
 class TestCompileLogDeterminism(unittest.TestCase):

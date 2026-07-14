@@ -345,7 +345,7 @@ def render_judgment_assets(
     *,
     active_protocol: str = DEFAULT_PROTOCOL,
 ) -> str:
-    from ..app_surfaces import render_judgment_assets as _render_judgment_assets
+    from .judgment_assets import render_judgment_assets as _render_judgment_assets
 
     return _render_judgment_assets(
         root,
@@ -365,7 +365,7 @@ def render_cognitive_history(
     active_protocol: str = DEFAULT_PROTOCOL,
     knowledge_lifecycle: dict[str, Any] | None = None,
 ) -> str:
-    from ..app_surfaces import render_cognitive_history as _render_cognitive_history
+    from .cognitive_history import render_cognitive_history as _render_cognitive_history
 
     return _render_cognitive_history(
         root,
@@ -765,7 +765,7 @@ def render_review_center_html(
     active_protocol: str = DEFAULT_PROTOCOL,
     knowledge_lifecycle: dict[str, Any] | None = None,
 ) -> str:
-    from ..app_surfaces import render_review_center_html as _render_review_center_html
+    from .review_center import render_review_center_html as _render_review_center_html
 
     return _render_review_center_html(
         decisions,
@@ -851,7 +851,7 @@ def render_furnace_center(
     *,
     knowledge_lifecycle: dict[str, Any] | None = None,
 ) -> str:
-    from ..app_surfaces import render_furnace_center as _render_furnace_center
+    from .furnace_center import render_furnace_center as _render_furnace_center
 
     return _render_furnace_center(
         decisions,
@@ -880,7 +880,7 @@ def render_furnace_center_html(
     *,
     knowledge_lifecycle: dict[str, Any] | None = None,
 ) -> str:
-    from ..app_surfaces import render_furnace_center_html as _render_furnace_center_html
+    from .furnace_center import render_furnace_center_html as _render_furnace_center_html
 
     return _render_furnace_center_html(
         decisions,
@@ -906,7 +906,7 @@ def render_compile_status(
     *,
     compile_state: dict[str, Any] | None = None,
 ) -> str:
-    from ..app_surfaces import render_compile_status as _render_compile_status
+    from .compile_status import render_compile_status as _render_compile_status
 
     return _render_compile_status(
         entries,
