@@ -88,11 +88,11 @@ from ..render.views import (
     judgment_asset_summary,
 )
 from .controls import (
-    rewrite_recovery_actions_for_controls,
+    rewrite_followup_actions_for_controls,
     shell_execution_controls,
     shell_review_controls,
 )
-from .helpers import _build_llm_recovery_command, _first_non_empty
+from .helpers import _build_llm_rerun_command, _first_non_empty
 from .meta import (
     shell_capabilities,
     shell_curated_page_roots,
@@ -208,7 +208,7 @@ def _build_watcher_summary(root: Path) -> dict[str, Any]:
         "semantic_lint": bool(state.get("semantic_lint", False)) if isinstance(state, dict) else False,
         "default_service_mode": "deterministic-only",
         "service_env": "AIWIKI_WATCH_DETERMINISTIC_ONLY=1",
-        "recovery_command": "./scripts/aiwiki-launcher.sh auto-once --deterministic-only",
+        "rerun_command": "./scripts/aiwiki-launcher.sh auto-once --deterministic-only",
         "note": (
             "Default watcher service only performs deterministic inbox processing; "
             "LLM enrichment belongs to explicit run-* or nightly paths."
@@ -253,7 +253,7 @@ def _build_nightly_summary(root: Path, nightly_state: dict[str, Any]) -> dict[st
     execution_receipt_stale = bool(stale_reason)
     error_text = _first_non_empty(llm_receipt, ["error", "failure_reason", "primary_error", "fallback_reason"])
     error_class = str(llm_receipt.get("error_class") or "") or (classify_backend_error(error_text) if error_text else "")
-    recovery_command = _build_llm_recovery_command(llm_receipt) if llm_receipt and llm_status != "success" else ""
+    rerun_command = _build_llm_rerun_command(llm_receipt) if llm_receipt and llm_status != "success" else ""
     return {
         "available": nightly_health_state_path(root).exists(),
         "generated_at": str(nightly_state.get("generated_at") or ""),
@@ -272,7 +272,7 @@ def _build_nightly_summary(root: Path, nightly_state: dict[str, Any]) -> dict[st
             "model_final": str(llm_receipt.get("model_final") or llm_receipt.get("model") or ""),
             "delivery_mode": str(llm_receipt.get("delivery_mode") or ""),
             "error_class": error_class,
-            "recovery_command": recovery_command,
+            "rerun_command": rerun_command,
         },
         "execution_receipt": {
             "available": bool(execution_receipt) and not execution_receipt_stale,
@@ -289,7 +289,7 @@ def _build_nightly_summary(root: Path, nightly_state: dict[str, Any]) -> dict[st
             else "",
             "stale_reason": stale_reason,
         },
-        "recovery_command": recovery_command,
+        "rerun_command": rerun_command,
         "retention": {
             "policy": "archive-first",
             "delete_receipts_by_default": False,
@@ -367,7 +367,7 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
     )
     execution_controls = shell_execution_controls(root, memory)
     review_backlog_counts.update(_action_review_backlog_counts(execution_controls))
-    rewrite_recovery_actions = rewrite_recovery_actions_for_controls(
+    rewrite_followup_actions = rewrite_followup_actions_for_controls(
         list(review_controls.get("rewrite_proposals", []))
         if isinstance(review_controls.get("rewrite_proposals", []), list)
         else []
@@ -439,7 +439,7 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
             "strong_assets": list(judgment_assets.get("strong_assets", []))[:8],
         },
         "review_controls": review_controls,
-        "rewrite_recovery_actions": rewrite_recovery_actions,
+        "rewrite_followup_actions": rewrite_followup_actions,
         "execution_controls": execution_controls,
         "planner": planner_state,
         "route_telemetry": route_telemetry,

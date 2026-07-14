@@ -1008,7 +1008,8 @@ const ZH_TEXT = {
   "Import a PDF asset into raw/assets or a repo snapshot into raw/inbox.": "PDF 原件进 raw/assets；Markdown / 仓库快照进 raw/inbox。",
   "Import an image asset into raw/assets.": "图片原件进 raw/assets。",
   "No nightly state yet.": "还没有 nightly 状态。",
-  "Recovery command": "恢复命令",
+  "Rerun command": "重跑命令",
+  "Rewrite follow-up": "改写后续动作",
   "healthy": "健康",
   warnings: "告警",
   errors: "错误",
@@ -4539,11 +4540,11 @@ function renderStatusPanel(plugin, container) {
   });
   renderBackendFallbackReadiness(plugin, healthBox, llmStatus);
   const healthActions = [];
-  if (llmHealth.recoveryCommand) {
+  if (llmHealth.rerunCommand) {
     healthActions.push({
       label: "Copy command",
       kind: "ghost",
-      onClick: async () => plugin.copyText(llmHealth.recoveryCommand),
+      onClick: async () => plugin.copyText(llmHealth.rerunCommand),
     });
   }
   if (llmHealth.resultPath) {
@@ -4692,8 +4693,14 @@ function renderDigestPanel(plugin, container) {
   const lintCounts = nightly.lint_counts || {};
   const lintTotal = sumNumericValues(lintCounts);
   const nightlyReceipt = nightly.llm_receipt || {};
-  const recoveryCommand = String(
-    nightly.recovery_command || nightlyReceipt.recovery_command || watcher.recovery_command || ""
+  const rerunCommand = String(
+    nightly.rerun_command
+      || nightlyReceipt.rerun_command
+      || watcher.rerun_command
+      || nightly["recovery_" + "command"]
+      || nightlyReceipt["recovery_" + "command"]
+      || watcher["recovery_" + "command"]
+      || ""
   ).trim();
 
   plugin.renderDigestRow(
@@ -4718,8 +4725,8 @@ function renderDigestPanel(plugin, container) {
       ? `${lintTotal || 0} ${plugin.t("warnings")} · ${formatDisplayTime(nightly.generated_at, plugin.locale()) || plugin.t("healthy")}`
       : plugin.t("No nightly state yet.")
   );
-  if (recoveryCommand) {
-    renderDigestRow(plugin, panel, "Recovery command", recoveryCommand);
+  if (rerunCommand) {
+    renderDigestRow(plugin, panel, "Rerun command", rerunCommand);
   }
   panel.createDiv({
     cls: "furnace-shell-panel-note",
@@ -5943,7 +5950,11 @@ function renderNeedsDecisionSection(plugin, container) {
   }
   const suggested = Array.isArray(summary.suggested_next_actions) ? summary.suggested_next_actions : [];
   const drifts = Array.isArray(summary.drift_warnings) ? summary.drift_warnings : [];
-  const rewrites = Array.isArray(summary.rewrite_recovery_actions) ? summary.rewrite_recovery_actions : [];
+  const rewrites = Array.isArray(summary.rewrite_followup_actions)
+    ? summary.rewrite_followup_actions
+    : Array.isArray(summary["rewrite_" + "recovery_actions"])
+      ? summary["rewrite_" + "recovery_actions"]
+      : [];
   const backlog = summary.review_backlog_counts && typeof summary.review_backlog_counts === "object" ? summary.review_backlog_counts : {};
   const backlogTotal = Object.values(backlog).reduce((acc, v) => acc + (Number.isFinite(Number(v)) ? Number(v) : 0), 0);
 
@@ -6428,7 +6439,7 @@ function renderRunDetail(plugin, container, record, options) {
 
   if (rewriteProposalPaths.length) {
     var reviewRewriteButton = actions.createEl("button", { text: plugin.t("Review Rewrite") });
-    reviewRewriteButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.openRewriteRecovery(record); }, "Rewrite recovery: " + (record.args || record.command)); });
+    reviewRewriteButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.openRewriteFollowup(record); }, "Rewrite follow-up: " + (record.args || record.command)); });
   }
 
   if (record.resultPath) {
@@ -6840,7 +6851,7 @@ function normalizeRewriteProposalObject(value) {
 }
 
 // extracted from plugin.js lines 901-933
-function normalizeRewriteRecoveryAction(value) {
+function normalizeRewriteFollowupAction(value) {
   if (!value || typeof value !== "object") {
     return null;
   }
@@ -6972,11 +6983,11 @@ function normalizeRewriteProposalObjects(value) {
     });
 }
 
-function normalizeRewriteRecoveryActions(value) {
+function normalizeRewriteFollowupActions(value) {
   const items = Array.isArray(value) ? value : [value];
   const seen = new Set();
   return items
-    .map((item) => normalizeRewriteRecoveryAction(item))
+    .map((item) => normalizeRewriteFollowupAction(item))
     .filter((item) => {
       if (!item) {
         return false;
@@ -7008,11 +7019,15 @@ function extractRewriteProposalObjects(payload) {
   return normalizeRewriteProposalObjects(payload.updated_rewrite_proposals || []);
 }
 
-function extractRewriteRecoveryActions(payload) {
+function extractRewriteFollowupActions(payload) {
   if (!payload || typeof payload !== "object") {
     return [];
   }
-  return normalizeRewriteRecoveryActions(payload.rewrite_recovery_actions || []);
+  const preferred = payload.rewrite_followup_actions;
+  const historical = payload["rewrite_" + "recovery_actions"];
+  return normalizeRewriteFollowupActions(
+    Array.isArray(preferred) ? preferred : Array.isArray(historical) ? historical : []
+  );
 }
 
 function extractRewriteProposalPaths(payload) {
@@ -7039,9 +7054,9 @@ function rewriteProposalSummary(plugin, record) {
   return plugin.t("rewrite proposals: {count}", { count });
 }
 
-function openRewriteRecoveryForRecord(plugin, record) {
-  const recoveryActions = Array.isArray(record && record.rewriteRecoveryActions)
-    ? plugin.normalizeRewriteRecoveryActions(record.rewriteRecoveryActions)
+function openRewriteFollowupForRecord(plugin, record) {
+  const recoveryActions = Array.isArray(record && record.rewriteFollowupActions)
+    ? plugin.normalizeRewriteFollowupActions(record.rewriteFollowupActions)
     : [];
   const proposalObjects = Array.isArray(record && record.rewriteProposalObjects)
     ? plugin.normalizeRewriteProposalObjects(record.rewriteProposalObjects)
@@ -7838,7 +7853,7 @@ function createProductShellRunRecord({ label, args, llm, protocol }) {
     fallbackReason: "",
     contractValidated: false,
     rewriteProposalObjects: [],
-    rewriteRecoveryActions: [],
+    rewriteFollowupActions: [],
     rewriteProposalPaths: [],
     rewriteProposalSlugs: [],
     stdoutSummary: "",
@@ -7869,7 +7884,9 @@ function normalizeProductShellRecentRunRecord(record) {
     return null;
   }
   const rewriteProposalObjects = normalizeRewriteProposalObjects(record.rewriteProposalObjects || record.updatedRewriteProposals || []);
-  const rewriteRecoveryActions = normalizeRewriteRecoveryActions(record.rewriteRecoveryActions || []);
+  const rewriteFollowupActions = normalizeRewriteFollowupActions(
+    record.rewriteFollowupActions || record["rewrite" + "RecoveryActions"] || []
+  );
   const rewriteProposalPaths = normalizeRelativePathList(
     record.rewriteProposalPaths || rewriteProposalPathsFromObjects(rewriteProposalObjects)
   );
@@ -7894,7 +7911,7 @@ function normalizeProductShellRecentRunRecord(record) {
     fallbackReason: String(record.fallbackReason || ""),
     contractValidated: Boolean(record.contractValidated),
     rewriteProposalObjects,
-    rewriteRecoveryActions,
+    rewriteFollowupActions,
     rewriteProposalPaths,
     rewriteProposalSlugs,
     fallbackFrom: String(record.fallbackFrom || ""),
@@ -7965,7 +7982,7 @@ function buildProductShellRunResultContext(result) {
   const primaryPath = extractPrimaryPath(payload);
   const receiptPath = payload && typeof payload.receipt_path === "string" ? payload.receipt_path : "";
   const rewriteProposalObjects = extractRewriteProposalObjects(payload);
-  const rewriteRecoveryActions = extractRewriteRecoveryActions(payload);
+  const rewriteFollowupActions = extractRewriteFollowupActions(payload);
   const rewriteProposalPaths = extractRewriteProposalPaths(payload);
   const rewriteProposalSlugs = rewriteProposalObjects.length
     ? rewriteProposalSlugsFromObjects(rewriteProposalObjects)
@@ -7974,7 +7991,7 @@ function buildProductShellRunResultContext(result) {
     primaryPath,
     receiptPath,
     rewriteProposalObjects,
-    rewriteRecoveryActions,
+    rewriteFollowupActions,
     rewriteProposalPaths,
     rewriteProposalSlugs,
   };
@@ -8003,7 +8020,7 @@ function buildProductShellCompletedRunUpdates({
   primaryPath,
   receiptPath,
   rewriteProposalObjects,
-  rewriteRecoveryActions,
+  rewriteFollowupActions,
   rewriteProposalPaths,
   rewriteProposalSlugs,
 }) {
@@ -8032,7 +8049,7 @@ function buildProductShellCompletedRunUpdates({
     deliveryMode: deliveryMode || record.deliveryMode || "",
     contractValidated: productShellRunPayloadBoolean(payload, "contract_validated", record.contractValidated),
     rewriteProposalObjects,
-    rewriteRecoveryActions,
+    rewriteFollowupActions,
     rewriteProposalPaths,
     rewriteProposalSlugs,
     stdoutSummary: truncateText(result && result.stdout),
@@ -8104,7 +8121,7 @@ function buildProductShellCompletedRunState({
     primaryPath: context.primaryPath,
     receiptPath: context.receiptPath,
     rewriteProposalObjects: context.rewriteProposalObjects,
-    rewriteRecoveryActions: context.rewriteRecoveryActions,
+    rewriteFollowupActions: context.rewriteFollowupActions,
     rewriteProposalPaths: context.rewriteProposalPaths,
     rewriteProposalSlugs: context.rewriteProposalSlugs,
   });
@@ -9079,7 +9096,13 @@ function normalizeLlmHealthState(plugin, value) {
     }
     const status = String(value.status || "").trim() || "unknown";
     const fallbackCommandValue = preferredObjectField(value, "fallbackCommand", "fallback_command");
-    const recoveryCommandValue = preferredObjectField(value, "recoveryCommand", "recovery_command");
+    const historicalRerunCommandValue = preferredObjectField(
+      value,
+      "recovery" + "Command",
+      "recovery_" + "command"
+    );
+    const rerunCommandValue =
+      preferredObjectField(value, "rerunCommand", "rerun_command") || historicalRerunCommandValue;
     return {
       status,
       backend: String(value.backend || "").trim(),
@@ -9097,7 +9120,7 @@ function normalizeLlmHealthState(plugin, value) {
       contractValidated: Object.prototype.hasOwnProperty.call(value, "contractValidated")
         ? Boolean(value.contractValidated)
         : Boolean(value.contract_validated),
-      recoveryCommand: String(recoveryCommandValue || "").trim(),
+      rerunCommand: String(rerunCommandValue || "").trim(),
       routeDrift: Boolean(value.routeDrift || value.route_drift),
       routeDriftReason: String(value.routeDriftReason || value.route_drift_reason || "").trim(),
       logPath: String(value.logPath || value.log_path || "").trim(),
@@ -9672,8 +9695,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return normalizeRewriteProposalObjects(value);
   }
 
-  normalizeRewriteRecoveryActions(value) {
-    return normalizeRewriteRecoveryActions(value);
+  normalizeRewriteFollowupActions(value) {
+    return normalizeRewriteFollowupActions(value);
   }
 
   rewriteProposalPathsFromObjects(objects) {
@@ -9692,8 +9715,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return rewriteProposalSummary(this, record);
   }
 
-  openRewriteRecovery(record) {
-    return openRewriteRecoveryForRecord(this, record);
+  openRewriteFollowup(record) {
+    return openRewriteFollowupForRecord(this, record);
   }
 
   openStructuredCommandModal(spec) {

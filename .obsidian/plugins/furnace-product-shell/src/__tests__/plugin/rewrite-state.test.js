@@ -53,7 +53,7 @@ test("rewrite state helpers normalize, dedupe, and extract proposal fields", () 
         proposal_path: "wiki/rewrite-proposals/duplicate.md",
       },
     ],
-    rewrite_recovery_actions: [
+    rewrite_followup_actions: [
       { slug: "concept-a", command: "review-rewrite concept-a --status accepted", transition: "accepted" },
       { slug: "concept-a", command: "review-rewrite concept-a --status accepted", transition: "accepted" },
     ],
@@ -69,7 +69,7 @@ test("rewrite state helpers normalize, dedupe, and extract proposal fields", () 
   });
   expect(context.extractRewriteProposalPaths(payload)).toEqual(["wiki/rewrite-proposals/concept-a.md"]);
   expect(context.extractRewriteProposalSlugs(["wiki/rewrite-proposals/concept-a.md"])).toEqual(["concept-a"]);
-  expect(context.extractRewriteRecoveryActions(payload)).toHaveLength(1);
+  expect(context.extractRewriteFollowupActions(payload)).toHaveLength(1);
 });
 
 test("rewrite summary prefers proposal object count over path count", () => {
@@ -92,7 +92,7 @@ test("open rewrite recovery helper routes to the narrowest available UI action",
   const plugin = {
     locale: () => "en",
     t: (text) => text,
-    normalizeRewriteRecoveryActions: context.normalizeRewriteRecoveryActions,
+    normalizeRewriteFollowupActions: context.normalizeRewriteFollowupActions,
     normalizeRewriteProposalObjects: context.normalizeRewriteProposalObjects,
     rewriteCandidatesForSlugs: (slugs) => context.normalizeRelativePathList(slugs).map((slug) => ({ slug, title: `Control ${slug}` })),
     openApplyRewriteModal: (payload) => calls.push(["apply", payload]),
@@ -106,23 +106,23 @@ test("open rewrite recovery helper routes to the narrowest available UI action",
     },
   };
 
-  context.openRewriteRecoveryForRecord(plugin, {
-    rewriteRecoveryActions: [{ slug: "concept-a", kind: "apply-rewrite", command: "apply concept-a" }],
+  context.openRewriteFollowupForRecord(plugin, {
+    rewriteFollowupActions: [{ slug: "concept-a", kind: "apply-rewrite", command: "apply concept-a" }],
   });
-  context.openRewriteRecoveryForRecord(plugin, {
-    rewriteRecoveryActions: [{ slug: "concept-b", status: "accepted", transition: "resolved", command: "review concept-b" }],
+  context.openRewriteFollowupForRecord(plugin, {
+    rewriteFollowupActions: [{ slug: "concept-b", status: "accepted", transition: "resolved", command: "review concept-b" }],
     rewriteProposalObjects: [{ slug: "concept-b", title: "Concept B", currentStatus: "proposed" }],
   });
-  context.openRewriteRecoveryForRecord(plugin, {
+  context.openRewriteFollowupForRecord(plugin, {
     rewriteProposalObjects: [
       { slug: "concept-c", title: "Concept C", status: "proposed", proposalPath: "wiki/rewrite-proposals/c.md" },
       { slug: "concept-d", title: "Concept D", status: "accepted", proposalPath: "wiki/rewrite-proposals/d.md" },
     ],
   });
-  context.openRewriteRecoveryForRecord(plugin, {
+  context.openRewriteFollowupForRecord(plugin, {
     rewriteProposalSlugs: ["concept-e"],
   });
-  context.openRewriteRecoveryForRecord(plugin, {});
+  context.openRewriteFollowupForRecord(plugin, {});
 
   expect(calls[0]).toEqual(["apply", { slug: "concept-a" }]);
   expect(calls[1][0]).toBe("transition");

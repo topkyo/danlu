@@ -316,7 +316,7 @@ def rewrite_control_objects_for_paths(root: Path, proposal_paths: list[str]) -> 
         controls.append(control)
     return controls
 
-def rewrite_recovery_action(control: dict[str, Any]) -> dict[str, Any] | None:
+def rewrite_followup_action(control: dict[str, Any]) -> dict[str, Any] | None:
     slug = str(control.get("slug") or "").strip()
     if not slug:
         return None
@@ -369,13 +369,13 @@ def rewrite_recovery_action(control: dict[str, Any]) -> dict[str, Any] | None:
         }
     return None
 
-def rewrite_recovery_actions_for_controls(rewrite_controls: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def rewrite_followup_actions_for_controls(rewrite_controls: list[dict[str, Any]]) -> list[dict[str, Any]]:
     actions: list[dict[str, Any]] = []
     seen_commands: set[str] = set()
     for control in rewrite_controls:
         if not isinstance(control, dict):
             continue
-        action = rewrite_recovery_action(control)
+        action = rewrite_followup_action(control)
         if action is None:
             continue
         command = str(action.get("command") or "").strip()
@@ -385,11 +385,11 @@ def rewrite_recovery_actions_for_controls(rewrite_controls: list[dict[str, Any]]
         actions.append(action)
     return actions
 
-def rewrite_recovery_payload_for_paths(root: Path, proposal_paths: list[str]) -> dict[str, Any]:
+def rewrite_followup_payload_for_paths(root: Path, proposal_paths: list[str]) -> dict[str, Any]:
     rewrite_controls = rewrite_control_objects_for_paths(root, proposal_paths)
     return {
         "updated_rewrite_proposals": rewrite_controls,
-        "rewrite_recovery_actions": rewrite_recovery_actions_for_controls(rewrite_controls),
+        "rewrite_followup_actions": rewrite_followup_actions_for_controls(rewrite_controls),
     }
 
 def shell_action_control_objects(

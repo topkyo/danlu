@@ -38,7 +38,7 @@ auto_process_once = _DispatchProxy("auto_process_once")
 build_parser = _DispatchProxy("build_parser")
 
 
-def _flatten_model_fallback_args(values: list[str]) -> list[str]:
+def _flatten_model_retry_args(values: list[str]) -> list[str]:
     models: list[str] = []
     seen: set[str] = set()
     for value in values:
@@ -49,6 +49,10 @@ def _flatten_model_fallback_args(values: list[str]) -> list[str]:
             seen.add(model)
             models.append(model)
     return models
+
+
+# Compat alias for older imports/tests.
+_flatten_model_fallback_args = _flatten_model_retry_args
 
 
 def _latest_run_compile_summary(root: Path) -> dict[str, object]:

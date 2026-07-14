@@ -90,10 +90,10 @@ from ..render.views import (
     judgment_asset_shell_record,
     judgment_asset_summary,
 )
-from .controls import rewrite_recovery_action
+from .controls import rewrite_followup_action
 from .helpers import (
     LLM_PRIMARY_HEALTH_EVENTS,
-    _build_llm_recovery_command,
+    _build_llm_rerun_command,
     _first_non_empty,
     _latest_llm_receipt,
 )
@@ -230,7 +230,7 @@ def shell_latest_llm_run(root: Path) -> dict[str, Any]:
         "receipt_path": relative_path(root, llm_receipt_log_path(root)),
         "log_path": relative_path(root, run_log_path(root)),
         "run_log_path": relative_path(root, run_log_path(root)),
-        "recovery_command": _build_llm_recovery_command(receipt),
+        "rerun_command": _build_llm_rerun_command(receipt),
         "target": target,
     }
 
@@ -262,7 +262,7 @@ def shell_llm_health(root: Path, llm_status: dict[str, Any], *, latest_llm_run: 
             "log_path": str(latest_llm_run.get("log_path") or ""),
             "result_path": str(latest_llm_run.get("result_path") or ""),
             "receipt_path": str(latest_llm_run.get("receipt_path") or ""),
-            "recovery_command": str(latest_llm_run.get("recovery_command") or ""),
+            "rerun_command": str(latest_llm_run.get("rerun_command") or latest_llm_run.get("recovery_command") or ""),
             "route_drift": False,
             "route_drift_reason": "",
         }
@@ -285,7 +285,7 @@ def shell_llm_health(root: Path, llm_status: dict[str, Any], *, latest_llm_run: 
             "log_path": "",
             "result_path": "",
             "receipt_path": "",
-            "recovery_command": "",
+            "rerun_command": "",
             "route_drift": False,
             "route_drift_reason": "",
         }
@@ -340,7 +340,7 @@ def shell_llm_health(root: Path, llm_status: dict[str, Any], *, latest_llm_run: 
         "log_path": str(latest_llm_run.get("log_path") or ""),
         "result_path": str(latest_llm_run.get("result_path") or ""),
         "receipt_path": str(latest_llm_run.get("receipt_path") or ""),
-        "recovery_command": str(latest_llm_run.get("recovery_command") or ""),
+        "rerun_command": str(latest_llm_run.get("rerun_command") or latest_llm_run.get("recovery_command") or ""),
         "route_drift": route_drift,
         "route_drift_reason": "Current route changed since the last recorded ask." if route_drift else "",
     }
@@ -633,7 +633,7 @@ def shell_suggested_next_actions(
     for proposal in review_controls.get("rewrite_proposals", [])[:4]:
         if not isinstance(proposal, dict):
             continue
-        action = rewrite_recovery_action(proposal)
+        action = rewrite_followup_action(proposal)
         if action is None:
             continue
         add_action(

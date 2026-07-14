@@ -192,7 +192,7 @@ function normalizeRewriteProposalObject(value) {
 }
 
 // extracted from plugin.js lines 901-933
-function normalizeRewriteRecoveryAction(value) {
+function normalizeRewriteFollowupAction(value) {
   if (!value || typeof value !== "object") {
     return null;
   }

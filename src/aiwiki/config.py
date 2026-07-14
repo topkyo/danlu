@@ -65,11 +65,24 @@ class LLMConfig:
     temperature: float = 0.2
     max_context_chars: int = DEFAULT_MAX_CONTEXT_CHARS
 
+    @property
+    def model_retry_chain(self) -> tuple[str, ...]:
+        return self.model_fallback_chain
+
     @classmethod
-    def from_env(cls, *, model_fallback: Any | None = None) -> "LLMConfig":
+    def from_env(
+        cls,
+        *,
+        model_retry: Any | None = None,
+        model_fallback: Any | None = None,
+    ) -> "LLMConfig":
         values = _read_env()
+        if model_retry is not None and model_fallback is not None:
+            raise ValueError("Pass model_retry or model_fallback, not both.")
+        if model_retry is not None:
+            values["model_retry"] = model_retry
         if model_fallback is not None:
-            values["model_fallback"] = model_fallback
+            values["model_retry"] = model_fallback
         requested = values["requested_backend"]
         backend = _resolve_backend(values)
         # M7.4d Model Policy: strict mode rejects implicit backend default fallback.
@@ -81,9 +94,9 @@ class LLMConfig:
                 "Set AIWIKI_LLM_MODEL=<model> or unset AIWIKI_REQUIRE_EXPLICIT_MODEL."
             )
         effective_model = _effective_model(values["model"], backend)
-        effective_model_fallback_chain = _effective_model_fallback_chain(
+        effective_model_retry_chain = _effective_model_retry_chain(
             effective_model,
-            _resolve_model_fallback_chain(values),
+            _resolve_model_retry_chain(values),
         )
         effective_max_context_chars = _effective_max_context_chars(values["max_context_chars_override"])
         if backend == BACKEND_DEEPSEEK_API:
@@ -127,7 +140,7 @@ class LLMConfig:
             backend_requested=requested,
             model=effective_model,
             model_requested=values["model"],
-            model_fallback_chain=effective_model_fallback_chain,
+            model_fallback_chain=effective_model_retry_chain,
             api_key=effective_api_key,
             deepseek_api_key=values["deepseek_api_key"],
             deepseek_api_key_source=values["deepseek_api_key_source"],
@@ -155,9 +168,9 @@ class LLMConfig:
             missing = []
             message = ""
             effective_model = _effective_model(values["model"], backend)
-            effective_model_fallback_chain = _effective_model_fallback_chain(
+            effective_model_retry_chain = _effective_model_retry_chain(
                 effective_model,
-                _resolve_model_fallback_chain(values),
+                _resolve_model_retry_chain(values),
             )
             effective_max_context_chars = _effective_max_context_chars(values["max_context_chars_override"])
             if backend == BACKEND_DEEPSEEK_API:
@@ -175,9 +188,9 @@ class LLMConfig:
             missing = _missing_items(values)
             message = str(exc)
             effective_model = ""
-            effective_model_fallback_chain = _effective_model_fallback_chain(
+            effective_model_retry_chain = _effective_model_retry_chain(
                 effective_model,
-                _resolve_model_fallback_chain(values),
+                _resolve_model_retry_chain(values),
             )
             effective_max_context_chars = _effective_max_context_chars(values["max_context_chars_override"])
         return {
@@ -190,7 +203,8 @@ class LLMConfig:
             "model": effective_model or values["model"],
             "effective_model": effective_model,
             "model_source": _compute_model_source(values["model"], backend),
-            "model_fallback_chain": list(effective_model_fallback_chain),
+            "model_retry_chain": list(effective_model_retry_chain),
+            "model_fallback_chain": list(effective_model_retry_chain),
             "api_key_present": effective_api_key_present,
             "deepseek_api_key_present": bool(values["deepseek_api_key"]),
             "deepseek_api_key_source": values["deepseek_api_key_source"],
@@ -221,13 +235,14 @@ class LLMConfig:
             data["anthropic_api_key"] = "***"
         if data["opencode_api_key"]:
             data["opencode_api_key"] = "***"
+        data["model_retry_chain"] = list(self.model_retry_chain)
         return data
 
 
 def _read_env() -> dict[str, Any]:
     requested_backend = (os.environ.get("AIWIKI_LLM_BACKEND") or DEFAULT_BACKEND).strip().lower()
     model = (os.environ.get("AIWIKI_LLM_MODEL") or os.environ.get("OPENAI_MODEL") or "").strip()
-    env_model_fallback = os.environ.get("AIWIKI_MODEL_FALLBACK")
+    env_model_retry = os.environ.get("AIWIKI_MODEL_FALLBACK")
     api_key = (os.environ.get("AIWIKI_LLM_API_KEY") or os.environ.get("OPENAI_API_KEY") or "").strip()
     deepseek_api_key, deepseek_api_key_source = _resolve_deepseek_api_key()
     opencode_api_key, opencode_api_key_source = _resolve_opencode_api_key()
@@ -253,8 +268,8 @@ def _read_env() -> dict[str, Any]:
     return {
         "requested_backend": requested_backend,
         "model": model,
-        "model_fallback": None,
-        "env_model_fallback": env_model_fallback,
+        "model_retry": None,
+        "env_model_retry": env_model_retry,
         "api_key": api_key,
         "deepseek_api_key": deepseek_api_key,
         "deepseek_api_key_source": deepseek_api_key_source,
@@ -353,13 +368,13 @@ def _default_model_chain(backend: str, requested_model: str = "") -> tuple[str, 
     return ()
 
 
-def _resolve_model_fallback_chain(values: dict[str, Any]) -> tuple[str, ...]:
-    if values.get("model_fallback") is not None:
-        return _parse_model_fallback_chain(values.get("model_fallback"))
-    return _parse_model_fallback_chain(values.get("env_model_fallback"))
+def _resolve_model_retry_chain(values: dict[str, Any]) -> tuple[str, ...]:
+    if values.get("model_retry") is not None:
+        return _parse_model_retry_chain(values.get("model_retry"))
+    return _parse_model_retry_chain(values.get("env_model_retry"))
 
 
-def _parse_model_fallback_chain(raw: Any) -> tuple[str, ...]:
+def _parse_model_retry_chain(raw: Any) -> tuple[str, ...]:
     if raw is None:
         return ()
     raw_items: list[Any]
@@ -379,8 +394,8 @@ def _parse_model_fallback_chain(raw: Any) -> tuple[str, ...]:
     return tuple(models)
 
 
-def _effective_model_fallback_chain(effective_model: str, fallback_chain: tuple[str, ...]) -> tuple[str, ...]:
-    return _parse_model_fallback_chain((effective_model, *fallback_chain))
+def _effective_model_retry_chain(effective_model: str, retry_chain: tuple[str, ...]) -> tuple[str, ...]:
+    return _parse_model_retry_chain((effective_model, *retry_chain))
 
 
 def _effective_max_context_chars(raw_override: str) -> int:

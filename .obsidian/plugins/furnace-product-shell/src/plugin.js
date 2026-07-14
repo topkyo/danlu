@@ -209,8 +209,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return normalizeRewriteProposalObjects(value);
   }
 
-  normalizeRewriteRecoveryActions(value) {
-    return normalizeRewriteRecoveryActions(value);
+  normalizeRewriteFollowupActions(value) {
+    return normalizeRewriteFollowupActions(value);
   }
 
   rewriteProposalPathsFromObjects(objects) {
@@ -229,8 +229,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return rewriteProposalSummary(this, record);
   }
 
-  openRewriteRecovery(record) {
-    return openRewriteRecoveryForRecord(this, record);
+  openRewriteFollowup(record) {
+    return openRewriteFollowupForRecord(this, record);
   }
 
   openStructuredCommandModal(spec) {

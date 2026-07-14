@@ -43,6 +43,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.opencode_api_key_source, "AIWIKI_OPENCODE_API_KEY")
         self.assertEqual(config.base_url, DEFAULT_OPENCODE_BASE_URL)
         self.assertEqual(config.model_fallback_chain, (DEFAULT_OPENCODE_MODEL,))
+        self.assertEqual(config.model_retry_chain, config.model_fallback_chain)
 
     def test_from_env_uses_deepseek_profile_with_key_and_base_url_override(self) -> None:
         config = self._from_env(

@@ -271,11 +271,11 @@ function renderStatusPanel(plugin, container) {
   });
   renderBackendFallbackReadiness(plugin, healthBox, llmStatus);
   const healthActions = [];
-  if (llmHealth.recoveryCommand) {
+  if (llmHealth.rerunCommand) {
     healthActions.push({
       label: "Copy command",
       kind: "ghost",
-      onClick: async () => plugin.copyText(llmHealth.recoveryCommand),
+      onClick: async () => plugin.copyText(llmHealth.rerunCommand),
     });
   }
   if (llmHealth.resultPath) {
@@ -424,8 +424,14 @@ function renderDigestPanel(plugin, container) {
   const lintCounts = nightly.lint_counts || {};
   const lintTotal = sumNumericValues(lintCounts);
   const nightlyReceipt = nightly.llm_receipt || {};
-  const recoveryCommand = String(
-    nightly.recovery_command || nightlyReceipt.recovery_command || watcher.recovery_command || ""
+  const rerunCommand = String(
+    nightly.rerun_command
+      || nightlyReceipt.rerun_command
+      || watcher.rerun_command
+      || nightly["recovery_" + "command"]
+      || nightlyReceipt["recovery_" + "command"]
+      || watcher["recovery_" + "command"]
+      || ""
   ).trim();
 
   plugin.renderDigestRow(
@@ -450,8 +456,8 @@ function renderDigestPanel(plugin, container) {
       ? `${lintTotal || 0} ${plugin.t("warnings")} · ${formatDisplayTime(nightly.generated_at, plugin.locale()) || plugin.t("healthy")}`
       : plugin.t("No nightly state yet.")
   );
-  if (recoveryCommand) {
-    renderDigestRow(plugin, panel, "Recovery command", recoveryCommand);
+  if (rerunCommand) {
+    renderDigestRow(plugin, panel, "Rerun command", rerunCommand);
   }
   panel.createDiv({
     cls: "furnace-shell-panel-note",

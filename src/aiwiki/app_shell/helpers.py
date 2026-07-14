@@ -129,7 +129,7 @@ def _first_non_empty(event: dict[str, Any], keys: list[str]) -> str:
             return value.strip()
     return ""
 
-def _build_llm_recovery_command(event: dict[str, Any]) -> str:
+def _build_llm_rerun_command(event: dict[str, Any]) -> str:
     event_name = str(event.get("event") or "")
     target = str(event.get("target") or "")
     prompt_profile = str(event.get("prompt_profile") or "")

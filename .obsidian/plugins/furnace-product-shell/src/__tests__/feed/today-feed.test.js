@@ -318,7 +318,7 @@ test("buildTodayFeed keeps degraded LLM health out of primary Today", () => {
       status: "degraded",
       reason: "probe timeout",
       checked_at: "2026-05-03T11:00:00Z",
-      recovery_command: "aiwiki llm-check",
+      rerun_command: "aiwiki llm-check",
     },
   });
 

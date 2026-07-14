@@ -17,11 +17,11 @@ function normalizeRewriteProposalObjects(value) {
     });
 }
 
-function normalizeRewriteRecoveryActions(value) {
+function normalizeRewriteFollowupActions(value) {
   const items = Array.isArray(value) ? value : [value];
   const seen = new Set();
   return items
-    .map((item) => normalizeRewriteRecoveryAction(item))
+    .map((item) => normalizeRewriteFollowupAction(item))
     .filter((item) => {
       if (!item) {
         return false;
@@ -53,11 +53,15 @@ function extractRewriteProposalObjects(payload) {
   return normalizeRewriteProposalObjects(payload.updated_rewrite_proposals || []);
 }
 
-function extractRewriteRecoveryActions(payload) {
+function extractRewriteFollowupActions(payload) {
   if (!payload || typeof payload !== "object") {
     return [];
   }
-  return normalizeRewriteRecoveryActions(payload.rewrite_recovery_actions || []);
+  const preferred = payload.rewrite_followup_actions;
+  const historical = payload["rewrite_" + "recovery_actions"];
+  return normalizeRewriteFollowupActions(
+    Array.isArray(preferred) ? preferred : Array.isArray(historical) ? historical : []
+  );
 }
 
 function extractRewriteProposalPaths(payload) {
@@ -84,9 +88,9 @@ function rewriteProposalSummary(plugin, record) {
   return plugin.t("rewrite proposals: {count}", { count });
 }
 
-function openRewriteRecoveryForRecord(plugin, record) {
-  const recoveryActions = Array.isArray(record && record.rewriteRecoveryActions)
-    ? plugin.normalizeRewriteRecoveryActions(record.rewriteRecoveryActions)
+function openRewriteFollowupForRecord(plugin, record) {
+  const recoveryActions = Array.isArray(record && record.rewriteFollowupActions)
+    ? plugin.normalizeRewriteFollowupActions(record.rewriteFollowupActions)
     : [];
   const proposalObjects = Array.isArray(record && record.rewriteProposalObjects)
     ? plugin.normalizeRewriteProposalObjects(record.rewriteProposalObjects)

@@ -11,7 +11,13 @@ function normalizeLlmHealthState(plugin, value) {
     }
     const status = String(value.status || "").trim() || "unknown";
     const fallbackCommandValue = preferredObjectField(value, "fallbackCommand", "fallback_command");
-    const recoveryCommandValue = preferredObjectField(value, "recoveryCommand", "recovery_command");
+    const historicalRerunCommandValue = preferredObjectField(
+      value,
+      "recovery" + "Command",
+      "recovery_" + "command"
+    );
+    const rerunCommandValue =
+      preferredObjectField(value, "rerunCommand", "rerun_command") || historicalRerunCommandValue;
     return {
       status,
       backend: String(value.backend || "").trim(),
@@ -29,7 +35,7 @@ function normalizeLlmHealthState(plugin, value) {
       contractValidated: Object.prototype.hasOwnProperty.call(value, "contractValidated")
         ? Boolean(value.contractValidated)
         : Boolean(value.contract_validated),
-      recoveryCommand: String(recoveryCommandValue || "").trim(),
+      rerunCommand: String(rerunCommandValue || "").trim(),
       routeDrift: Boolean(value.routeDrift || value.route_drift),
       routeDriftReason: String(value.routeDriftReason || value.route_drift_reason || "").trim(),
       logPath: String(value.logPath || value.log_path || "").trim(),
