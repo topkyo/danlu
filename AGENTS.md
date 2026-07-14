@@ -96,6 +96,27 @@
 - `decision / judgment / execution` 层必须保持可审计、可回滚、可追溯。
 - 非目标：hosted service, multi-user sync, heavy RAG infra, fine-tuning。
 
+## 架构清理定案：纯 facade 一次做干净
+
+**定案（最优解）**：纯 re-export facade 对产品运行几乎无价值，只服务历史 import / `patch("aiwiki.app_*")` 习惯。  
+**禁止**“再迁一批（可选）”式半迁移；要做就一轮做完，不留中间态尾巴。
+
+### 彻底做干净 = 一次做完这些，不做中间态
+
+1. 生产与测试全部改直引 owner（`content.*` / `render.*` / `memory.*` / `execution.*` / `compile.*`）。
+2. 所有 `patch("aiwiki.app_content|app_render|app_surfaces|app_memory_surfaces|app_compile.<lazy>")` 改到真实 owner 模块。
+3. 去掉 owner 为了 patch 又绕回 facade 的 `_facade` 回环（如 `content/*`、`memory/graph.py`）。
+4. 删除纯 facade 文件：`app_content.py`、`app_render.py`、`app_surfaces.py`、`app_memory_surfaces.py`；`app.py` 若无外部硬依赖则删除或缩成极薄入口。
+5. compat oracle（如 `tests/test_execution_compat.py`）与仅断言 re-export 的单测：删除或改成 owner 契约测试。
+6. 本轮明确不动：有真实逻辑的 legacy hub（`app_utils` / `app_state` / `app_protocol` / `app_lifecycle` 等）——那是另一条搬迁线，不与纯 facade 清除混做；CLI legacy 双注册先保留（有 dogfood/脚本兼容价值）。
+
+### 禁止
+
+- 只删 facade 文件、不改 patch / import 目标。
+- 把大 hub 搬迁与纯 facade 清除捆成“顺便清一下”。
+- 新增业务逻辑进任何 re-export facade。
+- 写“保留 facade 作为永久架构层”或“低风险再迁一点”的新计划条目。
+
 ## 自主权边界
 
 可直接做：
