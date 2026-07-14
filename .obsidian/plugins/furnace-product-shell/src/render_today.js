@@ -873,7 +873,11 @@ function renderNeedsDecisionSection(plugin, container) {
   }
   const suggested = Array.isArray(summary.suggested_next_actions) ? summary.suggested_next_actions : [];
   const drifts = Array.isArray(summary.drift_warnings) ? summary.drift_warnings : [];
-  const rewrites = Array.isArray(summary.rewrite_recovery_actions) ? summary.rewrite_recovery_actions : [];
+  const rewrites = Array.isArray(summary.rewrite_followup_actions)
+    ? summary.rewrite_followup_actions
+    : Array.isArray(summary["rewrite_" + "recovery_actions"])
+      ? summary["rewrite_" + "recovery_actions"]
+      : [];
   const backlog = summary.review_backlog_counts && typeof summary.review_backlog_counts === "object" ? summary.review_backlog_counts : {};
   const backlogTotal = Object.values(backlog).reduce((acc, v) => acc + (Number.isFinite(Number(v)) ? Number(v) : 0), 0);
 

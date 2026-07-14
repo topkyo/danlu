@@ -82,7 +82,7 @@ test("normalizeProductShellRecentRuns hydrates persisted run records", () => {
           target_path: "wiki/concepts/concept-a.md",
         },
       ],
-      rewriteRecoveryActions: [
+      rewriteFollowupActions: [
         { slug: "concept-a", command: "review-rewrite concept-a --status accepted" },
         { slug: "concept-a", command: "review-rewrite concept-a --status accepted" },
       ],
@@ -110,7 +110,7 @@ test("normalizeProductShellRecentRuns hydrates persisted run records", () => {
     exitCode: 0,
   });
   expect(runs[0].rewriteProposalObjects).toHaveLength(1);
-  expect(runs[0].rewriteRecoveryActions).toHaveLength(1);
+  expect(runs[0].rewriteFollowupActions).toHaveLength(1);
   expect(runs[0].timeline).toEqual([
     { stage: "Submitted", at: "2026-05-25T00:00:00Z", summary: "run-ask", status: "running" },
   ]);
@@ -203,7 +203,7 @@ test("run state helpers classify degraded ask runs and build completed updates",
     primaryPath: "output/reports/a.md",
     receiptPath: "output/receipts/a.json",
     rewriteProposalObjects: [{ slug: "concept-a" }],
-    rewriteRecoveryActions: [{ slug: "concept-a", command: "review-rewrite" }],
+    rewriteFollowupActions: [{ slug: "concept-a", command: "review-rewrite" }],
     rewriteProposalPaths: ["output/_proposals/rewrite/concept-a.md"],
     rewriteProposalSlugs: ["concept-a"],
   });
@@ -248,7 +248,7 @@ test("run state helpers build command result context from payload artifacts", ()
           target_path: "wiki/concepts/concept-a.md",
         },
       ],
-      rewrite_recovery_actions: [{ slug: "concept-a", command: "review-rewrite concept-a --status accepted" }],
+      rewrite_followup_actions: [{ slug: "concept-a", command: "review-rewrite concept-a --status accepted" }],
     },
   });
 
@@ -259,7 +259,7 @@ test("run state helpers build command result context from payload artifacts", ()
     rewriteProposalSlugs: ["concept-a"],
   });
   expect(fromObjects.rewriteProposalObjects).toHaveLength(1);
-  expect(fromObjects.rewriteRecoveryActions).toHaveLength(1);
+  expect(fromObjects.rewriteFollowupActions).toHaveLength(1);
 
   const fromPaths = context.buildProductShellRunResultContext({
     payload: {
@@ -272,7 +272,7 @@ test("run state helpers build command result context from payload artifacts", ()
     primaryPath: "output/reports/b.md",
     receiptPath: "",
     rewriteProposalObjects: [],
-    rewriteRecoveryActions: [],
+    rewriteFollowupActions: [],
     rewriteProposalPaths: ["wiki/rewrite-proposals/concept-b.md"],
     rewriteProposalSlugs: ["concept-b"],
   });

@@ -26,8 +26,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--model-fallback",
         action="append",
-        dest="model_fallback",
-        help="Fallback model to try when current model fails. Repeatable or comma-separated. Overrides AIWIKI_MODEL_FALLBACK env.",
+        dest="model_retry",
+        help="Retry model to try on the same backend when current model fails. Repeatable or comma-separated. Overrides AIWIKI_MODEL_FALLBACK env.",
     )
     subparsers = parser.add_subparsers(
         dest="command",

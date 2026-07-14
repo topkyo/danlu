@@ -515,7 +515,7 @@ class ShellFlowTests(AppFlowTestBase):
         self.assertEqual(result["latest_llm_run"]["result_path"], ask_result["path"])
         self.assertEqual(result["latest_llm_run"]["receipt_path"], ".aiwiki/logs/llm-receipts.jsonl")
         self.assertEqual(result["latest_llm_run"]["log_path"], ".aiwiki/logs/runs.jsonl")
-        self.assertIn("./scripts/aiwiki-launcher.sh run-ask", result["latest_llm_run"]["recovery_command"])
+        self.assertIn("./scripts/aiwiki-launcher.sh run-ask", result["latest_llm_run"]["rerun_command"])
 
         self.assertEqual(result["llm_health"]["status"], "healthy")
         self.assertEqual(result["llm_health"]["backend_requested"], "opencode-api")
@@ -650,7 +650,7 @@ class ShellFlowTests(AppFlowTestBase):
         self.assertEqual(result["latest_llm_run"]["fallback_from"], "run-ask")
         self.assertEqual(result["latest_llm_run"]["fallback_command"], "ask")
         self.assertEqual(result["latest_llm_run"]["result_path"], "output/reports/query-frontdoor.md")
-        self.assertNotIn("--fallback-to-ask", result["latest_llm_run"]["recovery_command"])
+        self.assertNotIn("--fallback-to-ask", result["latest_llm_run"]["rerun_command"])
 
         self.assertEqual(result["llm_health"]["status"], "degraded")
         self.assertEqual(result["llm_health"]["fallback_command"], "ask")
@@ -790,7 +790,7 @@ class ShellFlowTests(AppFlowTestBase):
         self.assertEqual(result["nightly"]["retention"]["policy"], "archive-first")
         self.assertFalse(result["nightly"]["retention"]["delete_receipts_by_default"])
 
-    def test_shell_status_exposes_failed_nightly_recovery_command(self) -> None:
+    def test_shell_status_exposes_failed_nightly_rerun_command(self) -> None:
         log_path = self.root / ".aiwiki" / "logs" / "llm-receipts.jsonl"
         log_path.parent.mkdir(parents=True, exist_ok=True)
         log_path.write_text(
@@ -816,7 +816,7 @@ class ShellFlowTests(AppFlowTestBase):
         self.assertEqual(result["nightly"]["llm_receipt"]["status"], "failed")
         self.assertEqual(result["nightly"]["llm_receipt"]["error_class"], "timeout")
         self.assertEqual(
-            result["nightly"]["recovery_command"],
+            result["nightly"]["rerun_command"],
             "./scripts/aiwiki-launcher.sh run-nightly --compile-limit 2 --no-semantic-lint",
         )
 
@@ -1096,8 +1096,8 @@ class ShellFlowTests(AppFlowTestBase):
         self.assertEqual(rewrite_action["transition"], "accepted")
         self.assertEqual(rewrite_action["path"], f"wiki/rewrite-proposals/{slug}.md")
         self.assertIn(f"review-rewrite {slug} --status accepted", rewrite_action["command"])
-        self.assertTrue(result["rewrite_recovery_actions"])
-        self.assertEqual(result["rewrite_recovery_actions"][0]["slug"], slug)
+        self.assertTrue(result["rewrite_followup_actions"])
+        self.assertEqual(result["rewrite_followup_actions"][0]["slug"], slug)
 
     def test_shell_status_surfaces_judgment_assets_and_split_review_objects(self) -> None:
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")

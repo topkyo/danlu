@@ -12,7 +12,7 @@ from pathlib import Path
 from ..app_cache import cache_status_summary, drop_query_cache, force_rebuild_query_cache
 from ..app_compile import compile_wiki, lint_wiki, set_active_protocol
 from ..app_protocol import ensure_layout, load_protocol_state
-from ..app_shell import build_shell_summary, rewrite_recovery_payload_for_paths, shell_search, shell_status_dashboard
+from ..app_shell import build_shell_summary, rewrite_followup_payload_for_paths, shell_search, shell_status_dashboard
 from ..app_state import load_machine_memory_action_state, load_today_snooze_state, save_today_snooze_state
 from ..app_vault import bootstrap_new_vault, sync_product_shell_plugin
 from ..content.io import ingest_source
@@ -125,6 +125,7 @@ from .dispatch_helpers import (
     _feed_entry_to_review_item,
     _first_string,
     _flatten_model_fallback_args,
+    _flatten_model_retry_args,
     _format_feed_entry_line,
     _format_l3_generation_preview_line,
     _format_l3_proposal_summary_line,
@@ -247,7 +248,7 @@ def _handle_compile_family(args: argparse.Namespace, root: Path) -> tuple[object
         rewrite_state = result.get("concept_rewrite") or {}
         proposal_paths = [str(path or "") for path in rewrite_state.get("proposal_paths", []) if str(path or "")]
         if proposal_paths:
-            result = {**result, **rewrite_recovery_payload_for_paths(root, proposal_paths)}
+            result = {**result, **rewrite_followup_payload_for_paths(root, proposal_paths)}
         return _out(result)
     if args.handler_command == "run-compile":
         try:
@@ -827,8 +828,8 @@ def main(argv: list[str] | None = None) -> int:
     root = _resolve_vault_root(args)
     fallback_env_was_set = "AIWIKI_MODEL_FALLBACK" in os.environ
     previous_fallback_env = os.environ.get("AIWIKI_MODEL_FALLBACK", "")
-    if args.model_fallback is not None:
-        os.environ["AIWIKI_MODEL_FALLBACK"] = ",".join(_flatten_model_fallback_args(args.model_fallback))
+    if args.model_retry is not None:
+        os.environ["AIWIKI_MODEL_FALLBACK"] = ",".join(_flatten_model_retry_args(args.model_retry))
 
     result: object = None
     text_output: str | None = None
@@ -846,7 +847,7 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:  # pragma: no cover - exercised in CLI usage
         parser.exit(1, f"error: {exc}\n")
     finally:
-        if args.model_fallback is not None:
+        if args.model_retry is not None:
             if fallback_env_was_set:
                 os.environ["AIWIKI_MODEL_FALLBACK"] = previous_fallback_env
             else:

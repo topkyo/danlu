@@ -2467,7 +2467,7 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(stamped)
         self.assertTrue(all(receipt["backend_compat"] == snapshot for receipt in stamped))
 
-    def test_run_compile_returns_runtime_owned_rewrite_recovery_objects(self) -> None:
+    def test_run_compile_returns_runtime_owned_rewrite_followup_objects(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
         source_page = self.root / "wiki" / "sources" / f"{entry['id']}.md"
@@ -2523,9 +2523,9 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(proposal["slug"], slug)
         self.assertEqual(proposal["proposal_path"], f"wiki/rewrite-proposals/{slug}.md")
         self.assertTrue(proposal["can_review"])
-        self.assertEqual(result["rewrite_recovery_actions"][0]["kind"], "review-rewrite")
-        self.assertEqual(result["rewrite_recovery_actions"][0]["slug"], slug)
-        self.assertIn(f"review-rewrite {slug} --status accepted", result["rewrite_recovery_actions"][0]["command"])
+        self.assertEqual(result["rewrite_followup_actions"][0]["kind"], "review-rewrite")
+        self.assertEqual(result["rewrite_followup_actions"][0]["slug"], slug)
+        self.assertIn(f"review-rewrite {slug} --status accepted", result["rewrite_followup_actions"][0]["command"])
 
     def test_run_compile_failed_attempt_is_written_to_runs_log_and_llm_receipts(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")

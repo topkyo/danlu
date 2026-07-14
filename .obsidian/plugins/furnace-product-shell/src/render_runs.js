@@ -147,7 +147,7 @@ function renderRunDetail(plugin, container, record, options) {
 
   if (rewriteProposalPaths.length) {
     var reviewRewriteButton = actions.createEl("button", { text: plugin.t("Review Rewrite") });
-    reviewRewriteButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.openRewriteRecovery(record); }, "Rewrite recovery: " + (record.args || record.command)); });
+    reviewRewriteButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.openRewriteFollowup(record); }, "Rewrite follow-up: " + (record.args || record.command)); });
   }
 
   if (record.resultPath) {

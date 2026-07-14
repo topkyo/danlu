@@ -102,10 +102,10 @@ test("digest panel exposes shell recovery commands when available", () => {
     "utf8"
   );
 
-  expect(renderPrimitivesSrc).toMatch(/nightly\.recovery_command/);
-  expect(renderPrimitivesSrc).toMatch(/nightlyReceipt\.recovery_command/);
-  expect(renderPrimitivesSrc).toMatch(/watcher\.recovery_command/);
-  expect(renderPrimitivesSrc).toMatch(/Recovery command/);
+  expect(renderPrimitivesSrc).toMatch(/nightly\.rerun_command/);
+  expect(renderPrimitivesSrc).toMatch(/nightlyReceipt\.rerun_command/);
+  expect(renderPrimitivesSrc).toMatch(/watcher\.rerun_command/);
+  expect(renderPrimitivesSrc).toMatch(/Rerun command/);
 });
 
 test("pending submissions have a first-class degraded terminal state", () => {

@@ -26,7 +26,7 @@ function createProductShellRunRecord({ label, args, llm, protocol }) {
     fallbackReason: "",
     contractValidated: false,
     rewriteProposalObjects: [],
-    rewriteRecoveryActions: [],
+    rewriteFollowupActions: [],
     rewriteProposalPaths: [],
     rewriteProposalSlugs: [],
     stdoutSummary: "",
@@ -57,7 +57,9 @@ function normalizeProductShellRecentRunRecord(record) {
     return null;
   }
   const rewriteProposalObjects = normalizeRewriteProposalObjects(record.rewriteProposalObjects || record.updatedRewriteProposals || []);
-  const rewriteRecoveryActions = normalizeRewriteRecoveryActions(record.rewriteRecoveryActions || []);
+  const rewriteFollowupActions = normalizeRewriteFollowupActions(
+    record.rewriteFollowupActions || record["rewrite" + "RecoveryActions"] || []
+  );
   const rewriteProposalPaths = normalizeRelativePathList(
     record.rewriteProposalPaths || rewriteProposalPathsFromObjects(rewriteProposalObjects)
   );
@@ -82,7 +84,7 @@ function normalizeProductShellRecentRunRecord(record) {
     fallbackReason: String(record.fallbackReason || ""),
     contractValidated: Boolean(record.contractValidated),
     rewriteProposalObjects,
-    rewriteRecoveryActions,
+    rewriteFollowupActions,
     rewriteProposalPaths,
     rewriteProposalSlugs,
     fallbackFrom: String(record.fallbackFrom || ""),
@@ -169,7 +171,7 @@ function buildProductShellRunResultContext(result) {
   const primaryPath = extractPrimaryPath(payload);
   const receiptPath = payload && typeof payload.receipt_path === "string" ? payload.receipt_path : "";
   const rewriteProposalObjects = extractRewriteProposalObjects(payload);
-  const rewriteRecoveryActions = extractRewriteRecoveryActions(payload);
+  const rewriteFollowupActions = extractRewriteFollowupActions(payload);
   const rewriteProposalPaths = extractRewriteProposalPaths(payload);
   const rewriteProposalSlugs = rewriteProposalObjects.length
     ? rewriteProposalSlugsFromObjects(rewriteProposalObjects)
@@ -178,7 +180,7 @@ function buildProductShellRunResultContext(result) {
     primaryPath,
     receiptPath,
     rewriteProposalObjects,
-    rewriteRecoveryActions,
+    rewriteFollowupActions,
     rewriteProposalPaths,
     rewriteProposalSlugs,
   };
@@ -207,7 +209,7 @@ function buildProductShellCompletedRunUpdates({
   primaryPath,
   receiptPath,
   rewriteProposalObjects,
-  rewriteRecoveryActions,
+  rewriteFollowupActions,
   rewriteProposalPaths,
   rewriteProposalSlugs,
 }) {
@@ -236,7 +238,7 @@ function buildProductShellCompletedRunUpdates({
     deliveryMode: deliveryMode || record.deliveryMode || "",
     contractValidated: productShellRunPayloadBoolean(payload, "contract_validated", record.contractValidated),
     rewriteProposalObjects,
-    rewriteRecoveryActions,
+    rewriteFollowupActions,
     rewriteProposalPaths,
     rewriteProposalSlugs,
     stdoutSummary: truncateText(result && result.stdout),
@@ -308,7 +310,7 @@ function buildProductShellCompletedRunState({
     primaryPath: context.primaryPath,
     receiptPath: context.receiptPath,
     rewriteProposalObjects: context.rewriteProposalObjects,
-    rewriteRecoveryActions: context.rewriteRecoveryActions,
+    rewriteFollowupActions: context.rewriteFollowupActions,
     rewriteProposalPaths: context.rewriteProposalPaths,
     rewriteProposalSlugs: context.rewriteProposalSlugs,
   });

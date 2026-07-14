@@ -19,7 +19,7 @@ from aiwiki.app_compile import (
 )
 from aiwiki.app_memory import store_concept_rewrite_candidate
 from aiwiki.app_protocol import ensure_layout
-from aiwiki.app_shell import rewrite_recovery_payload_for_paths
+from aiwiki.app_shell import rewrite_followup_payload_for_paths
 from aiwiki.app_state import load_machine_memory, load_manifest, nightly_health_state_path
 from aiwiki.app_utils import (
     atomic_write_text,
@@ -467,7 +467,7 @@ def run_compile(
 
     if (not pending and not pending_concept_slugs and not pending_rewrite_candidates) or limit <= 0:
         llm_audit = _empty_llm_audit()
-        rewrite_payload = rewrite_recovery_payload_for_paths(root, updated_rewrite_proposal_pages)
+        rewrite_payload = rewrite_followup_payload_for_paths(root, updated_rewrite_proposal_pages)
         _stamped_record(
             summary_base_event(int((time.monotonic() - started) * 1000)),
             llm_audit,
@@ -1029,7 +1029,7 @@ def run_compile(
         llm_audit,
         status="success",
     )
-    rewrite_payload = rewrite_recovery_payload_for_paths(root, updated_rewrite_proposal_pages)
+    rewrite_payload = rewrite_followup_payload_for_paths(root, updated_rewrite_proposal_pages)
     return {
         "compile": compile_result,
         "updated_pages": updated_pages,

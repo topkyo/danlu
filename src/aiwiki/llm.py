@@ -354,7 +354,7 @@ class ModelFallbackClient:
                 result = method(*args)
             except LLMError as exc:
                 last_error = exc
-                if self.index == len(self.clients) - 1 or not _is_model_fallback_error(str(exc)):
+                if self.index == len(self.clients) - 1 or not _is_model_retry_error(str(exc)):
                     raise
                 self.advance_model()
                 continue
@@ -362,7 +362,7 @@ class ModelFallbackClient:
             return result
         if last_error is not None:
             raise last_error
-        raise LLMError("No usable model fallback candidate was configured.")
+        raise LLMError("No usable model retry candidate was configured.")
 
 
 def create_backend_client(config: LLMConfig, workdir: Path) -> Any:
@@ -373,9 +373,9 @@ def create_backend_client(config: LLMConfig, workdir: Path) -> Any:
     if reason is not None:
         raise AutonomyDisabled(reason)
 
-    model_fallback_configs = _model_fallback_configs(config)
-    if len(model_fallback_configs) > 1:
-        return ModelFallbackClient(config, workdir, model_fallback_configs)
+    model_retry_configs = _model_retry_configs(config)
+    if len(model_retry_configs) > 1:
+        return ModelFallbackClient(config, workdir, model_retry_configs)
     if config.backend in {BACKEND_DEEPSEEK_API, BACKEND_OPENCODE_API, BACKEND_OPENAI_API}:
         return OpenAICompatClient(config, workdir)
     if config.backend == BACKEND_ANTHROPIC_API:
@@ -517,15 +517,15 @@ def _instantiate_cli_client(config: LLMConfig, workdir: Path) -> Any:
     raise LLMError(f"Unsupported backend `{config.backend}`.")
 
 
-def _model_fallback_configs(config: LLMConfig) -> list[LLMConfig]:
-    candidate_models = list(config.model_fallback_chain)
+def _model_retry_configs(config: LLMConfig) -> list[LLMConfig]:
+    candidate_models = list(config.model_retry_chain)
     if len(candidate_models) <= 1:
         return [_config_for_backend(config, config.backend)]
     base_config = _config_for_backend(config, config.backend)
     return [replace(base_config, model=model) for model in candidate_models]
 
 
-def _is_model_fallback_error(message: str) -> bool:
+def _is_model_retry_error(message: str) -> bool:
     text = str(message or "").lower()
     if _classify_backend_error(text) in {"quota", "timeout", "unavailable"}:
         return True

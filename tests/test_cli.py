@@ -1230,7 +1230,7 @@ class CLITests(unittest.TestCase):
             ["--model-fallback", "a", "--model-fallback", "b", "advanced", "llm-check"]
         )
 
-        self.assertEqual(args.model_fallback, ["a", "b"])
+        self.assertEqual(args.model_retry, ["a", "b"])
 
     def test_cli_model_fallback_comma(self) -> None:
         from aiwiki.cli import _flatten_model_fallback_args
@@ -2529,7 +2529,7 @@ class CLITests(unittest.TestCase):
             max_cycles=1,
         )
 
-    def test_compile_command_wraps_runtime_owned_rewrite_recovery_payload(self) -> None:
+    def test_compile_command_wraps_runtime_owned_rewrite_followup_payload(self) -> None:
         compile_payload = {
             "compiled_at": "2026-04-22T00:00:00+00:00",
             "concept_rewrite": {
@@ -2538,11 +2538,11 @@ class CLITests(unittest.TestCase):
         }
         rewrite_payload = {
             "updated_rewrite_proposals": [{"slug": "transformer-scaling", "proposal_path": "wiki/rewrite-proposals/transformer-scaling.md"}],
-            "rewrite_recovery_actions": [{"slug": "transformer-scaling", "command": "PYTHONPATH=src python3 -m aiwiki.cli --root . review-rewrite transformer-scaling --status accepted"}],
+            "rewrite_followup_actions": [{"slug": "transformer-scaling", "command": "PYTHONPATH=src python3 -m aiwiki.cli --root . review-rewrite transformer-scaling --status accepted"}],
         }
 
         with patch("aiwiki.cli.compile_wiki", return_value=compile_payload) as compile_mock:
-            with patch("aiwiki.cli.rewrite_recovery_payload_for_paths", return_value=rewrite_payload) as recovery_mock:
+            with patch("aiwiki.cli.rewrite_followup_payload_for_paths", return_value=rewrite_payload) as recovery_mock:
                 code, payload, stderr = self._run_main(["compile"])
 
         self.assertEqual(code, 0)
@@ -2550,7 +2550,7 @@ class CLITests(unittest.TestCase):
         compile_mock.assert_called_once_with(self.root)
         recovery_mock.assert_called_once_with(self.root, ["wiki/rewrite-proposals/transformer-scaling.md"])
         self.assertEqual(payload["updated_rewrite_proposals"][0]["slug"], "transformer-scaling")
-        self.assertEqual(payload["rewrite_recovery_actions"][0]["slug"], "transformer-scaling")
+        self.assertEqual(payload["rewrite_followup_actions"][0]["slug"], "transformer-scaling")
 
     def test_main_exits_with_error_message_on_handler_failure(self) -> None:
         stdout = io.StringIO()
