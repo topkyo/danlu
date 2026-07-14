@@ -9,11 +9,14 @@ from pathlib import Path
 from unittest.mock import patch
 
 from aiwiki.app_compile import compile_wiki
-from aiwiki.app_content import ingest_source, sync_manifest_with_raw
 from aiwiki.app_protocol import ensure_layout, save_manifest
 from aiwiki.app_state import append_runtime_history, load_machine_memory, load_output_candidates_state
 from aiwiki.app_utils import _RUNTIME_LOCKS, parse_frontmatter, relative_path
 from aiwiki.config import LLMConfig
+from aiwiki.content.io import (
+    ingest_source,
+    sync_manifest_with_raw,
+)
 from aiwiki.content.memory import placeholder_concept_slugs
 from aiwiki.drop import drop_note
 from aiwiki.execution.ask import ask_question

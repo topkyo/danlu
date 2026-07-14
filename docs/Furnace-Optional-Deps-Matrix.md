@@ -27,9 +27,9 @@
 
 ## 遥测
 
-- LLM 运行：`aiwiki llm-telemetry --limit N`
-- Execution receipt：`aiwiki backend-telemetry --limit N`
-- 探测 vs 运行：`llm-check --probe` 与运行遥测分离
+- LLM 运行：`aiwiki advanced llm-telemetry --limit N`
+- Execution receipt：`aiwiki advanced backend-telemetry --limit N`
+- 探测 vs 运行：`aiwiki advanced llm-check --probe` 与运行遥测分离
 
 ## 保留策略
 

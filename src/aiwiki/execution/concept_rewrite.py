@@ -17,8 +17,8 @@ Design notes:
   ``build_ranking_concept_record``) stay directly bound in
   ``aiwiki.app_compile``. For the one B5 actually calls (``utc_now``),
   we use function-body lazy lookup
-  (``from .. import app_compile as _app_compile; _app_compile.utc_now()``)
-  so that ``patch("aiwiki.app_compile.utc_now")`` in tests continues to
+  (``from .. import app_utils as _app_utils; _app_utils.utc_now()``)
+  so that ``patch("aiwiki.app_utils.utc_now")`` in tests continues to
   take effect.
 - ``append_wiki_log`` comes from ``render.paths``. The legacy
   ``app_content`` / ``app_render`` facades still re-export it for
@@ -239,10 +239,10 @@ def _save_concept_rewrite_proposals(root: Path, proposals: list[dict[str, Any]])
 
 def _evaluate_concept_rewrite_verification(root: Path, proposal: dict[str, Any]) -> dict[str, Any]:
     # Lazy-resolve ``utc_now`` via ``app_compile`` so ``tests/test_app.py``'s
-    # ``patch("aiwiki.app_compile.utc_now", ...)`` sites still take effect on
+    # ``patch("aiwiki.app_utils.utc_now", ...)`` sites still take effect on
     # this migrated function. Module-level ``from ..app_utils import utc_now``
     # would bind the original callable at import time and bypass the patch.
-    from .. import app_compile as _app_compile
+    from .. import app_utils as _app_utils
 
     slug = str(proposal.get("slug") or "")
     target_path = str(proposal.get("target_path") or f"wiki/concepts/{slug}.md")
@@ -317,7 +317,7 @@ def _evaluate_concept_rewrite_verification(root: Path, proposal: dict[str, Any])
         "slug": slug,
         "target_path": target_path,
         "status": verification_status,
-        "checked_at": _app_compile.utc_now(),
+        "checked_at": _app_utils.utc_now(),
         "summary": verification_summary,
         "issues": issues,
         "quality_score": int(quality_record.get("quality_score", 0)) if isinstance(quality_record, dict) else 0,
@@ -381,7 +381,7 @@ def review_concept_rewrite(
     *,
     note: str | None = None,
 ) -> dict[str, Any]:
-    from .. import app_compile as _app_compile
+    from .. import app_utils as _app_utils
 
     ensure_layout(root)
     if status not in REWRITE_PROPOSAL_STATUSES:
@@ -393,7 +393,7 @@ def review_concept_rewrite(
     target = _find_concept_rewrite_proposal(proposals, slug)
     if status == "accepted" and not rewrite_proposal_candidate_is_current(root, target):
         raise RuntimeError("Concept rewrite proposal candidate is stale or invalid. Run run-compile again before accepting.")
-    reviewed_at = _app_compile.utc_now()
+    reviewed_at = _app_utils.utc_now()
     target["status"] = status
     target["reviewed_at"] = reviewed_at
     target["review_note"] = note or ""
@@ -441,7 +441,7 @@ def apply_concept_rewrite(
     note: str | None = None,
     dry_run: bool = False,
 ) -> dict[str, Any]:
-    from .. import app_compile as _app_compile
+    from .. import app_utils as _app_utils
 
     ensure_layout(root)
     proposals = _load_concept_rewrite_proposals(root)
@@ -470,7 +470,7 @@ def apply_concept_rewrite(
         normalized_source_pages,
     )
     if dry_run:
-        previewed_at = _app_compile.utc_now()
+        previewed_at = _app_utils.utc_now()
         current_markdown = concept_path.read_text(encoding="utf-8", errors="replace")
         dry_run_path = rewrite_dry_run_path(root, slug)
         payload = {
@@ -530,7 +530,7 @@ def apply_concept_rewrite(
     receipt: dict[str, Any] | None = None
     try:
         atomic_write_text(concept_path, new_content)
-        applied_at = _app_compile.utc_now()
+        applied_at = _app_utils.utc_now()
         target["status"] = "applied"
         target["applied_at"] = applied_at
         target["last_applied_at"] = applied_at
@@ -672,7 +672,7 @@ def verify_concept_rewrite(root: Path, slug: str, *, note: str | None = None) ->
 
 @runtime_write_operation
 def revert_concept_rewrite(root: Path, slug: str, *, note: str | None = None) -> dict[str, Any]:
-    from .. import app_compile as _app_compile
+    from .. import app_utils as _app_utils
 
     ensure_layout(root)
     proposals = _load_concept_rewrite_proposals(root)
@@ -696,7 +696,7 @@ def revert_concept_rewrite(root: Path, slug: str, *, note: str | None = None) ->
     receipt: dict[str, Any] | None = None
     try:
         atomic_write_text(concept_path, previous_markdown.strip() + "\n")
-        reverted_at = _app_compile.utc_now()
+        reverted_at = _app_utils.utc_now()
         target["status"] = "accepted"
         target["reviewed_at"] = reverted_at
         target["review_note"] = note or "Reverted applied rewrite proposal."

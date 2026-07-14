@@ -14,10 +14,10 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from aiwiki.app_compile_ops import set_active_protocol
-from aiwiki.app_content import ingest_source
 from aiwiki.app_protocol import ensure_layout, save_manifest
 from aiwiki.app_state import load_manifest, load_material_archive_state, material_archive_action_id
 from aiwiki.compile.pipeline import compile_wiki
+from aiwiki.content.io import ingest_source
 from aiwiki.execution.archive import apply_material_archive, revert_material_archive
 
 

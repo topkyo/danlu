@@ -18,95 +18,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from ..app_content import (
-    _validate_rewrite_candidate_markdown,
-    action_needs_review,
-    action_supports_low_risk_apply,
-    active_manual_source_concept_links,
-    annotate_recurring_promotion,
-    append_execution_policy_decisions,
-    append_review_history_entry,
-    append_wiki_log,
-    build_concept_quality,
-    build_concept_records,
-    build_domain_pilots,
-    build_domain_pilots_incremental,
-    build_knowledge_lifecycle_document,
-    build_machine_memory_repair_plan,
-    build_output_packs,
-    build_output_packs_incremental,
-    build_page_patch_plan,
-    classify_recurring_output_kind,
-    collect_aging_signals,
-    collect_curated_pages,
-    collect_output_artifacts,
-    collect_output_density_artifacts,
-    collect_recent_output_artifacts,
-    concept_render_signature,
-    concept_source_pages,
-    concept_summary_is_placeholder,
-    curated_asset_section_snapshot,
-    curated_page_template,
-    curated_page_transition_profile,
-    decision_memos_dir,
-    default_curated_status,
-    display_action_status,
-    display_curated_status,
-    display_knowledge_lifecycle_state,
-    display_rewrite_proposal_status,
-    domain_pilots_index_path,
-    ensure_wiki_log,
-    entry_concept_terms,
-    entry_ids_from_paths,
-    entry_lookup_maps,
-    evaluate_page_aging,
-    execution_bundle_path,
-    execution_policy_decision_record,
-    execution_proposal_path,
-    execution_receipt_path,
-    find_promoted_curated_page,
-    frontmatter_string_list,
-    judgment_lifecycle_profile,
-    knowledge_lifecycle_governance_summary,
-    manifest_change_summary,
-    normalize_concept_hardness,
-    pilot_scorecards_dir,
-    placeholder_concept_slugs,
-    preserved_section,
-    recurring_promotion_needs_refresh,
-    refresh_knowledge_lifecycle_state,
-    remove_stale_generated_concept_pages,
-    remove_stale_generated_execution_bundle_files,
-    remove_stale_generated_execution_proposal_pages,
-    remove_stale_generated_markdown_files,
-    render_agent_pack,
-    render_agent_workbench,
-    render_aging_report,
-    render_concept_page,
-    render_concepts_index,
-    render_curated_index,
-    render_domain_pilots_index,
-    render_knowledge_lifecycle_entry_summary,
-    render_master_index,
-    render_output_packs_index,
-    render_review_queue,
-    render_source_page_with_state,
-    render_sources_index,
-    repair_execution_proposals,
-    review_history_entries,
-    review_packs_dir,
-    review_queue,
-    rewrite_proposal_candidate_is_current,
-    rewrite_proposal_is_apply_ready,
-    rewrite_proposal_needs_review,
-    routing_snapshot_for_protocol,
-    safe_apply_preview,
-    sop_drafts_dir,
-    source_summary_or_preview,
-    sync_manifest_with_raw,
-    valid_curated_statuses,
-    validate_low_risk_action_targets,
-)
 from ..app_execution import (
     append_execution_receipt_history,
     build_execution_bundle,
@@ -115,6 +26,28 @@ from ..app_execution import (
     execution_bundle_digest,
     load_execution_bundle,
     write_execution_bundle_document,
+)
+from ..app_lifecycle import (
+    action_needs_review,
+    build_knowledge_lifecycle_document,
+    collect_aging_signals,
+    collect_curated_pages,
+    curated_page_template,
+    curated_page_transition_profile,
+    default_curated_status,
+    display_action_status,
+    display_curated_status,
+    display_knowledge_lifecycle_state,
+    display_rewrite_proposal_status,
+    evaluate_page_aging,
+    frontmatter_string_list,
+    judgment_lifecycle_profile,
+    knowledge_lifecycle_governance_summary,
+    refresh_knowledge_lifecycle_state,
+    render_knowledge_lifecycle_entry_summary,
+    review_queue,
+    rewrite_proposal_needs_review,
+    valid_curated_statuses,
 )
 from ..app_memory import (
     active_corpus_bridge_evidence_ids,
@@ -179,7 +112,6 @@ from ..app_protocol import (
     resolve_protocol,
     schedule_review_windows,
 )
-from ..app_render import render_aging_report, render_review_queue
 from ..app_shell import build_shell_summary, write_shell_summary
 from ..app_state import (
     DEFAULT_PROTOCOL,
@@ -262,19 +194,6 @@ from ..app_state import (
     save_planner_state,
     shell_summary_path,
 )
-from ..app_surfaces import (
-    render_cognitive_history,
-    render_compile_status,
-    render_execution_audit,
-    render_execution_audit_html,
-    render_execution_center,
-    render_execution_center_html,
-    render_furnace_center,
-    render_furnace_center_html,
-    render_judgment_assets,
-    render_machine_memory_graph_html,
-    render_review_center_html,
-)
 from ..app_utils import (
     analyze_citation_snapshots,
     build_citation_snapshots,
@@ -298,8 +217,105 @@ from ..app_utils import (
     write_json_document_if_changed_ignoring_generated_timestamps,
 )
 from ..config import LLMConfig
-from ..content.memory import load_execution_receipt_history_strict
-from ..memory.execution_surfaces import build_execution_audit_snapshot, collect_execution_consistency_signals
+from ..content.concepts import (
+    build_concept_quality,
+    build_concept_records,
+    concept_render_signature,
+    concept_source_pages,
+    entry_concept_terms,
+    normalize_concept_hardness,
+    render_concept_page,
+    render_concepts_index,
+    render_sources_index,
+)
+from ..content.io import (
+    active_manual_source_concept_links,
+    annotate_recurring_promotion,
+    append_review_history_entry,
+    collect_output_artifacts,
+    collect_output_density_artifacts,
+    collect_recent_output_artifacts,
+    curated_asset_section_snapshot,
+    entry_ids_from_paths,
+    entry_lookup_maps,
+    find_promoted_curated_page,
+    manifest_change_summary,
+    preserved_section,
+    recurring_promotion_needs_refresh,
+    render_source_page_with_state,
+    review_history_entries,
+    routing_snapshot_for_protocol,
+    source_summary_or_preview,
+    sync_manifest_with_raw,
+)
+from ..content.memory import (
+    _validate_rewrite_candidate_markdown,
+    action_supports_low_risk_apply,
+    append_execution_policy_decisions,
+    build_machine_memory_repair_plan,
+    build_page_patch_plan,
+    concept_summary_is_placeholder,
+    execution_policy_decision_record,
+    load_execution_receipt_history_strict,
+    placeholder_concept_slugs,
+    remove_stale_generated_execution_bundle_files,
+    remove_stale_generated_execution_proposal_pages,
+    remove_stale_generated_markdown_files,
+    repair_execution_proposals,
+    rewrite_proposal_candidate_is_current,
+    rewrite_proposal_is_apply_ready,
+    safe_apply_preview,
+    validate_low_risk_action_targets,
+)
+from ..content.outputs import classify_recurring_output_kind
+from ..memory.execution_surfaces import (
+    build_execution_audit_snapshot,
+    collect_execution_consistency_signals,
+    render_execution_audit,
+    render_execution_audit_html,
+    render_execution_center,
+    render_execution_center_html,
+)
+from ..memory.graph import render_machine_memory_graph_html
+from ..render.cognitive_history import render_cognitive_history
+from ..render.compile_status import render_compile_status
+from ..render.furnace_center import (
+    render_furnace_center,
+    render_furnace_center_html,
+)
+from ..render.judgment_assets import render_judgment_assets
+from ..render.packs import (
+    build_output_packs,
+    build_output_packs_incremental,
+    render_output_packs_index,
+)
+from ..render.paths import (
+    append_wiki_log,
+    decision_memos_dir,
+    ensure_wiki_log,
+    execution_bundle_path,
+    execution_proposal_path,
+    execution_receipt_path,
+    remove_stale_generated_concept_pages,
+    review_packs_dir,
+    sop_drafts_dir,
+)
+from ..render.pilots import (
+    build_domain_pilots,
+    build_domain_pilots_incremental,
+    domain_pilots_index_path,
+    pilot_scorecards_dir,
+)
+from ..render.review_center import render_review_center_html
+from ..render.views import (
+    render_agent_pack,
+    render_agent_workbench,
+    render_aging_report,
+    render_curated_index,
+    render_domain_pilots_index,
+    render_master_index,
+    render_review_queue,
+)
 from .core import pending_source_summary_ids
 from .repair import render_repair_backlog
 

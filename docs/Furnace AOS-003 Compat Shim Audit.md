@@ -1,3 +1,5 @@
+> **Superseded (2026-07-14)**：纯 facade 已按 `AGENTS.md`「架构清理定案」删除（`app.py` / `app_content` / `app_render` / `app_surfaces` / `app_memory_surfaces`）。本文保留为历史审计记录，不再作为 keep-stable 指引。
+
 # Furnace AOS-003 Compat Shim Audit
 
 Scope: AOS-003 `Kernel shim retirement and hub slimming`.

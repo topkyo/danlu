@@ -8,20 +8,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from aiwiki.app_compile import (
-    _load_latest_action_apply_batch_receipt,
-    apply_concept_rewrite,
-    apply_machine_memory_actions_batch,
-    apply_material_archive,
-    ask_question,
-    compile_wiki,
-    file_back,
-    revert_machine_memory_action_batch,
-    review_concept_rewrite,
-    review_pages_batch,
-    set_active_protocol,
-)
-from aiwiki.app_content import ingest_source
+from aiwiki.app_compile import compile_wiki, set_active_protocol
 from aiwiki.app_execution import (
     load_execution_bundle,
     write_execution_batch_receipt_document,
@@ -44,14 +31,30 @@ from aiwiki.app_state import (
 )
 from aiwiki.app_utils import parse_frontmatter, utc_now
 from aiwiki.cli import main as cli_main
+from aiwiki.content.io import ingest_source
 from aiwiki.execution.alchemy import _validate_source_outputs, _write_elixir_markdown
+from aiwiki.execution.archive import apply_material_archive
+from aiwiki.execution.ask import (
+    ask_question,
+    file_back,
+)
 from aiwiki.execution.candidates import demote_candidate, promote_candidate
+from aiwiki.execution.concept_rewrite import (
+    apply_concept_rewrite,
+    review_concept_rewrite,
+)
 from aiwiki.execution.l3_proposals import (
     L3PostApplyAuditError,
     L3RevertError,
     accept_l3_proposal,
     apply_l3_proposal,
     create_l3_proposal,
+)
+from aiwiki.execution.machine_memory_batch import (
+    _load_latest_action_apply_batch_receipt,
+    apply_machine_memory_actions_batch,
+    revert_machine_memory_action_batch,
+    review_pages_batch,
 )
 from aiwiki.execution.protocol_learnings import (
     AUDIT_STATE_PATH,

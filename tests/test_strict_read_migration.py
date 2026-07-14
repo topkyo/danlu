@@ -5,8 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from aiwiki.app_compile import apply_material_archive, compile_wiki
-from aiwiki.app_content import ingest_source
+from aiwiki.app_compile import compile_wiki
 from aiwiki.app_execution import load_execution_bundle
 from aiwiki.app_protocol import ensure_layout, save_manifest
 from aiwiki.app_state import (
@@ -19,7 +18,8 @@ from aiwiki.app_state import (
     runtime_history_path,
     save_machine_memory_action_state,
 )
-from aiwiki.execution.archive import revert_material_archive
+from aiwiki.content.io import ingest_source
+from aiwiki.execution.archive import apply_material_archive, revert_material_archive
 from aiwiki.execution.l3_proposals import accept_l3_proposal, apply_l3_proposal, create_l3_proposal, revert_l3_proposal
 from aiwiki.execution.machine_memory_actions import revert_machine_memory_action
 from aiwiki.execution.machine_memory_batch import _load_latest_action_apply_batch_receipt

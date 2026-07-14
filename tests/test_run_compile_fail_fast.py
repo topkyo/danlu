@@ -7,9 +7,9 @@ from pathlib import Path
 import pytest
 
 from aiwiki.app_compile import compile_wiki
-from aiwiki.app_content import ingest_source
 from aiwiki.app_protocol import ensure_layout
 from aiwiki.cli import build_parser
+from aiwiki.content.io import ingest_source
 from aiwiki.llm import CompletionResult, LLMError
 from aiwiki.runner import run_compile
 

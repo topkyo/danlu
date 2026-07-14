@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from aiwiki.app_surfaces import render_compile_status as legacy_render_compile_status
 from aiwiki.render.compile_status import compile_phase_lines, render_compile_status
 
 
@@ -48,6 +47,3 @@ def test_render_compile_status_includes_dirty_links_and_overflow() -> None:
     assert "- 其余 dirty artifact：`1`" in rendered
     assert "- Machine-memory core reused：`True`" in rendered
 
-
-def test_app_surfaces_reexports_compile_status_renderer_for_compatibility() -> None:
-    assert legacy_render_compile_status is render_compile_status

@@ -13,9 +13,9 @@ import shlex
 from pathlib import Path
 from typing import Any
 
-from .app_compile import shell_status
 from .app_protocol import ensure_layout
 from .app_utils import render_json_document, write_if_changed
+from .execution.runtime_surfaces import shell_status
 from .vault_obsidian_graph import DEFAULT_OBSIDIAN_GRAPH
 
 PLUGIN_ID = "furnace-product-shell"

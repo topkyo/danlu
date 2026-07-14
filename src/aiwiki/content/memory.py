@@ -124,7 +124,7 @@ def machine_memory_concept_input_signature(root: Path, record: dict[str, Any]) -
 
 
 def collect_machine_memory_actions(root: Path) -> list[dict[str, Any]]:
-    from .. import app_content as _facade
+    from ..app_lifecycle import action_needs_review, evaluate_page_aging
     state = load_machine_memory_action_state(root)
     actions = [dict(action) for action in state.get("actions", []) if isinstance(action, dict)]
     now = datetime.now(timezone.utc)
@@ -138,8 +138,8 @@ def collect_machine_memory_actions(root: Path) -> list[dict[str, Any]]:
         action.setdefault("last_seen_at", "")
         action.setdefault("inactive_since", "")
         action.setdefault("occurrences", 0)
-        action.setdefault("pending_review", "true" if _facade.action_needs_review(str(action.get("status"))) else "false")
-        action.update(_facade.evaluate_page_aging(action, now=now))
+        action.setdefault("pending_review", "true" if action_needs_review(str(action.get("status"))) else "false")
+        action.update(evaluate_page_aging(action, now=now))
         action["focus_score"] = action_focus_score(active_protocol, action)
     priority_order = {"high": 0, "medium": 1, "low": 2}
     status_order = {"proposed": 0, "accepted": 1, "deferred": 2, "resolved": 3, "rejected": 4}
@@ -446,7 +446,6 @@ def patch_mode_for_action(kind: str, role: str) -> str:
 
 
 def build_page_patch_plan(root: Path, action: dict[str, Any], *, active_protocol: str = DEFAULT_PROTOCOL) -> list[dict[str, Any]]:
-    from .. import app_content as _facade
     kind = str(action.get("kind") or "")
     seen_paths: set[str] = set()
     ordered_paths: list[str] = []
@@ -496,7 +495,6 @@ def build_page_patch_plan(root: Path, action: dict[str, Any], *, active_protocol
 
 
 def safe_apply_preview(root: Path, action: dict[str, Any]) -> dict[str, Any] | None:
-    from .. import app_content as _facade
     kind = str(action.get("kind") or "")
     if kind == "refresh-citation-snapshots":
         page_path = str(action.get("primary_path") or "")
@@ -742,8 +740,6 @@ def load_execution_receipt_history_strict(root: Path) -> list[dict[str, Any]]:
 
 
 def remove_stale_generated_execution_proposal_pages(root: Path, active_action_ids: set[str]) -> int:
-    from .. import app_content as _facade
-
     removed = 0
     directory = execution_proposals_dir(root)
     if not directory.exists():
@@ -761,8 +757,6 @@ def remove_stale_generated_execution_proposal_pages(root: Path, active_action_id
 
 
 def remove_stale_generated_execution_bundle_files(root: Path, active_action_ids: set[str]) -> int:
-    from .. import app_content as _facade
-
     removed = 0
     directory = execution_bundles_dir(root)
     if not directory.exists():
@@ -791,7 +785,7 @@ def remove_stale_generated_markdown_files(directory: Path, active_stems: set[str
 
 
 def describe_machine_memory_action(action: dict[str, Any], *, root: Path | None = None) -> dict[str, Any]:
-    from .. import app_content as _facade
+    from ..app_protocol import PENDING_ACTION_STATUSES
     action_id = str(action.get("id") or "")
     kind = str(action.get("kind") or "")
     status = str(action.get("status") or "proposed")
@@ -816,7 +810,7 @@ def describe_machine_memory_action(action: dict[str, Any], *, root: Path | None 
     action_with_policy = {**action, **profile}
     if not active:
         next_step = "信号已消失；确认是否要作为已解决归档。"
-        if status in _facade.PENDING_ACTION_STATUSES:
+        if status in PENDING_ACTION_STATUSES:
             command_hint = f'{review_prefix} --status resolved --note "Signal disappeared after compile."'
     elif status == "proposed":
         command_hint = f'{review_prefix} --status accepted --note "Accepted for manual repair."'

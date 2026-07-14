@@ -14,49 +14,14 @@ from typing import Any
 from unittest.mock import patch
 
 from aiwiki.app_cache import CACHE_SCHEMA_VERSION, drop_query_cache, force_rebuild_query_cache
-from aiwiki.app_compile import (
-    _save_machine_memory_action_records,
-    apply_concept_rewrite,
-    apply_machine_memory_action,
-    apply_material_archive,
-    ask_question,
-    compile_wiki,
-    file_back,
-    lint_wiki,
-    nightly_health,
-    rank_concepts,
-    rank_sources,
-    reactivate_concept,
-    retire_concept,
-    revert_concept_rewrite,
-    revert_machine_memory_action,
-    revert_material_archive,
-    review_concept,
-    review_concept_rewrite,
-    review_concepts_batch,
-    review_machine_memory_action,
-    review_machine_memory_actions_batch,
-    review_page,
-    set_active_protocol,
-    shell_status,
-    verify_concept_rewrite,
-)
-from aiwiki.app_content import (
-    collect_machine_memory_actions,
-    collect_recent_output_artifacts,
-    entry_concept_terms,
-    ingest_source,
-    load_execution_policy_decision_history,
-    placeholder_concept_slugs,
-    protocol_related_concept_lifecycle_summary,
-)
+from aiwiki.app_compile import compile_wiki, lint_wiki, rank_concepts, rank_sources, set_active_protocol
 from aiwiki.app_execution import append_execution_receipt_history
+from aiwiki.app_lifecycle import protocol_related_concept_lifecycle_summary
 from aiwiki.app_memory import (
     active_corpus_bridge_evidence_ids,
     build_archive_candidate_state,
     build_machine_memory_query,
 )
-from aiwiki.app_memory_surfaces import render_machine_memory_graph_html
 from aiwiki.app_protocol import ensure_layout, load_protocol_state, save_manifest
 from aiwiki.app_state import (
     load_archive_candidates_state,
@@ -82,8 +47,51 @@ from aiwiki.app_utils import parse_frontmatter, render_frontmatter, runtime_writ
 from aiwiki.cli import main as cli_main
 from aiwiki.compile import compile_wiki as compile_wiki_owner
 from aiwiki.config import BACKEND_OPENAI_API, BACKEND_OPENCODE_API, LLMConfig
+from aiwiki.content.concepts import entry_concept_terms
+from aiwiki.content.io import (
+    collect_recent_output_artifacts,
+    ingest_source,
+)
+from aiwiki.content.memory import (
+    collect_machine_memory_actions,
+    load_execution_policy_decision_history,
+    placeholder_concept_slugs,
+)
 from aiwiki.drop import _fetch_url, drop_image, drop_pdf, drop_repo, drop_url
+from aiwiki.execution.archive import (
+    apply_material_archive,
+    revert_material_archive,
+)
+from aiwiki.execution.ask import (
+    ask_question,
+    file_back,
+)
+from aiwiki.execution.concept_rewrite import (
+    apply_concept_rewrite,
+    revert_concept_rewrite,
+    review_concept_rewrite,
+    verify_concept_rewrite,
+)
+from aiwiki.execution.lifecycle import (
+    reactivate_concept,
+    retire_concept,
+    review_concept,
+    review_concepts_batch,
+)
+from aiwiki.execution.machine_memory_actions import (
+    _save_machine_memory_action_records,
+    apply_machine_memory_action,
+    revert_machine_memory_action,
+    review_machine_memory_action,
+    review_machine_memory_actions_batch,
+)
+from aiwiki.execution.review import review_page
+from aiwiki.execution.runtime_surfaces import (
+    nightly_health,
+    shell_status,
+)
 from aiwiki.llm import CompletionResult
+from aiwiki.memory.graph import render_machine_memory_graph_html
 from aiwiki.runner import auto_process_once, run_ask, run_compile, run_lint, run_nightly, watch_inbox
 from tests.test_app import AppFlowTestBase, CapturingClient, FailingVisionClient, StubClient, StubVisionClient
 
@@ -1180,7 +1188,7 @@ class ShellFlowTests(AppFlowTestBase):
         self.assertEqual(before_review["review_backlog_counts"]["counter_evidence_candidates"], 1)
         self.assertEqual(before_review["review_backlog_counts"]["judgment_review_actions"], 1)
 
-        with patch("aiwiki.app_compile.utc_now", return_value="2030-01-01T00:00:00+00:00"):
+        with patch("aiwiki.app_utils.utc_now", return_value="2030-01-01T00:00:00+00:00"):
             review_page(
                 self.root,
                 judgment["path"],
@@ -1215,7 +1223,7 @@ class ShellFlowTests(AppFlowTestBase):
             entry for entry in load_manifest(self.root)["entries"] if entry["id"] == followup["id"]
         )
         timestamp = followup_entry["updated_at"]
-        with patch("aiwiki.app_compile.utc_now", return_value=timestamp):
+        with patch("aiwiki.app_utils.utc_now", return_value=timestamp):
             review_page(
                 self.root,
                 judgment["path"],
@@ -1250,7 +1258,7 @@ class ShellFlowTests(AppFlowTestBase):
         self.assertEqual(before_review["review_backlog_counts"]["counter_evidence_candidates"], 1)
         self.assertEqual(before_review["review_backlog_counts"]["judgment_review_actions"], 1)
 
-        with patch("aiwiki.app_compile.utc_now", return_value="2030-01-01T00:00:00+00:00"):
+        with patch("aiwiki.app_utils.utc_now", return_value="2030-01-01T00:00:00+00:00"):
             review_page(
                 self.root,
                 decision["path"],
@@ -1463,17 +1471,23 @@ class ShellFlowTests(AppFlowTestBase):
         self.assertIn("fs.accessSync(launcherPath, fs.constants.X_OK)", content)
         self.assertIn("runUiAction(action, label = \"ui-action\")", content)
         self.assertIn("console.error(`[furnace-product-shell] ${label} failed`, error);", content)
-        app_shim = (PROJECT_ROOT / "src/aiwiki/app.py").read_text(encoding="utf-8")
-        self.assertNotIn("_sync_facade_bindings", app_shim)
-        self.assertIn("transition_profile = _app_content.transition_profile", app_shim)
-        self.assertIn("curated_page_transition_profile = _app_content.curated_page_transition_profile", app_shim)
-        self.assertIn("rewrite_transition_profile = _app_content.rewrite_transition_profile", app_shim)
-        self.assertIn("action_transition_profile = _app_content.action_transition_profile", app_shim)
-        self.assertIn("archive_transition_profile = _app_content.archive_transition_profile", app_shim)
-        self.assertIn("shell_review_controls = _app_shell.shell_review_controls", app_shim)
-        self.assertIn("shell_action_control_objects = _app_shell.shell_action_control_objects", app_shim)
-        self.assertIn("shell_archive_control_objects = _app_shell.shell_archive_control_objects", app_shim)
-        self.assertIn("shell_execution_controls = _app_shell.shell_execution_controls", app_shim)
+        self.assertFalse((PROJECT_ROOT / "src/aiwiki/app.py").exists())
+        self.assertFalse((PROJECT_ROOT / "src/aiwiki/app_content.py").exists())
+        self.assertFalse((PROJECT_ROOT / "src/aiwiki/app_render.py").exists())
+        self.assertFalse((PROJECT_ROOT / "src/aiwiki/app_surfaces.py").exists())
+        self.assertFalse((PROJECT_ROOT / "src/aiwiki/app_memory_surfaces.py").exists())
+        from aiwiki.app_lifecycle import (
+            action_transition_profile,
+            archive_transition_profile,
+            curated_page_transition_profile,
+            rewrite_transition_profile,
+            transition_profile,
+        )
+        self.assertTrue(callable(transition_profile))
+        self.assertTrue(callable(curated_page_transition_profile))
+        self.assertTrue(callable(rewrite_transition_profile))
+        self.assertTrue(callable(action_transition_profile))
+        self.assertTrue(callable(archive_transition_profile))
 
 
 

@@ -5,10 +5,13 @@ import unittest
 from pathlib import Path
 
 import aiwiki.app_compile as app_compile
-import aiwiki.app_content as content
 import aiwiki.app_queries as queries
 import aiwiki.app_state as state
 import aiwiki.app_utils as utils
+import aiwiki.content.concepts as content_concepts
+import aiwiki.content.io as content_io
+import aiwiki.content.memory as content_memory
+import aiwiki.render.paths as render_paths
 from aiwiki.app_protocol import ensure_layout
 
 
@@ -26,9 +29,9 @@ class ContentHelperTests(unittest.TestCase):
         path.write_text(f"{utils.render_frontmatter(frontmatter)}\n\n{body.strip()}\n", encoding="utf-8")
 
     def test_wiki_log_cleanup_and_pack_path_helpers(self) -> None:
-        log_path = content.ensure_wiki_log(self.root)
+        log_path = render_paths.ensure_wiki_log(self.root)
         self.assertTrue(log_path.exists())
-        content.append_wiki_log(self.root, "compile", "Alpha", ["detail-a", "detail-b"])
+        render_paths.append_wiki_log(self.root, "compile", "Alpha", ["detail-a", "detail-b"])
         log_text = log_path.read_text(encoding="utf-8")
         self.assertIn("compile | Alpha", log_text)
         self.assertIn("- detail-a", log_text)
@@ -56,7 +59,7 @@ class ContentHelperTests(unittest.TestCase):
             "# Bad\n",
         )
 
-        removed = content.remove_stale_generated_concept_pages(self.root, {"keep"})
+        removed = render_paths.remove_stale_generated_concept_pages(self.root, {"keep"})
         self.assertEqual(removed, 1)
         self.assertFalse((concept_dir / "stale.md").exists())
         self.assertTrue((concept_dir / "keep.md").exists())
@@ -70,24 +73,24 @@ class ContentHelperTests(unittest.TestCase):
             {"kind": "concept", "generated_by": "aiwiki-compile", "id": "concept-stale2"},
             "# Stale 2\n",
         )
-        count, slugs = content.remove_stale_generated_concept_pages_detailed(self.root, {"keep"})
+        count, slugs = render_paths.remove_stale_generated_concept_pages_detailed(self.root, {"keep"})
         self.assertEqual(count, 1)
         self.assertEqual(slugs, ["stale2"])
         self.assertFalse((concept_dir / "stale2.md").exists())
 
-        self.assertEqual(content.review_packs_dir(self.root), self.root / "output" / "packs" / "review")
-        self.assertEqual(content.decision_memos_dir(self.root), self.root / "output" / "packs" / "decision-memos")
-        self.assertEqual(content.sop_drafts_dir(self.root), self.root / "output" / "packs" / "sop-drafts")
-        self.assertEqual(content.pack_stem("wiki\\decisions/alpha.md"), "wiki-decisions-alpha")
-        self.assertEqual(content.review_pack_path(self.root, "wiki/decisions/alpha.md").name, "wiki-decisions-alpha.md")
-        self.assertEqual(content.decision_memo_path(self.root, "wiki/decisions/alpha.md").name, "wiki-decisions-alpha.md")
-        self.assertEqual(content.sop_draft_path(self.root, "repair-action").name, "repair-action.md")
-        self.assertEqual(content.execution_proposals_dir(self.root), self.root / "wiki" / "execution-proposals")
-        self.assertEqual(content.execution_proposal_path(self.root, "repair-action").name, "repair-action.md")
-        self.assertEqual(content.execution_bundles_dir(self.root), self.root / "output" / "control" / "execution-bundles")
-        self.assertEqual(content.execution_bundle_path(self.root, "repair-action").name, "repair-action.json")
-        self.assertEqual(content.execution_receipts_dir(self.root), self.root / "output" / "control" / "execution-receipts")
-        self.assertEqual(content.execution_receipt_path(self.root, "repair-action").name, "repair-action.json")
+        self.assertEqual(render_paths.review_packs_dir(self.root), self.root / "output" / "packs" / "review")
+        self.assertEqual(render_paths.decision_memos_dir(self.root), self.root / "output" / "packs" / "decision-memos")
+        self.assertEqual(render_paths.sop_drafts_dir(self.root), self.root / "output" / "packs" / "sop-drafts")
+        self.assertEqual(render_paths.pack_stem("wiki\\decisions/alpha.md"), "wiki-decisions-alpha")
+        self.assertEqual(render_paths.review_pack_path(self.root, "wiki/decisions/alpha.md").name, "wiki-decisions-alpha.md")
+        self.assertEqual(render_paths.decision_memo_path(self.root, "wiki/decisions/alpha.md").name, "wiki-decisions-alpha.md")
+        self.assertEqual(render_paths.sop_draft_path(self.root, "repair-action").name, "repair-action.md")
+        self.assertEqual(render_paths.execution_proposals_dir(self.root), self.root / "wiki" / "execution-proposals")
+        self.assertEqual(render_paths.execution_proposal_path(self.root, "repair-action").name, "repair-action.md")
+        self.assertEqual(render_paths.execution_bundles_dir(self.root), self.root / "output" / "control" / "execution-bundles")
+        self.assertEqual(render_paths.execution_bundle_path(self.root, "repair-action").name, "repair-action.json")
+        self.assertEqual(render_paths.execution_receipts_dir(self.root), self.root / "output" / "control" / "execution-receipts")
+        self.assertEqual(render_paths.execution_receipt_path(self.root, "repair-action").name, "repair-action.json")
 
     def test_render_source_page_keeps_llm_marker_and_adds_deterministic_preview(self) -> None:
         entry = {
@@ -112,7 +115,7 @@ class ContentHelperTests(unittest.TestCase):
             ]
         )
 
-        rendered = content.render_source_page_with_state(
+        rendered = content_io.render_source_page_with_state(
             entry,
             preview,
             "2026-01-01T00:01:00+00:00",
@@ -128,7 +131,7 @@ class ContentHelperTests(unittest.TestCase):
         sample = self.root / "sample.md"
         sample.write_text("# Runtime Source\n\nNew material.\n", encoding="utf-8")
 
-        entry = content.ingest_source(self.root, str(sample), title="Runtime Source")
+        entry = content_io.ingest_source(self.root, str(sample), title="Runtime Source")
 
         history = state.load_runtime_history(self.root)
         self.assertEqual(history[-1]["event_type"], "raw-added")
@@ -137,23 +140,23 @@ class ContentHelperTests(unittest.TestCase):
         self.assertEqual(history[-1]["stored_path"], entry["stored_path"])
 
     def test_routing_lookup_and_rewrite_candidate_helpers(self) -> None:
-        self.assertEqual(content.routing_snapshot_for_protocol({}, "ops"), {})
+        self.assertEqual(content_io.routing_snapshot_for_protocol({}, "ops"), {})
         direct = {"protocol": "ops", "title": "Ops"}
-        self.assertEqual(content.routing_snapshot_for_protocol(direct, "ops"), direct)
+        self.assertEqual(content_io.routing_snapshot_for_protocol(direct, "ops"), direct)
         nested = {"protocol": "general", "protocol_snapshots": [{"protocol": "research", "title": "Research"}]}
-        self.assertEqual(content.routing_snapshot_for_protocol(nested, "research"), {"protocol": "research", "title": "Research"})
-        self.assertEqual(content.routing_snapshot_for_protocol(nested, "product"), {})
+        self.assertEqual(content_io.routing_snapshot_for_protocol(nested, "research"), {"protocol": "research", "title": "Research"})
+        self.assertEqual(content_io.routing_snapshot_for_protocol(nested, "product"), {})
 
         entries = [
             {"id": "entry-a", "stored_path": "raw/inbox/a.md", "title": "A"},
             {"stored_path": "raw/inbox/missing-id.md"},
         ]
-        by_id, by_path = content.entry_lookup_maps(entries)
+        by_id, by_path = content_io.entry_lookup_maps(entries)
         self.assertEqual(list(by_id), ["entry-a"])
         self.assertEqual(by_path["raw/inbox/a.md"], "entry-a")
         self.assertEqual(by_path["wiki/sources/entry-a.md"], "entry-a")
         self.assertEqual(
-            content.entry_ids_from_paths(by_path, ["raw/inbox/a.md", "wiki/sources/entry-b.md", "raw/inbox/a.md"]),
+            content_io.entry_ids_from_paths(by_path, ["raw/inbox/a.md", "wiki/sources/entry-b.md", "raw/inbox/a.md"]),
             ["entry-a", "entry-b"],
         )
 
@@ -168,16 +171,16 @@ class ContentHelperTests(unittest.TestCase):
             )
             + "\n\n# Alpha\n"
         )
-        content._validate_rewrite_candidate_markdown(candidate, "alpha", "sig-1", ["wiki/sources/a.md"])
+        content_memory._validate_rewrite_candidate_markdown(candidate, "alpha", "sig-1", ["wiki/sources/a.md"])
 
         with self.assertRaises(RuntimeError):
-            content._validate_rewrite_candidate_markdown(candidate.replace("concept-alpha", "concept-beta"), "alpha", "sig-1", ["wiki/sources/a.md"])
+            content_memory._validate_rewrite_candidate_markdown(candidate.replace("concept-alpha", "concept-beta"), "alpha", "sig-1", ["wiki/sources/a.md"])
         with self.assertRaises(RuntimeError):
-            content._validate_rewrite_candidate_markdown(candidate.replace('"concept"', '"derived"'), "alpha", "sig-1", ["wiki/sources/a.md"])
+            content_memory._validate_rewrite_candidate_markdown(candidate.replace('"concept"', '"derived"'), "alpha", "sig-1", ["wiki/sources/a.md"])
         with self.assertRaises(RuntimeError):
-            content._validate_rewrite_candidate_markdown(candidate, "alpha", "sig-2", ["wiki/sources/a.md"])
+            content_memory._validate_rewrite_candidate_markdown(candidate, "alpha", "sig-2", ["wiki/sources/a.md"])
         with self.assertRaises(RuntimeError):
-            content._validate_rewrite_candidate_markdown(
+            content_memory._validate_rewrite_candidate_markdown(
                 utils.render_frontmatter({"id": "concept-alpha", "kind": "concept", "source_signature": "sig-1", "source_pages": "bad"})
                 + "\n\n# Alpha\n",
                 "alpha",
@@ -185,7 +188,7 @@ class ContentHelperTests(unittest.TestCase):
                 ["wiki/sources/a.md"],
             )
         with self.assertRaises(RuntimeError):
-            content._validate_rewrite_candidate_markdown(candidate, "alpha", "sig-1", ["wiki/sources/b.md"])
+            content_memory._validate_rewrite_candidate_markdown(candidate, "alpha", "sig-1", ["wiki/sources/b.md"])
 
         concept_path = self.root / "wiki" / "concepts" / "alpha.md"
         self._write_markdown(
@@ -199,7 +202,7 @@ class ContentHelperTests(unittest.TestCase):
             "# Alpha\n\n## Summary\n- stable\n",
         )
         proposal = {"slug": "alpha", "candidate_markdown": candidate, "source_signature": "sig-1", "target_path": "wiki/concepts/alpha.md"}
-        self.assertTrue(content.rewrite_proposal_candidate_is_current(self.root, proposal))
+        self.assertTrue(content_memory.rewrite_proposal_candidate_is_current(self.root, proposal))
 
         self._write_markdown(
             concept_path,
@@ -211,8 +214,8 @@ class ContentHelperTests(unittest.TestCase):
             },
             "# Alpha\n\n## Summary\n- changed\n",
         )
-        self.assertFalse(content.rewrite_proposal_candidate_is_current(self.root, proposal))
-        self.assertFalse(content.rewrite_proposal_candidate_is_current(self.root, {"slug": "", "candidate_markdown": ""}))
+        self.assertFalse(content_memory.rewrite_proposal_candidate_is_current(self.root, proposal))
+        self.assertFalse(content_memory.rewrite_proposal_candidate_is_current(self.root, {"slug": "", "candidate_markdown": ""}))
 
     def test_concept_page_requires_compile_when_render_signature_changes(self) -> None:
         self._write_markdown(
@@ -285,9 +288,9 @@ class ContentHelperTests(unittest.TestCase):
             + "- Use the linked source pages below to deepen or revise this synthesis.\n"
         )
 
-        rendered = content.render_concept_page(record, "2026-04-16T00:00:00+00:00", existing_page)
-        frontmatter = content.parse_frontmatter(rendered)
-        summary = content.preserved_section(rendered, "Summary", "").strip()
+        rendered = content_concepts.render_concept_page(record, "2026-04-16T00:00:00+00:00", existing_page)
+        frontmatter = utils.parse_frontmatter(rendered)
+        summary = content_io.preserved_section(rendered, "Summary", "").strip()
 
         self.assertEqual(frontmatter.get("hardness"), "soft")
         self.assertIn("wiki/sources/entry-a.md", summary)
@@ -297,7 +300,7 @@ class ContentHelperTests(unittest.TestCase):
     def test_low_risk_target_and_quality_signal_helpers(self) -> None:
         sample = self.root / "sample.md"
         sample.write_text("# Transformer Scaling\n\nIncrease throughput.\n", encoding="utf-8")
-        entry = content.ingest_source(self.root, str(sample), title="Transformer Scaling")
+        entry = content_io.ingest_source(self.root, str(sample), title="Transformer Scaling")
         app_compile.compile_wiki(self.root)
         concept_slug = next(path.stem for path in sorted((self.root / "wiki" / "concepts").glob("*.md")))
         valid_action = {
@@ -307,28 +310,28 @@ class ContentHelperTests(unittest.TestCase):
             "primary_path": f"wiki/sources/{entry['id']}.md",
             "secondary_path": f"wiki/concepts/{concept_slug}.md",
         }
-        self.assertEqual(content.validate_low_risk_action_targets(self.root, valid_action), (entry["id"], concept_slug))
+        self.assertEqual(content_memory.validate_low_risk_action_targets(self.root, valid_action), (entry["id"], concept_slug))
 
         with self.assertRaises(RuntimeError):
-            content.validate_low_risk_action_targets(self.root, {**valid_action, "active": False})
+            content_memory.validate_low_risk_action_targets(self.root, {**valid_action, "active": False})
         with self.assertRaises(RuntimeError):
-            content.validate_low_risk_action_targets(self.root, {"active": True, "source_ids": [], "concept_slugs": []})
+            content_memory.validate_low_risk_action_targets(self.root, {"active": True, "source_ids": [], "concept_slugs": []})
         with self.assertRaises(RuntimeError):
-            content.validate_low_risk_action_targets(self.root, {**valid_action, "source_ids": ["missing-source"]})
+            content_memory.validate_low_risk_action_targets(self.root, {**valid_action, "source_ids": ["missing-source"]})
         with self.assertRaises(RuntimeError):
-            content.validate_low_risk_action_targets(self.root, {**valid_action, "primary_path": "wiki/sources/missing.md"})
+            content_memory.validate_low_risk_action_targets(self.root, {**valid_action, "primary_path": "wiki/sources/missing.md"})
         with self.assertRaises(RuntimeError):
-            content.validate_low_risk_action_targets(self.root, {**valid_action, "secondary_path": "wiki/concepts/missing.md"})
+            content_memory.validate_low_risk_action_targets(self.root, {**valid_action, "secondary_path": "wiki/concepts/missing.md"})
 
         wrong_primary = self.root / "wiki" / "derived" / f"{entry['id']}.md"
         self._write_markdown(wrong_primary, {"kind": "derived"}, "# Wrong Primary\n")
         with self.assertRaises(RuntimeError):
-            content.validate_low_risk_action_targets(self.root, {**valid_action, "primary_path": f"wiki/derived/{entry['id']}.md"})
+            content_memory.validate_low_risk_action_targets(self.root, {**valid_action, "primary_path": f"wiki/derived/{entry['id']}.md"})
 
         wrong_secondary = self.root / "wiki" / "decisions" / f"{concept_slug}.md"
         self._write_markdown(wrong_secondary, {"kind": "decision"}, "# Wrong Secondary\n")
         with self.assertRaises(RuntimeError):
-            content.validate_low_risk_action_targets(self.root, {**valid_action, "secondary_path": f"wiki/decisions/{concept_slug}.md"})
+            content_memory.validate_low_risk_action_targets(self.root, {**valid_action, "secondary_path": f"wiki/decisions/{concept_slug}.md"})
 
         ready_source = self.root / "wiki" / "sources" / "ready.md"
         self._write_markdown(
@@ -349,58 +352,58 @@ class ContentHelperTests(unittest.TestCase):
             "# Placeholder Source\n\n## Summary\n- Pending LLM summary.\n",
         )
 
-        missing_context = content.load_source_page_context(self.root, "wiki/sources/missing.md")
-        ready_context = content.load_source_page_context(self.root, "wiki/sources/ready.md")
-        placeholder_context = content.load_source_page_context(self.root, "wiki/sources/placeholder.md")
-        negative_context = content.load_source_page_context(self.root, "wiki/sources/negative.md")
+        missing_context = content_io.load_source_page_context(self.root, "wiki/sources/missing.md")
+        ready_context = content_io.load_source_page_context(self.root, "wiki/sources/ready.md")
+        placeholder_context = content_io.load_source_page_context(self.root, "wiki/sources/placeholder.md")
+        negative_context = content_io.load_source_page_context(self.root, "wiki/sources/negative.md")
         self.assertEqual(missing_context["status"], "missing")
         self.assertEqual(placeholder_context["status"], "placeholder")
         self.assertEqual(ready_context["status"], "ready")
 
-        conflicts = content.detect_concept_conflict_signals([ready_context, negative_context])
+        conflicts = content_concepts.detect_concept_conflict_signals([ready_context, negative_context])
         self.assertEqual(conflicts[0]["label"], "increase-vs-decrease")
-        gaps = content.detect_concept_gap_signals([missing_context, placeholder_context, ready_context])
+        gaps = content_concepts.detect_concept_gap_signals([missing_context, placeholder_context, ready_context])
         self.assertEqual([gap["kind"] for gap in gaps], ["missing-source-page", "pending-source-summary", "evidence-gap"])
 
-        self.assertEqual(content.concept_source_freshness_score([], compiled_at="bad"), 50)
-        self.assertEqual(content.concept_source_freshness_score([{"last_compiled_at": ""}], compiled_at="2025-02-01T00:00:00+00:00"), 50)
+        self.assertEqual(content_concepts.concept_source_freshness_score([], compiled_at="bad"), 50)
+        self.assertEqual(content_concepts.concept_source_freshness_score([{"last_compiled_at": ""}], compiled_at="2025-02-01T00:00:00+00:00"), 50)
         self.assertEqual(
-            content.concept_source_freshness_score(
+            content_concepts.concept_source_freshness_score(
                 [{"last_compiled_at": "2025-01-31T12:00:00+00:00"}],
                 compiled_at="2025-02-01T00:00:00+00:00",
             ),
             100,
         )
         self.assertEqual(
-            content.concept_source_freshness_score(
+            content_concepts.concept_source_freshness_score(
                 [{"last_compiled_at": "2025-01-27T00:00:00+00:00"}],
                 compiled_at="2025-02-01T00:00:00+00:00",
             ),
             85,
         )
         self.assertEqual(
-            content.concept_source_freshness_score(
+            content_concepts.concept_source_freshness_score(
                 [{"last_compiled_at": "2025-01-01T00:00:00+00:00"}],
                 compiled_at="2025-02-01T00:00:00+00:00",
             ),
             55,
         )
         self.assertEqual(
-            content.concept_source_freshness_score(
+            content_concepts.concept_source_freshness_score(
                 [{"last_compiled_at": "2024-12-01T00:00:00+00:00"}],
                 compiled_at="2025-02-01T00:00:00+00:00",
             ),
             55,
         )
         self.assertEqual(
-            content.concept_source_freshness_score(
+            content_concepts.concept_source_freshness_score(
                 [{"last_compiled_at": "2024-01-01T00:00:00+00:00"}],
                 compiled_at="2025-02-01T00:00:00+00:00",
             ),
             35,
         )
 
-        metrics = content.concept_quality_metrics(
+        metrics = content_concepts.concept_quality_metrics(
             ["wiki/sources/ready.md", "wiki/sources/placeholder.md", "wiki/sources/missing.md"],
             [ready_context, placeholder_context, missing_context],
             conflicts,
@@ -410,17 +413,17 @@ class ContentHelperTests(unittest.TestCase):
         self.assertEqual(metrics["ready_sources"], 1)
         self.assertEqual(metrics["placeholder_sources"], 1)
         self.assertEqual(metrics["missing_sources"], 1)
-        self.assertEqual(content.concept_quality_band(90), "strong")
-        self.assertEqual(content.concept_quality_band(75), "stable")
-        self.assertEqual(content.concept_quality_band(60), "watch")
-        self.assertEqual(content.concept_quality_band(30), "fragile")
-        self.assertEqual(content.normalize_concept_hardness("HARD"), "hard")
-        self.assertEqual(content.normalize_concept_hardness("unknown"), "soft")
-        self.assertEqual(content.concept_rewrite_priority(6, [], [], quality_score=80), "high")
-        self.assertEqual(content.concept_rewrite_priority(3, [], [], quality_score=80), "medium")
-        self.assertEqual(content.concept_rewrite_priority(1, [], [], quality_score=80), "low")
-        self.assertEqual(content.concept_rewrite_priority(0, [], [], quality_score=90), "")
-        strategy = content.concept_rewrite_strategy(
+        self.assertEqual(content_concepts.concept_quality_band(90), "strong")
+        self.assertEqual(content_concepts.concept_quality_band(75), "stable")
+        self.assertEqual(content_concepts.concept_quality_band(60), "watch")
+        self.assertEqual(content_concepts.concept_quality_band(30), "fragile")
+        self.assertEqual(content_concepts.normalize_concept_hardness("HARD"), "hard")
+        self.assertEqual(content_concepts.normalize_concept_hardness("unknown"), "soft")
+        self.assertEqual(content_concepts.concept_rewrite_priority(6, [], [], quality_score=80), "high")
+        self.assertEqual(content_concepts.concept_rewrite_priority(3, [], [], quality_score=80), "medium")
+        self.assertEqual(content_concepts.concept_rewrite_priority(1, [], [], quality_score=80), "low")
+        self.assertEqual(content_concepts.concept_rewrite_priority(0, [], [], quality_score=90), "")
+        strategy = content_concepts.concept_rewrite_strategy(
             {
                 "issues": [
                     "placeholder-summary",
@@ -435,13 +438,13 @@ class ContentHelperTests(unittest.TestCase):
         self.assertIn("grounded synthesis", strategy)
         self.assertIn("冲突来源", strategy)
         self.assertIn("证据缺口", strategy)
-        self.assertIn("manual-link state", content.proposal_rollback_summary({"safe_apply_preview": {"apply_mode": "manual-link-state"}}))
-        self.assertIn("citation_snapshots", content.proposal_rollback_summary({"safe_apply_preview": {"apply_mode": "citation-snapshot-refresh"}}))
-        self.assertIn("人工恢复", content.proposal_rollback_summary({}))
+        self.assertIn("manual-link state", content_memory.proposal_rollback_summary({"safe_apply_preview": {"apply_mode": "manual-link-state"}}))
+        self.assertIn("citation_snapshots", content_memory.proposal_rollback_summary({"safe_apply_preview": {"apply_mode": "citation-snapshot-refresh"}}))
+        self.assertIn("人工恢复", content_memory.proposal_rollback_summary({}))
 
     def test_proposal_dependency_planner_and_concept_quality_helpers(self) -> None:
         self.assertEqual(
-            content.proposal_impact_score(
+            content_memory.proposal_impact_score(
                 {
                     "priority": "high",
                     "focus_score": 3,
@@ -455,12 +458,12 @@ class ContentHelperTests(unittest.TestCase):
             ),
             98,
         )
-        self.assertEqual(content.proposal_dependency_weight({"proposal_kind": "split-concept", "impact_score": 7}), (5, 7))
-        self.assertTrue(content.proposals_overlap({"target_paths": ["a"]}, {"target_paths": ["a"]}))
-        self.assertTrue(content.proposals_overlap({"source_ids": ["s1"]}, {"source_ids": ["s1"]}))
-        self.assertTrue(content.proposals_overlap({"concept_slugs": ["c1"]}, {"concept_slugs": ["c1"]}))
-        self.assertTrue(content.proposals_overlap({"component_id": "comp"}, {"component_id": "comp"}))
-        self.assertFalse(content.proposals_overlap({"target_paths": ["a"]}, {"target_paths": ["b"]}))
+        self.assertEqual(content_memory.proposal_dependency_weight({"proposal_kind": "split-concept", "impact_score": 7}), (5, 7))
+        self.assertTrue(content_memory.proposals_overlap({"target_paths": ["a"]}, {"target_paths": ["a"]}))
+        self.assertTrue(content_memory.proposals_overlap({"source_ids": ["s1"]}, {"source_ids": ["s1"]}))
+        self.assertTrue(content_memory.proposals_overlap({"concept_slugs": ["c1"]}, {"concept_slugs": ["c1"]}))
+        self.assertTrue(content_memory.proposals_overlap({"component_id": "comp"}, {"component_id": "comp"}))
+        self.assertFalse(content_memory.proposals_overlap({"target_paths": ["a"]}, {"target_paths": ["b"]}))
 
         proposals = [
             {
@@ -489,7 +492,7 @@ class ContentHelperTests(unittest.TestCase):
                 "next_step": "Repair second",
             },
         ]
-        content.derive_proposal_dependencies(proposals)
+        content_memory.derive_proposal_dependencies(proposals)
         self.assertEqual(proposals[0]["depends_on"], [])
         self.assertEqual(proposals[1]["depends_on"], ["expand-alpha"])
 
@@ -508,7 +511,7 @@ class ContentHelperTests(unittest.TestCase):
                 "counts": {"pending_proposals": 0, "blocked": 0, "unblocked": 0, "executed_actions": 1},
             },
         )
-        planner = content.build_planner_state(self.root, proposals, active_protocol="research")
+        planner = content_memory.build_planner_state(self.root, proposals, active_protocol="research")
         self.assertEqual(planner["next_action"]["action_id"], "expand-alpha")
         self.assertEqual(planner["counts"]["blocked"], 1)
         self.assertEqual(planner["counts"]["unblocked"], 1)
@@ -543,7 +546,7 @@ class ContentHelperTests(unittest.TestCase):
             {"kind": "source", "title": "Source B", "last_compiled_at": "2024-11-01T00:00:00+00:00"},
             "# Source B\n\n## Summary\n- Revenue decrease as costs rise.\n",
         )
-        quality = content.build_concept_quality(
+        quality = content_concepts.build_concept_quality(
             self.root,
             {
                 "compiled_at": "2025-02-01T00:00:00+00:00",
@@ -595,7 +598,7 @@ class ContentHelperTests(unittest.TestCase):
                 "protocol|constrains|reason B",
             ]
         }
-        result = content.parse_causal_links(fm)
+        result = content_concepts.parse_causal_links(fm)
         self.assertEqual(len(result), 2)
         self.assertEqual(result[0]["target"], "memory")
         self.assertEqual(result[0]["relation"], "enables")
@@ -610,16 +613,16 @@ class ContentHelperTests(unittest.TestCase):
                 42,
             ]
         }
-        result = content.parse_causal_links(fm)
+        result = content_concepts.parse_causal_links(fm)
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["relation"], "enables")
 
     def test_parse_causal_links_empty(self) -> None:
-        self.assertEqual(content.parse_causal_links({}), [])
-        self.assertEqual(content.parse_causal_links({"causal_links": []}), [])
+        self.assertEqual(content_concepts.parse_causal_links({}), [])
+        self.assertEqual(content_concepts.parse_causal_links({"causal_links": []}), [])
 
     def test_render_concept_causal_lines_empty(self) -> None:
-        lines = content.render_concept_causal_lines([], {})
+        lines = content_concepts.render_concept_causal_lines([], {})
         self.assertEqual(len(lines), 1)
         self.assertIn("没有显式因果关系", lines[0])
 
@@ -632,7 +635,7 @@ class ContentHelperTests(unittest.TestCase):
             "memory": {"slug": "memory", "title": "Memory"},
             "protocol": {"slug": "protocol", "title": "Protocol"},
         }
-        lines = content.render_concept_causal_lines(links, lookup)
+        lines = content_concepts.render_concept_causal_lines(links, lookup)
         joined = "\n".join(lines)
         self.assertIn("Memory", joined)
         self.assertIn("Protocol", joined)
@@ -648,7 +651,7 @@ class ContentHelperTests(unittest.TestCase):
                 '  - "y|causes|evidence"\n---\nbody\n',
                 encoding="utf-8",
             )
-            sig_with = content.machine_memory_concept_input_signature(
+            sig_with = content_memory.machine_memory_concept_input_signature(
                 root, {"slug": "x", "title": "X", "source_signature": "s", "source_pages": [], "related_slugs": [], "entry_ids": []}
             )
             # Without causal links
@@ -656,7 +659,7 @@ class ContentHelperTests(unittest.TestCase):
                 "---\nid: concept-x\ntitle: X\n---\nbody\n",
                 encoding="utf-8",
             )
-            sig_without = content.machine_memory_concept_input_signature(
+            sig_without = content_memory.machine_memory_concept_input_signature(
                 root, {"slug": "x", "title": "X", "source_signature": "s", "source_pages": [], "related_slugs": [], "entry_ids": []}
             )
             self.assertNotEqual(sig_with, sig_without)

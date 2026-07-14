@@ -1316,13 +1316,9 @@ def _build_machine_memory_query_json(
                 expanded_source_scores[source_id] = expanded_source_scores.get(source_id, 0) + 1
                 supporting_edges.add(("HAS_CONCEPT", source_id, related_slug))
 
-    # EP-017B step 1: call via facade attribute to preserve the
-    # `patch("aiwiki.app_memory_surfaces.build_machine_memory_query_routes")`
-    # seam (tests/test_app.py:3008). Direct binding from the module-level
-    # import would bypass the facade monkeypatch.
-    from .. import app_memory_surfaces as _facade
+    from ..app_memory_query import build_machine_memory_query_routes
 
-    query_routes = _facade.build_machine_memory_query_routes(
+    query_routes = build_machine_memory_query_routes(
         memory,
         adjacency,
         direct_source_scores,

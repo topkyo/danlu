@@ -33,7 +33,7 @@ NIGHTLY_MINUTE="${AIWIKI_LAUNCHD_NIGHTLY_MINUTE:-0}"
 mkdir -p "$LAUNCH_AGENTS_DIR" "$LOG_DIR"
 
 PYTHONPATH="$PROJECT_ROOT/src${PYTHONPATH:+:$PYTHONPATH}" "$PYTHON_BIN" -m aiwiki.cli \
-  --root "$PROJECT_ROOT" sync-product-shell "$VAULT_ROOT" >/dev/null
+  --root "$PROJECT_ROOT" advanced sync-product-shell "$VAULT_ROOT" >/dev/null
 
 "$PYTHON_BIN" - "$WATCH_PLIST" "$NIGHTLY_PLIST" "$PROJECT_ROOT" "$VAULT_ROOT" "$LOG_DIR" "$WATCH_LABEL" "$NIGHTLY_LABEL" "$NIGHTLY_HOUR" "$NIGHTLY_MINUTE" <<'PY'
 import os

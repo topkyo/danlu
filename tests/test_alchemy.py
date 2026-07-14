@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from aiwiki.app_compile import ask_question
 from aiwiki.app_execution import compute_file_sha256, find_latest_elixir_promotion_receipt
 from aiwiki.app_protocol import ensure_layout
 from aiwiki.app_utils import parse_frontmatter, slugify
@@ -38,6 +37,7 @@ from aiwiki.execution.alchemy import (
     start_elixir,
 )
 from aiwiki.execution.alchemy_helpers import validate_promote_gate
+from aiwiki.execution.ask import ask_question
 from aiwiki.execution.candidates import promote_candidate
 from aiwiki.execution.protocol_learnings import add_learning
 from aiwiki.render.paths import execution_receipt_path, execution_receipts_dir

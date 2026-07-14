@@ -51,7 +51,7 @@ def _nightly_health_unlocked(root: Path) -> dict[str, Any]:
     # Resolve ``apply_machine_memory_action`` lazily via ``aiwiki.app_compile``
     # so that EP-018B group 6 can flip its ``_LAZY_OWNERS`` entry without
     # touching this module. Today it still self-references app_compile.
-    from .. import app_compile as _app_compile
+    from .machine_memory_actions import apply_machine_memory_action
 
     auto_applied: list[dict[str, Any]] = []
     auto_failed: list[dict[str, Any]] = []
@@ -65,10 +65,10 @@ def _nightly_health_unlocked(root: Path) -> dict[str, Any]:
         ]
         for aid in accepted_ids:
             try:
-                dry = _app_compile.apply_machine_memory_action(
+                dry = apply_machine_memory_action(
                     root, aid, note="nightly auto-consume", dry_run=True
                 )
-                result = _app_compile.apply_machine_memory_action(
+                result = apply_machine_memory_action(
                     root,
                     aid,
                     note="nightly auto-consume",

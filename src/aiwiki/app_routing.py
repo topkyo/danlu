@@ -23,49 +23,23 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from .app_content import (
+from .app_lifecycle import (
     action_needs_review,
-    action_priority_rank,
-    action_status_rank,
-    action_supports_low_risk_apply,
     action_transition_profile,
     archive_transition_profile,
     collect_aging_signals,
     collect_curated_pages,
-    collect_recent_output_artifacts,
-    concept_label_to_slug,
     curated_page_transition_profile,
-    describe_machine_memory_action,
     display_action_status,
     display_rewrite_proposal_status,
-    entry_ids_from_paths,
-    entry_lookup_maps,
     evaluate_page_aging,
-    execution_band_label,
-    execution_bundle_path,
-    execution_policy_profile,
-    execution_proposal_path,
-    judgment_asset_attention_sort_key,
-    judgment_asset_shell_record,
-    judgment_asset_summary,
     knowledge_lifecycle_governance_summary,
-    load_execution_policy_decision_history,
-    load_execution_receipt_history,
-    machine_memory_concept_input_signature,
-    machine_memory_source_input_signature,
-    preserved_section,
     review_queue,
-    rewrite_proposal_is_apply_ready,
     rewrite_proposal_needs_review,
     rewrite_proposal_status_rank,
     rewrite_transition_profile,
-    routing_snapshot_for_protocol,
-    safe_apply_preview,
-    source_summary_or_preview,
-    summarize_runtime_event_for_shell,
     transition_profile,
     valid_curated_statuses,
-    validate_low_risk_action_targets,
 )
 from .app_memory import (
     protocol_hints_for_material,
@@ -153,6 +127,40 @@ from .app_utils import (
     write_if_changed,
 )
 from .config import LLMConfig
+from .content.concepts import concept_label_to_slug
+from .content.io import (
+    collect_recent_output_artifacts,
+    entry_ids_from_paths,
+    entry_lookup_maps,
+    preserved_section,
+    routing_snapshot_for_protocol,
+    source_summary_or_preview,
+    summarize_runtime_event_for_shell,
+)
+from .content.memory import (
+    action_priority_rank,
+    action_status_rank,
+    action_supports_low_risk_apply,
+    describe_machine_memory_action,
+    execution_band_label,
+    execution_policy_profile,
+    load_execution_policy_decision_history,
+    load_execution_receipt_history,
+    machine_memory_concept_input_signature,
+    machine_memory_source_input_signature,
+    rewrite_proposal_is_apply_ready,
+    safe_apply_preview,
+    validate_low_risk_action_targets,
+)
+from .render.paths import (
+    execution_bundle_path,
+    execution_proposal_path,
+)
+from .render.views import (
+    judgment_asset_attention_sort_key,
+    judgment_asset_shell_record,
+    judgment_asset_summary,
+)
 
 
 def material_protocol_score(

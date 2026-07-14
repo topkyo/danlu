@@ -19,8 +19,8 @@ Migration invariants (same as B1..B6):
     ``entry_lookup_maps`` / ``entry_ids_from_paths`` come from
     ``..app_content``.
 - ``utc_now`` is resolved lazily at **call time** via
-  ``from .. import app_compile as _app_compile; _app_compile.utc_now()``
-  so that ``patch("aiwiki.app_compile.utc_now", ...)`` in
+  ``from .. import app_utils as _app_utils; _app_utils.utc_now()``
+  so that ``patch("aiwiki.app_utils.utc_now", ...)`` in
   ``tests/test_app.py`` continues to take effect after the owner flip.
 """
 
@@ -30,12 +30,6 @@ import contextlib
 from pathlib import Path
 from typing import Any
 
-from ..app_content import (
-    append_review_history_entry,
-    entry_ids_from_paths,
-    entry_lookup_maps,
-    review_history_entries,
-)
 from ..app_lifecycle import judgment_lifecycle_profile, valid_curated_statuses
 from ..app_protocol import ensure_layout, schedule_review_windows
 from ..app_state import (
@@ -60,6 +54,12 @@ from ..app_utils import (
     upsert_markdown_section,
 )
 from ..compile.pipeline import compile_wiki
+from ..content.io import (
+    append_review_history_entry,
+    entry_ids_from_paths,
+    entry_lookup_maps,
+    review_history_entries,
+)
 from ..lifecycle.templates import (
     curated_frontmatter_hints,
     curated_structured_value_is_placeholder,
@@ -114,7 +114,7 @@ def review_page(
     note: str | None = None,
     confidence: str | None = None,
 ) -> dict[str, Any]:
-    from .. import app_compile as _app_compile
+    from .. import app_utils as _app_utils
 
     ensure_layout(root)
     candidate = Path(page)
@@ -142,7 +142,7 @@ def review_page(
             f"Unsupported review status for {kind}: {status!r}; "
             f"expected one of: {tuple(valid_statuses)}"
         )
-    reviewed_at = _app_compile.utc_now()
+    reviewed_at = _app_utils.utc_now()
     frontmatter["status"] = status
     frontmatter["reviewed_at"] = reviewed_at
     frontmatter["formed_at"] = str(frontmatter.get("formed_at") or frontmatter.get("last_compiled_at") or reviewed_at)

@@ -16,8 +16,8 @@ Import policy (mirrors EP-018B1/B2/B3):
   from that module (not round-tripped through ``app_compile``).
 * The single hot-patch target used by this group — ``utc_now`` — is
   looked up lazily inside each function body via
-  ``from .. import app_compile as _app_compile; _app_compile.utc_now()``
-  so that ``patch("aiwiki.app_compile.utc_now")`` in
+  ``from .. import app_utils as _app_utils; _app_utils.utc_now()``
+  so that ``patch("aiwiki.app_utils.utc_now")`` in
   ``tests/test_app.py`` still intercepts the call through the migrated
   path.
 * ``execution_bundle_path`` / ``execution_receipt_path`` / ``append_wiki_log``
@@ -34,12 +34,6 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from ..app_content import (
-    append_wiki_log,
-    execution_bundle_path,
-    execution_receipt_path,
-    sync_manifest_with_raw,
-)
 from ..app_execution import (
     append_execution_receipt_history,
     build_material_archive_bundle,
@@ -66,6 +60,12 @@ from ..app_state import (
 )
 from ..app_utils import atomic_write_text, relative_path, runtime_write_operation
 from ..compile.pipeline import compile_wiki
+from ..content.io import sync_manifest_with_raw
+from ..render.paths import (
+    append_wiki_log,
+    execution_bundle_path,
+    execution_receipt_path,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -79,8 +79,8 @@ def apply_material_archive(
     dry_run: bool = False,
 ) -> dict[str, Any]:
     # Hot-patch seam: ``utc_now`` is patched via
-    # ``patch("aiwiki.app_compile.utc_now")``. Lazy import preserves it.
-    from .. import app_compile as _app_compile
+    # ``patch("aiwiki.app_utils.utc_now")``. Lazy import preserves it.
+    from .. import app_utils as _app_utils
 
     ensure_layout(root)
     manifest = sync_manifest_with_raw(root)
@@ -140,7 +140,7 @@ def apply_material_archive(
     title = str(manifest_entry.get("title") or entry_id)
     source_path = f"wiki/sources/{entry_id}.md"
     protocol = str(load_protocol_state(root)["active_protocol"] or DEFAULT_PROTOCOL)
-    applied_at = _app_compile.utc_now()
+    applied_at = _app_utils.utc_now()
     bundle = build_material_archive_bundle(
         root,
         entry_id=entry_id,
@@ -318,7 +318,7 @@ def revert_material_archive(
     *,
     note: str | None = None,
 ) -> dict[str, Any]:
-    from .. import app_compile as _app_compile
+    from .. import app_utils as _app_utils
 
     ensure_layout(root)
     manifest = sync_manifest_with_raw(root)
@@ -361,7 +361,7 @@ def revert_material_archive(
     title = str(manifest_entry.get("title") or target.get("title") or entry_id)
     source_path = str(target.get("source_path") or f"wiki/sources/{entry_id}.md")
     protocol = str(load_protocol_state(root)["active_protocol"] or DEFAULT_PROTOCOL)
-    reverted_at = _app_compile.utc_now()
+    reverted_at = _app_utils.utc_now()
     revert_receipt = build_material_archive_receipt(
         root,
         entry_id=entry_id,

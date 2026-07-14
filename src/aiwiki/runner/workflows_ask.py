@@ -11,7 +11,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from aiwiki.app_compile import ask_question
 from aiwiki.app_protocol import ensure_layout
 from aiwiki.app_queries import human_query_title
 from aiwiki.app_state import load_machine_memory, load_manifest
@@ -82,6 +81,8 @@ from aiwiki.runner.workflow_shared import (
     _receipt_error_class,
     reinject_candidate_frontmatter,
 )
+
+from ..execution.ask import ask_question
 
 _logger = logging.getLogger(__name__)
 

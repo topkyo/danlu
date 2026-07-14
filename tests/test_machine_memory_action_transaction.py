@@ -12,7 +12,6 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from aiwiki.app_content import ingest_source
 from aiwiki.app_protocol import ensure_layout
 from aiwiki.app_state import (
     execution_receipt_history_path,
@@ -22,6 +21,7 @@ from aiwiki.app_state import (
 )
 from aiwiki.app_utils import parse_frontmatter, render_frontmatter
 from aiwiki.compile.pipeline import compile_wiki
+from aiwiki.content.io import ingest_source
 from aiwiki.execution.machine_memory_actions import (
     MachineMemoryActionHalfWriteError,
     MachineMemoryActionReceiptError,

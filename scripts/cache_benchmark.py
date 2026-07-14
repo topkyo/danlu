@@ -16,8 +16,8 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from aiwiki.app_compile import compile_wiki
-from aiwiki.app_content import ingest_source
 from aiwiki.app_memory import build_machine_memory_query
+from aiwiki.app_protocol import ensure_layout
 from aiwiki.app_state import (
     load_archive_candidates_state,
     load_cache_status,
@@ -25,7 +25,7 @@ from aiwiki.app_state import (
     load_material_routing_state,
     load_material_state,
 )
-from aiwiki.app_protocol import ensure_layout
+from aiwiki.content.io import ingest_source
 
 
 def _seed_fixture(root: Path, *, count: int) -> None:

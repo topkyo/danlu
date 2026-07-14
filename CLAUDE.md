@@ -80,6 +80,7 @@
 - 派生输出不能覆盖原始 source pages；所有结论都应保留 provenance。
 - `decision / judgment / execution` 层必须保持可审计、可回滚、可追溯。
 - 非目标：hosted service, multi-user sync, heavy RAG infra, fine-tuning。
+- 纯 facade 清理定案以 `AGENTS.md`「架构清理定案：纯 facade 一次做干净」为准：要做就一轮做完，禁止半迁移尾巴。
 
 ## 自主权边界
 

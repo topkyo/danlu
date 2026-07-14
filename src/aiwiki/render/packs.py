@@ -58,7 +58,7 @@ from .paths import (
 
 
 def compact_section_lines(markdown: str, heading: str, *, fallback: str, limit: int = 5) -> list[str]:
-    from ..app_content import preserved_section
+    from ..content.io import preserved_section
 
     section = preserved_section(markdown, heading, "").strip()
     if not section:
@@ -237,7 +237,7 @@ def output_pack_sop_group_input_signature(
     *,
     active_protocol: str,
 ) -> str:
-    from ..app_content import action_supports_low_risk_apply
+    from ..content.memory import action_supports_low_risk_apply
 
     payload = {
         "active_protocol": active_protocol,
@@ -612,7 +612,10 @@ def build_output_pack_sop_drafts(
     active_protocol: str,
     compiled_at: str,
 ) -> tuple[list[dict[str, Any]], int]:
-    from ..app_content import action_supports_low_risk_apply, execution_band_label
+    from ..content.memory import (
+        action_supports_low_risk_apply,
+        execution_band_label,
+    )
 
     sop_drafts: list[dict[str, Any]] = []
     proposal_by_action = {

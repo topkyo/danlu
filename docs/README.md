@@ -24,8 +24,8 @@ updated_at: 2026-07-14
 
 | 文档 | 角色 |
 |---|---|
-| [Furnace Residual Clearance Plan 2026-07](<./Furnace Residual Clearance Plan 2026-07.md>) | Cleanup residual：C1/C2 seam、Demo Pack fixture、VaultQueue companion |
-| [Furnace Cleanup Commercial Audit Plan 2026-07](<./Furnace Cleanup Commercial Audit Plan 2026-07.md>) | **当前清理 / 商业审计 / Obsidian 全平台评估执行计划**：Wave A/B/C、可售卖边界、Mac vs iPad/iOS |
+| [Furnace Residual Clearance Plan 2026-07](<./Furnace Residual Clearance Plan 2026-07.md>) | Cleanup residual：**executed-reviewed-pass**（C1/C2 seam、Demo Pack、VaultQueue；C4 仍 not-yet） |
+| [Furnace Cleanup Commercial Audit Plan 2026-07](<./Furnace Cleanup Commercial Audit Plan 2026-07.md>) | 清理 / 商业审计 Wave A/B/C：**主线已收口**；剩余 C4 wall-clock / 可选单 seam / golden 瘦身执行 |
 | [Furnace Investing Demo Pack Spec](<./Furnace Investing Demo Pack Spec.md>) + [Demo Pack fixture](<../demos/investing-demo-pack/README.md>) | **商业 demo 规格与已交付 fixture**：10 分钟知识复利故事、脱敏素材类型、receipt / judgment / elixir 路径和合规话术 |
 | [Furnace RuntimeClient Mobile Companion Design](<./Furnace RuntimeClient Mobile Companion Design.md>) | **移动 companion implemented-slice**：RuntimeClient 三实现、VaultQueue 协议、desktop drain、Desktop-only 主插件边界 |
 

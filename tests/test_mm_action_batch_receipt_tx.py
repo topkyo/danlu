@@ -90,7 +90,7 @@ class MachineMemoryActionBatchReceiptTransactionTests(unittest.TestCase):
     def _run_batch(self, *, batch_id: str = "batch-tx") -> dict[str, object]:
         with (
             patch.object(batch_mod, "_build_batch_id", return_value=batch_id),
-            patch("aiwiki.app_compile.apply_machine_memory_action", side_effect=self._apply_one),
+            patch("aiwiki.execution.machine_memory_actions.apply_machine_memory_action", side_effect=self._apply_one),
         ):
             return batch_mod.apply_machine_memory_actions_batch(self.root, self.action_ids, note="batch tx")
 
@@ -120,7 +120,7 @@ class MachineMemoryActionBatchReceiptTransactionTests(unittest.TestCase):
 
         with (
             patch.object(batch_mod, "_build_batch_id", return_value="batch-tx"),
-            patch("aiwiki.app_compile.apply_machine_memory_action", side_effect=fail_second),
+            patch("aiwiki.execution.machine_memory_actions.apply_machine_memory_action", side_effect=fail_second),
             self.assertRaises(ValueError) as ctx,
         ):
             batch_mod.apply_machine_memory_actions_batch(self.root, self.action_ids)
@@ -225,7 +225,7 @@ class MachineMemoryActionBatchReceiptTransactionTests(unittest.TestCase):
     def test_dry_run_wiki_log_fail_still_rolls_back_batch_metadata(self) -> None:
         with (
             patch.object(batch_mod, "_build_batch_id", return_value="batch-dry-tx"),
-            patch("aiwiki.app_compile.apply_machine_memory_action", side_effect=self._apply_one),
+            patch("aiwiki.execution.machine_memory_actions.apply_machine_memory_action", side_effect=self._apply_one),
             patch.object(batch_mod, "append_wiki_log", side_effect=OSError("wiki failed")),
             self.assertRaises(batch_mod.MachineMemoryActionApplyBatchReceiptError),
         ):

@@ -11,7 +11,6 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from .app_content import action_supports_low_risk_apply
 from .app_state import (
     l3_proposal_state_path,
     load_json_document,
@@ -23,6 +22,7 @@ from .app_state import (
 from .app_utils import runtime_write_operation
 from .autonomy_domains import classify_l3_proposal, classify_machine_memory_action
 from .autonomy_policy import load_policy
+from .content.memory import action_supports_low_risk_apply
 from .execution.machine_memory_actions import auto_resolve_machine_memory_actions
 
 LLM_OWNED_NON_CORE = "llm_owned_non_core"

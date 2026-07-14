@@ -3,11 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from .. import app_compile as _app_compile
-from ..app_compile import file_back
+from .. import app_utils as _app_utils
 from ..app_protocol import ensure_layout
 from ..app_state import load_output_candidates_state, remove_output_candidate, upsert_output_candidate
 from ..app_utils import parse_frontmatter
+from .ask import file_back
 
 
 def _find_candidate(root: Path, artifact_ref: str) -> dict[str, Any]:
@@ -145,7 +145,7 @@ def promote_candidate(root: Path, artifact_ref: str) -> dict[str, Any]:
     write_candidate_frontmatter(artifact_path, candidate_state="promoted")
     result = file_back(root, artifact_ref, title=title, kind=kind)
     promoted_path = result["path"]
-    filed_at = _app_compile.utc_now()
+    filed_at = _app_utils.utc_now()
     upsert_output_candidate(
         root,
         artifact_ref=artifact_ref,

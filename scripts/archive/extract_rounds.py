@@ -15,7 +15,6 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-
 ROUND_RE = re.compile(
     r"^- \*\*(Round \S+|P4-\S+(?:\s+系列)?) — (.+?) — (完成|进行中)(.*?)\*\*$"
 )
