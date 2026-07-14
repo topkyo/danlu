@@ -479,6 +479,7 @@ test("run state helpers build llm health overrides", () => {
 
   expect(context.buildProductShellLlmHealthOverrides(record)).toMatchObject({
     status: "degraded",
+    reason: "Latest run-ask produced an LLM failure notice.",
     source: "run-ask",
     fallbackCommand: "ask",
     backendRequested: "opencode-api",
@@ -494,6 +495,25 @@ test("run state helpers build llm health overrides", () => {
     reason: "Recent run-ask succeeded.",
     fallbackCommand: "",
   });
+  expect(context.buildProductShellLlmHealthOverrides({
+    command: "run-ask",
+    fallbackUsed: true,
+    deliveryMode: "llm-fallback-chain",
+    fallbackStage: "model-chain",
+    fallbackCommand: "",
+  })).toMatchObject({
+    status: "warning",
+    reason: "LLM completed via model retry.",
+    fallbackCommand: "",
+  });
+  expect(context.isProductShellDegradedRun({ command: "run-ask" }, {
+    fallback_used: true,
+    delivery_mode: "llm-fallback-chain",
+  })).toBe(false);
+  expect(context.isProductShellDegradedRun({ command: "run-ask" }, {
+    fallback_used: true,
+    delivery_mode: "deterministic-fallback",
+  })).toBe(true);
   expect(context.buildProductShellFailedLlmHealthOverrides(record, {
     message: "Backend unavailable",
     stderr: "stderr detail",
