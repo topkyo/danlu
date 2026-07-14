@@ -11,6 +11,9 @@ async function loadProductShellPluginState(plugin) {
   const selectedProfile = llmProviderProfile(plugin.settings.llmBackend);
   const llmBackendMigrated = plugin.settings.llmBackend !== selectedProfile.value;
   plugin.settings.llmBackend = selectedProfile.value;
+  const migratedRuntimeClientMode = normalizeRuntimeClientMode(plugin.settings.runtimeClientMode);
+  const runtimeClientModeMigrated = plugin.settings.runtimeClientMode !== migratedRuntimeClientMode;
+  plugin.settings.runtimeClientMode = migratedRuntimeClientMode;
   const legacyShowHtmlShortcutsMigrated = Object.prototype.hasOwnProperty.call(plugin.settings, "showHtmlShortcuts");
   delete plugin.settings.showHtmlShortcuts;
   const legacyDefaultAskModeMigrated = Object.prototype.hasOwnProperty.call(plugin.settings, "defaultAskMode");
@@ -54,6 +57,7 @@ async function loadProductShellPluginState(plugin) {
     || legacyLlmSettingsMigrated
     || defaultAskFormatMigrated
     || llmBackendMigrated
+    || runtimeClientModeMigrated
     || legacyShowHtmlShortcutsMigrated
     || legacyDefaultAskModeMigrated
     || advancedSectionsExpandedMigrated

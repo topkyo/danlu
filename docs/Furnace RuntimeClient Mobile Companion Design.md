@@ -1,7 +1,7 @@
 ---
 title: "Furnace RuntimeClient Mobile Companion Design"
 kind: "design"
-status: "design-done"
+status: "implemented-slice"
 updated_at: 2026-07-14
 ---
 
@@ -11,7 +11,16 @@ updated_at: 2026-07-14
 
 当前 Product Shell 是 Obsidian Desktop runtime 控制台：UI 调用 Node / Electron bridge，spawn vault-local launcher，再进入 Python CLI。iPad / iOS Obsidian 不提供等价的 shell、Node spawn、Electron 或本机 Python runtime，因此不能把现有插件直接标成移动端全功能。
 
-本设计只完成 M-MOBILE-1 的接口草图；不实现完整 mobile plugin，不改变当前 `isDesktopOnly: true` 主产品边界。
+本文件已从 M-MOBILE-1 接口草图推进到 M-MOBILE-2 可合并切片：主 Product Shell 仍保持 `isDesktopOnly: true`，但运行调用已抽象为 RuntimeClient，并提供 vault queue companion 路径与 desktop drain。
+
+## Implemented slice（M-MOBILE-2）
+
+- Product Shell 新增 `RuntimeClient` 工厂：
+  - `DesktopLauncherClient` 继续委托现有 launcher bridge，保持桌面全功能行为等价。
+  - `VaultQueueClient` 只读 `output/control/shell-summary.json`，并把 ask/drop/note 写入 `.aiwiki/queue/*.json`。
+- Vault queue schema 使用 `version, id, kind, created_at, payload, status, source`；移动 companion 返回 `status: "queued"` 与 `queue_path`，不生成 success receipt，不伪装执行完成。
+- Python desktop drain 新增 `vault-queue-drain`：默认 dry-run；`--execute` 只执行低风险 note 与 deterministic ask，高风险 drop 明确 failed 并写 queue receipt。
+- `runtimeClientMode = "desktop-launcher" | "vault-queue"` 作为 thin client mode setting；默认仍是 `desktop-launcher`。
 
 ## RuntimeClient 三实现
 

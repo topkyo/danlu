@@ -10,6 +10,7 @@ const DEFAULT_PROTOCOLS = ["general", "investing", "research", "product", "ops"]
 const DEFAULT_LOCALE = "zh";
 const DEFAULT_SETTINGS = {
   launcherPath: "scripts/aiwiki-launcher.sh",
+  runtimeClientMode: "desktop-launcher",
   defaultAskFormat: "report",
   recentRunsLimit: 8,
   showAdvancedCommands: false,
@@ -43,6 +44,10 @@ const ZH_TEXT = {
   English: "英文",
   "Aiwiki launcher": "Aiwiki 启动器",
   "Vault-local or absolute launcher path. This vault may point at an external runtime root.": "vault 内相对路径或绝对 launcher 路径。这个 vault 可以指向外部 runtime root。",
+  "Runtime client mode": "运行客户端模式",
+  "Desktop launcher runs the local aiwiki runtime. Vault queue only writes .aiwiki/queue requests for desktop drain; it does not execute commands.": "Desktop launcher 会运行本机 aiwiki runtime。Vault queue 只写入 .aiwiki/queue 请求等待桌面端 drain，不执行命令。",
+  "Desktop launcher": "桌面启动器",
+  "Vault queue companion": "Vault 队列 companion",
   "Recent runs limit": "最近运行保留数",
   "How many plugin-triggered runs to keep in the Product Shell.": "Product Shell 中保留多少条插件触发的运行记录。",
   "Show advanced commands": "显示高级命令",
@@ -768,6 +773,8 @@ const ZH_TEXT = {
   " | llm degraded": " | LLM 已降级",
   "Cannot re-run this entry because argv was not recorded.": "这条记录没有保存 argv，暂时无法重新运行。",
   "Command completed successfully.": "命令已成功完成。",
+  "Queued for desktop drain: {path}": "已加入桌面端待处理队列：{path}",
+  "Queued for desktop drain. This is not a completed runtime execution.": "已加入桌面端待处理队列。这不是已完成的 runtime 执行。",
   "Working directory": "工作目录",
   "Arguments": "参数",
   "Fallback from": "回退来源",

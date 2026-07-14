@@ -1,0 +1,30 @@
+{
+  "receipt_id": "demo-investing-compile-2026-07-14T0715Z",
+  "demo_fixture": true,
+  "redaction": "fictional",
+  "operation": "compile_sources",
+  "protocol": "investing",
+  "status": "success",
+  "started_at": "2026-07-14T07:15:00Z",
+  "finished_at": "2026-07-14T07:15:08Z",
+  "inputs": [
+    "raw/inbox/company-cycle-v1.md",
+    "raw/inbox/industry-competition-v1.md",
+    "raw/inbox/counter-risk-v2.md"
+  ],
+  "outputs": [
+    "wiki/sources/company-cycle-v1.md",
+    "wiki/sources/industry-competition-v1.md",
+    "wiki/sources/counter-risk-v2.md"
+  ],
+  "llm": {
+    "used": false,
+    "reason": "static demo fixture source pages"
+  },
+  "compliance": {
+    "not_investment_advice": true,
+    "contains_real_private_data": false,
+    "fourteen_day_pass_claimed": false,
+    "thirty_day_pass_claimed": false
+  }
+}

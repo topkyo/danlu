@@ -66,6 +66,21 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName(t("Runtime client mode"))
+      .setDesc(t("Desktop launcher runs the local aiwiki runtime. Vault queue only writes .aiwiki/queue requests for desktop drain; it does not execute commands."))
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOption("desktop-launcher", t("Desktop launcher"))
+          .addOption("vault-queue", t("Vault queue companion"))
+          .setValue(normalizeRuntimeClientMode(this.plugin.settings.runtimeClientMode))
+          .onChange(async (value) => {
+            this.plugin.settings.runtimeClientMode = normalizeRuntimeClientMode(value);
+            await this.plugin.savePluginState();
+            this.plugin.refreshOpenViews();
+          })
+      );
+
+    new Setting(containerEl)
       .setName(t("Recent runs limit"))
       .setDesc(t("How many plugin-triggered runs to keep in the Product Shell."))
       .addText((text) =>

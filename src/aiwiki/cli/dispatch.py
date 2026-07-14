@@ -104,6 +104,7 @@ from ..runner.commands import (
 from ..runner.workflows import run_ask, run_ask_resume, run_ask_submit, run_compile, run_lint, run_nightly
 from ..signals import collect_signals
 from ..today_feed import FeedEntry, build_today_feed
+from ..vault_queue import drain_vault_queue
 from .dispatch_helpers import (
     _action_command,
     _action_review_item,
@@ -288,6 +289,8 @@ def _handle_live_surface(args: argparse.Namespace, root: Path) -> tuple[object, 
         return _out(shell_status_dashboard(root))
     if args.handler_command == "search":
         return _out(shell_search(root, args.query, limit=args.limit))
+    if args.handler_command == "vault-queue-drain":
+        return _out(drain_vault_queue(root, limit=args.limit, execute=args.execute))
     raise ValueError(f"Unsupported command: {args.handler_command}")
 
 
@@ -697,6 +700,7 @@ _LIVE_SURFACE_HANDLERS = {
     "shell-status": _handle_live_surface,
     "dashboard": _handle_live_surface,
     "search": _handle_live_surface,
+    "vault-queue-drain": _handle_live_surface,
 }
 
 _ASK_HANDLERS = {

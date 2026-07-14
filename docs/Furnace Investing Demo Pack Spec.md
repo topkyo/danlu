@@ -1,7 +1,7 @@
 ---
 title: "Furnace Investing Demo Pack Spec"
 kind: "spec"
-status: "draft"
+status: "delivered-fixture"
 updated_at: 2026-07-14
 ---
 
@@ -11,7 +11,16 @@ updated_at: 2026-07-14
 
 用 10 分钟讲清炼丹炉的 **知识复利**：一份投资材料进入 `raw/` 后，如何被编译成可追溯 source page、沉淀为 judgment，并在跨周期复盘中升级或反证为 elixir / 失效条件，而不是展示“AI 给答案”。
 
-本文件只定义 Demo Pack 规格，不包含真实 vault 数据，不声称已有公开可售案例。
+本文件定义 Demo Pack 规格，并已交付真实可打开的脱敏 fixture：`demos/investing-demo-pack/`。
+
+Fixture 仍然不包含真实 vault 数据、真实发行人数据、真实客户数据或未公开资料，也不声称已有公开可售案例。
+
+## Delivered Fixture
+
+- Demo Pack root: `demos/investing-demo-pack/`
+- Openable vault: `demos/investing-demo-pack/vault/`
+- Walkthrough README: `demos/investing-demo-pack/README.md`
+- Compliance notes: `demos/investing-demo-pack/COMPLIANCE.md`
 
 ## 最小素材
 
@@ -58,9 +67,15 @@ Demo Pack 必须显式出现以下口径：
 - **local-first 不等于离线**：vault、receipt、wiki 和 output 默认在本地文件系统；但 LLM provider、网页抓取、通知 webhook 等能力可能访问网络。离线只能支持不依赖外部模型 / 网络的本地读写与 deterministic 检查。
 - **长期 proof 不伪造**：14/30-day natural proof 只能等待真实 wall-clock 运行窗口；当前 Demo Pack 不得把尚未自然发生的长期窗口标为 PASS。
 
+### 移动 companion 商业包装
+
+- **Mac / Desktop 是主产品**：完整 ingest、LLM、compile、review、apply/revert 和 desktop drain 都在本机 runtime 上执行。
+- **iPad / iOS 是 companion**：只做只读 summary / reports 和 `.aiwiki/queue` 请求投递；queued 只表示“已提交给桌面端待处理”，不等于执行成功。
+- **不单卖全功能移动炼丹炉**：Demo Pack 口径必须避免暗示 iPad 本地能运行 Python runtime、PDF/repo ingest、LLM worker 或完整治理执行。
+
 ## 交付物清单
 
-规格级 Demo Pack 至少包含：
+已交付 Demo Pack fixture 包含：
 
 1. **截图脚本**
    - Product Shell 输入端：投料 / ask / today。
@@ -74,10 +89,10 @@ Demo Pack 必须显式出现以下口径：
    - 4:00-6:00 第二周期材料触发复审。
    - 6:00-8:00 receipt / judgment / elixir 链路。
    - 8:00-10:00 合规边界与 local-first 数据流。
-3. **脱敏 vault 结构清单**
-   - 只需目录树和示例文件名。
-   - 不需要真实 vault 数据。
-   - 示例树必须区分 `raw/`、`wiki/sources/`、`wiki/judgments/`、`wiki/elixirs/`、`output/control/`。
+3. **脱敏 vault fixture**
+   - 真实可打开的最小 markdown vault 在 `demos/investing-demo-pack/vault/`。
+   - 所有材料均为虚构脱敏内容。
+   - 目录区分 `raw/`、`wiki/sources/`、`wiki/judgments/`、`wiki/elixirs/`、`output/reports/`、`output/control/`。
 4. **讲解 README**
    - 说明素材来源类型、脱敏规则、演示顺序和禁止宣称项。
    - 标明 Demo Pack 是规格或模板，不是 14/30-day natural proof。

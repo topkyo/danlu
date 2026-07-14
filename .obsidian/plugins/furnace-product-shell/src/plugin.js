@@ -384,6 +384,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async execLauncher(args) { return execLauncher(this, args); }
+  createRuntimeClient() { return createRuntimeClient(this); }
+  async executeRuntimeCommand(args) { return this.createRuntimeClient().exec(args); }
 
   runUiAction(action, label = "ui-action") { runUiAction(this, action, label); }
 

@@ -35,6 +35,7 @@ from .app_utils import (
     utc_now,
 )
 from .config import LLMConfig, _backend_supports_image_analysis
+from .drop_helpers import timestamped_stem
 from .llm import LLMError, create_backend_client
 from .render.paths import append_wiki_log
 
@@ -59,17 +60,6 @@ _ASSET_MAX_BYTES = 50 * 1024 * 1024
 _LOCAL_PDF_MAX_BYTES = _ASSET_MAX_BYTES
 _LOCAL_IMAGE_MAX_BYTES = 25 * 1024 * 1024
 _SUPPORTED_IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml"}
-_FILENAME_TITLE_SUFFIXES = {
-    ".gif",
-    ".jpeg",
-    ".jpg",
-    ".md",
-    ".markdown",
-    ".pdf",
-    ".png",
-    ".txt",
-    ".webp",
-}
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -229,14 +219,14 @@ def _materialize_url(root: Path, url: str, title: str | None, collection: dict[s
     created_paths: list[Path] = []
     asset_paths: list[str] = []
     asset_dir = root / "raw" / "assets"
-    stem = _timestamped_stem(display_title)
+    stem = timestamped_stem(display_title)
     note_path = _unique_path(root / "raw" / "inbox", stem, ".md")
     append_file_sizes = _snapshot_append_files(root)
     try:
         for index, image in enumerate(collection["inline_images"], start=1):
             asset_path = _unique_path(
                 asset_dir,
-                _timestamped_stem(f"{display_title}-image-{index}"),
+                timestamped_stem(f"{display_title}-image-{index}"),
                 image["suffix"],
             )
             _write_bytes(asset_path, image["bytes"])
@@ -379,7 +369,7 @@ def _materialize_pdf(root: Path, source: str, title: str | None, collection: dic
     tmp_path = collection["tmp_path"]
     original_path = collection["original_path"]
     display_title = title or Path(original_path).stem or tmp_path.stem
-    asset_path = _unique_path(root / "raw" / "assets", _timestamped_stem(display_title), ".pdf")
+    asset_path = _unique_path(root / "raw" / "assets", timestamped_stem(display_title), ".pdf")
     created_paths: list[Path] = []
     append_file_sizes = _snapshot_append_files(root)
     try:
@@ -498,7 +488,7 @@ def _materialize_image(root: Path, source: str, title: str | None, collection: d
     vision_backend = vision_result["backend"]
     vision_status = vision_result["status"]
     display_title = title or Path(original_path).stem or tmp_path.stem
-    asset_path = _unique_path(root / "raw" / "assets", _timestamped_stem(display_title), tmp_path.suffix.lower() or ".bin")
+    asset_path = _unique_path(root / "raw" / "assets", timestamped_stem(display_title), tmp_path.suffix.lower() or ".bin")
     created_paths: list[Path] = []
     append_file_sizes = _snapshot_append_files(root)
     try:
@@ -588,7 +578,7 @@ def _materialize_repo(root: Path, source: str, title: str | None, collection: di
     snapshot = collection["snapshot"]
     original_path = collection["original_path"]
     display_title = title or snapshot["name"]
-    stem = _timestamped_stem(display_title)
+    stem = timestamped_stem(display_title)
     note_path = _unique_path(root / "raw" / "inbox", stem, ".md")
     ingest_metadata = {
         "repo_source": original_path,
@@ -691,7 +681,7 @@ def _drop_note_unlocked(
     if not allow_sensitive:
         _assert_no_sensitive_text(captured_text, source_label=original_path)
     display_title = title or _note_title(captured_text, fallback=fallback_title)
-    stem = _timestamped_stem(display_title)
+    stem = timestamped_stem(display_title)
     suffix = source_path.suffix.lower() if source_path is not None and source_path.suffix else ".md"
     note_path = _unique_path(root / "raw" / "inbox", stem, suffix)
     if source_path is None:
@@ -1691,18 +1681,6 @@ def _git_output(repo_path: Path, args: list[str]) -> str:
     if completed.returncode != 0:
         return ""
     return completed.stdout.strip()
-
-
-def _timestamped_stem(label: str) -> str:
-    filename_label = re.sub(r"[\\/]+", " ", label.strip())
-    suffix = Path(filename_label).suffix.lower()
-    if suffix in _FILENAME_TITLE_SUFFIXES:
-        filename_label = filename_label[: -len(suffix)]
-    result = re.sub(r"[^\w\u3400-\u9fff]+", "-", filename_label.lower(), flags=re.UNICODE).strip("-_.")[:64]
-    result = result.strip("-_.")
-    if result and result != "item":
-        return result
-    return f"doc-{hashlib.sha256(label.encode()).hexdigest()[:12]}"
 
 
 def _unique_path(directory: Path, stem: str, suffix: str) -> Path:

@@ -1,0 +1,36 @@
+{
+  "receipt_id": "demo-investing-review-2026-07-14T0720Z",
+  "demo_fixture": true,
+  "redaction": "fictional",
+  "operation": "review_judgment_and_distill_candidate_elixir",
+  "protocol": "investing",
+  "status": "success",
+  "started_at": "2026-07-14T07:20:00Z",
+  "finished_at": "2026-07-14T07:20:11Z",
+  "inputs": [
+    "wiki/sources/company-cycle-v1.md",
+    "wiki/sources/industry-competition-v1.md",
+    "wiki/sources/counter-risk-v2.md",
+    "wiki/judgments/example-semiconductor-a-thesis.md"
+  ],
+  "outputs": [
+    "wiki/judgments/example-semiconductor-a-thesis.md",
+    "wiki/elixirs/example-semiconductor-a-supply-cycle-candidate.md",
+    "output/reports/demo-investing-report.md"
+  ],
+  "judgment_state": {
+    "before": "tentative",
+    "after": "under_review",
+    "reason": "fictional v2 counter-risk source weakened timing assumption"
+  },
+  "llm": {
+    "used": false,
+    "reason": "static demo fixture receipt"
+  },
+  "compliance": {
+    "not_investment_advice": true,
+    "contains_real_private_data": false,
+    "fourteen_day_pass_claimed": false,
+    "thirty_day_pass_claimed": false
+  }
+}

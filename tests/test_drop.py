@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 import subprocess
@@ -43,6 +44,7 @@ from aiwiki.drop import (
     drop_repo,
     drop_url,
 )
+from aiwiki.drop_helpers import timestamped_stem
 from aiwiki.llm import CompletionResult
 
 
@@ -66,6 +68,12 @@ class DropTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.tempdir.cleanup()
+
+    def test_timestamped_stem_sanitizes_upload_titles_and_fallbacks(self) -> None:
+        self.assertEqual(timestamped_stem("特朗普访华预期.pdf"), "特朗普访华预期")
+        self.assertEqual(timestamped_stem(r"Reports\Q2 Results.md"), "reports-q2-results")
+        self.assertEqual(timestamped_stem("Revenue + Margin: FY26!"), "revenue-margin-fy26")
+        self.assertEqual(timestamped_stem("item"), f"doc-{hashlib.sha256(b'item').hexdigest()[:12]}")
 
     def test_drop_url_writes_note_from_fetched_payload(self) -> None:
         fetched = {

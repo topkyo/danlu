@@ -37,6 +37,7 @@ from aiwiki.execution.alchemy import (
     revert_elixir,
     start_elixir,
 )
+from aiwiki.execution.alchemy_helpers import validate_promote_gate
 from aiwiki.execution.candidates import promote_candidate
 from aiwiki.execution.protocol_learnings import add_learning
 from aiwiki.render.paths import execution_receipt_path, execution_receipts_dir
@@ -85,6 +86,22 @@ def _latest_receipt_by_subject(root: Path, *, subject_kind: str, subject_id: str
         if entry.get("subject_kind") == subject_kind and entry.get("subject_id") == subject_id:
             return entry
     return None
+
+
+class AlchemyHelperTests(unittest.TestCase):
+    def test_validate_promote_gate_accepts_none_found_and_real_evidence(self) -> None:
+        validate_promote_gate({"counter_evidence": ["NONE_FOUND"], "confidence_level": "low"})
+        validate_promote_gate({"counter_evidence": ["wiki/derived/evidence.md"], "confidence_level": "medium"})
+
+    def test_validate_promote_gate_rejects_invalid_counter_evidence_contracts(self) -> None:
+        with self.assertRaisesRegex(ValueError, "counter_evidence_required"):
+            validate_promote_gate({"confidence_level": "low"})
+        with self.assertRaisesRegex(ValueError, "counter_evidence_invalid_format"):
+            validate_promote_gate({"counter_evidence": ["NONE_FOUND", "wiki/derived/evidence.md"], "confidence_level": "low"})
+        with self.assertRaisesRegex(ValueError, "none_found_requires_low_confidence"):
+            validate_promote_gate({"counter_evidence": ["NONE_FOUND"], "confidence_level": "medium"})
+        with self.assertRaisesRegex(ValueError, "confidence_level_required"):
+            validate_promote_gate({"counter_evidence": ["wiki/derived/evidence.md"], "confidence_level": ""})
 
 
 class AlchemyCandidatePlaneTests(unittest.TestCase):

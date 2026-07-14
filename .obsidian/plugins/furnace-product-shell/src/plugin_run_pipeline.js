@@ -49,8 +49,33 @@ async function runProductShellPluginCommand(plugin, label, args, options = {}) {
   }
   plugin.updateRunRecord(record, {});
   try {
-    const result = await plugin.execLauncher(args);
+    const result = await plugin.executeRuntimeCommand(args);
     const runContext = buildProductShellRunResultContext(result);
+    if (result.payload && result.payload.kind === "vault-queue" && result.payload.status === "queued") {
+      const queuePath = String(result.payload.queue_path || "");
+      appendRunEvent(
+        record,
+        "Queued",
+        queuePath || plugin.t("Queued for desktop drain. This is not a completed runtime execution."),
+        "running"
+      );
+      plugin.updateRunRecord(record, {
+        status: "received",
+        exitCode: 0,
+        finishedAt: "",
+        resultPath: queuePath,
+        stdoutSummary: truncateText(result.stdout),
+        stderrSummary: truncateText(result.stderr),
+        stdoutRaw: trimDiagnosticText(result.stdout),
+        stderrRaw: trimDiagnosticText(result.stderr),
+        deliveryMode: "vault-queue",
+      });
+      plugin.persistRunLog(record, { stdoutRaw: result.stdout, stderrRaw: result.stderr });
+      if (options.notice !== false) {
+        new Notice(plugin.t("Queued for desktop drain: {path}", { path: queuePath }));
+      }
+      return result.payload;
+    }
     if (options.updateSummaryFromPayload && result.payload && result.payload.kind === "product-shell-summary") {
       plugin.shellSummary = result.payload;
       plugin.processShellSummaryUpdates(plugin.shellSummary);
@@ -116,7 +141,7 @@ async function runProductShellPluginCommand(plugin, label, args, options = {}) {
 
 async function refreshProductShellSummarySilently(plugin) {
   try {
-    const result = await plugin.execLauncher(["shell-status"]);
+    const result = await plugin.executeRuntimeCommand(["shell-status"]);
     if (result.payload && result.payload.kind === "product-shell-summary") {
       plugin.shellSummary = result.payload;
       plugin.processShellSummaryUpdates(plugin.shellSummary);
