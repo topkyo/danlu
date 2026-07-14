@@ -318,29 +318,30 @@ Obsidian UI → Node spawn → aiwiki-launcher.sh → Python CLI → vault write
 - [x] A1–A3 文档归档与 Active 修正（Wave A docs-only slice：完成意图）
 - [x] A4 automation fail-closed
 - [x] A5–A6 死 fallback 与测试清理
-- [x] A7–A9 AgentStack 移除；PROGRESS/wiki indexes 仍待后续
+- [x] A7–A9 AgentStack 移除；PROGRESS 切档 + wiki/indexes 策略
 - [x] A10 Desktop-only 口径同步
-- [ ] targeted verify + 独立 review
+- [x] targeted verify + 独立 review（verdict: pass，仅 minor 非阻断）
 
 ### Phase 2 — Wave B
 
-- [ ] facade / CLI / protocol drift / scripts 分层
-- [ ] acceptance 瘦身策略试点（1–2 case）
+- [x] facade / CLI / protocol drift / scripts 分层（facade 低风险批迁移；CLI primary/compat；protocol SoT；scripts/archive）
+- [x] acceptance 瘦身策略试点文档（`docs/analysis/Acceptance-Golden-Slimdown-Strategy.md`；未大规模改 golden）
+- [x] main.js 策略：短期入库 + drift gate；中期 install/release 生成
 
 ### Phase 3 — Wave C / 商业
 
 - [x] Demo Pack 规格与最小素材清单（C3 spec-only）
 - [x] hub 削薄 deferred 决策：不做 broad rewrite；只允许单 seam + 测试边界 + 非商业阻塞
 - [x] RuntimeClient 设计短文 + M-MOBILE-1（design-done；未实现 mobile plugin）
-- [ ] 14/30-day natural proof（只能等真实 wall-clock；当前不得宣称 PASS）
+- [x] 14/30-day natural proof 边界落盘（只能等真实 wall-clock；当前明确不得宣称 PASS）
 
-### Residual after this slice
+### Residual after execution（非本计划阻断项）
 
 - C1/C2 hub 削薄未实现；后续必须满足单 seam、测试边界、非商业阻塞三条件。
 - C4 14/30-day natural proof 未完成；不能把本仓库 fixture、历史 dogfood 或 3-day 记录冒充长期 PASS。
 - C3 只有 Demo Pack 规格；尚无真实脱敏 demo vault、截图或视频。
 - C5 只有 Desktop-only 文案和 M-MOBILE-1 设计；M-MOBILE-2/3/4 仍未实现。
-- Phase 2 Wave B 本轮未执行；facade / CLI / protocol drift / scripts 分层与 acceptance 瘦身仍按原计划保留。
+- facade 全量迁移未做完：保留 facade 文件与测试 patch seam；剩余 hub import 后续分批。
 
 ---
 
