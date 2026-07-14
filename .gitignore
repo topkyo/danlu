@@ -33,6 +33,9 @@ output/
 !tests/fixtures/acceptance/M6.1b/case_heavy_after_llm/root/output/_candidates/
 !tests/fixtures/acceptance/M6.1b/case_heavy_after_llm/root/output/_candidates/elixirs/
 !tests/fixtures/acceptance/M6.1b/case_heavy_after_llm/root/output/_candidates/elixirs/elixir-b3.md
+!demos/investing-demo-pack/vault/output/
+!demos/investing-demo-pack/vault/output/**
+
 
 # Python
 __pycache__/

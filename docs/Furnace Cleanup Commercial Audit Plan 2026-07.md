@@ -225,9 +225,9 @@ Obsidian UI → Node spawn → aiwiki-launcher.sh → Python CLI → vault write
 
 - [x] **M-MOBILE-0**：文档与 README 明确 Desktop-only；设置页写清 iPad/iOS 不支持全功能
 - [x] **M-MOBILE-1（design-done）**：`RuntimeClient` 三实现设计短文已落地；DesktopLauncher 仍是唯一全功能实现
-- [ ] **M-MOBILE-2**：VaultQueue 协议（`.aiwiki/queue/*.json`）+ desktop watcher drain（可选）
-- [ ] **M-MOBILE-3**：移动端 thin plugin（`isDesktopOnly: false` 或独立包）只读 summary + 提交 queue
-- [ ] **M-MOBILE-4**：商业包装：Mac 主产品；iPad 为 companion，不单卖“全功能移动炼丹”
+- [x] **M-MOBILE-2**：VaultQueue 协议（`.aiwiki/queue/*.json`）+ desktop drain CLI；默认 dry-run，execute 只处理低风险 note / deterministic ask
+- [ ] **M-MOBILE-3（partial）**：主插件仍 `isDesktopOnly: true`，已提供 `runtimeClientMode=vault-queue` thin client mode；尚无独立 mobile plugin 包
+- [x] **M-MOBILE-4**：商业包装：Mac 主产品；iPad 为 companion，不单卖“全功能移动炼丹”
 
 ---
 
@@ -274,11 +274,11 @@ Obsidian UI → Node spawn → aiwiki-launcher.sh → Python CLI → vault write
 
 | ID | 任务 | 说明 | 风险 |
 |---|---|---|---|
-| C1 | `runner/alchemy.py` / `execution/alchemy.py` 按 seam 小切片 | **deferred**：本轮不做 hub broad rewrite；进入条件 = 单 seam + 有测试边界 + 非商业阻塞；禁止为 LOC 盲拆 | 高 |
-| C2 | `drop.py` / `memory/graph.py` / `workflows_ask.py` 按 owner 拆 | **deferred**：只在单 owner seam 清晰、测试可锁边界、且不是商业证明阻塞时动；禁止为 LOC 盲拆 | 高 |
-| C3 | Investing Demo Pack + 合规话术落地 | **done as spec**：见 `docs/Furnace Investing Demo Pack Spec.md`；规格即可，不伪造真实 demo vault 数据 | 中 |
-| C4 | 14/30-day natural proof：只等真实 wall-clock | **not-yet**：只能等待真实 wall-clock；当前不得宣称 PASS | 高 |
-| C5 | RuntimeClient + VaultQueue 移动端 companion（见 §3.5） | **partial**：M-MOBILE-0 done；M-MOBILE-1 design-done；M-MOBILE-2/3/4 未实现 | 高 |
+| C1 | `runner/alchemy.py` / `execution/alchemy.py` 按 seam 小切片 | **single seam landed**（`execution/alchemy_helpers.py`）；broad rewrite 仍 deferred | 高 |
+| C2 | `drop.py` / `memory/graph.py` / `workflows_ask.py` 按 owner 拆 | **single seam landed**（`drop_helpers.py`）；graph/ask broad rewrite 仍 deferred | 高 |
+| C3 | Investing Demo Pack + 合规话术落地 | **delivered-fixture**：`demos/investing-demo-pack/` + Spec；非客户真实案例 | 中 |
+| C4 | 14/30-day natural proof：只等真实 wall-clock | **not-yet**：`scripts/long_window_proof_probe.py` 只探测；不得宣称 PASS | 高 |
+| C5 | RuntimeClient + VaultQueue 移动端 companion（见 §3.5） | **slice landed**：RuntimeClient + VaultQueue + desktop drain；主插件仍 Desktop-only；无 iOS 商店包 | 高 |
 
 ---
 
@@ -335,13 +335,14 @@ Obsidian UI → Node spawn → aiwiki-launcher.sh → Python CLI → vault write
 - [x] RuntimeClient 设计短文 + M-MOBILE-1（design-done；未实现 mobile plugin）
 - [x] 14/30-day natural proof 边界落盘（只能等真实 wall-clock；当前明确不得宣称 PASS）
 
-### Residual after execution（非本计划阻断项）
+### Residual after execution（已由 Residual Clearance Plan 推进）
 
-- C1/C2 hub 削薄未实现；后续必须满足单 seam、测试边界、非商业阻塞三条件。
-- C4 14/30-day natural proof 未完成；不能把本仓库 fixture、历史 dogfood 或 3-day 记录冒充长期 PASS。
-- C3 只有 Demo Pack 规格；尚无真实脱敏 demo vault、截图或视频。
-- C5 只有 Desktop-only 文案和 M-MOBILE-1 设计；M-MOBILE-2/3/4 仍未实现。
-- facade 全量迁移未做完：保留 facade 文件与测试 patch seam；剩余 hub import 后续分批。
+- C1/C2：单 seam 已落地（`execution/alchemy_helpers.py`、`drop_helpers.py`）；broad rewrite 仍禁止。
+- C3：`demos/investing-demo-pack/` 脱敏 fixture + 截图/视频脚本已交付；Spec=`delivered-fixture`。
+- C4：仍只能等真实 wall-clock；探测入口 `scripts/long_window_proof_probe.py`（当前 demo/vault 为 not-yet）。
+- C5：RuntimeClient + VaultQueue + desktop drain 已落地；主插件仍 Desktop-only；独立 iOS 商店包不在范围。
+- facade 全量迁移：仍保留 facade/patch seam；本轮未强求删文件。
+- 详见 `docs/Furnace Residual Clearance Plan 2026-07.md`。
 
 ---
 

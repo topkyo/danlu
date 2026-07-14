@@ -199,6 +199,13 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
     )
     subparsers.add_parser("dashboard", help="Return the Product Shell dashboard contract.")
 
+    vault_queue_drain_parser = subparsers.add_parser(
+        "vault-queue-drain",
+        help="Drain mobile companion requests from .aiwiki/queue. Defaults to dry-run.",
+    )
+    vault_queue_drain_parser.add_argument("--execute", action="store_true", help="Execute supported pending queue items.")
+    vault_queue_drain_parser.add_argument("--limit", type=int, default=5, help="Maximum queue items to inspect or drain.")
+
     search_parser = subparsers.add_parser("search", help="Search compiled wiki pages from the Product Shell.")
     search_parser.add_argument("query", help="Search query.")
     search_parser.add_argument("--limit", type=int, default=12, help="Maximum number of results to return.")

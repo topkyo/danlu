@@ -24,9 +24,10 @@ updated_at: 2026-07-14
 
 | 文档 | 角色 |
 |---|---|
+| [Furnace Residual Clearance Plan 2026-07](<./Furnace Residual Clearance Plan 2026-07.md>) | Cleanup residual：C1/C2 seam、Demo Pack fixture、VaultQueue companion |
 | [Furnace Cleanup Commercial Audit Plan 2026-07](<./Furnace Cleanup Commercial Audit Plan 2026-07.md>) | **当前清理 / 商业审计 / Obsidian 全平台评估执行计划**：Wave A/B/C、可售卖边界、Mac vs iPad/iOS |
-| [Furnace Investing Demo Pack Spec](<./Furnace Investing Demo Pack Spec.md>) | **商业 demo 规格**：10 分钟知识复利故事、脱敏素材类型、receipt / judgment / elixir 路径和合规话术 |
-| [Furnace RuntimeClient Mobile Companion Design](<./Furnace RuntimeClient Mobile Companion Design.md>) | **移动 companion 设计**：RuntimeClient 三实现、Desktop-only 边界、M-MOBILE-1 接口草图 |
+| [Furnace Investing Demo Pack Spec](<./Furnace Investing Demo Pack Spec.md>) + [Demo Pack fixture](<../demos/investing-demo-pack/README.md>) | **商业 demo 规格与已交付 fixture**：10 分钟知识复利故事、脱敏素材类型、receipt / judgment / elixir 路径和合规话术 |
+| [Furnace RuntimeClient Mobile Companion Design](<./Furnace RuntimeClient Mobile Companion Design.md>) | **移动 companion implemented-slice**：RuntimeClient 三实现、VaultQueue 协议、desktop drain、Desktop-only 主插件边界 |
 
 ## Direction context（非当前执行 SoT）
 
