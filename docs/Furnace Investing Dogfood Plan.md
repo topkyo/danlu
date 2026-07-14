@@ -1,7 +1,16 @@
+---
+title: "炼丹炉 Investing 协议端到端 Dogfood Plan"
+kind: "dogfood-contract"
+status: "closed-with-receipts"
+updated_at: "2026-07-15"
+---
+
 # 炼丹炉 Investing 协议端到端 Dogfood Plan
 
 > 性质：原 contract，**已转 receipt 化**。本文档保留作为长期 dogfood SoT，新增"实跑历史"章节（§8）记录 v0 / v1 落地。
 > 状态：`closed-with-v0-and-v1-receipts`（2026-05-01）— 首两次实跑已完成，receipt 落 dogfood vault；后续 dogfood 仍按本文档 §2 七步 flow 推进
+>
+> <!-- v0/v1 contract closed; §8 receipt index remains active reference -->
 > 来源：`docs/archive/Furnace Next Direction Post-P4.md` §D-4
 > 实跑 receipt：
 > - v0 (2026-04-30, 9 min, 3 demo notes, codex-cli/gpt-5.5)：dogfood vault `output/reports/dogfood-receipt-investing-v0.md`

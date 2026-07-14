@@ -828,8 +828,9 @@ def main(argv: list[str] | None = None) -> int:
     root = _resolve_vault_root(args)
     fallback_env_was_set = "AIWIKI_MODEL_FALLBACK" in os.environ
     previous_fallback_env = os.environ.get("AIWIKI_MODEL_FALLBACK", "")
-    if args.model_retry is not None:
-        os.environ["AIWIKI_MODEL_FALLBACK"] = ",".join(_flatten_model_retry_args(args.model_retry))
+    model_retry = getattr(args, "model_retry", None)
+    if model_retry is not None:
+        os.environ["AIWIKI_MODEL_FALLBACK"] = ",".join(_flatten_model_retry_args(model_retry))
 
     result: object = None
     text_output: str | None = None
@@ -847,7 +848,7 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:  # pragma: no cover - exercised in CLI usage
         parser.exit(1, f"error: {exc}\n")
     finally:
-        if args.model_retry is not None:
+        if model_retry is not None:
             if fallback_env_was_set:
                 os.environ["AIWIKI_MODEL_FALLBACK"] = previous_fallback_env
             else:

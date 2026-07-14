@@ -10,7 +10,7 @@
 - 代码修改、测试和 runtime 文档更新默认发生在 `/Users/ht/github/danlu`；只有用户要求验证真实 dogfood 行为、检查 Product Shell 产物或重跑坏产物时，才以 iCloud Obsidian vault 作为 `--root` 运行 runtime。
 - 分析用户实际 Product Shell 提问、报告质量、LLM receipt、run notes 或 vault 内容时，默认查 iCloud Obsidian vault，不要误用当前代码仓库的 `output/control/shell-summary.json` 代替 dogfood 证据。
 - iCloud vault 的 `scripts/aiwiki-launcher.sh` 是用户可见运行入口，当前应指向 runtime root `/Users/ht/github/danlu`；旧开发者绝对路径只属于历史记录。
-- 动态任务状态写 `PROGRESS.md`；跨对话仍然成立的项目知识写 `MEMORY.md`。
+- 动态任务状态写 `PROGRESS.md`。
 - 当前阶段性执行计划：`docs/Furnace Commercial Grade Cleanup Plan 2026-07.md`。
 
 禁止长期写进本文件：

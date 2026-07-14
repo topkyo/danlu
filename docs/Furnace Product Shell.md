@@ -1,3 +1,10 @@
+---
+title: "Furnace Product Shell SoT"
+kind: "spec"
+status: "active"
+updated_at: "2026-07-15"
+---
+
 # Furnace Product Shell SoT
 
 *Obsidian 插件 UI 层事实源；炼丹炉"一个输入端 + 一个输出端"原则的可视化呈现*

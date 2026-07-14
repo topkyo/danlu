@@ -1,3 +1,10 @@
+---
+title: "AgentOS 9.0 Scorecard"
+kind: "scorecard"
+status: "active"
+updated_at: "2026-07-15"
+---
+
 # AgentOS 9.0 Scorecard
 
 > **SoT**：本文件是炼丹炉从 7.8/10 推进到 9.0/10 的统一评分与 release gate。

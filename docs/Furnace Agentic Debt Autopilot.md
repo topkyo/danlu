@@ -1,3 +1,10 @@
+---
+title: "Furnace Agentic Debt Autopilot"
+kind: "autopilot"
+status: "active"
+updated_at: "2026-07-15"
+---
+
 # Furnace Agentic Debt Autopilot
 
 ## Principle

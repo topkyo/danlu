@@ -1,3 +1,10 @@
+---
+title: "炼丹炉可选依赖矩阵"
+kind: "reference"
+status: "active"
+updated_at: "2026-07-15"
+---
+
 # 炼丹炉可选依赖矩阵
 
 > Operator SoT：local-first runtime 依赖（RISK-P5B）。

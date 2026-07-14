@@ -1,3 +1,10 @@
+---
+title: "Furnace Product Shell UX Test Checklist"
+kind: "checklist"
+status: "active"
+updated_at: "2026-07-15"
+---
+
 # Furnace Product Shell UX Test Checklist
 
 *Obsidian Shell 插件单元 / 功能 / 产品体验验证清单*

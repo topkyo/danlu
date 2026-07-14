@@ -1,3 +1,10 @@
+---
+title: "AGOS-9 线上 Dogfood 证明运行手册"
+kind: "runbook"
+status: "active"
+updated_at: "2026-07-15"
+---
+
 # AGOS-9 线上 Dogfood 证明运行手册
 
 > 解除 [AGOS-9-Scorecard.md](./AGOS-9-Scorecard.md) 发布门禁：连续 3 个 UTC 日的 maturity receipt + knowledge compounding 样本。

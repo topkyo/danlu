@@ -33,3 +33,4 @@ updated_at: 2026-07-14
 | [Furnace Residual Clearance Plan 2026-07](<./Furnace Residual Clearance Plan 2026-07.md>) | [Furnace Commercial Grade Cleanup Plan 2026-07](<../Furnace Commercial Grade Cleanup Plan 2026-07.md>) |
 | [Furnace AOS-003 Compat Shim Audit](<./Furnace AOS-003 Compat Shim Audit.md>) | [AGENTS.md](<../../AGENTS.md>) 架构清理定案；纯 facade 已清除 |
 | [Furnace Post-AGOS Risk Plan](<./Furnace Post-AGOS Risk Plan.md>) | [AGOS-9-Scorecard](<../AGOS-9-Scorecard.md>) + `PROGRESS.md` |
+| [Furnace-90-Plus-Context-Provenance-Hardening-Plan](<./Furnace-90-Plus-Context-Provenance-Hardening-Plan.md>) | [Furnace Runtime Operations](<../Furnace Runtime Operations.md>) + [AGOS-9-Scorecard](<../AGOS-9-Scorecard.md>)；四项 hardening 已落地 |
