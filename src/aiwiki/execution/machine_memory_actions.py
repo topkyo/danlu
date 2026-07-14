@@ -32,6 +32,7 @@ Migration invariants (same as B1..B5):
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -1215,8 +1216,11 @@ def revert_machine_memory_action(
             try:
                 page_pre = _validate_citation_page_path(root, page_path_pre)
                 snapshots.append((page_pre, _snapshot_file_bytes(page_pre)))
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger("aiwiki.machine_memory").warning(
+                    "revert citation-snapshot-refresh: page path %r invalid, snapshot skipped: %s",
+                    page_path_pre, exc,
+                )
 
     try:
         if apply_mode == "manual-link-state":

@@ -95,6 +95,21 @@ class ConfigTests(unittest.TestCase):
                     self._from_env({"AIWIKI_LLM_BACKEND": backend})
                 self.assertIn("Unsupported AIWIKI_LLM_BACKEND", str(ctx.exception))
 
+    def test_llm_config_repr_does_not_leak_keys(self) -> None:
+        config = LLMConfig(
+            backend="opencode-api",
+            api_key="sk-secret-key",
+            deepseek_api_key="sk-deepseek",
+            anthropic_api_key="sk-anthropic",
+            opencode_api_key="sk-opencode",
+        )
+        repr_str = repr(config)
+
+        self.assertNotIn("sk-secret-key", repr_str)
+        self.assertNotIn("sk-deepseek", repr_str)
+        self.assertNotIn("sk-anthropic", repr_str)
+        self.assertNotIn("sk-opencode", repr_str)
+
     def test_status_from_env_reports_available_api_backends_only(self) -> None:
         status = self._status_from_env(
             {
