@@ -36,7 +36,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-from ..app_content import append_wiki_log, sync_manifest_with_raw
 from ..app_lifecycle import refresh_knowledge_lifecycle_state
 from ..app_memory import concept_lifecycle_entry, concept_page_path
 from ..app_protocol import ensure_layout
@@ -58,6 +57,8 @@ from ..app_utils import (
     runtime_write_operation,
     sha256_bytes,
 )
+from ..content.io import sync_manifest_with_raw
+from ..render.paths import append_wiki_log
 from .audit_preview import AUDIT_STREAM_PATH
 from .receipts import write_execution_receipt
 

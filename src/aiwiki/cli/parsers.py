@@ -13,8 +13,9 @@ def build_parser() -> argparse.ArgumentParser:
         prog="aiwiki",
         description=(
             "炼丹炉 local-first knowledge agent runtime. "
+            f"PRIMARY_SURFACE commands: {', '.join(PRIMARY_SURFACE_COMMANDS)}. "
             "Daily path: `aiwiki drop ...` to feed material, `aiwiki today` to read outputs. "
-            "Use `aiwiki advanced ...` for operator commands."
+            "Use `aiwiki advanced ...` for compat/operator commands."
         ),
     )
     parser.add_argument(
@@ -85,6 +86,8 @@ def _converge_default_help_surface(subparsers: argparse._SubParsersAction) -> No
 
 
 def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -> None:
+    """Register compat/operator commands without making them the primary surface."""
+
     subparsers.add_parser("layout", help="Create the expected directory layout.")
 
     autonomy_status_parser = subparsers.add_parser(
@@ -1182,6 +1185,7 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
         help="Stop after N polling cycles. Useful for tests and short-lived runs.",
     )
     _set_handler_command_defaults(subparsers)
+    _mark_legacy_compat_help(subparsers)
 
 
 def _set_handler_command_defaults(subparsers: argparse._SubParsersAction, handler_command: str | None = None) -> None:
@@ -1191,6 +1195,16 @@ def _set_handler_command_defaults(subparsers: argparse._SubParsersAction, handle
         for action in choice._actions:
             if isinstance(action, argparse._SubParsersAction):
                 _set_handler_command_defaults(action, canonical_command)
+
+
+def _mark_legacy_compat_help(subparsers: argparse._SubParsersAction) -> None:
+    for action in subparsers._choices_actions:  # type: ignore[attr-defined]
+        command = getattr(action, "dest", "")
+        if command in PRIMARY_SURFACE_COMMANDS:
+            continue
+        help_text = str(getattr(action, "help", "") or "")
+        if help_text and not help_text.startswith("[compat]"):
+            action.help = f"[compat] {help_text}"
 
 
 def _register_drop_subcommand_parsers(subparsers: argparse._SubParsersAction) -> None:

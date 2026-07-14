@@ -48,6 +48,7 @@ const ZH_TEXT = {
   "Show advanced commands": "显示高级命令",
   "Register diagnostics, history, Review Center, and Execution Center commands in the command palette. Reload Obsidian after changing this toggle.": "是否把诊断、历史、Review Center 与 Execution Center 命令注册到命令面板中。修改后需要重载 Obsidian。",
   "Advanced command visibility refreshes after reloading Obsidian.": "高级命令可见性会在重载 Obsidian 后刷新。",
+  "Full runtime is Desktop-only. iPad/iOS Obsidian can only be a future companion; it cannot run the local launcher, Python CLI, or full ingest/review flow.": "全功能 runtime 仅支持 Desktop。iPad/iOS Obsidian 未来只能作为 companion，不能运行本地 launcher、Python CLI 或完整投料/复审流程。",
   "LLM backend": "LLM 后端",
   "Select the LLM provider used by run-compile / run-ask / run-nightly. Common providers are listed first; advanced entries are for local CLI sessions or custom OpenAI-compatible endpoints.": "选择 run-compile / run-ask / run-nightly 使用的 LLM API provider。",
   "LLM model": "LLM 模型",

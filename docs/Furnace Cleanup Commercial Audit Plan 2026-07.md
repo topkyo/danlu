@@ -1,7 +1,7 @@
 ---
 title: "炼丹炉大扫除 / 商业审计 / 全平台 Obsidian 移植计划"
 kind: "plan"
-status: "active-plan"
+status: "executed-pending-review"
 updated_at: 2026-07-14
 supersedes:
   - "docs/archive/Furnace Next Direction Post-P4.md (direction context only)"
@@ -223,8 +223,8 @@ Obsidian UI → Node spawn → aiwiki-launcher.sh → Python CLI → vault write
 
 ### 3.5 全平台里程碑（独立于 Wave A/B）
 
-- [ ] **M-MOBILE-0**：文档与 README 明确 Desktop-only；设置页写清 iPad/iOS 不支持全功能
-- [ ] **M-MOBILE-1**：抽出 `RuntimeClient` 接口；DesktopLauncher 为唯一实现
+- [x] **M-MOBILE-0**：文档与 README 明确 Desktop-only；设置页写清 iPad/iOS 不支持全功能
+- [x] **M-MOBILE-1（design-done）**：`RuntimeClient` 三实现设计短文已落地；DesktopLauncher 仍是唯一全功能实现
 - [ ] **M-MOBILE-2**：VaultQueue 协议（`.aiwiki/queue/*.json`）+ desktop watcher drain（可选）
 - [ ] **M-MOBILE-3**：移动端 thin plugin（`isDesktopOnly: false` 或独立包）只读 summary + 提交 queue
 - [ ] **M-MOBILE-4**：商业包装：Mac 主产品；iPad 为 companion，不单卖“全功能移动炼丹”
@@ -268,15 +268,17 @@ Obsidian UI → Node spawn → aiwiki-launcher.sh → Python CLI → vault write
 | B5 | acceptance golden 瘦身策略：shared base + 字段断言（不降关键审计覆盖） | 多轮 | 中 | `run_acceptance.sh` |
 | B6 | `main.js` 策略决策：短期继续入库 + drift gate；中期改为 install/release 生成 | 记录决策即可 | 中 | product-shell-static |
 
+**B6 decision**：短期继续把 Product Shell release bundle `main.js` 入库，原因是 Obsidian 实际加载路径需要可审查的 release artifact；`scripts/check_product_shell_bundle.sh` 作为 drift gate，确保 bundle 与 `src/` 构建输出一致。中期目标是把 `main.js` 改为 install/release 阶段生成并同步到 vault，源码仍以 Product Shell `src/` 为编辑面，只有发布产物进入目标 vault。
+
 ### Wave C — 高风险 / 长期：hub 削薄与商业证明
 
 | ID | 任务 | 说明 | 风险 |
 |---|---|---|---|
-| C1 | `runner/alchemy.py` / `execution/alchemy.py` 按 seam 小切片 | deferred hotspot；禁 broad rewrite | 高 |
-| C2 | `drop.py` / `memory/graph.py` / `workflows_ask.py` 按 owner 拆 | 只在有测试边界时动 | 高 |
-| C3 | Investing Demo Pack + 合规话术落地 | 商业优先于再削 LOC | 中 |
-| C4 | 14/30-day natural proof：只等真实 wall-clock | 不伪造 | 高 |
-| C5 | RuntimeClient + VaultQueue 移动端 companion（见 §3.5） | 可选产品线 | 高 |
+| C1 | `runner/alchemy.py` / `execution/alchemy.py` 按 seam 小切片 | **deferred**：本轮不做 hub broad rewrite；进入条件 = 单 seam + 有测试边界 + 非商业阻塞；禁止为 LOC 盲拆 | 高 |
+| C2 | `drop.py` / `memory/graph.py` / `workflows_ask.py` 按 owner 拆 | **deferred**：只在单 owner seam 清晰、测试可锁边界、且不是商业证明阻塞时动；禁止为 LOC 盲拆 | 高 |
+| C3 | Investing Demo Pack + 合规话术落地 | **done as spec**：见 `docs/Furnace Investing Demo Pack Spec.md`；规格即可，不伪造真实 demo vault 数据 | 中 |
+| C4 | 14/30-day natural proof：只等真实 wall-clock | **not-yet**：只能等待真实 wall-clock；当前不得宣称 PASS | 高 |
+| C5 | RuntimeClient + VaultQueue 移动端 companion（见 §3.5） | **partial**：M-MOBILE-0 done；M-MOBILE-1 design-done；M-MOBILE-2/3/4 未实现 | 高 |
 
 ---
 
@@ -286,6 +288,8 @@ Obsidian UI → Node spawn → aiwiki-launcher.sh → Python CLI → vault write
 |---|---|---|
 | `docs/Furnace Cleanup Commercial Audit Plan 2026-07.md` | **Add（本文件）** | 执行 SoT（阶段性） |
 | `docs/README.md` | Update Active / Plans 索引 | 避免 SoT 误导 |
+| `docs/Furnace Investing Demo Pack Spec.md` | Add | C3 Demo Pack 规格与合规话术 |
+| `docs/Furnace RuntimeClient Mobile Companion Design.md` | Add | C5 / M-MOBILE-1 设计短文 |
 | `docs/archive/README.md` | Update 归档表 + 替代指针 | 归档可导航 |
 | `docs/archive/AGOS-9-Execution-Plan.md` 等已完成 plan | Archived / historical | 清文档垃圾 |
 | `src/aiwiki/runner/automation.py` | Fix fail-closed | 清隐式兜底 |
@@ -325,9 +329,18 @@ Obsidian UI → Node spawn → aiwiki-launcher.sh → Python CLI → vault write
 
 ### Phase 3 — Wave C / 商业
 
-- [ ] Demo Pack 规格与最小素材清单
-- [ ] hub 削薄仅按 seam map 单点推进
-- [ ] 若批准：RuntimeClient 设计短文 + M-MOBILE-1
+- [x] Demo Pack 规格与最小素材清单（C3 spec-only）
+- [x] hub 削薄 deferred 决策：不做 broad rewrite；只允许单 seam + 测试边界 + 非商业阻塞
+- [x] RuntimeClient 设计短文 + M-MOBILE-1（design-done；未实现 mobile plugin）
+- [ ] 14/30-day natural proof（只能等真实 wall-clock；当前不得宣称 PASS）
+
+### Residual after this slice
+
+- C1/C2 hub 削薄未实现；后续必须满足单 seam、测试边界、非商业阻塞三条件。
+- C4 14/30-day natural proof 未完成；不能把本仓库 fixture、历史 dogfood 或 3-day 记录冒充长期 PASS。
+- C3 只有 Demo Pack 规格；尚无真实脱敏 demo vault、截图或视频。
+- C5 只有 Desktop-only 文案和 M-MOBILE-1 设计；M-MOBILE-2/3/4 仍未实现。
+- Phase 2 Wave B 本轮未执行；facade / CLI / protocol drift / scripts 分层与 acceptance 瘦身仍按原计划保留。
 
 ---
 

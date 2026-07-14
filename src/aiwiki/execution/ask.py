@@ -54,7 +54,6 @@ from ..app_queries import (
     render_sop_query,
     wiki_requires_compile,
 )
-from ..app_render import append_wiki_log
 from ..app_routing import (
     active_corpus_bridge_evidence_ids,
     refresh_material_state,
@@ -95,6 +94,7 @@ from ..content.io import sync_manifest_with_raw
 from ..input_router import is_obsidian_open_link
 from ..memory.graph import build_machine_memory_query
 from ..notify import notify_report_generated
+from ..render.paths import append_wiki_log
 from .protocol_learnings import load_learnings_for_protocol
 from .receipts import write_execution_receipt
 from .run_notes import run_id_for_artifact, write_run_notes, write_run_notes_frontmatter

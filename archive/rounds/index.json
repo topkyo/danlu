@@ -2,6 +2,14 @@
   "schema_version": 1,
   "rounds": [
     {
+      "round_id": "progress-2026-05-snapshot",
+      "title": "PROGRESS May 2026 dynamic snapshot (2026-05-24 and earlier)",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/progress-2026-05-snapshot.md",
+      "tags": ["snapshot", "progress-slim", "wave-a"]
+    },
+    {
       "round_id": "73-to-92-7-snapshot",
       "title": "Rounds 73 → 92.7 Snapshot (PROGRESS slim D-2)",
       "status": "done",

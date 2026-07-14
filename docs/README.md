@@ -25,10 +25,13 @@ updated_at: 2026-07-14
 | 文档 | 角色 |
 |---|---|
 | [Furnace Cleanup Commercial Audit Plan 2026-07](<./Furnace Cleanup Commercial Audit Plan 2026-07.md>) | **当前清理 / 商业审计 / Obsidian 全平台评估执行计划**：Wave A/B/C、可售卖边界、Mac vs iPad/iOS |
+| [Furnace Investing Demo Pack Spec](<./Furnace Investing Demo Pack Spec.md>) | **商业 demo 规格**：10 分钟知识复利故事、脱敏素材类型、receipt / judgment / elixir 路径和合规话术 |
+| [Furnace RuntimeClient Mobile Companion Design](<./Furnace RuntimeClient Mobile Companion Design.md>) | **移动 companion 设计**：RuntimeClient 三实现、Desktop-only 边界、M-MOBILE-1 接口草图 |
 
 ## Direction context（非当前执行 SoT）
 
 历史方向与已完成执行计划已移入 [docs/archive/](<./archive/README.md>)；当前执行以 Scorecard + Cleanup Plan + `PROGRESS.md` 为准。
+`wiki/indexes/` 是 compile 生成的派生索引区；策略见 [wiki/indexes/README](<../wiki/indexes/README.md>)。
 
 ## Archived（已 superseded / 已完成，保留作史料）
 
@@ -50,8 +53,9 @@ updated_at: 2026-07-14
 2. 再看 [Furnace Evolution Mechanics](<./Furnace Evolution Mechanics.md>) 建立契约与实现边界。
 3. 需要操作本机自动化时看 [Furnace Runtime Operations](<./Furnace Runtime Operations.md>)。
 4. 当前清理 / 商业 / 全平台边界看 [Furnace Cleanup Commercial Audit Plan 2026-07](<./Furnace Cleanup Commercial Audit Plan 2026-07.md>) 和 `PROGRESS.md`。
-5. 需要看 Product Shell 时再看 [Furnace Product Shell](<./Furnace Product Shell.md>)（Desktop-only；iPad/iOS 见 Cleanup Plan §3）。
-6. 历史方向与 AGOS/AOS 执行记录见 [archive](<./archive/README.md>)，不作为当前执行 SoT。
+5. 商业 demo 讲法看 [Furnace Investing Demo Pack Spec](<./Furnace Investing Demo Pack Spec.md>)；移动端 companion 只看 [Furnace RuntimeClient Mobile Companion Design](<./Furnace RuntimeClient Mobile Companion Design.md>)。
+6. 需要看 Product Shell 时再看 [Furnace Product Shell](<./Furnace Product Shell.md>)（Desktop-only；iPad/iOS 不支持全功能）。
+7. 历史方向与 AGOS/AOS 执行记录见 [archive](<./archive/README.md>)，不作为当前执行 SoT。
 
 ## 关系
 
@@ -73,4 +77,8 @@ AGOS-9-Scorecard + PROGRESS.md
          | 阶段性清理与商业边界
          v
 Cleanup Commercial Audit Plan 2026-07
+         |
+         | 商业 demo / mobile companion 规格
+         v
+Investing Demo Pack Spec + RuntimeClient Mobile Companion Design
 ```

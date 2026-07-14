@@ -4,31 +4,31 @@ from __future__ import annotations
 
 import logging
 
-from ..app_content import (
-    append_wiki_log,
-    build_concept_records,
-    collect_curated_pages,
-    concept_render_signature,
-    ensure_wiki_log,
-    remove_stale_generated_concept_pages_detailed,
-    render_concept_page,
-    render_concepts_index,
-    render_curated_index,
-    render_master_index,
-    render_source_page_with_state,
-    render_sources_index,
-)
+from ..app_lifecycle import collect_curated_pages
 from ..app_queries import concept_page_requires_compile, source_page_requires_compile
 from ..app_state import (
     concept_build_state_path,
     default_concept_build_state,
     judgment_assets_path,
 )
-from ..app_surfaces import render_judgment_assets
 from ..app_utils import (
     read_text_preview,
     write_if_changed,
     write_json_document_if_changed_ignoring_generated_timestamps,
+)
+from ..content.concepts import (
+    build_concept_records,
+    concept_render_signature,
+    render_concept_page,
+    render_concepts_index,
+    render_sources_index,
+)
+from ..content.io import render_source_page_with_state
+from ..render.judgment_assets import render_judgment_assets
+from ..render.paths import append_wiki_log, ensure_wiki_log, remove_stale_generated_concept_pages_detailed
+from ..render.views import (
+    render_curated_index,
+    render_master_index,
 )
 from .context import CompileContext
 

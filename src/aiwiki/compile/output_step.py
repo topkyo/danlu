@@ -7,28 +7,7 @@ import logging
 from pathlib import Path
 
 from ..app_compile_ops import build_agent_packs
-from ..app_content import (
-    collect_output_density_artifacts,
-    collect_recent_output_artifacts,
-    decision_memos_dir,
-    pilot_scorecards_dir,
-    remove_stale_generated_execution_bundle_files,
-    remove_stale_generated_execution_proposal_pages,
-    remove_stale_generated_markdown_files,
-    review_packs_dir,
-    sop_drafts_dir,
-)
 from ..app_execution import build_execution_bundle
-from ..app_render import (
-    build_domain_pilots_incremental,
-    build_output_packs_incremental,
-    domain_pilots_index_path,
-    render_agent_workbench,
-    render_aging_report,
-    render_domain_pilots_index,
-    render_output_packs_index,
-    render_review_queue,
-)
 from ..app_shell import build_shell_summary, write_shell_summary
 from ..app_state import (
     agent_workbench_path,
@@ -48,24 +27,47 @@ from ..app_state import (
     output_packs_index_path,
     review_center_html_path,
 )
-from ..app_surfaces import (
-    render_cognitive_history,
-    render_execution_audit_html,
-    render_furnace_center,
-    render_furnace_center_html,
-    render_review_center_html,
-)
 from ..app_utils import write_json_document_if_changed_ignoring_generated_timestamps
+from ..content.io import (
+    collect_output_density_artifacts,
+    collect_recent_output_artifacts,
+)
+from ..content.memory import (
+    remove_stale_generated_execution_bundle_files,
+    remove_stale_generated_execution_proposal_pages,
+    remove_stale_generated_markdown_files,
+)
 from ..memory.execution_surfaces import (
     render_concept_quality,
     render_concept_rewrite_index,
     render_concept_rewrite_proposal_page,
+    render_execution_audit_html,
     render_execution_center_html,
     render_execution_proposal_page,
 )
 from ..memory.status import (
     render_drift_report,
     render_graph_health,
+)
+from ..render.cognitive_history import render_cognitive_history
+from ..render.furnace_center import render_furnace_center, render_furnace_center_html
+from ..render.packs import build_output_packs_incremental, render_output_packs_index
+from ..render.paths import (
+    decision_memos_dir,
+    review_packs_dir,
+    sop_drafts_dir,
+)
+from ..render.pilots import (
+    build_domain_pilots_incremental,
+    domain_pilots_index_path,
+    pilot_scorecards_dir,
+)
+from ..render.review_center import render_review_center_html
+from ..render.views import (
+    render_agent_workbench,
+    render_aging_report,
+    render_domain_pilots_index,
+    render_review_queue,
 )
 from .context import CompileContext
 

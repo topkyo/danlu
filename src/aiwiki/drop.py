@@ -16,7 +16,6 @@ from typing import Any
 from urllib import parse
 
 from .app_protocol import ensure_layout, save_manifest
-from .app_render import append_wiki_log
 from .app_state import DEFAULT_PROTOCOL, append_runtime_history, load_manifest, manifest_path, runtime_history_path
 from .app_utils import (
     FetchPolicyError,
@@ -37,6 +36,7 @@ from .app_utils import (
 )
 from .config import LLMConfig, _backend_supports_image_analysis
 from .llm import LLMError, create_backend_client
+from .render.paths import append_wiki_log
 
 try:
     from bs4 import BeautifulSoup

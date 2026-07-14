@@ -12,7 +12,6 @@ from typing import Any
 
 from ..app_execution import append_execution_receipt_history
 from ..app_protocol import ensure_layout
-from ..app_render import append_wiki_log
 from ..app_state import (
     CorruptStateError,
     append_runtime_history,
@@ -36,7 +35,7 @@ from ..app_utils import (
 )
 from ..autonomy_domains import classify_l3_proposal
 from ..autonomy_policy import load_policy
-from ..render.paths import execution_receipt_path
+from ..render.paths import append_wiki_log, execution_receipt_path
 from .alchemy import _restore_file_bytes, _snapshot_file_bytes
 from .audit_preview import AUDIT_STREAM_PATH
 

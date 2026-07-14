@@ -46,6 +46,10 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
 
     // ── Furnace Connection ──────────────────────────
     containerEl.createEl("h3", { cls: "furnace-settings-section", text: t("Furnace Connection") });
+    containerEl.createEl("p", {
+      text: t("Full runtime is Desktop-only. iPad/iOS Obsidian can only be a future companion; it cannot run the local launcher, Python CLI, or full ingest/review flow."),
+      cls: "setting-item-description",
+    });
 
     new Setting(containerEl)
       .setName(t("Aiwiki launcher"))

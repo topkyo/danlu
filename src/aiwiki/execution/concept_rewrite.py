@@ -20,14 +20,9 @@ Design notes:
   (``from .. import app_compile as _app_compile; _app_compile.utc_now()``)
   so that ``patch("aiwiki.app_compile.utc_now")`` in tests continues to
   take effect.
-- ``append_wiki_log`` is duplicated in ``app_content.py`` and
-  ``app_render.py``. ``app_content.py`` imports the ``app_render`` copy
-  at module load and re-binds its own ``append_wiki_log`` to it, so
-  the runtime-effective origin is ``app_render``. We import from
-  ``app_render`` directly (same choice as B2) to keep the true-origin
-  discipline. Converging the duplicate definitions in source is
-  pre-existing tech debt and out of B5 scope; B3 / B4 still route
-  through ``app_content`` and should be realigned in a follow-up.
+- ``append_wiki_log`` comes from ``render.paths``. The legacy
+  ``app_content`` / ``app_render`` facades still re-export it for
+  compatibility, but owner modules should use the direct origin.
 """
 
 from __future__ import annotations
@@ -42,7 +37,6 @@ from ..app_execution import write_execution_dry_run_document
 from ..app_lifecycle import rewrite_proposal_needs_review
 from ..app_memory_query import concept_page_snapshot
 from ..app_protocol import REWRITE_PROPOSAL_STATUSES, ensure_layout
-from ..app_render import append_wiki_log
 from ..app_state import (
     append_runtime_history,
     concept_rewrite_state_path,
@@ -70,6 +64,7 @@ from ..content.memory import (
     rewrite_proposal_is_apply_ready,
 )
 from ..memory.execution_surfaces import concept_rewrite_proposal_digest
+from ..render.paths import append_wiki_log
 from .audit_preview import AUDIT_STREAM_PATH
 from .receipts import write_execution_receipt
 

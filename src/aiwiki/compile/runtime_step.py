@@ -8,18 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from ..app_compile_ops import render_protocols_dashboard
-from ..app_content import (
-    append_execution_policy_decisions,
-    build_concept_quality,
-    build_knowledge_lifecycle_document,
-    collect_aging_signals,
-    entry_ids_from_paths,
-    entry_lookup_maps,
-    execution_policy_decision_record,
-)
-from ..app_content import (
-    build_machine_memory_repair_plan as build_machine_memory_repair_plan_memory,
-)
+from ..app_lifecycle import build_knowledge_lifecycle_document
 from ..app_memory import (
     append_machine_memory_history,
     attach_judgment_assets_to_machine_memory,
@@ -65,6 +54,22 @@ from ..app_utils import (
     tokenize,
     write_json_document_if_changed_ignoring_generated_timestamps,
 )
+from ..content.concepts import build_concept_quality
+from ..content.io import (
+    collect_output_density_artifacts,
+    collect_recent_output_artifacts,
+    entry_ids_from_paths,
+    entry_lookup_maps,
+)
+from ..content.memory import (
+    append_execution_policy_decisions,
+    execution_policy_decision_record,
+)
+from ..content.memory import (
+    build_machine_memory_repair_plan as build_machine_memory_repair_plan_memory,
+)
+from ..lifecycle.aging import collect_aging_signals
+from ..lifecycle.status import curated_page_transition_profile
 from ..memory.execution_surfaces import (
     render_execution_audit,
     render_execution_center,
@@ -267,7 +272,6 @@ def _build_judgment_review_actions(
     aging: dict[str, list[dict[str, str]]],
     counter_evidence_scan: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    from ..app_content import curated_page_transition_profile
     from ..app_utils import slugify
 
     page_by_path = {
@@ -608,8 +612,6 @@ def compile_runtime_phase(context: CompileContext) -> None:
     context.clean_ranking_source_ids = list(ranking_build.get("clean_source_ids", []))
     context.dirty_ranking_concept_slugs = list(ranking_build.get("dirty_concept_slugs", []))
     context.clean_ranking_concept_slugs = list(ranking_build.get("clean_concept_slugs", []))
-
-    from ..app_content import collect_output_density_artifacts, collect_recent_output_artifacts
 
     context.all_outputs = collect_output_density_artifacts(context.root)
     context.recent_outputs = collect_recent_output_artifacts(context.root)

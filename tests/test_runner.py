@@ -266,7 +266,7 @@ class RunnerTests(unittest.TestCase):
         fake_client = object()
         with patch("aiwiki.runner.clients.LLMConfig.status_from_env", return_value=fake_status):
             self.assertEqual(llm_status(), fake_status)
-        fake_config = LLMConfig(backend="codex-cli", timeout_seconds=120)
+        fake_config = LLMConfig(backend="opencode-api", timeout_seconds=120)
         with patch("aiwiki.runner.clients.LLMConfig.from_env", return_value=fake_config):
             with patch("aiwiki.runner.clients.create_backend_client", return_value=fake_client) as create_backend_client:
                 self.assertIs(create_client(self.root), fake_client)
@@ -1018,7 +1018,7 @@ class RunnerTests(unittest.TestCase):
                 self.config = type(
                     "Config",
                     (),
-                    {"model": "gpt-5.5", "backend": "codex-cli", "backend_requested": "codex-cli", "timeout_seconds": 45},
+                    {"model": "gpt-5.5", "backend": "opencode-api", "backend_requested": "opencode-api", "timeout_seconds": 45},
                 )()
 
             def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
@@ -1121,7 +1121,7 @@ class RunnerTests(unittest.TestCase):
                 self.config = type(
                     "Config",
                     (),
-                    {"model": "gpt-5.5", "backend": "codex-cli", "backend_requested": "codex-cli", "timeout_seconds": 45},
+                    {"model": "gpt-5.5", "backend": "opencode-api", "backend_requested": "opencode-api", "timeout_seconds": 45},
                 )()
 
             def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
@@ -1194,7 +1194,7 @@ class RunnerTests(unittest.TestCase):
                 self.config = type(
                     "Config",
                     (),
-                    {"model": "gpt-5.5", "backend": "codex-cli", "backend_requested": "codex-cli", "timeout_seconds": 45},
+                    {"model": "gpt-5.5", "backend": "opencode-api", "backend_requested": "opencode-api", "timeout_seconds": 45},
                 )()
 
             def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
@@ -1234,7 +1234,7 @@ class RunnerTests(unittest.TestCase):
                 self.config = type(
                     "Config",
                     (),
-                    {"model": "gpt-5.5", "backend": "codex-cli", "backend_requested": "codex-cli", "timeout_seconds": 45},
+                    {"model": "gpt-5.5", "backend": "opencode-api", "backend_requested": "opencode-api", "timeout_seconds": 45},
                 )()
 
             def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
@@ -1271,7 +1271,7 @@ class RunnerTests(unittest.TestCase):
                 self.config = type(
                     "Config",
                     (),
-                    {"model": "gpt-5.5", "backend": "codex-cli", "backend_requested": "codex-cli", "timeout_seconds": 45},
+                    {"model": "gpt-5.5", "backend": "opencode-api", "backend_requested": "opencode-api", "timeout_seconds": 45},
                 )()
 
             def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
@@ -1312,7 +1312,7 @@ class RunnerTests(unittest.TestCase):
                 self.config = type(
                     "Config",
                     (),
-                    {"model": "gpt-5.5", "backend": "codex-cli", "backend_requested": "codex-cli", "timeout_seconds": 45},
+                    {"model": "gpt-5.5", "backend": "opencode-api", "backend_requested": "opencode-api", "timeout_seconds": 45},
                 )()
 
             def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
@@ -1335,8 +1335,8 @@ class RunnerTests(unittest.TestCase):
         ingest_source(self.root, str(self.sample), title="Transformer Scaling")
         compile_wiki(self.root)
         backend_preflight = {
-            "backend_requested": "codex-cli",
-            "backend": "codex-cli",
+            "backend_requested": "opencode-api",
+            "backend": "opencode-api",
             "model_requested": "gpt-5.5",
             "model": "gpt-5.5",
             "compatibility": "compatible",
@@ -1391,7 +1391,7 @@ class RunnerTests(unittest.TestCase):
                 self.config = type(
                     "Config",
                     (),
-                    {"model": "gpt-5.5", "backend": "codex-cli", "backend_requested": "codex-cli", "timeout_seconds": 45},
+                    {"model": "gpt-5.5", "backend": "opencode-api", "backend_requested": "opencode-api", "timeout_seconds": 45},
                 )()
 
             def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
@@ -1446,7 +1446,7 @@ class RunnerTests(unittest.TestCase):
         report = self.root / "output" / "reports" / "with space.md"
         report.parent.mkdir(parents=True, exist_ok=True)
         report.write_text("# With Space\n\n后台引用报告材料。\n", encoding="utf-8")
-        backend_preflight = {"backend": "codex-cli", "model": "gpt-5.5", "compatibility": "compatible"}
+        backend_preflight = {"backend": "opencode-api", "model": "gpt-5.5", "compatibility": "compatible"}
 
         with patch("aiwiki.runner.preflight.preflight_check_backend_chain", return_value=backend_preflight):
             submitted = run_ask_submit(
@@ -1466,7 +1466,7 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(manifest["artifact"]["material_refs"], ["output/reports/with space.md"])
 
     def test_run_ask_submit_rejects_missing_or_unsafe_quoted_report_refs(self) -> None:
-        backend_preflight = {"backend": "codex-cli", "model": "gpt-5.5", "compatibility": "compatible"}
+        backend_preflight = {"backend": "opencode-api", "model": "gpt-5.5", "compatibility": "compatible"}
 
         with patch("aiwiki.runner.preflight.preflight_check_backend_chain", return_value=backend_preflight):
             with self.assertRaisesRegex(ValueError, "quoted report reference is missing or unsafe"):
@@ -1530,8 +1530,8 @@ class RunnerTests(unittest.TestCase):
 
     def test_run_ask_stamps_backend_compat_when_preflight_runs(self) -> None:
         snapshot = {
-            "backend_requested": "codex-cli",
-            "backend": "codex-cli",
+            "backend_requested": "opencode-api",
+            "backend": "opencode-api",
             "model_requested": "gpt-5.5",
             "model": "gpt-5.5",
             "compatibility": "compatible",
@@ -1554,7 +1554,7 @@ class RunnerTests(unittest.TestCase):
         }
 
         class _AskClient:
-            config = type("Config", (), {"model": "gpt-5.5", "backend": "codex-cli", "backend_requested": "codex-cli", "timeout_seconds": 120})()
+            config = type("Config", (), {"model": "gpt-5.5", "backend": "opencode-api", "backend_requested": "opencode-api", "timeout_seconds": 120})()
 
             def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
                 del system_prompt
@@ -1646,7 +1646,7 @@ class RunnerTests(unittest.TestCase):
                 self.config = type(
                     "Config",
                     (),
-                    {"model": "gpt-5.4", "backend": "codex-cli", "backend_requested": "codex-cli", "timeout_seconds": 120},
+                    {"model": "gpt-5.4", "backend": "opencode-api", "backend_requested": "opencode-api", "timeout_seconds": 120},
                 )()
 
             def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
@@ -1702,7 +1702,7 @@ class RunnerTests(unittest.TestCase):
                 self.config = type(
                     "Config",
                     (),
-                    {"model": "gpt-5.4", "backend": "codex-cli", "backend_requested": "codex-cli", "timeout_seconds": 120},
+                    {"model": "gpt-5.4", "backend": "opencode-api", "backend_requested": "opencode-api", "timeout_seconds": 120},
                 )()
 
             def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
@@ -1739,7 +1739,7 @@ class RunnerTests(unittest.TestCase):
                 self.config = type(
                     "Config",
                     (),
-                    {"model": "gpt-5.4", "backend": "codex-cli", "backend_requested": "codex-cli", "timeout_seconds": 120},
+                    {"model": "gpt-5.4", "backend": "opencode-api", "backend_requested": "opencode-api", "timeout_seconds": 120},
                 )()
 
             def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
@@ -1771,23 +1771,23 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(result["probes"], [])
 
     def test_llm_probe_delegates_to_single_or_all_backend_probes(self) -> None:
-        fake_status = {"configured": True, "backend": "codex-cli"}
-        fake_config = type("Config", (), {"backend": "codex-cli"})()
+        fake_status = {"configured": True, "backend": "opencode-api"}
+        fake_config = type("Config", (), {"backend": "opencode-api"})()
         with patch("aiwiki.runner.clients.LLMConfig.status_from_env", return_value=fake_status):
             with patch("aiwiki.runner.clients.LLMConfig.from_env", return_value=fake_config):
-                with patch("aiwiki.runner.clients.probe_backend", return_value={"backend": "codex-cli", "ok": True}) as probe_one:
+                with patch("aiwiki.runner.clients.probe_backend", return_value={"backend": "opencode-api", "ok": True}) as probe_one:
                     single = llm_probe(self.root, probe_all=False, timeout_seconds=13)
                 with patch(
                     "aiwiki.runner.clients.probe_available_backends",
-                    return_value=[{"backend": "codex-cli", "ok": True}, {"backend": "copilot-cli", "ok": False}],
+                    return_value=[{"backend": "opencode-api", "ok": True}, {"backend": "copilot-cli", "ok": False}],
                 ) as probe_all:
                     all_backends = llm_probe(self.root, probe_all=True, timeout_seconds=19)
 
         probe_one.assert_called_once_with(fake_config, self.root, timeout_seconds=13)
         probe_all.assert_called_once_with(fake_config, self.root, timeout_seconds=19)
-        self.assertEqual(single["probe"], {"backend": "codex-cli", "ok": True})
+        self.assertEqual(single["probe"], {"backend": "opencode-api", "ok": True})
         self.assertEqual(single["probes"], [])
-        self.assertEqual(all_backends["probe"], {"backend": "codex-cli", "ok": True})
+        self.assertEqual(all_backends["probe"], {"backend": "opencode-api", "ok": True})
         self.assertEqual(len(all_backends["probes"]), 2)
 
     def test_build_ask_prompt_trims_indexes_and_protocol_pages_for_report_profile(self) -> None:
@@ -1902,7 +1902,7 @@ class RunnerTests(unittest.TestCase):
                 self.config = type(
                     "Config",
                     (),
-                    {"model": self.models[self.index], "backend": "nvidia-nim-api", "timeout_seconds": 120},
+                    {"model": self.models[self.index], "backend": "opencode-api", "timeout_seconds": 120},
                 )()
 
             def advance_model(self) -> bool:
@@ -1912,7 +1912,7 @@ class RunnerTests(unittest.TestCase):
                 self.config = type(
                     "Config",
                     (),
-                    {"model": self.models[self.index], "backend": "nvidia-nim-api", "timeout_seconds": 120},
+                    {"model": self.models[self.index], "backend": "opencode-api", "timeout_seconds": 120},
                 )()
                 return True
 
@@ -1938,8 +1938,8 @@ class RunnerTests(unittest.TestCase):
 
         self.assertEqual(result["prompt_profile"], "balanced")
         self.assertEqual(result["retry_prompt_profile"], "")
-        self.assertEqual(result["backend_requested"], "nvidia-nim-api")
-        self.assertEqual(result["backend_effective"], "nvidia-nim-api")
+        self.assertEqual(result["backend_requested"], "opencode-api")
+        self.assertEqual(result["backend_effective"], "opencode-api")
         self.assertEqual(result["model_selected"], "moonshotai/kimi-k2.5")
         self.assertEqual(result["model_final"], "z-ai/glm-5.1")
         self.assertEqual(result["fallback_stage"], "model-chain")
@@ -1975,7 +1975,7 @@ class RunnerTests(unittest.TestCase):
                 self.config = type(
                     "Config",
                     (),
-                    {"model": "moonshotai/kimi-k2.5", "backend": "nvidia-nim-api", "timeout_seconds": 120},
+                    {"model": "moonshotai/kimi-k2.5", "backend": "opencode-api", "timeout_seconds": 120},
                 )()
 
             def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
@@ -1998,8 +1998,8 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(llm_receipts_path.exists())
         receipt = json.loads(llm_receipts_path.read_text(encoding="utf-8").strip().splitlines()[-1])
         self.assertEqual(receipt["status"], "failed")
-        self.assertEqual(receipt["backend_requested"], "nvidia-nim-api")
-        self.assertEqual(receipt["backend_effective"], "nvidia-nim-api")
+        self.assertEqual(receipt["backend_requested"], "opencode-api")
+        self.assertEqual(receipt["backend_effective"], "opencode-api")
         self.assertEqual(receipt["model_selected"], "moonshotai/kimi-k2.5")
         self.assertEqual(receipt["model_final"], "moonshotai/kimi-k2.5")
         self.assertEqual(receipt["fallback_reason"], "Ask response is missing frontmatter.")
@@ -2011,8 +2011,8 @@ class RunnerTests(unittest.TestCase):
         run_log = json.loads(runs_log_path.read_text(encoding="utf-8").strip().splitlines()[-1])
         self.assertEqual(run_log["status"], "failed")
         self.assertEqual(run_log["event"], "run-ask")
-        self.assertEqual(run_log["backend_requested"], "nvidia-nim-api")
-        self.assertEqual(run_log["backend_effective"], "nvidia-nim-api")
+        self.assertEqual(run_log["backend_requested"], "opencode-api")
+        self.assertEqual(run_log["backend_effective"], "opencode-api")
         self.assertEqual(run_log["model_selected"], "moonshotai/kimi-k2.5")
         self.assertEqual(run_log["model_final"], "moonshotai/kimi-k2.5")
         self.assertEqual(run_log["fallback_reason"], "Ask response is missing frontmatter.")
@@ -2039,7 +2039,7 @@ class RunnerTests(unittest.TestCase):
                 self.config = type(
                     "Config",
                     (),
-                    {"model": "moonshotai/kimi-k2.5", "backend": "nvidia-nim-api", "timeout_seconds": 120},
+                    {"model": "moonshotai/kimi-k2.5", "backend": "opencode-api", "timeout_seconds": 120},
                 )()
 
             def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
@@ -2283,13 +2283,13 @@ class RunnerTests(unittest.TestCase):
             def __init__(self) -> None:
                 self.models = ["moonshotai/kimi-k2.5", "z-ai/glm-5.1"]
                 self.index = 0
-                self.config = type("Config", (), {"model": self.models[self.index], "backend": "nvidia-nim-api"})()
+                self.config = type("Config", (), {"model": self.models[self.index], "backend": "opencode-api"})()
 
             def advance_model(self) -> bool:
                 if self.index >= len(self.models) - 1:
                     return False
                 self.index += 1
-                self.config = type("Config", (), {"model": self.models[self.index], "backend": "nvidia-nim-api"})()
+                self.config = type("Config", (), {"model": self.models[self.index], "backend": "opencode-api"})()
                 return True
 
             def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
@@ -2301,8 +2301,8 @@ class RunnerTests(unittest.TestCase):
 
         result = run_compile(self.root, client=_CompileFallbackClient(), limit=1)
 
-        self.assertEqual(result["backend_requested"], "nvidia-nim-api")
-        self.assertEqual(result["backend_effective"], "nvidia-nim-api")
+        self.assertEqual(result["backend_requested"], "opencode-api")
+        self.assertEqual(result["backend_effective"], "opencode-api")
         self.assertEqual(result["model_selected"], "moonshotai/kimi-k2.5")
         self.assertEqual(result["model_final"], "z-ai/glm-5.1")
         self.assertEqual(result["fallback_stage"], "model-chain")
@@ -2340,7 +2340,7 @@ class RunnerTests(unittest.TestCase):
         )
 
         class _DriftClient:
-            config = type("Config", (), {"model": "stub-model", "backend": "codex-cli"})()
+            config = type("Config", (), {"model": "stub-model", "backend": "opencode-api"})()
 
             def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
                 del system_prompt, user_prompt
@@ -2385,7 +2385,7 @@ class RunnerTests(unittest.TestCase):
         )
 
         class _DriftClient:
-            config = type("Config", (), {"model": "stub-model", "backend": "codex-cli"})()
+            config = type("Config", (), {"model": "stub-model", "backend": "opencode-api"})()
 
             def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
                 del system_prompt, user_prompt
@@ -2413,7 +2413,7 @@ class RunnerTests(unittest.TestCase):
         )
 
         class _LockProbeClient:
-            config = type("Config", (), {"model": "stub-model", "backend": "codex-cli"})()
+            config = type("Config", (), {"model": "stub-model", "backend": "opencode-api"})()
 
             def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
                 del system_prompt, user_prompt
@@ -2426,8 +2426,8 @@ class RunnerTests(unittest.TestCase):
 
     def test_run_compile_stamps_backend_compat_when_preflight_runs(self) -> None:
         snapshot = {
-            "backend_requested": "codex-cli",
-            "backend": "codex-cli",
+            "backend_requested": "opencode-api",
+            "backend": "opencode-api",
             "model_requested": "gpt-5.5",
             "model": "gpt-5.5",
             "compatibility": "compatible",
@@ -2444,7 +2444,7 @@ class RunnerTests(unittest.TestCase):
         )
 
         class _CompileClient:
-            config = type("Config", (), {"model": "gpt-5.5", "backend": "codex-cli", "backend_requested": "codex-cli"})()
+            config = type("Config", (), {"model": "gpt-5.5", "backend": "opencode-api", "backend_requested": "opencode-api"})()
 
             def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
                 del system_prompt
@@ -2504,7 +2504,7 @@ class RunnerTests(unittest.TestCase):
                 "_RewriteClient",
                 (),
                 {
-                    "config": type("Config", (), {"model": "gpt-5.4", "backend": "codex-cli", "backend_requested": "codex-cli"})(),
+                    "config": type("Config", (), {"model": "gpt-5.4", "backend": "opencode-api", "backend_requested": "opencode-api"})(),
                     "complete": lambda self, system_prompt, user_prompt: CompletionResult(
                         text=rewritten,
                         response_id="resp-rewrite",
@@ -2532,7 +2532,7 @@ class RunnerTests(unittest.TestCase):
 
         class _FailingCompileClient:
             def __init__(self) -> None:
-                self.config = type("Config", (), {"model": "moonshotai/kimi-k2.5", "backend": "nvidia-nim-api"})()
+                self.config = type("Config", (), {"model": "moonshotai/kimi-k2.5", "backend": "opencode-api"})()
 
             def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
                 del system_prompt
@@ -2547,7 +2547,7 @@ class RunnerTests(unittest.TestCase):
         item_receipt = next(receipt for receipt in receipts if receipt["event"] == "run-compile")
         summary_receipt = receipts[-1]
         self.assertEqual(item_receipt["status"], "failed")
-        self.assertEqual(item_receipt["backend_requested"], "nvidia-nim-api")
+        self.assertEqual(item_receipt["backend_requested"], "opencode-api")
         self.assertEqual(item_receipt["model_selected"], "moonshotai/kimi-k2.5")
         self.assertEqual(item_receipt["model_final"], "moonshotai/kimi-k2.5")
         self.assertFalse(item_receipt["contract_validated"])
@@ -2561,7 +2561,7 @@ class RunnerTests(unittest.TestCase):
         run_log = json.loads(runs_log_path.read_text(encoding="utf-8").strip().splitlines()[-1])
         self.assertEqual(run_log["event"], "run-compile-summary")
         self.assertEqual(run_log["status"], "failed")
-        self.assertEqual(run_log["backend_requested"], "nvidia-nim-api")
+        self.assertEqual(run_log["backend_requested"], "opencode-api")
         self.assertEqual(run_log["model_selected"], "moonshotai/kimi-k2.5")
         self.assertFalse(run_log["contract_validated"])
         self.assertEqual(run_log["delivery_mode"], "llm-failed")
@@ -2573,7 +2573,7 @@ class RunnerTests(unittest.TestCase):
         raw_text = "not a frontmatter just text"
 
         class _InvalidFrontmatterClient:
-            config = type("Config", (), {"model": "stub-model", "backend": "codex-cli", "backend_requested": "codex-cli"})()
+            config = type("Config", (), {"model": "stub-model", "backend": "opencode-api", "backend_requested": "opencode-api"})()
 
             def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
                 del system_prompt
@@ -2632,13 +2632,13 @@ class RunnerTests(unittest.TestCase):
             def __init__(self) -> None:
                 self.models = ["moonshotai/kimi-k2.5", "z-ai/glm-5.1"]
                 self.index = 0
-                self.config = type("Config", (), {"model": self.models[self.index], "backend": "nvidia-nim-api"})()
+                self.config = type("Config", (), {"model": self.models[self.index], "backend": "opencode-api"})()
 
             def advance_model(self) -> bool:
                 if self.index >= len(self.models) - 1:
                     return False
                 self.index += 1
-                self.config = type("Config", (), {"model": self.models[self.index], "backend": "nvidia-nim-api"})()
+                self.config = type("Config", (), {"model": self.models[self.index], "backend": "opencode-api"})()
                 return True
 
             def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
@@ -2650,8 +2650,8 @@ class RunnerTests(unittest.TestCase):
 
         result = run_lint(self.root, client=_LintFallbackClient())
 
-        self.assertEqual(result["backend_requested"], "nvidia-nim-api")
-        self.assertEqual(result["backend_effective"], "nvidia-nim-api")
+        self.assertEqual(result["backend_requested"], "opencode-api")
+        self.assertEqual(result["backend_effective"], "opencode-api")
         self.assertEqual(result["model_selected"], "moonshotai/kimi-k2.5")
         self.assertEqual(result["model_final"], "z-ai/glm-5.1")
         self.assertEqual(result["fallback_stage"], "model-chain")
@@ -2672,7 +2672,7 @@ class RunnerTests(unittest.TestCase):
 
     def test_run_lint_does_not_hold_global_write_lock_during_llm_call(self) -> None:
         class _LockProbeLintClient:
-            config = type("Config", (), {"model": "stub-model", "backend": "codex-cli"})()
+            config = type("Config", (), {"model": "stub-model", "backend": "opencode-api"})()
 
             def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
                 del system_prompt, user_prompt
@@ -2712,7 +2712,7 @@ class RunnerTests(unittest.TestCase):
                 "NightlyClient",
                 (),
                 {
-                    "__init__": lambda self: setattr(self, "config", type("Config", (), {"model": "stub-model", "backend": "codex-cli"})()),
+                    "__init__": lambda self: setattr(self, "config", type("Config", (), {"model": "stub-model", "backend": "opencode-api"})()),
                     "complete": lambda self, system_prompt, user_prompt: CompletionResult(
                         text=updated_source if "Replace file:" in user_prompt else semantic_lint,
                         response_id="resp-nightly",
@@ -2721,8 +2721,8 @@ class RunnerTests(unittest.TestCase):
                 },
             )(), compile_limit=1)
 
-        self.assertEqual(result["backend_requested"], "codex-cli")
-        self.assertEqual(result["backend_effective"], "codex-cli")
+        self.assertEqual(result["backend_requested"], "opencode-api")
+        self.assertEqual(result["backend_effective"], "opencode-api")
         self.assertEqual(result["model_selected"], "stub-model")
         self.assertEqual(result["model_final"], "stub-model")
         self.assertTrue(result["llm_used"])
@@ -2782,7 +2782,7 @@ class RunnerTests(unittest.TestCase):
         semantic_lint = "# Semantic Lint Report\n\n- No semantic contradictions detected.\n"
 
         class _NightlyLockProbeClient:
-            config = type("Config", (), {"model": "stub-model", "backend": "codex-cli"})()
+            config = type("Config", (), {"model": "stub-model", "backend": "opencode-api"})()
 
             def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
                 del system_prompt
@@ -2897,7 +2897,7 @@ class RunnerTests(unittest.TestCase):
                 "NightlyClient2",
                 (),
                 {
-                    "__init__": lambda self: setattr(self, "config", type("Config", (), {"model": "stub-model", "backend": "codex-cli"})()),
+                    "__init__": lambda self: setattr(self, "config", type("Config", (), {"model": "stub-model", "backend": "opencode-api"})()),
                     "complete": lambda self, system_prompt, user_prompt: CompletionResult(
                         text=updated_source if "Replace file:" in user_prompt else semantic_lint,
                         response_id="resp-nightly-aging",
@@ -2973,7 +2973,7 @@ class RunnerTests(unittest.TestCase):
                 "NightlyClient3",
                 (),
                 {
-                    "__init__": lambda self: setattr(self, "config", type("Config", (), {"model": "stub-model", "backend": "codex-cli"})()),
+                    "__init__": lambda self: setattr(self, "config", type("Config", (), {"model": "stub-model", "backend": "opencode-api"})()),
                     "complete": lambda self, system_prompt, user_prompt: CompletionResult(
                         text=semantic_lint,
                         response_id="resp-nightly-dirty-graph",
@@ -3472,9 +3472,9 @@ class RunnerTests(unittest.TestCase):
     def test_run_compile_calls_preflight_when_client_none(self) -> None:
         with patch(
             "aiwiki.runner.preflight.probe_backend",
-            return_value={"compatibility": "compatible", "backend": "codex-cli", "model": "gpt-5.5", "compatibility_hint": ""},
+            return_value={"compatibility": "compatible", "backend": "opencode-api", "model": "gpt-5.5", "compatibility_hint": ""},
         ) as probe_backend:
-            with patch("aiwiki.runner.preflight.LLMConfig.from_env", return_value=LLMConfig(backend="codex-cli")):
+            with patch("aiwiki.runner.preflight.LLMConfig.from_env", return_value=LLMConfig(backend="opencode-api")):
                 result = run_compile(self.root, client=None, limit=0)
 
         probe_backend.assert_called_once()
@@ -3509,9 +3509,9 @@ class RunnerTests(unittest.TestCase):
 
         with patch(
             "aiwiki.runner.preflight.probe_backend",
-            return_value={"compatibility": "compatible", "backend": "codex-cli", "model": "gpt-5.5", "compatibility_hint": ""},
+            return_value={"compatibility": "compatible", "backend": "opencode-api", "model": "gpt-5.5", "compatibility_hint": ""},
         ) as probe_backend:
-            with patch("aiwiki.runner.preflight.LLMConfig.from_env", return_value=LLMConfig(backend="codex-cli")):
+            with patch("aiwiki.runner.preflight.LLMConfig.from_env", return_value=LLMConfig(backend="opencode-api")):
                 with patch("aiwiki.runner.workflows_ask.create_client", return_value=_AskClient()):
                     with patch("aiwiki.runner.workflows_ask.ask_question", return_value=artifact):
                         with patch("aiwiki.runner.workflows_ask._validate_output_markdown", return_value=None):

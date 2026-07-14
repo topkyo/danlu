@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Dogfood receipt v0 实时监控
-# 用法：bash scripts/dogfood-watch.sh [attach|stop]
+# 用法：bash scripts/archive/dogfood-watch.sh [attach|stop]
 #
 # 在 tmux session "danlu-dogfood" 里启 4 面板监控真实 vault：
 #   1. LLM receipts（每次 API backend 调用：model/elapsed/preview）
@@ -8,7 +8,7 @@
 #   3. Runtime history（drift-scan / 状态机事件）
 #   4. Vault 文件落盘活动（raw/ wiki/ output/ 下 1 分钟内变更）
 #
-# Stage 2 起跑 dogfood 主流程前先：bash scripts/dogfood-watch.sh
+# Stage 2 起跑 dogfood 主流程前先：bash scripts/archive/dogfood-watch.sh
 # 然后 tmux attach -t danlu-dogfood 看现场（任意 pane Ctrl-b d 离开）
 
 set -euo pipefail

@@ -9,9 +9,8 @@ Migration invariants (same as B1..B6):
 
 - Dependencies imported from their **true origin** module, not via a
   re-export chain. In particular:
-  * ``append_wiki_log`` comes from ``..app_render`` — ``app_content``
-    re-exports it but ``app_render`` is the runtime-effective origin
-    (B2 / B5 / B6 rule). Cross-group tech debt in B3 / B4 is separate.
+  * ``append_wiki_log`` comes from ``..render.paths``; legacy facades
+    keep re-exporting it for external compatibility.
   * ``compile_wiki`` comes from ``..compile.pipeline``, not from the
     ``..compile`` package ``__init__`` re-export (B4 oracle rule).
   * ``extract_provenance_paths`` / ``build_citation_snapshots`` /
@@ -39,7 +38,6 @@ from ..app_content import (
 )
 from ..app_lifecycle import judgment_lifecycle_profile, valid_curated_statuses
 from ..app_protocol import ensure_layout, schedule_review_windows
-from ..app_render import append_wiki_log
 from ..app_state import (
     DEFAULT_PROTOCOL,
     append_runtime_history,
@@ -67,6 +65,7 @@ from ..lifecycle.templates import (
     curated_structured_value_is_placeholder,
     repair_curated_page_body,
 )
+from ..render.paths import append_wiki_log
 from .audit_preview import AUDIT_STREAM_PATH
 from .receipts import write_execution_receipt
 

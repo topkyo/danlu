@@ -13,9 +13,8 @@ Migration invariants (same as B1..B6):
 
 - Dependencies imported from their **true origin** module, not via a
   re-export chain. In particular:
-  * ``append_wiki_log`` comes from ``..app_render`` (B2 / B5 / B6
-    rule; ``app_content`` re-exports it but ``app_render`` is the
-    runtime-effective origin).
+  * ``append_wiki_log`` comes from ``..render.paths``; legacy facades
+    keep re-exporting it for external compatibility.
 - ``utc_now`` is resolved lazily at **call time** via
   ``from .. import app_compile as _app_compile; _app_compile.utc_now()``
   so that ``patch("aiwiki.app_compile.utc_now", ...)`` in
@@ -45,7 +44,6 @@ from ..app_execution import (
     write_execution_batch_receipt_document,
 )
 from ..app_protocol import ensure_layout
-from ..app_render import append_wiki_log
 from ..app_state import (
     append_runtime_history,
     execution_batch_receipt_path,
@@ -56,6 +54,7 @@ from ..app_state import (
 )
 from ..app_utils import relative_path, runtime_write_operation, slugify
 from ..content.memory import action_supports_low_risk_apply
+from ..render.paths import append_wiki_log
 from .alchemy import _restore_file_bytes, _snapshot_file_bytes
 from .audit_preview import AUDIT_STREAM_PATH
 
