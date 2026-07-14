@@ -278,6 +278,9 @@ def append_receipt_and_audit(
         "model": str(llm_audit.get("model_final") or ""),
         **receipt,
     }
+    # base_event may still carry empty historical lineage keys; drop them so
+    # runs.jsonl matches the omitted llm-receipt shape.
+    _omit_empty_historical_lineage(run_event)
     if error:
         run_event["error"] = error
     _append_log(root, run_event)

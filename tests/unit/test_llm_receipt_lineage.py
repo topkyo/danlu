@@ -166,6 +166,38 @@ class LLMReceiptLineageTests(unittest.TestCase):
         self.assertEqual(from_result["fallback_stage"], "model-chain")
         self.assertEqual(from_result["fallback_reason"], "model failed")
 
+    def test_runs_log_does_not_reintroduce_empty_lineage_from_base_event(self) -> None:
+        llm_audit = {
+            "backend_requested": "opencode-api",
+            "backend_effective": "opencode-api",
+            "model_selected": "deepseek-v4-pro",
+            "model_final": "deepseek-v4-pro",
+            "contract_validated": True,
+        }
+
+        receipt = record_llm_attempt(
+            self.root,
+            {
+                "event": "run-ask",
+                "target": "output/reports/query.md",
+                "fallback_from": "",
+                "fallback_command": "",
+                "fallback_stage": "",
+                "fallback_reason": "",
+            },
+            llm_audit,
+            status="success",
+            response_id="resp-ok",
+        )
+
+        self.assertNotIn("fallback_from", receipt)
+        self.assertNotIn("fallback_command", receipt)
+        run_log = self._read_last_jsonl(".aiwiki/logs/runs.jsonl")
+        self.assertNotIn("fallback_from", run_log)
+        self.assertNotIn("fallback_command", run_log)
+        self.assertNotIn("fallback_stage", run_log)
+        self.assertNotIn("fallback_reason", run_log)
+
 
 if __name__ == "__main__":
     unittest.main()
