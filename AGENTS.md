@@ -166,7 +166,6 @@
 - 应用是纯 CLI，没有需要常驻的 web/GUI 服务；Obsidian 只是前端，cloud 里跑不起来，不用去起 server。
 - 跑应用时用临时 `--root`（如 `/tmp/furnace-demo`）做冒烟，别直接写仓库里已提交的 `raw/wiki/output`（`single writer, many readers`）。确定性链路 `layout -> drop-note -> compile -> ask -> lint` 完全离线可跑；`run-compile` / `run-ask` 需要显式 `AIWIKI_LLM_BACKEND` 和对应凭据才行。
 - 已知与环境/仓库状态耦合、跟依赖安装无关的失败（不要当成 setup 没做好）：
-  - `test_app.py` 里有一批测试硬编码绝对路径 `/home/tim/ai-wiki/...`。update script 会建软链 `/home/tim/ai-wiki -> 仓库根`，让这些测试通过；不要删这个软链。
   - `test_obsidian_workspace.test_workspace_defaults_open_home_and_furnace_center`：已提交的 `.obsidian/workspace.json` 是被 Obsidian 保存过的真实布局，和测试期望的默认布局不一致，属既有失败，改它等于改已提交产物，超出 setup 范围。
   - `test_drop.test_fetch_url_raises_when_no_text_can_be_recovered`：环境里装了真实 `google-chrome`，该测试会真去渲染并在无网时 ~45s 超时，属环境/网络耦合的既有失败。
 
