@@ -9,8 +9,9 @@
 ## SoT 引用
 
 - 终局架构：`docs/Furnace Agent Architecture.md` + `docs/Furnace Evolution Mechanics.md`
-- 当前方向：`docs/Furnace Next Direction Post-P4.md`
-- Active contract：`.codex/contracts/active.md`
+- 评分 / release gate：`docs/AGOS-9-Scorecard.md`
+- 当前执行计划：`docs/Furnace Cleanup Commercial Audit Plan 2026-07.md`
+- 验证入口：`bash scripts/verify.sh`
 - 改进清单：见本文件底部「改进方向」段
 
 

@@ -4,8 +4,8 @@ kind: "contract"
 status: "active"
 owner: "tim"
 supersedes:
-  - docs/Furnace Material Scaling.md
-  - docs/Furnace Material State Model.md
+  - docs/archive/Furnace Material Scaling.md
+  - docs/archive/Furnace Material State Model.md
   - docs/Furnace Incremental Compile Plan.md
 related_docs:
   - docs/Furnace Agent Architecture.md
@@ -776,8 +776,8 @@ M3 当前收敛状态：manual baseline 已支持 `l3-proposal-create`、`review
 
 本文档取代：
 
-- `docs/Furnace Material Scaling.md`（规模化设计被 §2 / §3 / §5 / §6 吸收）
-- `docs/Furnace Material State Model.md`（状态模型被 §6 吸收）
+- `docs/archive/Furnace Material Scaling.md`（规模化设计被 §2 / §3 / §5 / §6 吸收）
+- `docs/archive/Furnace Material State Model.md`（状态模型被 §6 吸收）
 - `docs/Furnace Incremental Compile Plan.md`（增量 compile 被 §4 / §5 吸收）
 
 旧文档应物理归档到 `docs/archive/`，并在 frontmatter 标注 `superseded_by: docs/Furnace Evolution Mechanics.md`。

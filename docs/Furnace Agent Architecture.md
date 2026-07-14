@@ -5,8 +5,8 @@ status: "active"
 owner: "tim"
 supersedes:
   - docs/Alchemy Furnace.md
-  - docs/Furnace Ultimate Architecture.md
-  - docs/Furnace Protocols.md
+  - docs/archive/Furnace Ultimate Architecture.md
+  - docs/archive/Furnace Protocols.md
 related_docs:
   - docs/Furnace Evolution Mechanics.md
   - docs/Furnace Elixir.md
@@ -437,8 +437,8 @@ L0（维护层）由 `AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT=1` 控制；L1-L3/Judgment
 本文档取代：
 
 - `docs/Alchemy Furnace.md`（基线叙事被 §1 / §5 / §10 吸收）
-- `docs/Furnace Ultimate Architecture.md`（九层叙事被 §2 / §5 / §6 / §7 / §8 吸收）
-- `docs/Furnace Protocols.md`（一个炉子多协议被 §9 吸收）
+- `docs/archive/Furnace Ultimate Architecture.md`（九层叙事被 §2 / §5 / §6 / §7 / §8 吸收）
+- `docs/archive/Furnace Protocols.md`（一个炉子多协议被 §9 吸收）
 
 旧文档应物理归档到 `docs/archive/`，并在 frontmatter 标注 `superseded_by: docs/Furnace Agent Architecture.md`。
 
