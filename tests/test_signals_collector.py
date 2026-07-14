@@ -1241,6 +1241,13 @@ class TestKindMapping(unittest.TestCase):
 
 
 class TestCLI(_FixtureCase):
+
+    @staticmethod
+    def _without_deprecation(stderr: str) -> str:
+        return "\n".join(
+            line for line in stderr.splitlines() if not line.startswith("[deprecated]")
+        )
+
     def _run_main(self, root: Path, argv: list[str]) -> tuple[int, dict[str, object], str]:
         stdout = io.StringIO()
         stderr = io.StringIO()
@@ -1252,14 +1259,22 @@ class TestCLI(_FixtureCase):
     def test_parser_registers_signals_replay_between_run_nightly_and_llm_check(self) -> None:
         parser = build_parser()
         action = next(item for item in parser._actions if getattr(item, "dest", "") == "command")
-        names = list(action.choices.keys())
+        advanced = action.choices["advanced"]
+        adv_action = next(
+            item for item in advanced._actions if getattr(item, "dest", "") == "advanced_command"
+        )
+        names = list(adv_action.choices.keys())
         self.assertLess(names.index("run-nightly"), names.index("signals-replay"))
         self.assertLess(names.index("signals-replay"), names.index("llm-check"))
 
     def test_parser_signals_replay_flags(self) -> None:
         parser = build_parser()
         action = next(item for item in parser._actions if getattr(item, "dest", "") == "command")
-        replay_parser = action.choices["signals-replay"]
+        advanced = action.choices["advanced"]
+        adv_action = next(
+            item for item in advanced._actions if getattr(item, "dest", "") == "advanced_command"
+        )
+        replay_parser = adv_action.choices["signals-replay"]
         source_action = next(item for item in replay_parser._actions if item.dest == "source")
         trace_action = next(item for item in replay_parser._actions if item.dest == "trace_id")
         self.assertEqual(tuple(source_action.choices), ("runtime_history", "llm_receipt", "archive"))
@@ -1274,7 +1289,7 @@ class TestCLI(_FixtureCase):
             )
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         mocked.assert_called_once_with(
             self.temp_root,
             sources=["runtime_history", "archive"],
@@ -1287,7 +1302,7 @@ class TestCLI(_FixtureCase):
             code, payload, stderr = self._run_main(self.temp_root, ["signals-replay"])
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         mocked.assert_called_once_with(self.temp_root, sources=None, trace_id=None)
         self.assertEqual(payload["status"], "ok")
 
@@ -1295,7 +1310,7 @@ class TestCLI(_FixtureCase):
         root = self._copy_case_root("case_basic")
         code, payload, stderr = self._run_main(root, ["signals-replay", "--trace-id", "550e8400-e29b-41d4-a716-446655440000"])
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(
             set(payload.keys()),
             {

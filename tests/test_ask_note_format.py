@@ -139,39 +139,39 @@ class AskParserChoicesLockTests(unittest.TestCase):
         return parser.parse_args(argv)
 
     def test_ask_accepts_note(self) -> None:
-        ns = self._ns(["ask", "Q", "--format", "note"])
+        ns = self._ns(["advanced", "ask", "Q", "--format", "note"])
         self.assertEqual(ns.format, "note")
 
     def test_ask_default_is_report(self) -> None:
-        ns = self._ns(["ask", "Q"])
+        ns = self._ns(["advanced", "ask", "Q"])
         self.assertEqual(ns.format, "report")
 
     def test_ask_explicit_report_still_works(self) -> None:
         # EP-002b regression: report path remains accessible via explicit flag.
-        ns = self._ns(["ask", "Q", "--format", "report"])
+        ns = self._ns(["advanced", "ask", "Q", "--format", "report"])
         self.assertEqual(ns.format, "report")
 
     def test_run_ask_accepts_note(self) -> None:
-        ns = self._ns(["run-ask", "Q", "--format", "note"])
+        ns = self._ns(["advanced", "run-ask", "Q", "--format", "note"])
         self.assertEqual(ns.format, "note")
 
     def test_run_ask_default_is_report(self) -> None:
-        ns = self._ns(["run-ask", "Q"])
+        ns = self._ns(["advanced", "run-ask", "Q"])
         self.assertEqual(ns.format, "report")
 
     def test_run_ask_accepts_direct_mode(self) -> None:
-        ns = self._ns(["run-ask", "Q", "--direct"])
+        ns = self._ns(["advanced", "run-ask", "Q", "--direct"])
         self.assertTrue(ns.direct)
         self.assertEqual(ns.format, "report")
 
     def test_run_ask_explicit_report_still_works(self) -> None:
-        ns = self._ns(["run-ask", "Q", "--format", "report"])
+        ns = self._ns(["advanced", "run-ask", "Q", "--format", "report"])
         self.assertEqual(ns.format, "report")
 
     def test_ask_rejects_unknown_format(self) -> None:
         parser = build_parser()
         with self.assertRaises(SystemExit):
-            parser.parse_args(["ask", "Q", "--format", "bogus"])
+            parser.parse_args(["advanced", "ask", "Q", "--format", "bogus"])
 
 
 if __name__ == "__main__":

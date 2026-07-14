@@ -1497,6 +1497,13 @@ class TestTraceIdPassthrough(_FixtureCase):
 
 
 class TestCLI(_FixtureCase):
+
+    @staticmethod
+    def _without_deprecation(stderr: str) -> str:
+        return "\n".join(
+            line for line in stderr.splitlines() if not line.startswith("[deprecated]")
+        )
+
     def _run_main(self, root: Path, argv: list[str]) -> tuple[int, dict[str, object], str]:
         stdout = io.StringIO()
         stderr = io.StringIO()
@@ -1508,7 +1515,11 @@ class TestCLI(_FixtureCase):
     def test_parser_registers_planner_log_replay_after_signals_replay(self) -> None:
         parser = build_parser()
         action = next(item for item in parser._actions if getattr(item, "dest", "") == "command")
-        names = list(action.choices.keys())
+        advanced = action.choices["advanced"]
+        adv_action = next(
+            item for item in advanced._actions if getattr(item, "dest", "") == "advanced_command"
+        )
+        names = list(adv_action.choices.keys())
         self.assertLess(names.index("signals-replay"), names.index("planner-log-replay"))
         self.assertLess(names.index("planner-log-replay"), names.index("llm-check"))
 
@@ -1520,7 +1531,7 @@ class TestCLI(_FixtureCase):
             )
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         mocked.assert_called_once_with(self.temp_root, signals_path=Path("custom/signals.jsonl"), mode="observe_only")
         self.assertEqual(payload["status"], "ok")
 
@@ -1532,14 +1543,18 @@ class TestCLI(_FixtureCase):
             )
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         mocked.assert_called_once_with(self.temp_root, signals_path=Path("custom/signals.jsonl"), mode="execute")
         self.assertEqual(payload["status"], "ok")
 
     def test_parser_planner_log_replay_flags(self) -> None:
         parser = build_parser()
         action = next(item for item in parser._actions if getattr(item, "dest", "") == "command")
-        replay_parser = action.choices["planner-log-replay"]
+        advanced = action.choices["advanced"]
+        adv_action = next(
+            item for item in advanced._actions if getattr(item, "dest", "") == "advanced_command"
+        )
+        replay_parser = adv_action.choices["planner-log-replay"]
         signals_action = next(item for item in replay_parser._actions if item.dest == "signals_path")
         execute_action = next(item for item in replay_parser._actions if item.dest == "execute")
         self.assertEqual(signals_action.option_strings, ["--signals-path"])
@@ -1549,7 +1564,7 @@ class TestCLI(_FixtureCase):
         root = self._copy_case_root("case_basic")
         code, payload, stderr = self._run_main(root, ["planner-log-replay"])
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(
             set(payload.keys()),
             {
@@ -1572,7 +1587,7 @@ class TestCLI(_FixtureCase):
         root = self._copy_case_root("case_basic")
         code, payload, stderr = self._run_main(root, ["planner-log-replay", "--execute"])
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload["status"], "ok")
 
         records = _read_jsonl(root / ".aiwiki/state/planner-log.jsonl")

@@ -153,6 +153,7 @@ from .dispatch_helpers import (
     today_snooze_command,
     trace_command,
 )
+from .legacy_argv import rewrite_legacy_top_level_argv
 from .parsers import build_parser
 from .universal_input import (
     _DROP_TYPED_SUBCOMMANDS,
@@ -807,6 +808,9 @@ _HANDLERS = {
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
+    # Universal drop may emit `advanced ask`; legacy rewrite handles bare
+    # operator top-level tokens (compile, drop-url, ask, ...).
+    argv = rewrite_legacy_top_level_argv(argv)
     argv = _rewrite_universal_drop_argv(argv)
     args = parser.parse_args(argv)
     root = _resolve_vault_root(args)

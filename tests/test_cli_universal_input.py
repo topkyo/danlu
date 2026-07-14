@@ -34,7 +34,7 @@ def test_rewrite_universal_drop_url_to_typed_subcommand() -> None:
 
 
 def test_rewrite_universal_drop_question_to_ask() -> None:
-    assert _rewrite_universal_drop_argv(["drop", "what is x?"]) == ["ask", "what is x?"]
+    assert _rewrite_universal_drop_argv(["drop", "what is x?"]) == ["advanced", "ask", "what is x?"]
 
 
 def test_rewrite_universal_drop_path_like_unknown_type_fails_loud(capsys) -> None:

@@ -15,6 +15,12 @@ from aiwiki.cli import main
 
 
 class _CliCase(unittest.TestCase):
+    @staticmethod
+    def _without_deprecation(stderr: str) -> str:
+        return "\n".join(
+            line for line in stderr.splitlines() if not line.startswith("[deprecated]")
+        )
+
     def setUp(self) -> None:
         self._tempdir = tempfile.TemporaryDirectory()
         self.root = Path(self._tempdir.name).resolve()
@@ -69,7 +75,7 @@ class BatchReviewAliasTests(_CliCase):
                 ["batch-review", "pages", "--note", "round 43 batch"]
             )
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload["count"], 2)
         self.assertEqual(payload["triggered_by"], "batch-alias")
         self.assertEqual(payload["alias_target"], "pages")
@@ -135,7 +141,7 @@ class BatchReviewAliasTests(_CliCase):
                 ]
             )
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload["count"], 2)
         self.assertEqual(payload["triggered_by"], "batch-alias")
         self.assertEqual(payload["alias_target"], "action")
@@ -163,7 +169,7 @@ class BatchReviewAliasTests(_CliCase):
                 ]
             )
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertTrue(payload.get("dry_run"))
         self.assertEqual(payload["triggered_by"], "batch-alias")
         self.assertEqual(payload["alias_target"], "apply-low-risk")

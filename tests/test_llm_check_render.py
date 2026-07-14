@@ -176,10 +176,12 @@ class LLMCheckRenderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tempdir:
             root = Path(tempdir).resolve()
             with patch("aiwiki.cli.llm_probe", return_value=payload) as mocked_default:
-                code_default, stdout_default, stderr_default = _run_main_raw(root, ["llm-check", "--probe"])
+                code_default, stdout_default, stderr_default = _run_main_raw(
+                    root, ["advanced", "llm-check", "--probe"]
+                )
             with patch("aiwiki.cli.llm_probe", return_value=payload) as mocked_json:
                 code_json, stdout_json, stderr_json = _run_main_raw(
-                    root, ["llm-check", "--probe", "--format", "json"]
+                    root, ["advanced", "llm-check", "--probe", "--format", "json"]
                 )
 
         self.assertEqual(code_default, 0)
