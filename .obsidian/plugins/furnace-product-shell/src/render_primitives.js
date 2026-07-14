@@ -243,7 +243,7 @@ function renderStatusPanel(plugin, container) {
     llmHealthToneClass(llmHealth.status)
   );
   if (llmHealth.fallbackCommand) {
-    plugin.renderPill(healthPills, plugin.t("Deterministic fallback active"), "is-degraded");
+    plugin.renderPill(healthPills, plugin.t("LLM failure notice active"), "is-degraded");
   }
   const routeParts = [];
   if (syncState.checkedAt) {

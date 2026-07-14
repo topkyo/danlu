@@ -142,12 +142,28 @@ function productShellRunPayloadFallbackUsed(payload, record) {
   return productShellRunPayloadBoolean(payload, "fallback_used", record && record.fallbackUsed);
 }
 
+function isProductShellFailureNoticeDeliveryMode(deliveryMode) {
+  return deliveryMode === "deterministic-fallback" || deliveryMode === "llm-failed";
+}
+
+function isProductShellModelRetryDeliveryMode(deliveryMode) {
+  return deliveryMode === "llm-fallback-chain";
+}
+
 function isProductShellDegradedRun(record, payload) {
   if (!isProductShellAskRun(record)) {
     return false;
   }
-  const deliveryMode = productShellRunPayloadDeliveryMode(payload);
-  return productShellRunPayloadFallbackUsed(payload, record) || deliveryMode === "deterministic-fallback";
+  const deliveryMode = productShellRunPayloadDeliveryMode(payload)
+    || String(record && record.deliveryMode || "").trim();
+  if (isProductShellFailureNoticeDeliveryMode(deliveryMode)) {
+    return true;
+  }
+  if (isProductShellModelRetryDeliveryMode(deliveryMode) || deliveryMode === "llm-success") {
+    return false;
+  }
+  // Historical: fallbackUsed without an explicit delivery mode is a failure notice.
+  return productShellRunPayloadFallbackUsed(payload, record);
 }
 
 function buildProductShellRunResultContext(result) {
@@ -347,13 +363,19 @@ function buildProductShellFailedRunState({
 }
 
 function buildProductShellLlmHealthOverrides(record) {
-  const usedFallback = Boolean(record && record.fallbackUsed)
-    || String(record && record.deliveryMode || "").trim() === "deterministic-fallback";
+  const deliveryMode = String(record && record.deliveryMode || "").trim();
+  const failureNotice = isProductShellFailureNoticeDeliveryMode(deliveryMode)
+    || (!deliveryMode && Boolean(record && record.fallbackUsed));
+  const modelRetry = isProductShellModelRetryDeliveryMode(deliveryMode);
   return {
-    status: usedFallback ? "degraded" : "healthy",
-    reason: usedFallback ? "LLM timed out or failed; only deterministic fallback is available." : "Recent run-ask succeeded.",
+    status: failureNotice ? "degraded" : modelRetry ? "warning" : "healthy",
+    reason: failureNotice
+      ? "Latest run-ask produced an LLM failure notice."
+      : modelRetry
+        ? "LLM completed via model retry."
+        : "Recent run-ask succeeded.",
     source: "run-ask",
-    fallbackCommand: usedFallback ? (record.fallbackCommand || "ask") : "",
+    fallbackCommand: failureNotice ? (record.fallbackCommand || "ask") : String((record && record.fallbackCommand) || ""),
     backendRequested: record.backendRequested,
     backendEffective: record.backendEffective,
     modelSelected: record.modelSelected,

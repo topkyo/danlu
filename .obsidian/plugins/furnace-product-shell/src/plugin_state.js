@@ -46,7 +46,8 @@ async function loadProductShellPluginState(plugin) {
   plugin.settings.lastViewedTimestamp = migratedLastViewedTimestamp;
   plugin.pendingSubmissions = plugin.hydratePendingSubmissions(plugin.settings.persistedPendingSubmissions);
   const recentRuns = normalizeProductShellRecentRuns(data.recentRuns);
-  plugin.pluginState = { recentRuns };
+  const llmHealth = data.llmHealth && typeof data.llmHealth === "object" ? data.llmHealth : null;
+  plugin.pluginState = { recentRuns, llmHealth };
   plugin.trimRecentRuns();
   const defaultAskFormatMigrated = rawSettings.defaultAskFormat !== "report";
   if (
@@ -72,6 +73,7 @@ async function saveProductShellPluginState(plugin) {
       persistedPendingSubmissions: plugin.serializePendingSubmissions(),
     }),
     recentRuns: plugin.pluginState.recentRuns,
+    llmHealth: plugin.pluginState && plugin.pluginState.llmHealth ? plugin.pluginState.llmHealth : null,
   });
 }
 
