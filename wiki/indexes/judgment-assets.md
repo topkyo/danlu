@@ -1,12 +1,12 @@
 # 判断资产
 
-- 最近编译时间：`2026-04-21T01:45:55+00:00`
-- 当前协议焦点：`research` (研发协议)
-- 决策页：`4`
-- 判断页：`6`
-- 资产完整（>= 3/4）：`10`
-- 治理焦点：`2`
-- 生命周期 formed / active / under-review / revised / retired：`0` / `6` / `2` / `2` / `0`
+- 最近编译时间：`2026-05-20T02:11:33+00:00`
+- 当前协议焦点：`general` (通用协议)
+- 决策页：`0`
+- 判断页：`0`
+- 资产完整（>= 3/4）：`0`
+- 治理焦点：`0`
+- 生命周期 formed / active / under-review / revised / retired：`0` / `0` / `0` / `0` / `0`
 - 缺反证：`0`
 - 缺失效条件：`0`
 - 缺下一信号：`0`
@@ -16,30 +16,17 @@
 - 缺 Next Signals metadata：`0`
 - 缺 formed_at / last_reviewed metadata：`0` / `0`
 - 升级处理项：`0`
-- 显式 judgment 关系边：`4`
+- 显式 judgment 关系边：`0`
 - 未解析关系引用：`0`
 
 ## 当前治理焦点
-- [Agent Governance Decision](../../wiki/decisions/decision-20260415-015034-agent-governance-decision.md) | 状态 `待复审` | 协议 `research` | 置信度 `high` | 审阅时间 `2026-04-16T02:09:52+00:00` | 复审截止 `2026-04-18T02:09:52+00:00` | 资产 `4/4` | 复审历史 `2` | 已到期待复审
-- [Agent Governance Judgment](../../wiki/judgments/judgment-20260415-015034-agent-governance-judgment.md) | 状态 `持续观察` | 协议 `research` | 置信度 `medium` | 审阅时间 `2026-04-16T02:09:53+00:00` | 复审截止 `2026-04-23T02:09:53+00:00` | 资产 `4/4` | 复审历史 `3`
+- 当前没有需要额外关注的 decision / judgment 页面。
 
 ## 强判断资产
-- [Agent Governance Decision](../../wiki/decisions/decision-20260415-015034-agent-governance-decision.md) | 状态 `待复审` | 协议 `research` | 置信度 `high` | 审阅时间 `2026-04-16T02:09:52+00:00` | 复审截止 `2026-04-18T02:09:52+00:00` | 资产 `4/4` | 复审历史 `2` | 已到期待复审
-- [Agent Governance Judgment](../../wiki/judgments/judgment-20260415-015034-agent-governance-judgment.md) | 状态 `持续观察` | 协议 `research` | 置信度 `medium` | 审阅时间 `2026-04-16T02:09:53+00:00` | 复审截止 `2026-04-23T02:09:53+00:00` | 资产 `4/4` | 复审历史 `3`
-- [Conditional Governance Threshold Judgment](../../wiki/judgments/judgment-20260415-111455-conditional-governance-threshold-judgment.md) | 状态 `已确认` | 协议 `research` | 置信度 `medium` | 审阅时间 `2026-04-15T11:22:01+00:00` | 资产 `4/4` | 复审历史 `2`
-- [Protocol Boundary Judgment](../../wiki/judgments/judgment-20260415-015034-protocol-boundary-judgment.md) | 状态 `已确认` | 协议 `research` | 置信度 `medium` | 审阅时间 `2026-04-15T01:51:03+00:00` | 资产 `4/4` | 复审历史 `1`
-- [Recurring Agent Layers Judgment](../../wiki/judgments/judgment-20260415-015034-recurring-agent-layers-judgment.md) | 状态 `已确认` | 协议 `research` | 置信度 `high` | 审阅时间 `2026-04-15T12:39:25+00:00` | 资产 `4/4` | 复审历史 `3`
-- [Runtime Protocol Layer Decision](../../wiki/decisions/decision-20260415-015034-runtime-protocol-layer-decision.md) | 状态 `已批准` | 协议 `research` | 置信度 `high` | 审阅时间 `2026-04-15T01:51:03+00:00` | 资产 `4/4` | 复审历史 `1`
-- [Investing Layer Separation Judgment](../../wiki/judgments/judgment-20260415-111456-investing-layer-separation-judgment.md) | 状态 `已确认` | 协议 `investing` | 置信度 `medium` | 审阅时间 `2026-04-15T11:22:01+00:00` | 资产 `4/4` | 复审历史 `1`
-- [Investing Protocol Decision](../../wiki/decisions/decision-20260415-111456-investing-protocol-decision.md) | 状态 `已批准` | 协议 `investing` | 置信度 `medium` | 审阅时间 `2026-04-15T11:22:02+00:00` | 资产 `4/4` | 复审历史 `1`
-- [Single Furnace Product Shell Decision](../../wiki/decisions/decision-20260415-111456-single-furnace-product-shell-decision.md) | 状态 `已批准` | 协议 `product` | 置信度 `medium` | 审阅时间 `2026-04-15T11:22:02+00:00` | 资产 `4/4` | 复审历史 `1`
-- [Single Furnace Product Shell Judgment](../../wiki/judgments/judgment-20260415-111456-single-furnace-product-shell-judgment.md) | 状态 `已确认` | 协议 `product` | 置信度 `medium` | 审阅时间 `2026-04-15T11:22:02+00:00` | 资产 `4/4` | 复审历史 `1`
+- 当前还没有资产完整度较高的 decision / judgment 页面。
 
 ## Judgment 关联图谱
-- [Single Furnace Product Shell Decision](../wiki/decisions/decision-20260415-111456-single-furnace-product-shell-decision.md) | supports -> [Single Furnace Product Shell Judgment](../wiki/judgments/judgment-20260415-111456-single-furnace-product-shell-judgment.md)
-- [Investing Protocol Decision](../wiki/decisions/decision-20260415-111456-investing-protocol-decision.md) | supports -> [Investing Layer Separation Judgment](../wiki/judgments/judgment-20260415-111456-investing-layer-separation-judgment.md)
-- [Conditional Governance Threshold Judgment](../wiki/judgments/judgment-20260415-111455-conditional-governance-threshold-judgment.md) | related -> [Protocol Boundary Judgment](../wiki/judgments/judgment-20260415-015034-protocol-boundary-judgment.md)
-- [Conditional Governance Threshold Judgment](../wiki/judgments/judgment-20260415-111455-conditional-governance-threshold-judgment.md) | related -> [Agent Governance Judgment](../wiki/judgments/judgment-20260415-015034-agent-governance-judgment.md)
+- 当前还没有显式 judgment / decision 关系。
 
 ## 升级处理项
 - 当前没有需要升级处理的 judgment asset。

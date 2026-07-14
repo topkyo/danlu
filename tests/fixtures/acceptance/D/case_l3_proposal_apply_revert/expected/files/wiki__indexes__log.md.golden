@@ -1,0 +1,20 @@
+# 知识库日志
+
+## [2026-04-27T00:00:00+00:00] l3-proposal-create | prop-test-prompt
+
+- kind: `prompt_proposal`
+- target: `prompts/test-prompt.md`
+- proposal: `output/_proposals/prompt/prop-test-prompt.md`
+## [2026-04-27T00:00:00+00:00] l3-proposal-human-accept | prop-test-prompt
+
+- kind: `prompt_proposal`
+- target: `prompts/test-prompt.md`
+- review_state: `human_accepted`
+## [2026-04-27T00:00:00+00:00] l3-proposal-apply | prop-test-prompt
+
+- target: `prompts/test-prompt.md`
+- receipt: `output/control/execution-receipts/l3-proposal-apply-prop-test-prompt.json`
+## [2026-04-27T00:00:00+00:00] l3-proposal-revert | prop-test-prompt
+
+- target: `prompts/test-prompt.md`
+- receipt: `output/control/execution-receipts/l3-proposal-revert-prop-test-prompt.json`

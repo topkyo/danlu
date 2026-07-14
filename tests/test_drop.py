@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import base64
+import hashlib
+import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -8,8 +11,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 from aiwiki.app_protocol import ensure_layout
-from aiwiki.app_utils import parse_frontmatter
+from aiwiki.app_state import load_manifest
 from aiwiki.drop import (
+    SensitiveContentError,
     _analyze_image_asset,
     _best_image_source,
     _client_backend_name,
@@ -23,8 +27,6 @@ from aiwiki.drop import (
     _image_dimensions,
     _jpeg_dimensions,
     _looks_like_repo_url,
-    _materialize_binary_source,
-    _materialize_url_images,
     _maybe_create_image_client,
     _note_title,
     _render_url_in_browser,
@@ -42,6 +44,7 @@ from aiwiki.drop import (
     drop_repo,
     drop_url,
 )
+from aiwiki.drop_helpers import timestamped_stem
 from aiwiki.llm import CompletionResult
 
 
@@ -66,6 +69,12 @@ class DropTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.tempdir.cleanup()
 
+    def test_timestamped_stem_sanitizes_upload_titles_and_fallbacks(self) -> None:
+        self.assertEqual(timestamped_stem("特朗普访华预期.pdf"), "特朗普访华预期")
+        self.assertEqual(timestamped_stem(r"Reports\Q2 Results.md"), "reports-q2-results")
+        self.assertEqual(timestamped_stem("Revenue + Margin: FY26!"), "revenue-margin-fy26")
+        self.assertEqual(timestamped_stem("item"), f"doc-{hashlib.sha256(b'item').hexdigest()[:12]}")
+
     def test_drop_url_writes_note_from_fetched_payload(self) -> None:
         fetched = {
             "title": "Agent Architecture Survey",
@@ -84,28 +93,51 @@ class DropTests(unittest.TestCase):
         note_path = self.root / result["note_path"]
         note = note_path.read_text(encoding="utf-8")
         self.assertEqual(result["material"], "url")
+        self.assertFalse(note.startswith("---\n"))
+        self.assertNotIn("Capture Metadata", note)
+        self.assertNotIn("Fetch Metadata", note)
         self.assertIn("# Agent Architecture Survey", note)
-        self.assertIn("- Final URL: `https://example.com/agents`", note)
-        self.assertIn("A survey of agent runtime tradeoffs.", note)
         self.assertIn("Agents coordinate tools, planning, and memory.", note)
+        entry = load_manifest(self.root)["entries"][-1]
+        self.assertEqual(entry["source_type"], "url-drop")
+        metadata = entry.get("ingest_metadata") or {}
+        self.assertEqual(metadata.get("final_url"), "https://example.com/agents")
+        self.assertEqual(metadata.get("extraction_mode"), "readability")
+        history = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/state/runtime-history.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertEqual(history[-1]["ingest_metadata"]["final_url"], "https://example.com/agents")
 
-    def test_drop_pdf_renames_binary_asset_and_records_frontmatter(self) -> None:
+    def test_drop_pdf_renames_binary_asset_and_records_manifest(self) -> None:
         source = self.root / "paper.bin"
         source.write_bytes(b"%PDF-1.4 fake payload")
 
-        with patch("aiwiki.drop._extract_pdf_text", return_value="Recovered PDF text."):
-            result = drop_pdf(self.root, str(source), title="Runtime Paper")
+        result = drop_pdf(self.root, str(source), title="Runtime Paper")
 
         asset_path = self.root / result["asset_path"]
-        note_path = self.root / result["note_path"]
-        note = note_path.read_text(encoding="utf-8")
-        frontmatter = parse_frontmatter(note)
 
+        self.assertNotIn("note_path", result)
         self.assertTrue(asset_path.exists())
         self.assertEqual(asset_path.suffix, ".pdf")
-        self.assertEqual(frontmatter["asset_files"], [result["asset_path"]])
-        self.assertIn("Recovered PDF text.", note)
-        self.assertIn("Runtime Paper", note)
+        self.assertEqual(asset_path.read_bytes(), b"%PDF-1.4 fake payload")
+        self.assertEqual(list((self.root / "raw" / "inbox").glob("*.md")), [])
+        entry = load_manifest(self.root)["entries"][-1]
+        self.assertEqual(entry["source_type"], "pdf-drop")
+        self.assertEqual(entry["title"], "Runtime Paper")
+        self.assertEqual(entry["stored_path"], result["asset_path"])
+        self.assertEqual(result["stored_path"], result["asset_path"])
+
+    def test_drop_pdf_preserves_chinese_upload_title_in_filenames(self) -> None:
+        source = self.root / "1779261245224-7b4c3390.pdf"
+        source.write_bytes(b"%PDF-1.4 fake payload")
+
+        result = drop_pdf(self.root, str(source), title="特朗普访华预期.pdf")
+
+        asset_stem = Path(result["asset_path"]).stem
+        self.assertIn("特朗普访华预期", asset_stem)
+        self.assertNotIn("1779261245224", asset_stem)
 
     def test_drop_image_records_generated_visual_analysis(self) -> None:
         image_bytes = base64.b64decode(
@@ -123,17 +155,39 @@ class DropTests(unittest.TestCase):
                     client=StubVisionClient("- Chart summary\n- Confidence: medium"),
                 )
 
-        note_path = self.root / result["note_path"]
-        note = note_path.read_text(encoding="utf-8")
-        frontmatter = parse_frontmatter(note)
-
         self.assertEqual(result["material"], "image")
+        self.assertNotIn("note_path", result)
         self.assertEqual(result["vision_status"], "generated")
         self.assertTrue(result["visual_analysis_present"])
-        self.assertEqual(frontmatter["vision_backend"], "codex-cli")
-        self.assertEqual(frontmatter["vision_status"], "generated")
-        self.assertIn("Latency chart OCR text", note)
-        self.assertIn("- Chart summary", note)
+        asset_path = self.root / result["asset_path"]
+        self.assertTrue(asset_path.exists())
+        self.assertEqual(asset_path.read_bytes(), image_bytes)
+        self.assertEqual(list((self.root / "raw" / "inbox").glob("*.md")), [])
+        entry = load_manifest(self.root)["entries"][-1]
+        self.assertEqual(entry["source_type"], "image-drop")
+        self.assertEqual(entry["title"], "Latency Chart")
+        self.assertEqual(entry["stored_path"], result["asset_path"])
+        self.assertEqual(result["stored_path"], result["asset_path"])
+
+    def test_drop_image_preserves_chinese_upload_title_in_filenames(self) -> None:
+        image_bytes = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z3ioAAAAASUVORK5CYII="
+        )
+        image_path = self.root / "1779261245224-7b4c3390.png"
+        image_path.write_bytes(image_bytes)
+
+        with patch("aiwiki.drop._image_dimensions", return_value=(640, 480)):
+            with patch("aiwiki.drop._extract_image_text", return_value="OCR text"):
+                result = drop_image(
+                    self.root,
+                    str(image_path),
+                    title="市场结构图.png",
+                    client=StubVisionClient("- Image summary"),
+                )
+
+        asset_stem = Path(result["asset_path"]).stem
+        self.assertIn("市场结构图", asset_stem)
+        self.assertNotIn("1779261245224", asset_stem)
 
     def test_drop_repo_snapshots_local_repository_tree(self) -> None:
         repo = self.root / "fixture-repo"
@@ -146,10 +200,15 @@ class DropTests(unittest.TestCase):
         note_path = self.root / result["note_path"]
         note = note_path.read_text(encoding="utf-8")
         self.assertEqual(result["material"], "repo")
+        self.assertFalse(note.startswith("---\n"))
+        self.assertNotIn("Repository Metadata", note)
         self.assertIn("Repository summary.", note)
         self.assertIn("- `README.md`", note)
-        self.assertIn("- `src/main.py`", note)
-        self.assertIn("### src/main.py", note)
+        self.assertIn("## src/main.py", note)
+        self.assertIn("print('hello repo')", note)
+        entry = load_manifest(self.root)["entries"][-1]
+        self.assertEqual(entry["source_type"], "repo-drop")
+        self.assertIn("repo_source", entry.get("ingest_metadata") or {})
 
     def test_drop_repo_clones_remote_url_and_cleans_temp_directory(self) -> None:
         captured: dict[str, Path] = {}
@@ -159,40 +218,62 @@ class DropTests(unittest.TestCase):
             captured["cleanup_dir"] = destination.parent
             destination.mkdir(parents=True)
 
-        with patch("aiwiki.drop._clone_repo", side_effect=fake_clone):
-            with patch(
-                "aiwiki.drop._repo_snapshot",
-                return_value={
-                    "name": "Remote Fixture",
-                    "commit": "abc123",
-                    "origin": "https://example.test/repo.git",
-                    "readme": "Remote repo summary.",
-                    "tree": ["- `README.md`"],
-                    "files": [],
-                },
-            ):
-                result = drop_repo(self.root, "https://example.test/repo.git")
+        with patch.dict("os.environ", {"AIWIKI_ALLOW_REMOTE_REPO_DROP": "1"}, clear=False):
+            with patch("aiwiki.drop._clone_repo", side_effect=fake_clone):
+                with patch(
+                    "aiwiki.drop._repo_snapshot",
+                    return_value={
+                        "name": "Remote Fixture",
+                        "commit": "abc123",
+                        "origin": "https://example.test/repo.git",
+                        "readme": "Remote repo summary.",
+                        "tree": ["- `README.md`"],
+                        "files": [],
+                    },
+                ):
+                    result = drop_repo(self.root, "https://example.test/repo.git")
 
         self.assertEqual(result["material"], "repo")
         self.assertFalse(captured["cleanup_dir"].exists())
 
     def test_drop_note_accepts_inline_text_and_marks_transcript_kind(self) -> None:
+        raw_text = "# Weekly Sync\n\nAlice: Ship review queue.\nBob: Follow up on runtime drift.\n"
         result = drop_note(
             self.root,
-            text="# Weekly Sync\n\nAlice: Ship review queue.\nBob: Follow up on runtime drift.\n",
+            text=raw_text,
             kind="transcript",
         )
 
         note_path = self.root / result["note_path"]
         note = note_path.read_text(encoding="utf-8")
-        frontmatter = parse_frontmatter(note)
 
         self.assertEqual(result["material"], "note")
         self.assertEqual(result["note_kind"], "transcript")
-        self.assertEqual(frontmatter["source_type"], "note-drop")
-        self.assertEqual(frontmatter["note_kind"], "transcript")
-        self.assertEqual(frontmatter["original_path"], "inline://note")
-        self.assertIn("Alice: Ship review queue.", note)
+        self.assertEqual(note, raw_text)
+        self.assertNotIn("Capture Metadata", note)
+        self.assertNotIn("Captured Note", note)
+        history = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/state/runtime-history.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertEqual(history[-1]["event_type"], "raw-added")
+        self.assertEqual(history[-1]["stored_path"], result["note_path"])
+        self.assertEqual(history[-1]["source_type"], "note-drop")
+        self.assertEqual(history[-1]["note_kind"], "transcript")
+        self.assertEqual(history[-1]["capture_mode"], "inline-text")
+        entry = load_manifest(self.root)["entries"][-1]
+        self.assertEqual(entry["source_type"], "note-drop")
+        self.assertEqual(entry["note_kind"], "transcript")
+        self.assertEqual(entry["original_path"], "inline://note")
+        self.assertEqual(entry["stored_path"], result["note_path"])
+
+    def test_drop_note_preserves_inline_text_without_trimming(self) -> None:
+        raw_text = "# Scratch\n\nkeep trailing spaces  \nno forced newline"
+
+        result = drop_note(self.root, text=raw_text, title="Scratch")
+
+        self.assertEqual((self.root / result["note_path"]).read_text(encoding="utf-8"), raw_text)
 
     def test_drop_note_reads_markdown_file_and_derives_title(self) -> None:
         source = self.root / "meeting.md"
@@ -202,12 +283,42 @@ class DropTests(unittest.TestCase):
 
         note_path = self.root / result["note_path"]
         note = note_path.read_text(encoding="utf-8")
-        frontmatter = parse_frontmatter(note)
 
         self.assertEqual(result["title"], "Product Review")
-        self.assertEqual(frontmatter["note_kind"], "note")
-        self.assertEqual(frontmatter["original_path"], str(source))
-        self.assertIn("Latency budget and reviewer load.", note)
+        self.assertEqual(note, "# Product Review\n\nLatency budget and reviewer load.\n")
+        self.assertEqual(note_path.read_bytes(), source.read_bytes())
+        self.assertNotIn("Capture Metadata", note)
+        self.assertNotIn("Captured Note", note)
+        entry = load_manifest(self.root)["entries"][-1]
+        self.assertEqual(entry["note_kind"], "note")
+        self.assertEqual(entry["original_path"], str(source))
+        self.assertEqual(entry["stored_path"], result["note_path"])
+
+    def test_drop_note_rejects_inline_sensitive_content_by_default(self) -> None:
+        with self.assertRaisesRegex(SensitiveContentError, "Sensitive content detected"):
+            drop_note(self.root, text="device password: hunter2\n")
+
+        raw_files = list((self.root / "raw" / "inbox").glob("*.md"))
+        self.assertEqual(raw_files, [])
+
+    def test_drop_note_rejects_file_sensitive_content_by_default(self) -> None:
+        source = self.root / "device.md"
+        source.write_text("# Device\n\n密码: ' (单引号)\n", encoding="utf-8")
+
+        with self.assertRaisesRegex(SensitiveContentError, "line 3"):
+            drop_note(self.root, str(source))
+
+        raw_files = list((self.root / "raw" / "inbox").glob("*.md"))
+        self.assertEqual(raw_files, [])
+
+    def test_drop_note_allow_sensitive_explicit_override(self) -> None:
+        result = drop_note(self.root, text="# Device\n\npassword: local-only\n", allow_sensitive=True)
+
+        note = (self.root / result["note_path"]).read_text(encoding="utf-8")
+
+        self.assertFalse(note.startswith("---\n"))
+        self.assertNotIn("Capture Metadata", note)
+        self.assertIn("password: local-only", note)
 
     def test_fetch_url_uses_plain_text_fallback_when_html_extraction_is_not_applicable(self) -> None:
         with patch(
@@ -220,7 +331,7 @@ class DropTests(unittest.TestCase):
                 "error": "",
             },
         ):
-            payload = _fetch_url("https://example.test/plain")
+            payload = _fetch_url("https://example.test/plain", root=self.root)
 
         self.assertEqual(payload["title"], "plain")
         self.assertEqual(payload["extraction_mode"], "plain-text")
@@ -249,7 +360,7 @@ class DropTests(unittest.TestCase):
                             "mode": "readability",
                         },
                     ):
-                        payload = _fetch_url("https://example.test/page")
+                        payload = _fetch_url("https://example.test/page", root=self.root)
 
         self.assertEqual(payload["title"], "Recovered Page")
         self.assertEqual(payload["browser_backend"], "")
@@ -268,7 +379,7 @@ class DropTests(unittest.TestCase):
             },
         ):
             with self.assertRaises(RuntimeError) as ctx:
-                _fetch_url("https://example.test/fail")
+                _fetch_url("https://example.test/fail", root=self.root)
 
         self.assertIn("connection reset", str(ctx.exception))
 
@@ -330,47 +441,6 @@ class DropTests(unittest.TestCase):
             payload["image_urls"],
             ["https://example.test/inline.png", "https://example.test/hero.png"],
         )
-
-    def test_materialize_url_images_skips_failed_downloads(self) -> None:
-        created = self.root / "raw" / "assets" / "one.png"
-        created.parent.mkdir(parents=True, exist_ok=True)
-        created.write_bytes(b"png")
-
-        def fake_download(root: Path, source: str, preferred_slug: str) -> tuple[Path, str]:
-            del root
-            del preferred_slug
-            if source.endswith("broken.png"):
-                raise RuntimeError("boom")
-            return created, source
-
-        with patch("aiwiki.drop._download_asset_url", side_effect=fake_download):
-            paths = _materialize_url_images(
-                self.root,
-                ["https://example.test/one.png", "https://example.test/broken.png"],
-                "rich-page",
-            )
-
-        self.assertEqual(paths, [f"raw/assets/{created.name}"])
-
-    def test_materialize_binary_source_supports_remote_and_missing_local_file(self) -> None:
-        remote_asset = self.root / "raw" / "assets" / "remote.bin"
-        remote_asset.parent.mkdir(parents=True, exist_ok=True)
-        remote_asset.write_bytes(b"remote")
-
-        with patch(
-            "aiwiki.drop._download_asset_url",
-            return_value=(remote_asset, "https://example.test/file.bin"),
-        ):
-            asset_path, original = _materialize_binary_source(
-                self.root,
-                "https://example.test/file.bin",
-                "remote-file",
-            )
-
-        self.assertEqual(asset_path, remote_asset)
-        self.assertEqual(original, "https://example.test/file.bin")
-        with self.assertRaises(FileNotFoundError):
-            _materialize_binary_source(self.root, str(self.root / "missing.bin"), "missing-file")
 
     def test_binary_helpers_handle_tool_failures_and_fallbacks(self) -> None:
         source = self.root / "paper.pdf"
@@ -458,6 +528,38 @@ class DropTests(unittest.TestCase):
         self.assertEqual(skipped["status"], "skipped")
         self.assertEqual(failed["status"], "failed")
 
+    def test_maybe_create_image_client_allows_openai_compatible_backends(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "AIWIKI_LLM_BACKEND": "opencode-api",
+                "AIWIKI_OPENCODE_API_KEY": "opencode_test_key",
+                "AIWIKI_LLM_MODEL": "gpt-4o",
+            },
+            clear=True,
+        ):
+            with patch("aiwiki.drop.create_backend_client", return_value="client") as create:
+                client = _maybe_create_image_client(self.root)
+
+        self.assertEqual(client, "client")
+        self.assertEqual(create.call_args.args[0].backend, "opencode-api")
+        self.assertEqual(create.call_args.args[0].model, "gpt-4o")
+
+    def test_maybe_create_image_client_skips_text_only_openai_compatible_model(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "AIWIKI_LLM_BACKEND": "opencode-api",
+                "AIWIKI_OPENCODE_API_KEY": "opencode_test_key",
+            },
+            clear=True,
+        ):
+            with patch("aiwiki.drop.create_backend_client") as create:
+                client = _maybe_create_image_client(self.root)
+
+        self.assertIsNone(client)
+        create.assert_not_called()
+
     def test_clone_repo_raises_on_git_failure(self) -> None:
         with patch(
             "aiwiki.drop.subprocess.run",
@@ -479,9 +581,19 @@ class DropTests(unittest.TestCase):
         with patch("aiwiki.drop.subprocess.run") as run_mock:
             run_mock.side_effect = [
                 subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="sandbox blocked"),
+            ]
+            with patch.dict(os.environ, {}, clear=True):
+                with self.assertRaises(RuntimeError) as ctx:
+                    _render_url_with_browser_cli("https://example.test/page", "chromium")
+        self.assertIn("AIWIKI_ALLOW_BROWSER_NO_SANDBOX", str(ctx.exception))
+
+        with patch("aiwiki.drop.subprocess.run") as run_mock:
+            run_mock.side_effect = [
+                subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="sandbox blocked"),
                 subprocess.CompletedProcess(args=[], returncode=0, stdout="<html>fallback</html>", stderr=""),
             ]
-            html = _render_url_with_browser_cli("https://example.test/page", "chromium")
+            with patch.dict(os.environ, {"AIWIKI_ALLOW_BROWSER_NO_SANDBOX": "1"}):
+                html = _render_url_with_browser_cli("https://example.test/page", "chromium")
         self.assertEqual(html, "<html>fallback</html>")
 
         with patch(
@@ -540,10 +652,10 @@ class DropTests(unittest.TestCase):
         self.assertEqual(_jpeg_dimensions(jpeg), (3, 2))
         self.assertEqual(_image_dimensions(jpeg), (3, 2))
 
-        bad_client = type("ConfigHolder", (), {"backend": "copilot-cli"})()
+        bad_client = type("ConfigHolder", (), {"backend": "opencode-api", "model": "deepseek-v4-pro"})()
         with patch("aiwiki.drop.LLMConfig.from_env", return_value=bad_client):
             self.assertIsNone(_maybe_create_image_client(self.root))
-        good_client = type("ConfigHolder", (), {"backend": "codex-cli"})()
+        good_client = type("ConfigHolder", (), {"backend": "opencode-api", "model": "gpt-4o"})()
         with patch("aiwiki.drop.LLMConfig.from_env", return_value=good_client):
             with patch("aiwiki.drop.create_backend_client", return_value="client") as factory:
                 self.assertEqual(_maybe_create_image_client(self.root), "client")

@@ -16,6 +16,178 @@ try {
 const clipboard = electron && electron.clipboard ? electron.clipboard : null;
 const shell = electron && electron.shell ? electron.shell : null;
 
+// --- src/llm_settings.js ---
+
+// LLM provider profile helpers shared by settings UI and launcher bridge.
+
+const DEFAULT_PRODUCT_LLM_BACKEND = "opencode-api";
+const DEFAULT_PRODUCT_LLM_MODEL = "deepseek-v4-pro";
+
+const LLM_PROVIDER_PROFILES = [
+  {
+    value: "deepseek-api",
+    label: "DeepSeek",
+    tier: "common",
+    apiKeySetting: "llmDeepseekApiKey",
+    apiKeyEnv: "AIWIKI_DEEPSEEK_API_KEY",
+    baseUrlSetting: "llmDeepseekBaseUrl",
+    baseUrlEnv: "AIWIKI_DEEPSEEK_BASE_URL",
+    defaultBaseUrl: "https://api.deepseek.com",
+    defaultModel: DEFAULT_PRODUCT_LLM_MODEL,
+    keyPlaceholder: "sk-...",
+  },
+  {
+    value: "opencode-api",
+    label: "OpenCode",
+    tier: "common",
+    apiKeySetting: "llmOpencodeApiKey",
+    apiKeyEnv: "AIWIKI_OPENCODE_API_KEY",
+    baseUrlSetting: "llmOpencodeBaseUrl",
+    baseUrlEnv: "AIWIKI_OPENCODE_BASE_URL",
+    defaultBaseUrl: "https://opencode.ai/zen/go/v1",
+    defaultModel: DEFAULT_PRODUCT_LLM_MODEL,
+    keyPlaceholder: "opencode-...",
+  },
+  {
+    value: "anthropic-api",
+    label: "Claude",
+    tier: "common",
+    apiKeySetting: "llmAnthropicApiKey",
+    apiKeyEnv: "AIWIKI_ANTHROPIC_API_KEY",
+    baseUrlSetting: "llmAnthropicBaseUrl",
+    baseUrlEnv: "AIWIKI_ANTHROPIC_BASE_URL",
+    defaultBaseUrl: "https://api.anthropic.com",
+    defaultModel: "claude-sonnet-4-20250514",
+    keyPlaceholder: "sk-ant-...",
+  },
+  {
+    value: "openai-api",
+    label: "OpenAI",
+    tier: "common",
+    apiKeySetting: "llmCustomOpenaiApiKey",
+    apiKeyEnv: "AIWIKI_LLM_API_KEY",
+    baseUrlSetting: "llmCustomOpenaiBaseUrl",
+    baseUrlEnv: "AIWIKI_LLM_BASE_URL",
+    defaultBaseUrl: "https://api.openai.com/v1",
+    defaultModel: "gpt-4.1-mini",
+    keyPlaceholder: "sk-...",
+  },
+];
+
+const LLM_PROVIDER_BY_VALUE = Object.fromEntries(LLM_PROVIDER_PROFILES.map((profile) => [profile.value, profile]));
+const LLM_PROVIDER_DEFAULT_MODELS = new Set(
+  LLM_PROVIDER_PROFILES.map((profile) => profile.defaultModel).filter(Boolean)
+);
+const LLM_ENV_KEYS = [
+  "AIWIKI_LLM_BACKEND",
+  "AIWIKI_LLM_MODEL",
+  "AIWIKI_MODEL_FALLBACK",
+  "AIWIKI_DEEPSEEK_API_KEY",
+  "AIWIKI_DEEPSEEK_BASE_URL",
+  "AIWIKI_OPENCODE_API_KEY",
+  "AIWIKI_OPENCODE_BASE_URL",
+  "AIWIKI_ANTHROPIC_API_KEY",
+  "AIWIKI_ANTHROPIC_BASE_URL",
+  "AIWIKI_LLM_API_KEY",
+  "AIWIKI_LLM_BASE_URL",
+  "DEEPSEEK_API_KEY",
+  "DEEPSEEK_BASE_URL",
+  "OPENAI_API_KEY",
+  "OPENAI_BASE_URL",
+  "OPENAI_MODEL",
+  "ANTHROPIC_API_KEY",
+  "ANTHROPIC_BASE_URL",
+];
+const LEGACY_LLM_SETTING_KEYS = [
+  "llmGithubToken",
+  "llmGithubModelsBaseUrl",
+  "llmApiKey",
+  "llmNvidiaNimApiKey",
+  "llmNvidiaNimBaseUrl",
+  "llmOpenrouterApiKey",
+  "llmOpenrouterBaseUrl",
+];
+
+function llmProviderProfile(value) {
+  return LLM_PROVIDER_BY_VALUE[String(value || "").trim()] || LLM_PROVIDER_BY_VALUE[DEFAULT_PRODUCT_LLM_BACKEND];
+}
+
+function llmProviderNeedsModel(profile) {
+  return Boolean(profile && !profile.cliHint);
+}
+
+function effectiveLlmModelForProvider(settings, profile) {
+  const configured = String((settings && settings.llmModel) || "").trim();
+  if (!configured) {
+    return String((profile && profile.defaultModel) || "").trim();
+  }
+  const profileDefault = String((profile && profile.defaultModel) || "").trim();
+  if (profileDefault && configured !== profileDefault && LLM_PROVIDER_DEFAULT_MODELS.has(configured)) {
+    return profileDefault;
+  }
+  return configured;
+}
+
+function buildLlmEnv(settings) {
+  const profile = llmProviderProfile(settings && settings.llmBackend);
+  const env = {
+    AIWIKI_LLM_BACKEND: profile.value,
+  };
+  const model = effectiveLlmModelForProvider(settings, profile);
+  if (model) {
+    env.AIWIKI_LLM_MODEL = model;
+  }
+  if (profile.apiKeySetting && profile.apiKeyEnv) {
+    const key = String((settings && settings[profile.apiKeySetting]) || "").trim();
+    if (key) {
+      env[profile.apiKeyEnv] = key;
+    }
+  }
+  if (profile.baseUrlSetting && profile.baseUrlEnv) {
+    const baseUrl = String((settings && settings[profile.baseUrlSetting]) || "").trim();
+    if (baseUrl) {
+      env[profile.baseUrlEnv] = baseUrl;
+    }
+  }
+  return env;
+}
+
+function clearKnownLlmEnv(env) {
+  for (const key of LLM_ENV_KEYS) {
+    delete env[key];
+  }
+}
+
+function dropLegacyLlmSettings(settings) {
+  if (!settings || typeof settings !== "object") {
+    return false;
+  }
+  let changed = false;
+  for (const key of LEGACY_LLM_SETTING_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(settings, key)) {
+      delete settings[key];
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+if (typeof module !== "undefined") {
+  module.exports = {
+    DEFAULT_PRODUCT_LLM_BACKEND,
+    DEFAULT_PRODUCT_LLM_MODEL,
+    LEGACY_LLM_SETTING_KEYS,
+    LLM_ENV_KEYS,
+    LLM_PROVIDER_PROFILES,
+    buildLlmEnv,
+    clearKnownLlmEnv,
+    dropLegacyLlmSettings,
+    effectiveLlmModelForProvider,
+    llmProviderNeedsModel,
+    llmProviderProfile,
+  };
+}
+
 // --- src/constants.js ---
 
 // Constants, default settings, i18n dictionary, and status label maps.
@@ -30,18 +202,33 @@ const DEFAULT_PROTOCOLS = ["general", "investing", "research", "product", "ops"]
 const DEFAULT_LOCALE = "zh";
 const DEFAULT_SETTINGS = {
   launcherPath: "scripts/aiwiki-launcher.sh",
-  defaultAskMode: "run-ask",
+  runtimeClientMode: "desktop-launcher",
   defaultAskFormat: "report",
   recentRunsLimit: 8,
   showAdvancedCommands: false,
-  showHtmlShortcuts: true,
   locale: DEFAULT_LOCALE,
-  llmBackend: "",
-  llmModel: "",
-  llmNvidiaNimApiKey: "",
-  llmNvidiaNimBaseUrl: "",
+  llmBackend: "opencode-api",
+  llmModel: "deepseek-v4-pro",
+  llmDeepseekApiKey: "",
+  llmDeepseekBaseUrl: "",
+  llmOpencodeApiKey: "",
+  llmOpencodeBaseUrl: "",
+  llmAnthropicApiKey: "",
+  llmAnthropicBaseUrl: "",
+  llmCustomOpenaiApiKey: "",
+  llmCustomOpenaiBaseUrl: "",
+  feishuWebhookUrl: "",
+  wecomWebhookUrl: "",
+  enabledChannels: [],
+  lastViewedTimestamp: "",
+  lastKnownReportIds: [],
+  onboardingShown: false,
+  // R91: Advanced 子 section 折叠态持久化；默认全折叠以降首屏认知负担
+  advancedSectionsExpanded: { status: false, history: false },
 };
 const ZH_TEXT = {
+  "Advanced": "更多工具",
+  "Review {review_count} · execution {execution_count} · recent runs {run_count}": "待审 {review_count} · 待执行 {execution_count} · 运行记录 {run_count}",
   "Furnace Product Shell": "炼丹炉 Product Shell",
   "UI language": "界面语言",
   "Default display language for the Product Shell UI. Command palette labels refresh after reloading Obsidian.": "Product Shell 默认显示语言。修改后，命令面板标签需要重载 Obsidian 才会刷新。",
@@ -49,28 +236,41 @@ const ZH_TEXT = {
   English: "英文",
   "Aiwiki launcher": "Aiwiki 启动器",
   "Vault-local or absolute launcher path. This vault may point at an external runtime root.": "vault 内相对路径或绝对 launcher 路径。这个 vault 可以指向外部 runtime root。",
-  "Default ask mode": "默认 Ask 模式",
-  "Choose whether Ask defaults to deterministic `ask` or LLM-backed `run-ask`.": "选择 Ask 默认走 deterministic `ask`，还是 LLM 驱动的 `run-ask`。",
-  "Default ask format": "默认 Ask 格式",
-  "Default output format for the Ask modal.": "Ask 模态框的默认输出格式。",
+  "Runtime client mode": "运行客户端模式",
+  "Desktop launcher runs the local aiwiki runtime. Vault queue only writes .aiwiki/queue requests for desktop drain; it does not execute commands.": "Desktop launcher 会运行本机 aiwiki runtime。Vault queue 只写入 .aiwiki/queue 请求等待桌面端 drain，不执行命令。",
+  "Desktop launcher": "桌面启动器",
+  "Vault queue companion": "Vault 队列 companion",
   "Recent runs limit": "最近运行保留数",
   "How many plugin-triggered runs to keep in the Product Shell.": "Product Shell 中保留多少条插件触发的运行记录。",
   "Show advanced commands": "显示高级命令",
-  "Register review, execution, protocol, and legacy panel commands in the command palette. Reload Obsidian after changing this toggle.": "是否把审阅、执行、协议与旧面板命令注册到命令面板中。修改后需要重载 Obsidian。",
-  "Show HTML shortcuts": "显示 HTML 快捷入口",
-  "Whether advanced panels should show HTML shortcuts when the summary exposes them.": "当 summary 暴露 HTML 面板时，是否在高级面板里显示 HTML 快捷入口。",
+  "Register diagnostics, history, Review Center, and Execution Center commands in the command palette. Reload Obsidian after changing this toggle.": "是否把诊断、历史、Review Center 与 Execution Center 命令注册到命令面板中。修改后需要重载 Obsidian。",
   "Advanced command visibility refreshes after reloading Obsidian.": "高级命令可见性会在重载 Obsidian 后刷新。",
+  "Full runtime is Desktop-only. iPad/iOS Obsidian can only be a future companion; it cannot run the local launcher, Python CLI, or full ingest/review flow.": "全功能 runtime 仅支持 Desktop。iPad/iOS Obsidian 未来只能作为 companion，不能运行本地 launcher、Python CLI 或完整投料/复审流程。",
   "LLM backend": "LLM 后端",
-  "Select the explicit LLM backend used by run-compile / run-ask / run-nightly. Empty = unconfigured.": "为 run-compile / run-ask / run-nightly 显式选择 LLM 后端。留空 = 未配置。",
+  "Select the LLM provider used by run-compile / run-ask / run-nightly. Common providers are listed first; advanced entries are for local CLI sessions or custom OpenAI-compatible endpoints.": "选择 run-compile / run-ask / run-nightly 使用的 LLM API provider。",
   "LLM model": "LLM 模型",
-  "Override the model name (e.g. gpt-5.4, claude-sonnet-4.5). Empty = selected backend default strategy (`codex-cli`: `gpt-5.4`; `nvidia-nim-api`: `z-ai/glm-5.1 -> moonshotai/kimi-k2.5 -> minimaxai/minimax-m2.7`).": "覆盖模型名称（如 gpt-5.4、claude-sonnet-4.5）。留空 = 所选后端默认策略（`codex-cli`: `gpt-5.4`；`nvidia-nim-api`: `z-ai/glm-5.1 -> moonshotai/kimi-k2.5 -> minimaxai/minimax-m2.7`）。",
-  "route only (no LLM)": "仅路由（无 LLM）",
-  "LLM answer (recommended)": "LLM 深度回答（推荐）",
-  "NVIDIA NIM API key": "NVIDIA NIM API Key",
-  "Optional key for nvidia-nim-api. Stored locally in plugin data. Empty = use AIWIKI_NVIDIA_NIM_API_KEY / NVIDIA_NIM_API_KEY.": "nvidia-nim-api 的可选 API key。本地存储于插件数据中。留空 = 使用 AIWIKI_NVIDIA_NIM_API_KEY / NVIDIA_NIM_API_KEY。",
-  "NVIDIA NIM base URL": "NVIDIA NIM Base URL",
-  "Override the NVIDIA NIM endpoint. Empty = https://integrate.api.nvidia.com/v1.": "覆盖 NVIDIA NIM 端点。留空 = https://integrate.api.nvidia.com/v1。",
+  "Model for the selected API provider. Empty uses that provider profile default when one exists.": "所选 API provider 的模型。留空时使用该 provider profile 的默认模型（如果有）。",
+  "API key": "API Key",
+  "Stored only in local Obsidian plugin data. New runs use the key saved here and ignore stale LLM environment variables.": "仅存放在本机 Obsidian 插件数据中。新的运行会使用这里保存的 key，并忽略旧的 LLM 环境变量。",
+  "Base URL": "Base URL",
+  "Override the provider endpoint. Leave empty to use the provider profile default.": "覆盖 provider endpoint。留空则使用 provider profile 默认值。",
+  "CLI session": "CLI 会话",
+  "This backend uses a local CLI login/session. API key fields are not used.": "该后端已不再作为 Product Shell 后端使用。",
   "LLM settings saved. New runs will use the updated configuration.": "LLM 设置已保存。新的运行将使用更新后的配置。",
+  "Notifications (webhook)": "通知（webhook）",
+  "Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports.": "Webhook 设置仅保存在本地插件数据中。失败不会重试。通知只用于新报告。",
+  "Feishu webhook URL": "飞书 webhook URL",
+  "WeCom webhook URL": "企业微信 webhook URL",
+  "Enable Feishu": "启用飞书",
+  "Enable WeCom": "启用企业微信",
+  "Universal input": "统一输入",
+  "Universal Input": "统一输入",
+  "Universal input cannot be empty.": "统一输入不能为空。",
+  "投网址、文件、图片，或直接提问……": "投 URL、PDF、Markdown、图片、repo，或直接提问生成报告……",
+  "Ctrl+Enter 提交 · 也可拖入文件": "Ctrl+Enter 提交 · 也可拖入文件",
+  "Drop file here": "把文件拖到这里",
+  Submit: "提交",
+  "Invalid input: {message}": "输入无效：{message}",
   "Ask 炼丹炉": "问炼丹炉",
   Question: "问题",
   "Enter the research question...": "输入研究问题……",
@@ -80,48 +280,184 @@ const ZH_TEXT = {
   "current protocol": "当前协议",
   Run: "运行",
   Cancel: "取消",
-  "Question cannot be empty.": "问题不能为空。",
   "Nothing to copy.": "没有可复制的内容。",
   "Clipboard is not available in this environment.": "当前环境不支持剪贴板。",
   "Copied to clipboard.": "已复制到剪贴板。",
   "LLM backend unavailable; retried with deterministic ask.": "LLM 后端当前不可用，已自动回退到 deterministic ask。",
-  "LLM health": "LLM 健康态",
+  "LLM health": "LLM 状态",
   Sync: "同步",
-  "Configured route": "当前路由",
+  "Configured route": "当前模型",
   "Last checked": "最近检测",
-  "Refreshing shell summary.": "正在刷新 shell-summary。",
+  "Refreshing shell summary.": "正在刷新数据。",
   "Latest refresh failed.": "最近一次刷新失败。",
-  "Summary ready.": "summary 已就绪。",
-  "No recent LLM health check yet.": "当前还没有最近一次 LLM 健康检测。",
+  "Summary ready.": "数据已就绪。",
+  "No recent LLM health check yet.": "还没有最近一次 LLM 状态检查。",
   "LLM is not configured.": "当前没有配置 LLM。",
   "Current route changed since the last recorded ask.": "当前路由已经和最近一次记录的 Ask 不同。",
   degraded: "降级",
   warning: "警告",
-  "Deterministic fallback": "确定性回退",
-  "Deterministic fallback active": "deterministic 回退已激活",
+  "Deterministic fallback": "本地兜底",
+  "Deterministic fallback active": "已使用本地兜底",
   "Recent run-ask succeeded.": "最近一次 run-ask 成功完成。",
+  "Latest run-ask succeeded.": "最近一次 run-ask 成功完成。",
   "Recent run-ask fell back to deterministic ask.": "最近一次 run-ask 已回退到 deterministic ask。",
+  "Latest run-ask produced an LLM failure notice.": "最近一次 run-ask 生成了 LLM 失败说明。",
+  "LLM timed out or failed; only deterministic fallback is available.": "LLM 超时或失败；当前只有本地兜底结果。",
+  "LLM timed out; deterministic fallback only.": "LLM 超时；仅生成了本地兜底结果。",
+  "LLM timed out; deterministic fallback only. Open the artifact for local context, then retry or switch model.": "LLM 超时；仅生成了本地兜底结果。可打开产物查看本地上下文，再重试或切换模型。",
+  "LLM timed out; no substantive answer was generated. Try again or switch model.": "LLM 超时，未生成实质回答。请重试或切换模型。",
+  "Latest run-ask failed before producing an LLM result.": "最近一次 run-ask 在生成 LLM 结果前失败。",
+  available: "可用",
+  "configured but unavailable": "已配置但不可用",
+  "not configured": "未配置",
+  "No backup LLM route configured.": "未配置备用 LLM 路由。",
+  "Backup LLM route ready: {count}/{total}": "备用 LLM 路由就绪：{count}/{total}",
+  "Backup LLM route not ready.": "备用 LLM 路由未就绪。",
+  "Report generation can take several minutes; keep this card open and refresh status if needed.": "报告生成可能需要几分钟；保留这张卡片，必要时刷新状态。",
+  "Long Report": "长程报告",
+  "Long report task": "长程报告任务",
+  "已接收长程报告任务": "已接收长程报告任务",
+  "LLM 正在生成结构化报告": "LLM 正在生成结构化报告",
+  "完成后会写入本地报告": "完成后会写入本地报告",
+  "长程报告生成中，可稍后刷新": "长程报告生成中，可稍后刷新",
+  "长程报告可能已完成，刷新看看": "长程报告可能已完成，刷新看看",
   "Latest run-ask failed without deterministic fallback.": "最近一次 run-ask 失败，且没有进入 deterministic fallback。",
+  "LLM failure notice active": "LLM 失败说明已启用",
   "No Product Shell ask has been recorded yet.": "当前还没有 Product Shell Ask 记录。",
   "Product Shell ask history matches the current route.": "Product Shell 的 Ask 历史与当前路由一致。",
   "Latest Product Shell ask used {latest}; current route is {current}.": "最近一次 Product Shell Ask 使用的是 {latest}；当前路由是 {current}。",
   "requested {requested} · effective {effective} · available {available}": "请求 {requested} · 生效 {effective} · 可见 {available}",
-  "Product Shell runtime can see codex-cli.": "Product Shell 当前 runtime 能看到 codex-cli。",
-  "Product Shell runtime cannot see codex-cli. GUI PATH may differ from terminal PATH.": "Product Shell 当前 runtime 看不到 codex-cli，GUI 进程的 PATH 很可能和终端不一致。",
   "No explicit LLM backend is selected. Choose one in Product Shell settings or set AIWIKI_LLM_BACKEND.": "当前没有显式选择 LLM 后端。请在 Product Shell 设置里选择，或设置 AIWIKI_LLM_BACKEND。",
   "Product Shell runtime can see the selected backend {backend}.": "Product Shell 当前 runtime 能看到所选后端 {backend}。",
   "Product Shell runtime cannot see the selected backend {backend}.": "Product Shell 当前 runtime 看不到所选后端 {backend}。",
-  "Summary is stale; refresh before trusting the home surface.": "shell-summary 已过期，先 Refresh，再相信首页状态。",
+  "Summary is stale; refresh before trusting the home surface.": "数据已过期，先刷新，再相信首页状态。",
   "Generated {time}": "生成于 {time}",
   "launcher {launcher} · root {root}": "launcher {launcher} · 根目录 {root}",
   Fallback: "回退",
   "Ask modal": "Ask 模态框",
-  "Capture Note": "记录笔记",
+  "Capture Material": "投文字材料",
+  "欢迎使用炼丹炉": "欢迎使用炼丹炉",
+  投料: "投料",
+  "拖入 URL、PDF 或图片，或直接在输入框提问": "拖入 URL、PDF、Markdown 或图片，或直接在输入框提问",
+  等待编译: "等待编译",
+  "炉子会自动处理原料，抽概念、建关联": "炉子会自动处理原料，抽概念、建关联",
+  看报告: "看报告",
+  "每天回到炉子，Today 里就是你需要看的": "每天回到炉子，Today 里就是你需要看的",
+  "知道了，开始使用": "知道了，开始使用",
+  "新反证待审": "新反证待审",
+  "判断需要复核": "判断需要复核",
+  "机器记忆待修复": "机器记忆待修复",
+  "待定判断": "待定判断",
+  "待定决策": "待定决策",
+  "安全动作待确认": "安全动作待确认",
+  "升级动作": "升级动作",
+  "升级候选": "升级候选",
+  "逾期动作": "逾期动作",
+  "逾期复审": "逾期复审",
+  "L3 提案": "L3 提案",
+  "L3 提案需要关注": "L3 提案需要关注",
+  "数据漂移": "数据漂移",
+  "待审队列": "待审队列",
+  "指标提醒": "指标提醒",
+  新报告: "新报告",
+  自动维护: "自动维护",
+  "系统动态": "系统动态",
+  "金丹完成": "金丹完成",
+  "待确认操作": "待确认操作",
+  正常运行: "正常运行",
+  待确认: "待确认",
+  需要关注: "需要关注",
+  空闲: "空闲",
+  "Language & Appearance": "语言与外观",
+  "Furnace Connection": "炉子连接",
+  "Ask Defaults": "Ask 默认行为",
+  "LLM Configuration": "LLM 配置",
+  Notifications: "通知",
+  "刷新炉子": "刷新炉子",
+  "投 Markdown 材料": "投 Markdown 材料",
+  "快速投入一段 Markdown、会议纪要或观察，作为原料进入炉子的收件箱。": "快速投入一段 Markdown、会议纪要或观察，作为原料进入炉子的收件箱。",
+  "正文不能为空。": "正文不能为空。",
+  "记录中…": "记录中…",
+  "记录": "记录",
+  "投网址": "投网址",
+  "投一个网页地址，炉子会自动抓取内容并编译成知识。": "投一个网页地址，炉子会自动抓取内容并编译成知识。",
+  "网址": "网址",
+  "网址不能为空。": "网址不能为空。",
+  "抓取中…": "抓取中…",
+  "投文件": "投文件",
+  "投一个本地文件或远程地址：PDF 原件会进入 raw/assets，Repo 会抓取代码快照。": "投一个本地文件或远程地址：Markdown 进入 raw/inbox，PDF 原件进入 raw/assets，Repo 会抓取代码快照。",
+  "PDF、Markdown 或 Repo": "PDF、Markdown 或 Repo",
+  "来源不能为空。": "来源不能为空。",
+  "投料中…": "投料中…",
+  "投图片": "投图片",
+  "投一张图片，原件会进入 raw/assets；视觉信息只作为运行层分析，不改写原料。": "投一张图片，原件会进入 raw/assets；视觉信息只作为运行层分析，不改写原料。",
+  "搜索知识库": "搜索知识库",
+  "搜索 wiki、概念、判断、决策和派生页面。": "搜索 wiki、概念、判断、决策和派生页面。",
+  "关键词": "关键词",
+  "输入关键词搜索……": "输入关键词搜索……",
+  "搜索关键词不能为空。": "搜索关键词不能为空。",
+  "搜索中…": "搜索中…",
+  "搜索": "搜索",
+  "分析中…": "分析中…",
+  "问题": "问题",
+  "输入一个问题，炉子会用 LLM 深度分析并生成报告。": "输入一个问题，炉子会用 LLM 深度分析并生成报告。",
+  "选择本地文件": "选择本地文件",
+  "来源": "来源",
+  "结果数量": "结果数量",
+  "跳过视觉分析": "跳过视觉分析",
+  待决策: "待决策",
+  待判断: "待判断",
+  逾期审阅: "逾期审阅",
+  已升级: "已升级",
+  概念积压: "概念积压",
+  待审概念: "待审概念",
+  需回访概念: "需回访概念",
+  已退役概念: "已退役概念",
+  "下一个审阅": "下一个审阅",
+  "当前没有待审阅项。": "当前没有待审阅项。",
+  "批处理建议": "批处理建议",
+  "暂无批处理建议。": "暂无批处理建议。",
+  "判断资产": "判断资产",
+  强资产: "强资产",
+  需关注页: "需关注页",
+  缺反证: "缺反证",
+  缺失效条件: "缺失效条件",
+  缺审阅历史: "缺审阅历史",
+  引用漂移: "引用漂移",
+  "决策页": "决策页",
+  "当前没有待审决策页。": "当前没有待审决策页。",
+  "判断页": "判断页",
+  "当前没有待审判断页。": "当前没有待审判断页。",
+  "改写提案": "改写提案",
+  "当前没有改写提案。": "当前没有改写提案。",
+  "老化摘要": "老化摘要",
+  "治理链接": "治理链接",
+  "最近审阅事件": "最近审阅事件",
+  "暂无最近审阅事件。": "暂无最近审阅事件。",
+  执行收据: "执行收据",
+  执行事件: "执行事件",
+  归档事件: "归档事件",
+  生命周期覆盖: "生命周期覆盖",
+  夜间运行: "夜间运行",
+  "计划队列": "计划队列",
+  "待处理提案": "待处理提案",
+  "已执行": "已执行",
+  "已解锁": "已解锁",
+  "已阻塞": "已阻塞",
+  "下一个动作": "下一个动作",
+  "动作控制": "动作控制",
+  "当前没有动作控制对象。": "当前没有动作控制对象。",
+  "最近收据": "最近收据",
+  "最近运行记录": "最近运行记录",
+  "暂无最近收据。": "暂无最近收据。",
+  "暂无最近运行记录。": "暂无最近运行记录。",
+  "最近执行事件": "最近执行事件",
+  "暂无最近执行事件。": "暂无最近执行事件。",
   Title: "标题",
-  "Optional note title...": "可选笔记标题……",
+  "可选材料标题……": "可选材料标题……",
   Kind: "类型",
   Text: "正文",
-  "Capture a note, meeting log, or quick observation...": "记录笔记、会议纪要或快速观察……",
+  "输入 Markdown、会议纪要或快速观察……": "输入 Markdown、会议纪要或快速观察……",
   "This writes into raw/inbox through the same launcher/runtime used by CLI commands.": "这会通过与 CLI 相同的 launcher/runtime 写入 raw/inbox。",
   Capture: "记录",
   "Text cannot be empty.": "正文不能为空。",
@@ -178,16 +514,15 @@ const ZH_TEXT = {
   Refresh: "刷新",
   "Recent Runs": "最近运行",
   "Start Here": "从这里开始",
-  "Obsidian Product Shell and the launcher CLI share the same runtime: Ask works from both sides, and ingest can happen through Capture Note / raw/inbox / drop-*.": "Obsidian Product Shell 与 launcher CLI 共用同一个 runtime：Ask 两边都能跑，投料可走 Capture Note / raw/inbox / drop-*。",
-  "Click Refresh first so shell-summary is generated.": "先点 Refresh，确认 shell-summary 已生成。",
-  "Use Capture Note in Obsidian, or use drop-note / drop-url / drop-pdf / drop-image / drop-repo in the terminal.": "在 Obsidian 里用 Capture Note，或在终端里用 drop-note / drop-url / drop-pdf / drop-image / drop-repo 投料。",
-  "Use the Ask modal when you need to ask a question, or run ./scripts/aiwiki-launcher.sh ask ...": "需要提问时用 Ask modal，或运行 ./scripts/aiwiki-launcher.sh ask ...",
-  "Follow single writer for write actions: do not run compile / nightly / apply / revert in Obsidian and the terminal at the same time.": "写操作遵守 single writer：不要同时在 Obsidian 和终端里各跑一个 compile / nightly / apply / revert。",
+  "Click Refresh first so shell-summary is generated.": "先点刷新生成最新数据。",
+  "先点刷新生成最新数据。": "先点刷新生成最新数据。",
+  "Follow single writer for write actions: do not run compile / nightly / apply / revert in Obsidian and the terminal at the same time.": "有写入任务运行时，等它结束后再从另一个入口开始新的写入任务。",
   "Vault runtime unavailable. Missing scaffold or launcher: {missing}": "Vault runtime 不可用。缺少 scaffold 或 launcher：{missing}",
   "Expected a vault scaffold (`raw/wiki/schema/output/.aiwiki`) plus an executable launcher script.": "预期存在 vault scaffold（`raw/wiki/schema/output/.aiwiki`）以及可执行的 launcher 脚本。",
-  "shell-summary.json has not been generated yet. Run Refresh, Compile, or Nightly first.": "shell-summary.json 尚未生成。先运行 Refresh、Compile 或 Nightly。",
+  "shell-summary.json has not been generated yet. Run Refresh, Compile, or Nightly first.": "数据还没生成。先点刷新，或等首次任务跑完。",
+  "数据还没生成。先点刷新，或等首次任务跑完。": "数据还没生成。先点刷新，或等首次任务跑完。",
   "Active Protocol": "当前协议",
-  "LLM Backend": "LLM 后端",
+  "LLM Backend": "LLM 服务",
   "LLM Model": "LLM 模型",
   "Codex effort": "Codex 档位",
   "Prompt profile": "Prompt 档位",
@@ -200,7 +535,7 @@ const ZH_TEXT = {
   Overdue: "逾期",
   Escalation: "升级候选",
   "Recent Outputs": "最近输出",
-  "System status": "系统状态",
+  "System status": "运行状态",
   "Status checks": "状态检查",
   "Self-check": "自我检查",
   "Make sure frontend state and runtime state still agree.": "确认前端状态和 runtime 状态仍然对应一致。",
@@ -210,11 +545,11 @@ const ZH_TEXT = {
   "Backend discovery": "后端发现",
   "Latest ask execution": "最近一次 Ask 执行",
   "Route drift": "路由漂移",
-  "Make runtime state explicit before you act.": "先把运行状态说清楚，再决定是否继续操作。",
+  "Make runtime state explicit before you act.": "先确认当前没有冲突中的写入任务。",
   Ready: "就绪",
-  "No command is currently running.": "当前没有命令在运行。",
-  "{count} command(s) running right now.": "当前有 {count} 个命令正在运行。",
-  "Single writer active: avoid compile / nightly / apply / revert from two surfaces at once.": "single writer 已激活：避免在两个界面同时执行 compile / nightly / apply / revert。",
+  "No command is currently running.": "当前没有任务在运行。",
+  "{count} command(s) running right now.": "当前有 {count} 个任务正在运行。",
+  "Single writer active: avoid compile / nightly / apply / revert from two surfaces at once.": "已有写入任务在运行；等它结束后再开始新的写入任务。",
   Summary: "摘要",
   "Generated at {generated_at} | contract v{version}": "生成于 {generated_at} | contract v{version}",
   "Review backlog {review_count} | concept backlog {concept_backlog} | retired concepts {retired_concepts}": "审阅积压 {review_count} | 概念积压 {concept_backlog} | 已退役概念 {retired_concepts}",
@@ -230,17 +565,92 @@ const ZH_TEXT = {
   Dashboard: "仪表盘",
   "⚠️ Drift Warnings": "⚠️ 漂移警告",
   "Suggested Next Actions": "建议下一步动作",
+  Today: "今天",
+  "Furnace activity": "炉子动态",
+  "No recent furnace activity": "暂无炉子动态",
+  "Plugin run": "插件运行",
+  Receipt: "回执",
+  "Review backlog": "待处理积压",
+  "需要你确认": "需要你确认",
+  "下一步建议": "下一步建议",
+  "(nothing for today)": "今天暂无待处理内容",
+  "Needs Decision": "需要判断",
+  Proposals: "提案",
+  "Today's Reports": "今日报告",
+  Completed: "已完成",
+  "Suggested Actions": "建议动作",
+  // R89: pending 状态文案
+  "处理中…": "处理中…",
+  "已接收，等待生成报告": "已接收，等待生成报告",
+  "报告已生成": "报告已生成",
+  "已记录": "已记录",
+  "可能已完成，点上方刷新": "可能已完成，点上方刷新",
+  // R90: 提交→状态→结果 闭环
+  "可能已完成，点下方刷新状态": "可能已完成，点下方刷新状态",
+  "刷新状态": "刷新状态",
+  "查看回执": "查看回执",
+  "完成": "完成",
+  "未刷新": "未刷新",
+  "刚刚": "刚刚",
+  "已打开输出汇总（找不到具体报告路径）": "已打开输出汇总（找不到具体报告路径）",
+  "已打开运行记录（找不到具体回执路径）": "已打开运行记录（找不到具体回执路径）",
+  "无法打开目标，可能尚未生成": "无法打开目标，可能尚未生成",
+  // R91 Advanced 抽屉子 section
+  "系统状态": "系统状态",
+  "运行与历史": "运行与历史",
+  "以下为运行诊断与历史": "以下为运行诊断与历史",
+  "运行诊断 · 同步 {sync}": "运行诊断 · 同步 {sync}",
+  "最近运行 {n} 条 · 待审 {review} · 待执行 {execution}": "最近运行 {n} 条 · 待审 {review} · 待执行 {execution}",
+  "未配置": "未配置",
+  "正常": "正常",
+  "异常": "异常",
+  "未知": "未知",
+  "点击展开查看详细信息": "点击展开查看详细信息",
+  "{n} 分钟前": "{n} 分钟前",
+  "{n} 小时前": "{n} 小时前",
+  "{n} 天前": "{n} 天前",
+  "失败": "失败",
+  "重试": "重试",
+  Dismiss: "关闭",
+  "这次没成功。可以点重试，或检查输入是否完整。": "这次没成功。可以点重试，或检查输入是否完整。",
+  // R89: Advanced 抽屉开发者分隔
+  "以下为开发者诊断信息": "以下为开发者诊断信息",
   "Keep the next safe action visible from the main surface.": "把下一步安全动作直接放在首屏，不藏在 summary 深处。",
   "No suggested next action right now.": "当前没有明确的建议下一步动作。",
   "reason {value}": "原因 {value}",
   Open: "打开",
+  "Open report": "打开报告",
+  "View report graph": "查看报告关系图谱",
+  "View graph": "查看关系图谱",
+  "Open evidence graph": "打开证据关系图",
+  "Evidence graph": "证据关系图",
+  "Report path cannot be empty.": "报告路径不能为空。",
+  "Enter a report markdown path (relative to vault root).": "请输入 report markdown 路径（相对 vault 根目录）。",
+  "Report path": "报告路径",
+  "No recent reports available; enter a path manually.": "暂无最近报告，可手动输入路径。",
+  "Choose a recent report.": "选择最近报告。",
+  "Open decision": "打开决策",
+  "Open judgment": "打开判断",
+  "Open Review": "打开审阅",
+  "Copy target": "复制目标",
+  Report: "报告",
+  "Decision page": "决策页",
+  "Judgment page": "判断页",
+  "Proposal page": "提案页",
+  "Graph page": "关系图谱",
+  "Review surface": "审阅入口",
+  "Workspace page": "工作区页面",
+  "Metric alert": "指标提醒",
+  "Command prepared for manual confirmation": "命令已准备，复制后人工确认",
+  "Previous Reports": "过往报告",
+  "(no reports today)": "今天还没有报告",
+  "(no previous reports)": "暂无过往报告",
   "Search Results": "搜索结果",
-  "No matching pages in the compiled workspace.": "编译后的工作区中没有匹配页面。",
   "Recent Queries": "最近查询",
   "Judgment Focus": "判断焦点",
   "Quick Links": "快捷链接",
   "Plugin-triggered Commands": "插件触发命令",
-  "Runtime Events from shell-summary": "来自 shell-summary 的运行事件",
+  "Runtime Events from shell-summary": "运行事件",
   "Recent Receipts": "最近回执",
   "Review Center": "审阅中心",
   "Review Next": "下一项审阅",
@@ -313,7 +723,6 @@ const ZH_TEXT = {
   " | syncing": " | 同步中",
   " | running {count}": " | 运行中 {count}",
   "Command failed with exit code {code}": "命令失败，退出码 {code}",
-  "Capture note modal": "记录笔记模态框",
   "unknown error": "未知错误",
   "No plugin-triggered commands yet.": "当前还没有插件触发的命令。",
   "No shell summary recent runs are available.": "当前没有 shell summary recent runs。",
@@ -328,7 +737,9 @@ const ZH_TEXT = {
   "No explicit rewrite proposal object is available.": "当前没有显式 rewrite proposal object。",
   "No explicit action control object is available.": "当前没有显式 action control object。",
   "No judgment asset focus object is available.": "当前没有 judgment asset focus object。",
-  "shell-summary.json is not available yet. Run Refresh, Compile, or Nightly first.": "shell-summary.json 尚未生成。先运行 Refresh / Compile / Nightly 之一。",
+  "shell-summary.json is not available yet. Run Refresh, Compile, or Nightly first.": "数据还没准备好。先点上方刷新，或等当前任务跑完。",
+  "数据还没准备好。先点上方刷新，或等当前任务跑完。": "数据还没准备好。先点上方刷新，或等当前任务跑完。",
+  "数据还没就绪。先点上方刷新，或等首次任务跑完。": "数据还没就绪。先点上方刷新，或等首次任务跑完。",
   "Repo-local runtime unavailable. Missing: {missing}": "Repo-local runtime 不可用。缺少：{missing}",
   "No visible review backlog item is available; fell back to the manual form.": "当前没有可见的 review backlog 条目，已回退到手动表单。",
   "No reviewable page is available.": "当前没有可 review 的页面。",
@@ -502,10 +913,6 @@ const ZH_TEXT = {
   "Unable to open {path}": "无法打开 {path}",
   "Path not found: {path}": "路径不存在：{path}",
   "Unable to open resource: {path}": "无法打开资源：{path}",
-  Interaction: "交互",
-  "Ask anything about the current workspace.": "围绕当前工作区直接提问或搜索。",
-  "Type a question or keyword...": "输入问题或关键词……",
-  Send: "发送",
   Materials: "原料投入",
   "Push new material into the furnace.": "把新原料投进炉子，等下一次编译或夜间巡检收敛。",
   "Latest outputs": "最新产出",
@@ -513,24 +920,33 @@ const ZH_TEXT = {
   "View all": "查看全部",
   "No recent outputs yet. Drop material or run a compile.": "还没有最新产出；先投料或运行一次编译。",
   "Daily Digest": "今日简报",
-  "A compact pulse for knowledge, review, and nightly health.": "用一张卡片看知识库、审阅积压和 nightly 状态。",
+  "A compact pulse for knowledge, review, and nightly health.": "用一张卡片看知识库、审阅和例行检查状态。",
   "Last sync": "最后同步",
   "Summary unavailable. The panel will sync automatically when possible.": "当前还没有 summary；面板会在可用时自动同步。",
-  "Advanced Actions": "高级操作",
+  "Advanced Actions": "工具操作",
   "Core workflows stay available here, but hidden by default.": "核心工作流仍然都在，只是默认折叠起来。",
+  "Knowledge Compounding Metrics": "知识复利指标",
+  "(metrics unavailable; run aiwiki metrics for details)": "指标暂不可用；需要详情时打开指标报告。",
+  "Provenance Completeness": "来源完整度",
+  "Stale Page Ratio": "过期页面占比",
+  "Review Closure Rate (7d)": "审阅完成率（7 天）",
+  "Proposal Acceptance Rate": "提案采纳率",
+  "Judgment Revisit Rate": "判断复核率",
+  "Output File-back Rate": "产出回填率",
+  "Elixir Reuse Count": "复用沉淀数",
+  "Run `aiwiki metrics --json` for full data.": "完整指标数据可在指标报告中查看。",
   "Quick review": "快速审阅",
   "Quick execution": "快速执行",
   "Latest plugin runs": "最近运行",
   "Latest run": "最近一次运行",
   "No recent plugin runs.": "当前还没有插件运行记录。",
-  "No plugin run yet. Send a question or use a command.": "当前还没有插件运行；发送提问或执行一个命令。",
   "Run log": "运行日志",
   "Open log": "打开日志",
   "Copy command": "复制命令",
   "Reveal result": "定位结果",
   "Reveal receipt": "定位回执",
-  "Copy receipt path": "复制回执路径",
-  "Copy stderr": "复制 stderr",
+  "Copy receipt path": "复制运行记录路径",
+  "Copy stderr": "复制错误输出",
   "Unable to reveal {path}": "无法定位 {path}",
   "Path revealed: {path}": "已定位 {path}",
   "Path not found: {path}": "路径不存在：{path}",
@@ -543,14 +959,18 @@ const ZH_TEXT = {
   Failed: "失败",
   Artifacts: "产物",
   "Sync now": "立即同步",
-  "No interaction yet. Ask a question or run a search.": "还没有交互记录；先提问或搜索一次。",
   "backend {value}": "后端 {value}",
   "model {value}": "模型 {value}",
+  selected: "初始",
+  final: "最终",
+  "fallback {value}": "回退 {value}",
   "protocol {value}": "协议 {value}",
   "Re-run": "重新运行",
   " | llm degraded": " | LLM 已降级",
   "Cannot re-run this entry because argv was not recorded.": "这条记录没有保存 argv，暂时无法重新运行。",
   "Command completed successfully.": "命令已成功完成。",
+  "Queued for desktop drain: {path}": "已加入桌面端待处理队列：{path}",
+  "Queued for desktop drain. This is not a completed runtime execution.": "已加入桌面端待处理队列。这不是已完成的 runtime 执行。",
   "Working directory": "工作目录",
   "Arguments": "参数",
   "Fallback from": "回退来源",
@@ -574,25 +994,29 @@ const ZH_TEXT = {
   "Source": "来源",
   "Source path or URL": "来源路径或 URL",
   "Select local file": "选择本地文件",
-  "PDF or Repo": "PDF 或 Repo",
+  "PDF, Markdown, or Repo": "PDF、Markdown 或 Repo",
   PDF: "PDF",
+  Markdown: "Markdown",
   Repo: "Repo",
   "Local PDF path or PDF URL.": "本地 PDF 路径或 PDF URL。",
+  "Local Markdown / txt file path.": "本地 Markdown / txt 文件路径。",
   "Local repo path or remote git URL.": "本地仓库路径或远端 git URL。",
   "Local image path or image URL.": "本地图片路径或图片 URL。",
   "Repo max files": "Repo 最大文件数",
   "Skip vision analysis": "跳过视觉分析",
   "Drop this web page into raw/inbox.": "把网页抓取进 raw/inbox。",
-  "Import a PDF or repo snapshot into raw/inbox.": "把 PDF 或仓库快照投进 raw/inbox。",
-  "Import an image into raw/inbox.": "把图片投进 raw/inbox。",
+  "Import a PDF asset into raw/assets or a repo snapshot into raw/inbox.": "PDF 原件进 raw/assets；Markdown / 仓库快照进 raw/inbox。",
+  "Import an image asset into raw/assets.": "图片原件进 raw/assets。",
   "No nightly state yet.": "还没有 nightly 状态。",
+  "Rerun command": "重跑命令",
+  "Rewrite follow-up": "改写后续动作",
   "healthy": "健康",
   warnings: "告警",
   errors: "错误",
   "status {status} | started {started}{finished}": "状态 {status} | 开始于 {started}{finished}",
   " | finished {finished}": " | 结束于 {finished}",
-  "stdout: {value}": "stdout：{value}",
-  "stderr: {value}": "stderr：{value}",
+  "stdout: {value}": "标准输出：{value}",
+  "stderr: {value}": "错误输出：{value}",
   "error: {value}": "错误：{value}",
   "completed": "已完成",
   "failed: {message}": "失败：{message}",
@@ -605,6 +1029,10 @@ const ZH_TEXT = {
   page: "页面",
   pages: "页面",
   archive: "归档",
+  // EP-006 jargon → user-friendly Chinese
+  stdout: "标准输出",
+  stderr: "错误输出",
+  error: "错误",
 };
 const CURATED_STATUS_LABELS = {
   proposed: "Proposed",
@@ -656,6 +1084,246 @@ function truncateText(value, limit = 240) {
     return text;
   }
   return `${text.slice(0, limit - 1)}…`;
+}
+
+function sanitizeDropFileName(value) {
+  const raw = String(value || "attachment").trim() || "attachment";
+  const sanitized = raw.replace(/[\\/:*?"<>|\0\r\n\t]/g, "_").replace(/^\.+$/, "attachment");
+  return sanitized.slice(0, 160) || "attachment";
+}
+
+function nodeFs() {
+  if (typeof fs !== "undefined") return fs;
+  if (typeof require === "function") return require("fs");
+  throw new Error("File-system access is unavailable in this Obsidian runtime.");
+}
+
+function nodePath() {
+  if (typeof path !== "undefined") return path;
+  if (typeof require === "function") return require("path");
+  throw new Error("Path utilities are unavailable in this Obsidian runtime.");
+}
+
+function pluginVaultRoot(plugin) {
+  const repoRoot = plugin && plugin.repoState && typeof plugin.repoState.root === "string" ? plugin.repoState.root.trim() : "";
+  if (repoRoot) return repoRoot;
+  const adapter = plugin && plugin.app && plugin.app.vault && plugin.app.vault.adapter;
+  return adapter && typeof adapter.basePath === "string" ? adapter.basePath.trim() : "";
+}
+
+function normalizeMaterialPaths(values) {
+  const items = Array.isArray(values) ? values : [values];
+  const seen = new Set();
+  const out = [];
+  items.forEach((value) => {
+    const text = String(value || "").trim();
+    if (!text || seen.has(text)) {
+      return;
+    }
+    seen.add(text);
+    out.push(text);
+  });
+  return out;
+}
+
+async function resolvePluginFileSource(plugin, file) {
+  const fileName = String(file && file.name || "").trim();
+  const rawPath = String(file && file.path || "").trim();
+  const pathApi = nodePath();
+  if (rawPath && (pathApi.isAbsolute(rawPath) || rawPath.includes("/") || rawPath.includes("\\")) && rawPath !== fileName) {
+    return rawPath;
+  }
+  if (!file || typeof file.arrayBuffer !== "function") {
+    if (rawPath) return rawPath;
+    throw new Error("Cannot access dropped file contents; please choose a local file again.");
+  }
+  const root = pluginVaultRoot(plugin);
+  if (!root) {
+    throw new Error("Cannot save dropped file because the vault root is unavailable.");
+  }
+  const fsApi = nodeFs();
+  const targetDir = pathApi.join(root, ".aiwiki", "tmp", "product-shell-drop");
+  fsApi.mkdirSync(targetDir, { recursive: true });
+  const safeName = sanitizeDropFileName(fileName || "attachment");
+  const parsedName = pathApi.parse(safeName);
+  const safeStem = parsedName.name || "attachment";
+  const stamp = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+  const targetPath = pathApi.join(targetDir, `${safeStem}-${stamp}${parsedName.ext || ""}`);
+  const buffer = await file.arrayBuffer();
+  fsApi.writeFileSync(targetPath, new Uint8Array(buffer));
+  return targetPath;
+}
+
+function collectMaterialPathsFromPayload(payload) {
+  const out = [];
+  const seenObjects = new Set();
+  const directKeys = [
+    "note_path",
+    "asset_path",
+    "path",
+    "output_path",
+    "report_path",
+    "receipt_path",
+    "state_path",
+    "index_path",
+    "stored_path",
+  ];
+  const listKeys = [
+    "asset_paths",
+    "note_paths",
+    "paths",
+    "output_paths",
+    "report_paths",
+    "receipt_paths",
+    "state_paths",
+    "index_paths",
+    "stored_paths",
+    "material_paths",
+  ];
+  const pushValue = (value) => {
+    normalizeMaterialPaths(value).forEach((item) => out.push(item));
+  };
+  const visit = (value, depth = 0) => {
+    if (!value || depth > 3) {
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((item) => visit(item, depth + 1));
+      return;
+    }
+    if (typeof value !== "object") {
+      return;
+    }
+    if (seenObjects.has(value)) {
+      return;
+    }
+    seenObjects.add(value);
+    directKeys.forEach((key) => pushValue(value[key]));
+    listKeys.forEach((key) => {
+      const items = value[key];
+      if (Array.isArray(items)) {
+        items.forEach((item) => pushValue(item));
+      }
+    });
+    ["material", "materials", "result", "results", "artifacts", "items"].forEach((key) => {
+      if (value[key]) {
+        visit(value[key], depth + 1);
+      }
+    });
+  };
+  visit(payload);
+  return normalizeMaterialPaths(out);
+}
+
+function buildAutoAskQuestion(question, materialPaths) {
+  const normalizedQuestion = String(question || "").trim();
+  if (!normalizedQuestion) {
+    return "";
+  }
+  const paths = normalizeMaterialPaths(materialPaths);
+  const sourceHint = paths.length
+    ? `\n\n请优先使用本次投喂材料回答；材料路径供系统路由使用：${paths.join("、")}`
+    : "";
+  return `${normalizedQuestion}${sourceHint}`;
+}
+
+function stripQuotedReportLinesForIntent(question) {
+  return String(question || "")
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^\s*引用报告\s*[:：]\s*\S+\s*/i, ""))
+    .join("\n")
+    .trim();
+}
+
+function inferAutoAskFormat(question, materialPaths) {
+  void question;
+  void materialPaths;
+  return "report";
+}
+
+function buildAutoAskQuestionLegacy(question, materialPaths) {
+  const normalizedQuestion = String(question || "").trim();
+  if (!normalizedQuestion) {
+    return "";
+  }
+  const paths = normalizeMaterialPaths(materialPaths);
+  const pathBlock = paths.length ? `- ${paths.join("\n- ")}` : "- (drop payload 未返回可用路径)";
+  return [
+    "请基于以下本次投喂材料回答用户问题。",
+    "",
+    "本次投喂材料路径：",
+    pathBlock,
+    "",
+    "用户问题：",
+    normalizedQuestion,
+  ].join("\n");
+}
+
+function looksLikeUniversalMaterialPayload(value) {
+  const text = String(value || "").trim();
+  if (!text) return false;
+  if (/^\s*引用报告\s*[:：]/im.test(text)) return false;
+  const lower = text.toLowerCase();
+  if (lower.startsWith("obsidian://open")) return false;
+  if (lower.startsWith("http://") || lower.startsWith("https://")) return true;
+  if (lower.startsWith("git@") || lower.startsWith("ssh://")) return true;
+  if (lower.startsWith("note:") && lower.slice("note:".length).trim()) return true;
+  if (lower.endsWith(".git")) return true;
+  if (lower.endsWith(".pdf")) return true;
+  if ([".md", ".markdown", ".txt"].some((suffix) => lower.endsWith(suffix))) return true;
+  if ([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"].some((suffix) => lower.endsWith(suffix))) return true;
+  return false;
+}
+
+function isObsidianOpenLink(value) {
+  return String(value || "").trim().toLowerCase().startsWith("obsidian://open");
+}
+
+function obsidianOpenLinkFilePath(value) {
+  const text = String(value || "").trim();
+  if (!isObsidianOpenLink(text)) return "";
+  try {
+    const url = new URL(text);
+    const file = String(url.searchParams.get("file") || "").trim();
+    return normalizeWorkspaceLinkTarget(file);
+  } catch (e) {
+    const match = text.match(/[?&]file=([^&]+)/i);
+    if (!match) return "";
+    try {
+      return normalizeWorkspaceLinkTarget(decodeURIComponent(match[1].replace(/\+/g, " ")));
+    } catch (_decodeError) {
+      return "";
+    }
+  }
+}
+
+function normalizeWorkspaceLinkTarget(value) {
+  const text = String(value || "").trim().replace(/\\/g, "/");
+  if (!text || text.startsWith("/") || text.startsWith("../") || text.includes("/../")) {
+    return "";
+  }
+  return text;
+}
+
+function splitTextMaterialQuestion(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  if (/^\s*引用报告\s*[:：]/im.test(text)) return null;
+  const nonEmptyLines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (nonEmptyLines.length >= 2 && looksLikeUniversalMaterialPayload(nonEmptyLines[0])) {
+    return {
+      payload: nonEmptyLines[0],
+      question: nonEmptyLines.slice(1).join("\n"),
+    };
+  }
+  const oneLine = text.match(/^(\S+)\s+([\s\S]+)$/);
+  if (oneLine && looksLikeUniversalMaterialPayload(oneLine[1])) {
+    return {
+      payload: oneLine[1],
+      question: oneLine[2].trim(),
+    };
+  }
+  return null;
 }
 
 function readJsonText(rawText) {
@@ -755,10 +1423,1374 @@ function reviewObjectMetaText(control, locale = DEFAULT_LOCALE) {
   return parts.join(" | ");
 }
 
+function normalizeLastViewedTimestamp(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return new Date(value).toISOString();
+  }
+  if (typeof value === "string" && value.trim()) {
+    return value;
+  }
+  return "";
+}
+
+function normalizeEnabledChannels(value) {
+  const allowed = new Set(["feishu", "wecom"]);
+  const items = Array.isArray(value) ? value : [];
+  return Array.from(
+    new Set(
+      items
+        .map((item) => String(item || "").trim())
+        .filter((item) => allowed.has(item))
+    )
+  );
+}
+
+function buildNotifyEnv(settings) {
+  const env = {};
+  const feishuWebhookUrl = String(settings && settings.feishuWebhookUrl || "").trim();
+  if (feishuWebhookUrl) {
+    env.AIWIKI_NOTIFY_FEISHU_WEBHOOK_URL = feishuWebhookUrl;
+  }
+  const wecomWebhookUrl = String(settings && settings.wecomWebhookUrl || "").trim();
+  if (wecomWebhookUrl) {
+    env.AIWIKI_NOTIFY_WECOM_WEBHOOK_URL = wecomWebhookUrl;
+  }
+  const enabledChannels = Array.isArray(settings && settings.enabledChannels)
+    ? settings.enabledChannels.map((channel) => String(channel || "").trim()).filter(Boolean)
+    : [];
+  if (enabledChannels.length) {
+    env.AIWIKI_NOTIFY_ENABLED_CHANNELS = enabledChannels.join(",");
+  }
+  return env;
+}
+
+function reportDate(value) {
+  const date = new Date(String(value || ""));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function localDateKey(date) {
+  return date instanceof Date && !Number.isNaN(date.getTime()) ? date.toDateString() : "";
+}
+
+function localDateLabel(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return "unknown";
+  }
+  const yesterday = new Date();
+  yesterday.setHours(0, 0, 0, 0);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const target = new Date(date);
+  target.setHours(0, 0, 0, 0);
+  if (target.toDateString() === yesterday.toDateString()) {
+    return "Yesterday";
+  }
+  const year = target.getFullYear();
+  const month = String(target.getMonth() + 1).padStart(2, "0");
+  const day = String(target.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function isReportUnread(report, lastViewedTimestamp) {
+  const createdAt = reportDate(report && report.created_at);
+  if (!createdAt) {
+    return false;
+  }
+  const normalizedLastViewed = normalizeLastViewedTimestamp(lastViewedTimestamp);
+  if (!normalizedLastViewed) {
+    return true;
+  }
+  const lastViewed = reportDate(normalizedLastViewed);
+  if (!lastViewed) {
+    return true;
+  }
+  return createdAt.getTime() > lastViewed.getTime();
+}
+
+function splitReportsByLocalDate(reports, options = {}) {
+  const limitPreviousDays = Number.isFinite(Number(options.limitPreviousDays))
+    ? Math.max(1, Number(options.limitPreviousDays))
+    : 7;
+  const todayKey = localDateKey(new Date());
+  const today = [];
+  const previousGroups = new Map();
+
+  (Array.isArray(reports) ? reports : [])
+    .filter((report) => report && typeof report === "object")
+    .map((report) => ({ report, date: reportDate(report.created_at) }))
+    .filter((entry) => entry.date)
+    .sort((left, right) => right.date.getTime() - left.date.getTime())
+    .forEach((entry) => {
+      const key = localDateKey(entry.date);
+      if (key === todayKey) {
+        today.push(entry.report);
+        return;
+      }
+      if (!previousGroups.has(key)) {
+        previousGroups.set(key, { key, label: localDateLabel(entry.date), date: entry.date, items: [] });
+      }
+      previousGroups.get(key).items.push(entry.report);
+    });
+
+  return {
+    today,
+    previous: Array.from(previousGroups.values())
+      .sort((left, right) => right.date.getTime() - left.date.getTime())
+      .slice(0, limitPreviousDays),
+  };
+}
+
+// --- src/command_specs.js ---
+
+// Pure command specs for launcher-backed Product Shell actions.
+
+function commandLabel(t, key, subject) {
+  const prefix = typeof t === "function" ? t(key) : key;
+  return `${prefix}: ${truncateText(subject, 48)}`;
+}
+
+function buildUniversalInputCommandSpec({ payload, title }) {
+  const normalizedPayload = String(payload || "").trim();
+  const normalizedTitle = String(title || "").trim();
+  const args = ["drop", normalizedPayload];
+  if (normalizedTitle) {
+    args.push("--title", normalizedTitle);
+  }
+  return {
+    args,
+    labelKey: "Universal Input",
+    labelSubject: normalizedTitle || normalizedPayload,
+    options: { refreshAfter: true },
+  };
+}
+
+function buildAskCommandSpec({ question, format, mode, protocol }) {
+  const finalFormat = "report";
+  const longRunning = mode === "run-ask" && finalFormat === "report";
+  const command = longRunning ? "run-ask-submit" : mode;
+  const args = [command, question, "--format", finalFormat];
+  if (protocol) {
+    args.push("--protocol", protocol);
+  }
+  if (mode === "run-ask") {
+    const directQuestion = String(question || "").trim();
+    const canUseDirect = false
+      && !directQuestion.includes("材料路径供系统路由使用：")
+      && !directQuestion.includes("本次投喂材料路径：");
+    if (canUseDirect) {
+      args.push("--direct");
+    }
+    args.push("--lean");
+  }
+  return {
+    args,
+    labelKey: longRunning ? "Long Report" : "Ask",
+    labelSubject: question,
+    options: {
+      refreshAfter: true,
+      longRunning,
+      backgroundSubmit: longRunning,
+    },
+  };
+}
+
+function buildReportSubgraphCommandSpec(reportPath) {
+  const normalized = String(reportPath || "").trim();
+  return {
+    normalized,
+    args: ["report-subgraph", "--report", normalized],
+    labelKey: "View report graph",
+    labelSubject: normalized,
+    options: { refreshAfter: true },
+  };
+}
+
+function buildDropUrlCommandSpec({ url, title }) {
+  const args = ["drop", "url", url];
+  if (title) {
+    args.push("--title", title);
+  }
+  return {
+    args,
+    labelKey: "Drop URL",
+    labelSubject: title || url,
+    options: { refreshAfter: true },
+  };
+}
+
+function buildDropFileCommandSpec({ mode, source, title, maxFiles }) {
+  const pathApi = nodePath();
+  const rawMode = String(mode || "pdf").trim();
+  const normalizedMode = rawMode === "repo" || rawMode === "markdown" ? rawMode : "pdf";
+  const args = ["drop", normalizedMode === "repo" ? "repo" : normalizedMode === "markdown" ? "markdown" : "pdf", source];
+  if (title) {
+    args.push("--title", title);
+  }
+  if (normalizedMode === "repo") {
+    args.push("--max-files", String(Number.isFinite(Number(maxFiles)) && Number(maxFiles) > 0 ? Number(maxFiles) : 200));
+  }
+  return {
+    args,
+    labelKey: "Drop File",
+    labelSubject: title || pathApi.basename(source) || source,
+    options: { refreshAfter: true },
+  };
+}
+
+function buildDropImageCommandSpec({ source, title, noVision }) {
+  const pathApi = nodePath();
+  const args = ["drop", "image", source];
+  if (title) {
+    args.push("--title", title);
+  }
+  if (noVision) {
+    args.push("--no-vision");
+  }
+  return {
+    args,
+    labelKey: "Drop Image",
+    labelSubject: title || pathApi.basename(source) || source,
+    options: { refreshAfter: true },
+  };
+}
+
+function buildDropNoteCommandSpec({ text, title, kind }) {
+  const args = ["drop", "markdown", "--text", text];
+  if (title) {
+    args.push("--title", title);
+  }
+  args.push("--kind", kind === "markdown" ? "note" : kind || "note");
+  return {
+    args,
+    labelKey: "Capture Material",
+    labelSubject: title || text,
+    options: { refreshAfter: true },
+  };
+}
+
+// --- src/pending_state.js ---
+
+// Pure pending-submission state helpers.
+
+function serializePendingSubmissionList(pendingSubmissions) {
+  if (!Array.isArray(pendingSubmissions)) return [];
+  return pendingSubmissions.slice(0, 8).map((e) => ({
+    id: String(e.id || ""),
+    payloadFingerprint: String(e.payloadFingerprint || ""),
+    displayText: String(e.displayText || ""),
+    title: String(e.title || ""),
+    status: String(e.status || "running"),
+    startedAt: String(e.startedAt || ""),
+    finishedAt: String(e.finishedAt || ""),
+    error: String(e.error || ""),
+    reconcileTarget: String(e.reconcileTarget || ""),
+    reconcilePath: String(e.reconcilePath || ""),
+    runId: String(e.runId || ""),
+    runNotesPath: String(e.runNotesPath || ""),
+    jobId: String(e.jobId || ""),
+    deliveryMode: String(e.deliveryMode || ""),
+    llmStatus: String(e.llmStatus || ""),
+    llmBackend: String(e.llmBackend || ""),
+    llmModel: String(e.llmModel || ""),
+    backgroundStatus: String(e.backgroundStatus || ""),
+    artifactQuality: String(e.artifactQuality || ""),
+    retryArgs: e.retryArgs && typeof e.retryArgs === "object" ? e.retryArgs : null,
+  }));
+}
+
+function hydratePendingSubmissionList(raw, now = Date.now()) {
+  if (!Array.isArray(raw) || !raw.length) return [];
+  const TTL_MS = 24 * 60 * 60 * 1000;
+  const RECEIVED_STALE_MS = 12 * 60 * 60 * 1000;
+  const DONE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+  const out = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const startedAt = String(item.startedAt || "");
+    const finishedAt = String(item.finishedAt || "");
+    const startMs = Date.parse(startedAt);
+    const finishedMs = Date.parse(finishedAt);
+    const status = String(item.status || "running");
+    // R90: done 卡 7 天后自动 drop
+    // P2: 旧数据缺 finishedAt 时回退 startedAt，避免无 TTL 永久保留
+    if (status === "done") {
+      const ttlBase = Number.isFinite(finishedMs)
+        ? finishedMs
+        : (Number.isFinite(startMs) ? startMs : null);
+      if (ttlBase !== null && now - ttlBase > DONE_TTL_MS) continue;
+    }
+    let nextStatus = status;
+    let error = String(item.error || "");
+    if (Number.isFinite(startMs)) {
+      const age = now - startMs;
+      if ((status === "running") && age > TTL_MS) {
+        nextStatus = "failed";
+        error = "上次提交可能仍在处理或已完成，点上方刷新查看结果";
+      } else if (status === "received" && age > RECEIVED_STALE_MS) {
+        item._stale = true;
+      }
+    }
+    out.push({
+      id: String(item.id || `pending-${now}-${out.length}`),
+      payloadFingerprint: String(item.payloadFingerprint || ""),
+      displayText: String(item.displayText || ""),
+      title: String(item.title || ""),
+      status: nextStatus,
+      startedAt,
+      finishedAt: String(item.finishedAt || (nextStatus === "failed" ? new Date().toISOString() : "")),
+      error,
+      reconcileTarget: String(item.reconcileTarget || ""),
+      reconcilePath: String(item.reconcilePath || ""),
+      runId: String(item.runId || ""),
+      runNotesPath: String(item.runNotesPath || ""),
+      jobId: String(item.jobId || ""),
+      deliveryMode: String(item.deliveryMode || ""),
+      llmStatus: String(item.llmStatus || ""),
+      llmBackend: String(item.llmBackend || ""),
+      llmModel: String(item.llmModel || ""),
+      backgroundStatus: String(item.backgroundStatus || ""),
+      artifactQuality: String(item.artifactQuality || ""),
+      retryArgs: item.retryArgs && typeof item.retryArgs === "object" ? item.retryArgs : null,
+      _stale: Boolean(item._stale),
+    });
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
+function isPendingSubmissionDegradedEntry(entry) {
+  if (!entry || typeof entry !== "object") return false;
+  if (entry.status === "degraded") return true;
+  const deliveryMode = String(entry.deliveryMode || entry.delivery_mode || "").trim();
+  const llmStatus = String(entry.llmStatus || entry.llm_status || "").trim();
+  const backgroundStatus = String(entry.backgroundStatus || entry.background_status || "").trim();
+  const artifactQuality = String(entry.artifactQuality || entry.artifact_quality || "").trim();
+  return deliveryMode === "deterministic-fallback"
+    || deliveryMode === "llm-failed"
+    || llmStatus === "timeout_or_unavailable"
+    || llmStatus === "validation_failed"
+    || llmStatus === "failed"
+    || llmStatus === "degraded"
+    || backgroundStatus === "degraded"
+    || artifactQuality === "degraded";
+}
+
+function createPendingSubmissionEntry({ displayText, opts = {}, id, startedAt }) {
+  const text = String(displayText || "").trim();
+  if (!text) {
+    return null;
+  }
+  return {
+    id: String(id || ""),
+    payloadFingerprint: text.slice(0, 80),
+    displayText: text.length > 120 ? text.slice(0, 117) + "…" : text,
+    title: String(opts.title || "").trim(),
+    status: "running",
+    startedAt: String(startedAt || ""),
+    finishedAt: "",
+    error: "",
+    reconcileTarget: "",
+    runId: String(opts.runId || "").trim(),
+    runNotesPath: String(opts.runNotesPath || "").trim(),
+    jobId: String(opts.jobId || "").trim(),
+    deliveryMode: String(opts.deliveryMode || "").trim(),
+    llmStatus: String(opts.llmStatus || "").trim(),
+    llmBackend: String(opts.llmBackend || "").trim(),
+    llmModel: String(opts.llmModel || "").trim(),
+    backgroundStatus: String(opts.backgroundStatus || "").trim(),
+    artifactQuality: String(opts.artifactQuality || "").trim(),
+    retryArgs: opts.retryArgs && typeof opts.retryArgs === "object" ? opts.retryArgs : null,
+  };
+}
+
+function resetPendingSubmissionEntryForRetry(entry, nowIso) {
+  if (!entry || typeof entry !== "object") return false;
+  entry.status = "running";
+  entry.error = "";
+  entry.startedAt = String(nowIso || "");
+  entry.finishedAt = "";
+  entry.reconcileTarget = "";
+  entry.reconcilePath = "";
+  entry.jobId = "";
+  entry.runId = "";
+  entry.runNotesPath = "";
+  entry.deliveryMode = "";
+  entry.llmStatus = "";
+  entry.llmBackend = "";
+  entry.llmModel = "";
+  entry.backgroundStatus = "";
+  entry.artifactQuality = "";
+  if (entry.retryArgs && typeof entry.retryArgs === "object") {
+    entry.retryArgs = Object.assign({}, entry.retryArgs, { jobId: "", runId: "", runNotesPath: "" });
+  }
+  entry._stale = false;
+  return true;
+}
+
+function markPendingSubmissionEntryReceived(entry, nowIso) {
+  if (!entry || typeof entry !== "object" || entry.status !== "running") return false;
+  entry.status = "received";
+  entry.finishedAt = String(nowIso || "");
+  return true;
+}
+
+function markPendingSubmissionEntryDone(entry, reconcileTarget, reconcilePath, nowIso) {
+  if (!entry || typeof entry !== "object") return false;
+  if (entry.status === "done" || entry.status === "failed" || entry.status === "degraded") return false;
+  entry.status = isPendingSubmissionDegradedEntry(entry) ? "degraded" : "done";
+  entry.finishedAt = String(nowIso || "");
+  if (reconcileTarget) entry.reconcileTarget = String(reconcileTarget);
+  if (reconcilePath) entry.reconcilePath = String(reconcilePath);
+  return true;
+}
+
+function markPendingSubmissionEntryFailed(entry, errorText, nowIso) {
+  if (!entry || typeof entry !== "object") return false;
+  entry.status = "failed";
+  entry.finishedAt = String(nowIso || "");
+  entry.error = String(errorText || "失败");
+  return true;
+}
+
+function updatePendingSubmissionEntryRunNotes(entry, runNotesPath, runId) {
+  if (!entry || typeof entry !== "object") return false;
+  const notes = String(runNotesPath || "").trim();
+  const rid = String(runId || "").trim();
+  let changed = false;
+  if (notes) {
+    entry.runNotesPath = notes;
+    changed = true;
+  }
+  if (rid) {
+    entry.runId = rid;
+    changed = true;
+  }
+  return changed;
+}
+
+function updatePendingSubmissionEntryArtifactMeta(entry, meta) {
+  if (!entry || typeof entry !== "object" || !meta || typeof meta !== "object") return false;
+  let changed = false;
+  if (meta.runNotesPath || meta.run_notes_path || meta.runId || meta.run_id) {
+    changed = updatePendingSubmissionEntryRunNotes(
+      entry,
+      meta.runNotesPath || meta.run_notes_path,
+      meta.runId || meta.run_id
+    ) || changed;
+  }
+  const fields = [
+    ["deliveryMode", "delivery_mode"],
+    ["llmStatus", "llm_status"],
+    ["llmBackend", "llm_backend"],
+    ["llmModel", "llm_model"],
+    ["backgroundStatus", "background_status"],
+    ["artifactQuality", "artifact_quality"],
+  ];
+  for (const [camelKey, snakeKey] of fields) {
+    if (meta[camelKey] || meta[snakeKey]) {
+      entry[camelKey] = String(meta[camelKey] || meta[snakeKey] || "");
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+function pendingHasActiveLongRunning(pendingSubmissions) {
+  if (!Array.isArray(pendingSubmissions)) return false;
+  return pendingSubmissions.some((entry) => entry && (entry.status === "running" || entry.status === "received") && entry.retryArgs && entry.retryArgs.longRunning);
+}
+
+function reconcilePendingSubmissionList(pendingSubmissions, summary, now = Date.now()) {
+  const pending = Array.isArray(pendingSubmissions) ? pendingSubmissions : [];
+  if (!pending.length || !summary || typeof summary !== "object") {
+    return { remaining: pending, hits: [] };
+  }
+  const outputCands = Array.isArray(summary.recent_outputs) ? summary.recent_outputs : [];
+  const receiptCands = Array.isArray(summary.recent_receipts) ? summary.recent_receipts : [];
+  const rawCands = Array.isArray(summary.recent_raw_inputs) ? summary.recent_raw_inputs : [];
+  if (!outputCands.length && !receiptCands.length && !rawCands.length) {
+    return { remaining: pending, hits: [] };
+  }
+  const SKEW_MS = 60 * 1000;
+  const RECONCILE_WINDOW_MS = 5 * 60 * 1000;
+  const remaining = [];
+  const hits = [];
+  for (const entry of pending) {
+    if (!entry) { continue; }
+    // failed/done/degraded 保留（done/degraded 等用户处理）
+    if (entry.status === "failed" || entry.status === "done" || entry.status === "degraded") {
+      remaining.push(entry);
+      continue;
+    }
+    const startMs = Date.parse(entry.startedAt || "") || now;
+    // 超窗（仅对 running 生效；received 长期等待 reconcile，不超窗）
+    if (entry.status === "running" && now - startMs > RECONCILE_WINDOW_MS) {
+      remaining.push(entry);
+      continue;
+    }
+    const fp = String(entry.payloadFingerprint || "").trim().toLowerCase();
+    const title = String(entry.title || "").trim().toLowerCase();
+    const fpKey = fp.length >= 60 ? fp.slice(0, 60) : fp;
+    const useExact = fp.length > 0 && fp.length < 16;
+    const matchAgainst = (cand) => {
+      if (!cand || typeof cand !== "object") return false;
+      const candTimeStr = cand.created_at || cand.generated_at || cand.applied_at || cand.occurred_at || cand.timestamp || "";
+      const candMs = Date.parse(candTimeStr);
+      if (!Number.isFinite(candMs)) return false;
+      if (candMs + SKEW_MS < startMs) return false;
+      const fields = [
+        cand.title,
+        cand.path,
+        cand.summary,
+        cand.payload,
+        cand.receipt_path,
+        cand.output_path,
+        cand.stored_path,
+        cand.original_path,
+        cand.note_path,
+        cand.query,
+        cand.target,
+      ].map((v) => String(v || "").trim().toLowerCase()).filter(Boolean);
+      if (!fields.length) return false;
+      if (useExact) {
+        return fields.some((f) => f === fp || (title && f === title));
+      }
+      const haystack = fields.join(" \u0001 ");
+      if (fpKey && haystack.includes(fpKey)) return true;
+      if (title && title.length >= 4 && haystack.includes(title)) return true;
+      return false;
+    };
+    let target = "";
+    let targetPath = "";
+    let hitRunNotesPath = "";
+    let hitRunId = "";
+    let hitMeta = null;
+    const entryRunId = String(entry.runId || (entry.retryArgs && entry.retryArgs.runId) || "").trim();
+    const findRunIdHit = (cands) => entryRunId ? cands.find((cand) => cand && String(cand.run_id || cand.runId || "").trim() === entryRunId) : null;
+    const findHit = (cands) => cands.find(matchAgainst);
+    let hitCand = findRunIdHit(outputCands) || findHit(outputCands);
+    if (hitCand) {
+      target = "outputs";
+      targetPath = String(hitCand.path || "");
+      hitRunNotesPath = String(hitCand.run_notes_path || "");
+      hitRunId = String(hitCand.run_id || "");
+      hitMeta = {
+        runNotesPath: hitRunNotesPath,
+        runId: hitRunId,
+        deliveryMode: String(hitCand.delivery_mode || ""),
+        llmStatus: String(hitCand.llm_status || ""),
+        llmBackend: String(hitCand.llm_backend || ""),
+        llmModel: String(hitCand.llm_model || ""),
+        backgroundStatus: String(hitCand.background_status || ""),
+        artifactQuality: String(hitCand.artifact_quality || ""),
+      };
+    } else {
+      hitCand = findRunIdHit(receiptCands) || findHit(receiptCands);
+      if (hitCand) {
+        target = "receipts";
+        targetPath = String(hitCand.path || hitCand.receipt_path || "");
+        hitRunNotesPath = String(hitCand.run_notes_path || "");
+        hitRunId = String(hitCand.run_id || "");
+        hitMeta = { runId: hitRunId, runNotesPath: hitRunNotesPath };
+      }
+    }
+    if (!hitCand) {
+      hitCand = findHit(rawCands);
+      if (hitCand) { target = "raw"; targetPath = String(hitCand.stored_path || hitCand.path || ""); }
+    }
+    if (target) {
+      hits.push({ id: entry.id, target, path: targetPath, runNotesPath: hitRunNotesPath, runId: hitRunId, meta: hitMeta || {} });
+      remaining.push(entry);
+    } else {
+      remaining.push(entry);
+    }
+  }
+  return { remaining, hits };
+}
+
+// --- src/pending_runtime.js ---
+
+// Runtime helpers for mutating plugin-owned pending submissions.
+
+function ensurePendingSubmissionRuntimeList(plugin) {
+  if (!plugin || typeof plugin !== "object") return [];
+  if (!Array.isArray(plugin.pendingSubmissions)) plugin.pendingSubmissions = [];
+  return plugin.pendingSubmissions;
+}
+
+function findPendingSubmissionRuntimeEntry(plugin, id) {
+  const pendingSubmissions = plugin && Array.isArray(plugin.pendingSubmissions)
+    ? plugin.pendingSubmissions
+    : [];
+  return pendingSubmissions.find((entry) => entry && entry.id === id) || null;
+}
+
+function removePendingSubmissionRuntimeEntry(plugin, id) {
+  if (!plugin || !Array.isArray(plugin.pendingSubmissions) || !plugin.pendingSubmissions.length) {
+    return false;
+  }
+  const before = plugin.pendingSubmissions.length;
+  plugin.pendingSubmissions = plugin.pendingSubmissions.filter((entry) => entry && entry.id !== id);
+  return plugin.pendingSubmissions.length !== before;
+}
+
+function commitPendingSubmissionRuntimeChange(plugin, opts = {}) {
+  if (!plugin || typeof plugin !== "object") return;
+  if (opts.save !== false && typeof plugin.savePluginState === "function") {
+    void plugin.savePluginState();
+  }
+  if (opts.refresh !== false && typeof plugin.refreshOpenViews === "function") {
+    plugin.refreshOpenViews();
+  }
+  if (opts.poller !== false && typeof plugin.updateLongRunningPoller === "function") {
+    plugin.updateLongRunningPoller();
+  }
+}
+
+function pushPendingSubmissionRuntime(plugin, displayText, opts = {}) {
+  const text = String(displayText || "").trim();
+  if (!text) return null;
+  const pendingSubmissions = ensurePendingSubmissionRuntimeList(plugin);
+  const fingerprint = text.slice(0, 80);
+  const duplicate = pendingSubmissions.find((entry) => entry && entry.status === "running" && entry.payloadFingerprint === fingerprint);
+  if (duplicate) return duplicate.id;
+  const id = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const entry = createPendingSubmissionEntry({
+    id,
+    displayText: text,
+    opts,
+    startedAt: new Date().toISOString(),
+  });
+  if (!entry) return null;
+  pendingSubmissions.unshift(entry);
+  if (pendingSubmissions.length > 8) pendingSubmissions.length = 8;
+  commitPendingSubmissionRuntimeChange(plugin);
+  return id;
+}
+
+function resetPendingSubmissionRuntimeForRetry(plugin, id) {
+  const entry = findPendingSubmissionRuntimeEntry(plugin, id);
+  if (!entry) return;
+  resetPendingSubmissionEntryForRetry(entry, new Date().toISOString());
+  commitPendingSubmissionRuntimeChange(plugin);
+}
+
+function markPendingSubmissionRuntimeReceived(plugin, id) {
+  const entry = findPendingSubmissionRuntimeEntry(plugin, id);
+  if (!entry) return;
+  if (!markPendingSubmissionEntryReceived(entry, new Date().toISOString())) return;
+  commitPendingSubmissionRuntimeChange(plugin);
+}
+
+function markPendingSubmissionRuntimeDone(plugin, id, reconcileTarget, reconcilePath) {
+  const entry = findPendingSubmissionRuntimeEntry(plugin, id);
+  if (!entry) return;
+  if (!markPendingSubmissionEntryDone(entry, reconcileTarget, reconcilePath, new Date().toISOString())) return;
+  commitPendingSubmissionRuntimeChange(plugin);
+}
+
+function markPendingSubmissionRuntimeFailed(plugin, id, error) {
+  const entry = findPendingSubmissionRuntimeEntry(plugin, id);
+  if (!entry) return;
+  markPendingSubmissionEntryFailed(
+    entry,
+    truncateText(String((error && error.message) || error || "失败"), 180),
+    new Date().toISOString()
+  );
+  commitPendingSubmissionRuntimeChange(plugin);
+}
+
+function updatePendingSubmissionRuntimeRetryArgs(plugin, id, retryArgs) {
+  const entry = findPendingSubmissionRuntimeEntry(plugin, id);
+  if (!entry) return;
+  entry.retryArgs = retryArgs && typeof retryArgs === "object" ? retryArgs : null;
+  if (retryArgs && typeof retryArgs === "object") {
+    updatePendingSubmissionRuntimeRunNotes(plugin, id, retryArgs.runNotesPath, retryArgs.runId, { save: false, refresh: false });
+    if (retryArgs.jobId) entry.jobId = String(retryArgs.jobId || "");
+  }
+  commitPendingSubmissionRuntimeChange(plugin);
+}
+
+function updatePendingSubmissionRuntimeRunNotes(plugin, id, runNotesPath, runId, opts = {}) {
+  const entry = findPendingSubmissionRuntimeEntry(plugin, id);
+  if (!entry) return;
+  updatePendingSubmissionEntryRunNotes(entry, runNotesPath, runId);
+  commitPendingSubmissionRuntimeChange(plugin, { save: opts.save, refresh: opts.refresh, poller: false });
+}
+
+function updatePendingSubmissionRuntimeArtifactMeta(plugin, id, meta, opts = {}) {
+  const entry = findPendingSubmissionRuntimeEntry(plugin, id);
+  if (!entry || !meta || typeof meta !== "object") return;
+  updatePendingSubmissionEntryArtifactMeta(entry, meta);
+  commitPendingSubmissionRuntimeChange(plugin, { save: opts.save, refresh: opts.refresh, poller: false });
+}
+
+function updateProductShellLongRunningPoller(plugin) {
+  if (pendingHasActiveLongRunning(plugin && plugin.pendingSubmissions)) {
+    plugin.startLongRunningPoller();
+  } else {
+    plugin.stopLongRunningPoller();
+  }
+}
+
+function startProductShellLongRunningPoller(plugin) {
+  if (!plugin || plugin.longRunningPollTimer) return;
+  plugin.longRunningPollTimer = window.setInterval(() => {
+    if (!pendingHasActiveLongRunning(plugin.pendingSubmissions)) {
+      plugin.stopLongRunningPoller();
+      return;
+    }
+    if (plugin.longRunningPollRefreshInFlight) {
+      return;
+    }
+    plugin.longRunningPollRefreshInFlight = true;
+    Promise.resolve(plugin.refreshShellSummarySilently())
+      .catch(() => {})
+      .finally(() => {
+        plugin.longRunningPollRefreshInFlight = false;
+      });
+  }, 15000);
+}
+
+function stopProductShellLongRunningPoller(plugin) {
+  if (!plugin || !plugin.longRunningPollTimer) return;
+  window.clearInterval(plugin.longRunningPollTimer);
+  plugin.longRunningPollTimer = null;
+  plugin.longRunningPollRefreshInFlight = false;
+}
+
+function productShellLastSummaryRefreshLabel(plugin) {
+  const ts = plugin && plugin.shellSummary && plugin.shellSummary.generated_at ? String(plugin.shellSummary.generated_at) : "";
+  if (!ts) return plugin.t("未刷新");
+  const ms = Date.parse(ts);
+  if (!Number.isFinite(ms)) return plugin.t("未刷新");
+  const diff = Math.max(0, Date.now() - ms);
+  if (diff < 60 * 1000) return plugin.t("刚刚");
+  const minutes = Math.floor(diff / (60 * 1000));
+  if (minutes < 60) return plugin.t("{n} 分钟前", { n: minutes });
+  const hours = Math.floor(diff / (60 * 60 * 1000));
+  if (hours < 24) return plugin.t("{n} 小时前", { n: hours });
+  const days = Math.floor(diff / (24 * 60 * 60 * 1000));
+  return plugin.t("{n} 天前", { n: days });
+}
+
+function reconcilePendingSubmissionsRuntime(plugin, summary) {
+  if (!plugin || !Array.isArray(plugin.pendingSubmissions) || !plugin.pendingSubmissions.length) return;
+  const { remaining, hits } = reconcilePendingSubmissionList(plugin.pendingSubmissions, summary);
+  if (remaining.length !== plugin.pendingSubmissions.length) {
+    plugin.pendingSubmissions = remaining;
+    plugin.refreshOpenViews();
+  }
+  for (const hit of hits) {
+    if (hit.runNotesPath || hit.runId) {
+      plugin.updatePendingSubmissionRunNotes(hit.id, hit.runNotesPath, hit.runId, { save: false, refresh: false });
+    }
+    plugin.updatePendingSubmissionArtifactMeta(hit.id, hit.meta || {}, { save: false, refresh: false });
+    plugin.markPendingSubmissionDone(hit.id, hit.target, hit.path);
+  }
+  updateProductShellLongRunningPoller(plugin);
+}
+
+// --- src/context_state.js ---
+
+"use strict";
+
+function getActiveProtocolFromSummary(summary) {
+  return String(summary && summary.active_protocol ? summary.active_protocol : "general");
+}
+
+function getAvailableProtocolsFromSummary(summary) {
+  const fromSummary = summary && Array.isArray(summary.available_protocols)
+    ? summary.available_protocols.filter((item) => typeof item === "string" && item)
+    : [];
+  return fromSummary.length ? fromSummary : DEFAULT_PROTOCOLS;
+}
+
+function getActiveFilePathFromApp(app) {
+  const workspace = app && app.workspace ? app.workspace : null;
+  const activeFile = workspace && workspace.getActiveFile ? workspace.getActiveFile() : null;
+  return activeFile && typeof activeFile.path === "string" ? activeFile.path : "";
+}
+
+function getConceptSlugForPath(activePath) {
+  const normalized = String(activePath || "");
+  if (!normalized.startsWith("wiki/concepts/") || !normalized.endsWith(".md")) {
+    return "";
+  }
+  return path.basename(normalized, ".md");
+}
+
+function getOutputPathForPath(activePath) {
+  const normalized = String(activePath || "");
+  if (normalized.startsWith("output/") && normalized.endsWith(".md")) {
+    return normalized;
+  }
+  return "";
+}
+
+function getCuratedPagePathForSummary(activePath, summary) {
+  const normalized = String(activePath || "");
+  if (!normalized.endsWith(".md")) {
+    return "";
+  }
+  const roots = summary && typeof summary === "object" ? summary.curated_page_roots : null;
+  if (!roots || typeof roots !== "object") {
+    return "";
+  }
+  for (const key of Object.keys(roots)) {
+    const prefix = roots[key];
+    if (typeof prefix === "string" && prefix && normalized.startsWith(prefix)) {
+      return normalized;
+    }
+  }
+  return "";
+}
+
+// --- src/today_feed.js ---
+
+/**
+ * M6.3 B3 Today Feed builder — JS mirror of src/aiwiki/today_feed.py
+ * 
+ * MIRROR: 与 src/aiwiki/today_feed.py 同步排序契约与字段映射。
+ * Product Shell keeps backend health in Advanced/operator surfaces, not primary Today.
+ */
+"use strict";
+
+const PRIORITY = {
+  report: 1,
+  automation: 2,
+  decision: 3,
+  proposal: 4,
+  elixir: 5,
+  action: 6,
+};
+
+const REVIEW_BUCKET_COPY = {
+  counter_evidence_candidates: ["补充反证候选", "检查新来源是否足以反驳既有判断"],
+  escalated_actions: ["处理升级动作", "处理已升级、需要人工确认的动作"],
+  escalation_candidates: ["处理升级候选", "确认是否需要人工介入"],
+  judgment_review_actions: ["复核研究判断", "处理需要重新判断的结论"],
+  l3_proposals: ["处理 L3 提案", "确认采纳、拒绝或回滚提案"],
+  l3_proposal_attention: ["处理 L3 提案", "确认采纳、拒绝或回滚提案"],
+  machine_memory_actions: ["修复机器记忆", "处理可审计的记忆修复动作"],
+  overdue_actions: ["处理逾期动作", "确认是否继续执行或关闭"],
+  overdue_reviews: ["处理逾期复审", "确认旧判断是否仍成立"],
+  pending_decisions: ["处理待定决策", "确认待定判断与执行入口"],
+  pending_judgments: ["复核待定判断", "推进仍在等待复核的判断"],
+  ready_actions: ["确认待执行动作", "复核已经准备好的安全动作"],
+};
+
+const PRIMARY_REVIEW_BUCKETS = new Set([
+  "counter_evidence_candidates",
+  "escalated_actions",
+  "escalation_candidates",
+  "judgment_review_actions",
+  "pending_decisions",
+  "pending_judgments",
+]);
+
+function buildTodayFeed(summary) {
+  if (!summary || typeof summary !== "object") return [];
+  const todayDate = todayDateOf(summary);
+  const entries = [];
+
+  entries.push(...buildDecisionEntries(summary));
+  entries.push(...buildCounterEvidenceEntries(summary));
+  entries.push(...buildDriftEntries(summary));
+  entries.push(...buildProposalEntries(summary));
+  entries.push(...buildReportEntries(summary, todayDate));
+  entries.push(...buildElixirEntries(summary, todayDate));
+  // Routine metrics and automation status stay in Advanced/operator surfaces;
+  // primary Today only keeps reports, decision exceptions, and necessary actions.
+  entries.push(...buildActionEntries(summary, "primary"));
+  entries.push(...buildRawInputEntries(summary, todayDate));
+
+  const prioritized = entries.map((entry) => ({ ...entry, priority: priorityForKind(entry.kind) }));
+  const filtered = applySnoozeFilter(prioritized, summary, todayDate);
+  filtered.sort(compareEntries);
+  return filtered;
+}
+
+function buildDecisionEntries(summary) {
+  const counts = summary.review_backlog_counts;
+  if (!counts || typeof counts !== "object") return [];
+  const timestamp = String(summary.generated_at || "");
+  const entries = [];
+  
+  const sortedKeys = Object.keys(counts).sort();
+  for (const kind of sortedKeys) {
+    const count = asCount(counts[kind]);
+    if (count <= 0) continue;
+    const kindText = String(kind).trim();
+    if (!kindText) continue;
+    if (!PRIMARY_REVIEW_BUCKETS.has(kindText)) continue;
+    const [title, hint] = reviewBucketCopy(kindText);
+    entries.push({
+      kind: "decision",
+      title,
+      summary: `${count} 项待处理 · ${hint}`,
+      target: `review:${kindText}`,
+      timestamp,
+      protocol: "",
+    });
+  }
+  return entries;
+}
+
+function buildCounterEvidenceEntries(summary) {
+  const pages = summary.counter_evidence_pages;
+  if (!Array.isArray(pages)) return [];
+  const entries = [];
+  for (const item of dictItems(pages)) {
+    const target = firstText(item, "path");
+    if (!target) continue;
+    const subject = firstText(item, "subject") || target;
+    const pageSummary = firstText(item, "summary") || "judgment 被反驳";
+    entries.push({
+      kind: "decision",
+      title: `反证待复核: ${subject}`,
+      summary: pageSummary,
+      target,
+      timestamp: firstText(item, "detected_at"),
+      protocol: firstText(item, "protocol"),
+    });
+  }
+  return entries;
+}
+
+function buildDriftEntries(summary) {
+  const warnings = summary.drift_warnings;
+  if (!Array.isArray(warnings)) return [];
+  const entries = [];
+  for (const item of dictItems(warnings).slice(0, 8)) {
+    const kindText = firstText(item, "kind");
+    const target = firstText(item, "path");
+    const message = firstText(item, "message");
+    if (!target && !message) continue;
+    const titleTarget = target || kindText || "drift";
+    entries.push({
+      kind: "decision",
+      title: `知识漂移: ${titleTarget}`,
+      summary: message || kindText || "证据已变",
+      target: target || kindText,
+      timestamp: firstText(item, "detected_at"),
+      protocol: firstText(item, "protocol"),
+    });
+  }
+  return entries;
+}
+
+function buildProposalEntries(summary) {
+  const reviewControls = summary.review_controls;
+  let source = null;
+  if (reviewControls && typeof reviewControls === "object") {
+    source = reviewControls.l3_proposals;
+  } else {
+    source = summary.l3_proposals;
+  }
+  const entries = [];
+  for (const item of dictItems(source)) {
+    if (!item.needs_attention) continue;
+    const proposalId = firstText(item, "proposal_id", "id", "subject_id");
+    const title = firstText(item, "title", "subject", "target_file", "proposal_id") || proposalId;
+    const target = firstText(item, "proposal_path", "path", "target_file", "proposal_id");
+    const timestamp = firstText(
+      item,
+      "updated_at",
+      "created_at",
+      "accepted_at",
+      "rejected_at",
+      "reverted_at",
+      "stale_at",
+      "revert_conflict_at"
+    );
+    if (!title || !target) continue;
+    const kindText = firstText(item, "kind") || "proposal";
+    const state = firstText(item, "state", "current_status") || "pending";
+    entries.push({
+      kind: "proposal",
+      title,
+      summary: `${kindText} 建议等待处理（${state}）`,
+      target,
+      timestamp,
+      protocol: firstText(item, "protocol"),
+    });
+  }
+  return entries;
+}
+
+function buildReportEntries(summary, todayDate) {
+  const entries = [];
+  for (const item of dictItems(summary.recent_outputs)) {
+    if (!isDeliverableReportOutput(item)) continue;
+    const timestamp = firstText(item, "generated_at", "created_at");
+    if (datePart(timestamp) !== todayDate) continue;
+    const path = firstText(item, "path", "artifact_path");
+    
+    // JS rough equivalent of Path(path).name
+    let defaultTitle = path;
+    if (path) {
+      const parts = path.split(/[/\\]/);
+      defaultTitle = parts[parts.length - 1];
+    }
+    const title = firstText(item, "title") || defaultTitle;
+    const outputFormat = firstText(item, "format") || "未知格式";
+    if (!path || !title) continue;
+    entries.push({
+      kind: "report",
+      title,
+      summary: `${outputFormat} 输出`,
+      target: path,
+      timestamp,
+      protocol: firstText(item, "protocol"),
+    });
+  }
+  return entries;
+}
+
+function isDeliverableReportOutput(item) {
+  const deliveryMode = firstText(item, "delivery_mode");
+  const llmStatus = firstText(item, "llm_status");
+  const backgroundStatus = firstText(item, "background_status");
+  const artifactQuality = firstText(item, "artifact_quality");
+  const placeholder = firstText(item, "contains_llm_placeholder").toLowerCase();
+  const title = firstText(item, "title");
+  if (deliveryMode === "deterministic-fallback") return false;
+  if (["timeout_or_unavailable", "validation_failed", "pending", "failed", "degraded"].includes(llmStatus)) return false;
+  if (["submitted", "running", "degraded"].includes(backgroundStatus)) return false;
+  if (["degraded", "placeholder"].includes(artifactQuality)) return false;
+  if (["1", "true", "yes"].includes(placeholder)) return false;
+  if (title.startsWith("LLM 未完成")) return false;
+  return true;
+}
+
+function buildElixirEntries(summary, todayDate) {
+  const entries = [];
+  for (const item of dictItems(summary.recent_receipts)) {
+    const timestamp = firstText(item, "applied_at", "generated_at", "created_at");
+    if (datePart(timestamp) !== todayDate) continue;
+    const operation = firstText(item, "operation");
+    const subjectKind = firstText(item, "subject_kind");
+    const subjectId = firstText(item, "subject_id");
+    const actionId = firstText(item, "action_id");
+    
+    const elixirText = [operation, subjectKind, subjectId, actionId].join(" ").toLowerCase();
+    const opLower = operation.toLowerCase();
+    
+    const hasElixir = elixirText.includes("elixir");
+    const hasToken = ["promote", "demote", "revert", "finalize"].some(token => opLower.includes(token));
+    
+    if (!hasElixir && !hasToken) continue;
+    
+    const title = firstText(item, "title") || subjectId || actionId;
+    const target = firstText(item, "receipt_path", "path");
+    if (!title || !target) continue;
+    
+    entries.push({
+      kind: "elixir",
+      title,
+      summary: `已完成 ${operation || '更新'}`,
+      target,
+      timestamp,
+      protocol: firstText(item, "protocol"),
+    });
+  }
+  return entries;
+}
+
+function buildMetricAlertEntries(summary) {
+  const delta = summary.metrics_history_delta;
+  if (!delta || typeof delta !== "object" || !delta.available) return [];
+  const alerts = delta.alerts;
+  if (!Array.isArray(alerts)) return [];
+  const windowLabel = String(delta.window || "");
+  const baselineTs = String(delta.baseline_ts || "");
+  const entries = [];
+  for (const item of dictItems(alerts)) {
+    const key = firstText(item, "metric_key");
+    if (!key) continue;
+    const direction = firstText(item, "direction");
+    const rawDiff = Number(item.diff || 0);
+    const diffValue = Number.isFinite(rawDiff) ? rawDiff : 0;
+    const arrow = direction === "up" ? "↑" : "↓";
+    const sign = diffValue >= 0 ? "+" : "";
+    entries.push({
+      kind: "action",
+      title: `指标变化: ${key} ${arrow}`,
+      summary: `${windowLabel} 内 ${key} 变化 ${sign}${diffValue.toPrecision(3)}（vs ${baselineTs}）`,
+      target: `metric:${key}`,
+      timestamp: baselineTs,
+      protocol: "",
+    });
+  }
+  return entries;
+}
+
+function buildActionEntries(summary, audience = "primary") {
+  const entries = [];
+  const generatedAt = String(summary.generated_at || "");
+  for (const item of dictItems(summary.suggested_next_actions)) {
+    const title = firstText(item, "title", "label", "name");
+    const target = firstText(item, "command", "cli", "action", "path");
+    if (!title || !target) continue;
+    const reason = firstText(item, "reason", "kind");
+    if (audience === "primary" && isMaintenanceCommandAction(target, reason)) continue;
+    entries.push({
+      kind: "action",
+      title,
+      summary: `建议下一步：${reason || '继续处理'}`,
+      target,
+      timestamp: firstText(item, "timestamp", "updated_at", "created_at") || generatedAt,
+      protocol: firstText(item, "protocol"),
+    });
+  }
+  return entries;
+}
+
+function buildRawInputEntries(summary, todayDate) {
+  const recentRawInputs = summary.recent_raw_inputs;
+  if (!Array.isArray(recentRawInputs)) return [];
+  const entries = [];
+  for (const item of dictItems(recentRawInputs)) {
+    const storedPath = firstText(item, "stored_path");
+    if (!storedPath) continue;
+    const occurredAt = firstText(item, "occurred_at");
+    if (datePart(occurredAt) !== todayDate) continue;
+    const originalPath = firstText(item, "original_path");
+    const title = firstText(item, "title");
+    const sourceType = firstText(item, "source_type");
+    const sourceLabel = rawInputSourceTypeLabel(sourceType);
+    entries.push({
+      kind: "action",
+      title: `已投料：${title || originalPath || storedPath}`,
+      summary: `已接收 ${sourceLabel}，等待编译/刷新`,
+      target: storedPath,
+      timestamp: occurredAt,
+      protocol: firstText(item, "protocol"),
+    });
+  }
+  return entries;
+}
+
+function rawInputSourceTypeLabel(sourceType) {
+  const normalized = String(sourceType || "").trim();
+  const labels = {
+    "note-drop": "文本材料",
+    note: "文本材料",
+    markdown: "Markdown 材料",
+    "url-drop": "网页材料",
+    "pdf-drop": "PDF 材料",
+    "image-drop": "图片材料",
+    "repo-drop": "代码仓库材料",
+  };
+  return labels[normalized] || "材料";
+}
+
+function isMaintenanceCommandAction(target, reason) {
+  const targetText = ` ${String(target || "").trim()} `;
+  const reasonText = String(reason || "").trim();
+  if (reasonText.startsWith("batch-hint:")) return true;
+  const maintenanceTokens = [
+    " review-page ",
+    " review-action ",
+    " apply-action ",
+    " revert-action ",
+    " review-concept ",
+    " retire-concept ",
+    " reactivate-concept ",
+    " apply-rewrite ",
+    " review-rewrite ",
+    " revert-rewrite ",
+    " apply-archive ",
+    " revert-archive ",
+    " alchemy auto ",
+  ];
+  return maintenanceTokens.some((token) => targetText.includes(token));
+}
+
+function buildAgentLoopEntries(summary, todayDate) {
+  const nightly = summary.nightly;
+  if (!nightly || typeof nightly !== "object") return [];
+  const agentLoop = nightly.agent_loop;
+  if (!agentLoop || typeof agentLoop !== "object") return [];
+  const timestamp = String(agentLoop.generated_at || nightly.generated_at || "");
+  if (datePart(timestamp) !== todayDate) return [];
+  const status = String(agentLoop.status || "");
+  if (status !== "ok" && status !== "failed") return [];
+
+  let title = "预演下一步维护";
+  let summaryText = "今日维护预演完成，暂不需要自动执行";
+  let target = "PYTHONPATH=src python3 -m aiwiki.cli --root . alchemy auto --dry-run";
+  let autoState = "idle";
+  if (status === "failed") {
+    summaryText = "今日维护预演失败，需要人工查看";
+    autoState = "attention";
+  } else {
+    const signals = agentLoop.signals && typeof agentLoop.signals === "object" ? agentLoop.signals : {};
+    const planner = agentLoop.planner && typeof agentLoop.planner === "object" ? agentLoop.planner : {};
+    const execute = planner.execute && typeof planner.execute === "object" ? planner.execute : {};
+    const autoPreview = agentLoop.auto_preview && typeof agentLoop.auto_preview === "object" ? agentLoop.auto_preview : {};
+    const autoApply = agentLoop.auto_apply && typeof agentLoop.auto_apply === "object" ? agentLoop.auto_apply : {};
+    const autoAdoptL1 = agentLoop.auto_adopt_l1 && typeof agentLoop.auto_adopt_l1 === "object" ? agentLoop.auto_adopt_l1 : {};
+    const autoAdoptL2 = agentLoop.auto_adopt_l2 && typeof agentLoop.auto_adopt_l2 === "object" ? agentLoop.auto_adopt_l2 : {};
+    const autoAdoptJ = agentLoop.auto_adopt_judgments && typeof agentLoop.auto_adopt_judgments === "object" ? agentLoop.auto_adopt_judgments : {};
+    // Planner decisions are derived from signals; don't double-count one change in user-facing copy.
+    const newItems = Math.max(asCount(signals.new_count), asCount(execute.new_count));
+    const appliedCount = asCount(autoApply.applied_count);
+    const readyCount = asCount(autoPreview.ready_count);
+    const l1Count = (Array.isArray(autoAdoptL1.items) ? autoAdoptL1.items : []).reduce(function(acc, item) { return acc + (typeof item.count === 'number' && item.count > 0 && !item.error ? item.count : 0); }, 0);
+    const l2Count = (Array.isArray(autoAdoptL2.items) ? autoAdoptL2.items : []).reduce(function(acc, item) { return acc + (typeof item.count === 'number' && item.count > 0 && !item.error ? item.count : 0); }, 0);
+    const jReviewed = typeof autoAdoptJ.reviewed === 'number' ? autoAdoptJ.reviewed : 0;
+    const totalAdopted = appliedCount + l1Count + l2Count;
+    if (totalAdopted > 0 || jReviewed > 0) {
+      var parts = ["今日发现 " + newItems + " 个新变化"];
+      if (appliedCount > 0) parts.push("已静默执行 " + appliedCount + " 条维护路径");
+      if (l1Count > 0) parts.push("已自动消化 " + l1Count + " 条 L1 候选");
+      if (l2Count > 0) parts.push("已自动处理 " + l2Count + " 条 L2 动作");
+      if (jReviewed > 0) parts.push("LLM 已复核 " + jReviewed + " 条判断");
+      title = "已自动维护";
+      summaryText = parts.join("，");
+      target = "wiki/indexes/execution-audit.md";
+      autoState = "ok";
+    } else if (readyCount > 0) {
+      summaryText = `今日发现 ${newItems} 个新变化，${readyCount} 条维护路径可人工确认`;
+      autoState = "pending";
+    }
+  }
+
+  return [{
+    kind: "automation",
+    title,
+    summary: summaryText,
+    target,
+    timestamp,
+    protocol: String(summary.active_protocol || ""),
+    autoState: autoState,
+  }];
+}
+
+// Helpers
+
+function todayDateOf(summary) {
+  return datePart(String(summary.generated_at || ""));
+}
+
+function applySnoozeFilter(entries, summary, todayDate) {
+  const state = summary && typeof summary === "object" ? summary.today_snooze : null;
+  if (!state || typeof state !== "object" || !Array.isArray(state.items)) return entries;
+  const activeTargets = new Set();
+  for (const item of state.items) {
+    if (!item || typeof item !== "object") continue;
+    const target = String(item.target || "").trim();
+    const until = datePart(String(item.snoozed_until || ""));
+    if (target && until && until >= todayDate) activeTargets.add(target);
+  }
+  if (!activeTargets.size) return entries;
+  return entries.filter((entry) => !activeTargets.has(String(entry.target || "")));
+}
+
+function datePart(value) {
+  const text = String(value || "").trim();
+  if (text.includes("T")) return text.split("T")[0];
+  if (text.includes(" ")) return text.split(" ")[0];
+  return text.substring(0, 10);
+}
+
+function dictItems(value) {
+  if (!Array.isArray(value)) return [];
+  return value.filter(item => item && typeof item === "object");
+}
+
+function firstText(item, ...keys) {
+  for (const key of keys) {
+    const value = item[key];
+    if (value === null || value === undefined) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return "";
+}
+
+function asCount(value) {
+  if (typeof value === "boolean") return value ? 1 : 0;
+  if (typeof value === "number") return isNaN(value) ? 0 : Math.floor(value);
+  const parsed = parseInt(String(value), 10);
+  return isNaN(parsed) ? 0 : parsed;
+}
+
+function reviewBucketCopy(kindText) {
+  const copy = REVIEW_BUCKET_COPY[kindText];
+  if (copy) return copy;
+  const label = String(kindText || "").replace(/[_-]/g, " ").trim();
+  return [label ? `处理审阅队列：${label}` : "处理审阅队列", "进入审阅中心确认下一步"];
+}
+
+function priorityForKind(kind) {
+  return PRIORITY[String(kind)] || 99;
+}
+
+function compareEntries(a, b) {
+  const pa = priorityForKind(a.kind);
+  const pb = priorityForKind(b.kind);
+  if (pa !== pb) return pa - pb;
+  const ta = a.timestamp || "";
+  const tb = b.timestamp || "";
+  if (ta !== tb) return ta < tb ? 1 : -1;
+  return a.kind < b.kind ? -1 : (a.kind > b.kind ? 1 : 0);
+}
+
+module.exports = {
+  buildTodayFeed,
+  applySnoozeFilter,
+  compareEntries,
+  todayDateOf,
+  reviewBucketCopy,
+  priorityForKind,
+  isMaintenanceCommandAction,
+  PRIORITY,
+  PRIMARY_REVIEW_BUCKETS,
+};
+
 // --- src/modals.js ---
 
 // Modal subclasses (AskCommand, CaptureNote, Protocol, Search, DropUrl,
 // DropFile, DropImage, StructuredCommand, ContextPicker).
+
+// Shared modal helpers
+function modalSubmitRow(containerEl, submitLabel, cancelLabel, onSubmit, onCancel) {
+  var row = containerEl.createDiv({ cls: "furnace-modal-submit-row" });
+  if (onCancel) {
+    var cancelBtn = row.createEl("button", { text: cancelLabel || "Cancel" });
+    cancelBtn.addClass("furnace-shell-ghost-button");
+    cancelBtn.addEventListener("click", function () { onCancel(); });
+  }
+  var submitBtn = row.createEl("button", { text: submitLabel || "Submit" });
+  submitBtn.addClass("mod-cta");
+  submitBtn.addEventListener("click", function () { onSubmit(submitBtn); });
+  return { row: row, submitBtn: submitBtn };
+}
+
+function setSubmitLoading(button, loadingText) {
+  button.disabled = true;
+  button.setText(loadingText || "处理中…");
+}
+
+function setSubmitReady(button, text) {
+  button.disabled = false;
+  button.setText(text);
+}
+
+function showInlineError(el, text) {
+  if (!el) return;
+  el.setText(text);
+  el.addClass("is-visible");
+}
+
+function clearInlineError(el) {
+  if (!el) return;
+  el.setText("");
+  el.removeClass("is-visible");
+}
 
 class AskCommandModal extends Modal {
   constructor(app, plugin) {
@@ -772,69 +2804,39 @@ class AskCommandModal extends Modal {
     contentEl.empty();
     contentEl.addClass("furnace-shell-view");
     contentEl.createEl("h2", { text: t("Ask 炼丹炉") });
+    contentEl.createDiv({ cls: "furnace-modal-help", text: t("输入一个问题，炉子会用 LLM 深度分析并生成报告。") });
 
-    const questionSetting = new Setting(contentEl).setName(t("Question"));
+    const questionSetting = new Setting(contentEl).setName(t("问题"));
+    questionSetting.nameEl.addClass("furnace-modal-field-required");
     const questionInput = questionSetting.controlEl.createEl("textarea");
-    questionInput.rows = 5;
-    questionInput.placeholder = t("Enter the research question...");
+    questionInput.rows = 4;
+    questionInput.placeholder = t("输入研究问题……");
     questionInput.addClass("furnace-shell-code");
+    const questionError = questionSetting.controlEl.createDiv({ cls: "furnace-modal-error" });
 
-    const formatSetting = new Setting(contentEl).setName(t("Format"));
-    const formatSelect = formatSetting.controlEl.createEl("select");
-    ["report", "slides", "figure"].forEach((item) => {
-      const option = formatSelect.createEl("option", { text: item, value: item });
-      option.value = item;
-    });
-    formatSelect.value = this.plugin.settings.defaultAskFormat;
-
-    const modeSetting = new Setting(contentEl).setName(t("Mode"));
-    const modeSelect = modeSetting.controlEl.createEl("select");
-    [
-      ["ask", t("route only (no LLM)")],
-      ["run-ask", t("LLM answer (recommended)")],
-    ].forEach(([value, label]) => {
-      const option = modeSelect.createEl("option", { text: label, value });
-      option.value = value;
-    });
-    modeSelect.value = this.plugin.settings.defaultAskMode;
-
-    const protocolSetting = new Setting(contentEl).setName(t("Protocol"));
+    const protocolSetting = new Setting(contentEl).setName(t("协议"));
     const protocolSelect = protocolSetting.controlEl.createEl("select");
-    protocolSelect.createEl("option", { text: t("current protocol"), value: "" });
+    protocolSelect.createEl("option", { text: t("当前协议"), value: "" });
     this.plugin.getAvailableProtocols().forEach((protocol) => {
       const option = protocolSelect.createEl("option", { text: protocol, value: protocol });
       option.value = protocol;
     });
 
-    const actionSetting = new Setting(contentEl);
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Run")).setCta().onClick(async () => {
-        const question = String(questionInput.value || "").trim();
-        if (!question) {
-          new Notice(t("Question cannot be empty."));
-          return;
-        }
-        const format = String(formatSelect.value || "report");
-        const mode = String(modeSelect.value || "ask");
-        const protocol = String(protocolSelect.value || "").trim();
-        this.close();
-        this.plugin.runUiAction(
-          () =>
-            this.plugin.runAskCommand({
-              question,
-              format,
-              mode,
-              protocol,
-            }),
-          t("Ask modal")
-        );
-      })
-    );
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Cancel")).onClick(() => {
-        this.close();
-      })
-    );
+    const { submitBtn } = modalSubmitRow(contentEl, t("运行"), t("取消"), function (btn) {
+      const question = String(questionInput.value || "").trim();
+      if (!question) {
+        showInlineError(questionError, t("问题不能为空。"));
+        return;
+      }
+      clearInlineError(questionError);
+      setSubmitLoading(btn, t("分析中…"));
+      const self = this;
+      const protocol = String(protocolSelect.value || "").trim();
+      self.close();
+      self.plugin.runUiAction(function () {
+        return self.plugin.runAskCommand({ question, format: "report", mode: "run-ask", protocol });
+      }, t("Ask modal"));
+    }.bind(this), function () { this.close(); }.bind(this));
 
     questionInput.focus();
   }
@@ -851,60 +2853,50 @@ class CaptureNoteModal extends Modal {
     const t = this.plugin.t.bind(this.plugin);
     contentEl.empty();
     contentEl.addClass("furnace-shell-view");
-    contentEl.createEl("h2", { text: t("Capture Note") });
+    contentEl.createEl("h2", { text: t("投 Markdown 材料") });
+    contentEl.createDiv({ cls: "furnace-modal-help", text: t("快速投入一段 Markdown、会议纪要或观察，作为原料进入炉子的收件箱。") });
 
-    const titleSetting = new Setting(contentEl).setName(t("Title"));
+    const titleSetting = new Setting(contentEl).setName(t("标题"));
+    titleSetting.nameEl.addClass("furnace-modal-field-optional");
     const titleInput = titleSetting.controlEl.createEl("input", { type: "text" });
-    titleInput.placeholder = t("Optional note title...");
+    titleInput.placeholder = t("可选材料标题……");
     titleInput.addClass("furnace-shell-code");
 
-    const kindSetting = new Setting(contentEl).setName(t("Kind"));
+    const kindSetting = new Setting(contentEl).setName(t("类型"));
     const kindSelect = kindSetting.controlEl.createEl("select");
     [
-      ["note", "note"],
+      ["markdown", "markdown"],
       ["transcript", "transcript"],
     ].forEach(([value, label]) => {
       const option = kindSelect.createEl("option", { text: label, value });
       option.value = value;
     });
-    kindSelect.value = "note";
+    kindSelect.value = "markdown";
 
-    const textSetting = new Setting(contentEl).setName(t("Text"));
+    const textSetting = new Setting(contentEl).setName(t("正文"));
+    textSetting.nameEl.addClass("furnace-modal-field-required");
     const textInput = textSetting.controlEl.createEl("textarea");
-    textInput.rows = 10;
-    textInput.placeholder = t("Capture a note, meeting log, or quick observation...");
+    textInput.rows = 8;
+    textInput.placeholder = t("输入 Markdown、会议纪要或快速观察……");
     textInput.addClass("furnace-shell-code");
+    const textError = textSetting.controlEl.createDiv({ cls: "furnace-modal-error" });
 
-    const hint = contentEl.createDiv({ cls: "furnace-shell-meta" });
-    hint.setText(t("This writes into raw/inbox through the same launcher/runtime used by CLI commands."));
-
-    const actionSetting = new Setting(contentEl);
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Capture")).setCta().onClick(async () => {
-        const text = String(textInput.value || "").trim();
-        if (!text) {
-          new Notice(t("Text cannot be empty."));
-          return;
-        }
-        const title = String(titleInput.value || "").trim();
-        const kind = String(kindSelect.value || "note");
-        this.close();
-        this.plugin.runUiAction(
-          () =>
-            this.plugin.runDropNoteCommand({
-              text,
-              title,
-              kind,
-            }),
-          t("Capture note modal")
-        );
-      })
-    );
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Cancel")).onClick(() => {
-        this.close();
-      })
-    );
+    const self = this;
+    modalSubmitRow(contentEl, t("记录"), t("取消"), function (btn) {
+      const text = String(textInput.value || "").trim();
+      if (!text) {
+        showInlineError(textError, t("正文不能为空。"));
+        return;
+      }
+      clearInlineError(textError);
+      setSubmitLoading(btn, t("记录中…"));
+      const title = String(titleInput.value || "").trim();
+      const kind = String(kindSelect.value || "markdown");
+      self.close();
+      self.plugin.runUiAction(function () {
+        return self.plugin.runDropNoteCommand({ text, title, kind });
+      }, t("投 Markdown 材料"));
+    }, function () { self.close(); });
 
     textInput.focus();
   }
@@ -964,40 +2956,47 @@ class SearchCommandModal extends Modal {
     const t = this.plugin.t.bind(this.plugin);
     contentEl.empty();
     contentEl.addClass("furnace-shell-view");
-    contentEl.createEl("h2", { text: t("Search 炼丹炉") });
+    contentEl.createEl("h2", { text: t("搜索知识库") });
+    contentEl.createDiv({ cls: "furnace-modal-help", text: t("搜索 wiki、概念、判断、决策和派生页面。") });
 
-    const querySetting = new Setting(contentEl).setName(t("Query"));
+    const querySetting = new Setting(contentEl).setName(t("关键词"));
+    querySetting.nameEl.addClass("furnace-modal-field-required");
     const queryInput = querySetting.controlEl.createEl("textarea");
-    queryInput.rows = 4;
-    queryInput.placeholder = t("Search wiki/sources, concepts, judgments, decisions, and derived pages...");
+    queryInput.rows = 3;
+    queryInput.placeholder = t("输入关键词搜索……");
     queryInput.addClass("furnace-shell-code");
+    const queryError = querySetting.controlEl.createDiv({ cls: "furnace-modal-error" });
 
-    const limitSetting = new Setting(contentEl).setName(t("Limit"));
+    var tagsRow = contentEl.createDiv({ cls: "furnace-modal-tags" });
+    ["来源", "概念", "判断", "决策", "报告"].forEach(function (tag) {
+      var tagEl = tagsRow.createDiv({ cls: "furnace-modal-tag", text: tag });
+      tagEl.addEventListener("click", function () {
+        var current = String(queryInput.value || "").trim();
+        queryInput.value = current ? current + " " + tag : tag;
+        queryInput.focus();
+      });
+    });
+
+    const limitSetting = new Setting(contentEl).setName(t("结果数量"));
     const limitInput = limitSetting.controlEl.createEl("input", { type: "text" });
     limitInput.value = "8";
     limitInput.addClass("furnace-shell-code");
 
-    const actionSetting = new Setting(contentEl);
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Search")).setCta().onClick(async () => {
-        const query = String(queryInput.value || "").trim();
-        if (!query) {
-          new Notice(t("Search query cannot be empty."));
-          return;
-        }
-        const parsedLimit = Number.parseInt(String(limitInput.value || "8"), 10);
-        this.close();
-        this.plugin.runUiAction(
-          () => this.plugin.runShellSearchCommand(query, Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 8),
-          t("Search modal")
-        );
-      })
-    );
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Cancel")).onClick(() => {
-        this.close();
-      })
-    );
+    const self = this;
+    modalSubmitRow(contentEl, t("搜索"), t("取消"), function (btn) {
+      const query = String(queryInput.value || "").trim();
+      if (!query) {
+        showInlineError(queryError, t("搜索关键词不能为空。"));
+        return;
+      }
+      clearInlineError(queryError);
+      setSubmitLoading(btn, t("搜索中…"));
+      const parsedLimit = Number.parseInt(String(limitInput.value || "8"), 10);
+      self.close();
+      self.plugin.runUiAction(function () {
+        return self.plugin.runShellSearchCommand(query, Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 8);
+      }, t("搜索"));
+    }, function () { self.close(); });
 
     queryInput.focus();
   }
@@ -1007,6 +3006,12 @@ class DropUrlModal extends Modal {
   constructor(app, plugin) {
     super(app);
     this.plugin = plugin;
+    this.initialUrl = "";
+  }
+
+  setInitialUrl(value) {
+    this.initialUrl = String(value || "").trim();
+    return this;
   }
 
   onOpen() {
@@ -1014,42 +3019,38 @@ class DropUrlModal extends Modal {
     const t = this.plugin.t.bind(this.plugin);
     contentEl.empty();
     contentEl.addClass("furnace-shell-view");
-    contentEl.createEl("h2", { text: t("Drop URL") });
+    contentEl.createEl("h2", { text: t("投网址") });
+    contentEl.createDiv({ cls: "furnace-modal-help", text: t("投一个网页地址，炉子会自动抓取内容并编译成知识。") });
 
-    const description = contentEl.createDiv({ cls: "furnace-shell-meta" });
-    description.setText(t("Drop this web page into raw/inbox."));
-
-    const sourceSetting = new Setting(contentEl).setName(t("Web URL"));
+    const sourceSetting = new Setting(contentEl).setName(t("网址"));
+    sourceSetting.nameEl.addClass("furnace-modal-field-required");
     const sourceInput = sourceSetting.controlEl.createEl("input", { type: "text" });
     sourceInput.placeholder = "https://example.com/article";
     sourceInput.addClass("furnace-shell-code");
+    sourceInput.value = this.initialUrl;
+    const sourceError = sourceSetting.controlEl.createDiv({ cls: "furnace-modal-error" });
 
-    const titleSetting = new Setting(contentEl).setName(t("Title"));
+    const titleSetting = new Setting(contentEl).setName(t("标题"));
+    titleSetting.nameEl.addClass("furnace-modal-field-optional");
     const titleInput = titleSetting.controlEl.createEl("input", { type: "text" });
-    titleInput.placeholder = t("Optional note title...");
+    titleInput.placeholder = t("可选材料标题……");
     titleInput.addClass("furnace-shell-code");
 
-    const actionSetting = new Setting(contentEl);
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Drop URL")).setCta().onClick(async () => {
-        const url = String(sourceInput.value || "").trim();
-        if (!url) {
-          new Notice(t("URL cannot be empty."));
-          return;
-        }
-        const title = String(titleInput.value || "").trim();
-        this.close();
-        this.plugin.runUiAction(
-          () => this.plugin.runDropUrlCommand({ url, title }),
-          t("Drop URL modal")
-        );
-      })
-    );
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Cancel")).onClick(() => {
-        this.close();
-      })
-    );
+    const self = this;
+    modalSubmitRow(contentEl, t("投网址"), t("取消"), function (btn) {
+      const url = String(sourceInput.value || "").trim();
+      if (!url) {
+        showInlineError(sourceError, t("网址不能为空。"));
+        return;
+      }
+      clearInlineError(sourceError);
+      setSubmitLoading(btn, t("抓取中…"));
+      const title = String(titleInput.value || "").trim();
+      self.close();
+      self.plugin.runUiAction(function () {
+        return self.plugin.runDropUrlCommand({ url, title });
+      }, t("投网址"));
+    }, function () { self.close(); });
 
     sourceInput.focus();
   }
@@ -1059,6 +3060,25 @@ class DropFileModal extends Modal {
   constructor(app, plugin) {
     super(app);
     this.plugin = plugin;
+    this.initialMode = "pdf";
+    this.initialSource = "";
+    this.initialTitle = "";
+  }
+
+  setInitialMode(value) {
+    const mode = String(value || "pdf").trim();
+    this.initialMode = mode === "repo" || mode === "markdown" ? mode : "pdf";
+    return this;
+  }
+
+  setInitialSource(value) {
+    this.initialSource = String(value || "");
+    return this;
+  }
+
+  setInitialTitle(value) {
+    this.initialTitle = String(value || "").trim();
+    return this;
   }
 
   onOpen() {
@@ -1066,94 +3086,95 @@ class DropFileModal extends Modal {
     const t = this.plugin.t.bind(this.plugin);
     contentEl.empty();
     contentEl.addClass("furnace-shell-view");
-    contentEl.createEl("h2", { text: t("Drop File") });
+    contentEl.createEl("h2", { text: t("投文件") });
+    contentEl.createDiv({ cls: "furnace-modal-help", text: t("投一个本地文件或远程地址：PDF 原件会进入 raw/assets，Repo 会抓取代码快照。") });
 
-    const description = contentEl.createDiv({ cls: "furnace-shell-meta" });
-    description.setText(t("Import a PDF or repo snapshot into raw/inbox."));
-
-    const kindSetting = new Setting(contentEl).setName(t("PDF or Repo"));
+    const kindSetting = new Setting(contentEl).setName(t("PDF、Markdown 或 Repo"));
     const kindSelect = kindSetting.controlEl.createEl("select");
     [
       ["pdf", t("PDF")],
+      ["markdown", t("Markdown")],
       ["repo", t("Repo")],
     ].forEach(([value, label]) => {
       const option = kindSelect.createEl("option", { text: label, value });
       option.value = value;
     });
-    kindSelect.value = "pdf";
+    kindSelect.value = this.initialMode;
 
-    const sourceSetting = new Setting(contentEl).setName(t("Source"));
+    const sourceSetting = new Setting(contentEl).setName(t("来源"));
+    sourceSetting.nameEl.addClass("furnace-modal-field-required");
     const sourceInput = sourceSetting.controlEl.createEl("input", { type: "text" });
     sourceInput.addClass("furnace-shell-code");
+    sourceInput.value = this.initialSource;
     const pickerInput = sourceSetting.controlEl.createEl("input", { type: "file" });
     pickerInput.style.display = "none";
     let pickLocalButton = null;
-    sourceSetting.addButton((button) => {
+    const self = this;
+    sourceSetting.addButton(function (button) {
       pickLocalButton = button;
-      button.setButtonText(t("Select local file")).onClick(() => {
+      button.setButtonText(t("选择本地文件")).onClick(function () {
         pickerInput.click();
       });
     });
+    const sourceError = sourceSetting.controlEl.createDiv({ cls: "furnace-modal-error" });
 
-    pickerInput.addEventListener("change", () => {
+    pickerInput.addEventListener("change", async function () {
       const file = pickerInput.files && pickerInput.files[0];
-      const nextPath = file ? String(file.path || file.name || "") : "";
-      if (nextPath) {
-        sourceInput.value = nextPath;
+      if (!file) { return; }
+      try {
+        const nextPath = await resolvePluginFileSource(self.plugin, file);
+        if (nextPath) { sourceInput.value = nextPath; }
+        if (!String(titleInput.value || "").trim()) { titleInput.value = String(file.name || "").trim(); }
+      } catch (error) {
+        showInlineError(sourceError, self.plugin.t("提交失败：{message}（输入已保留，可重试）", { message: error && error.message ? error.message : String(error) }));
       }
     });
 
-    const titleSetting = new Setting(contentEl).setName(t("Title"));
+    const titleSetting = new Setting(contentEl).setName(t("标题"));
+    titleSetting.nameEl.addClass("furnace-modal-field-optional");
     const titleInput = titleSetting.controlEl.createEl("input", { type: "text" });
-    titleInput.placeholder = t("Optional note title...");
+    titleInput.placeholder = t("可选材料标题……");
     titleInput.addClass("furnace-shell-code");
+    titleInput.value = this.initialTitle;
 
-    const maxFilesSetting = new Setting(contentEl).setName(t("Repo max files"));
+    const maxFilesSetting = new Setting(contentEl).setName(t("Repo 最大文件数"));
     const maxFilesInput = maxFilesSetting.controlEl.createEl("input", { type: "text" });
     maxFilesInput.value = "200";
     maxFilesInput.addClass("furnace-shell-code");
 
-    const syncModeState = () => {
+    const syncModeState = function () {
       const mode = String(kindSelect.value || "pdf");
-      sourceInput.placeholder = mode === "repo" ? t("Local repo path or remote git URL.") : t("Local PDF path or PDF URL.");
-      pickerInput.accept = mode === "pdf" ? ".pdf,application/pdf" : "";
-      if (pickLocalButton) {
-        pickLocalButton.buttonEl.style.display = mode === "pdf" ? "" : "none";
-      }
+      sourceInput.placeholder = mode === "repo"
+        ? t("本地 repo 路径或远程 git URL。")
+        : mode === "markdown"
+          ? t("本地 Markdown / txt 文件路径。")
+          : t("本地 PDF 路径或 PDF URL。");
+      pickerInput.accept = mode === "markdown" ? ".md,.markdown,.txt,text/markdown,text/plain" : mode === "pdf" ? ".pdf,application/pdf" : "";
+      if (pickLocalButton) { pickLocalButton.buttonEl.style.display = mode === "repo" ? "none" : ""; }
       maxFilesSetting.settingEl.style.display = mode === "repo" ? "" : "none";
     };
     kindSelect.addEventListener("change", syncModeState);
     syncModeState();
 
-    const actionSetting = new Setting(contentEl);
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Drop File")).setCta().onClick(async () => {
-        const source = String(sourceInput.value || "").trim();
-        if (!source) {
-          new Notice(t("Source cannot be empty."));
-          return;
-        }
-        const mode = String(kindSelect.value || "pdf");
-        const title = String(titleInput.value || "").trim();
-        const maxFiles = Number.parseInt(String(maxFilesInput.value || "200"), 10);
-        this.close();
-        this.plugin.runUiAction(
-          () =>
-            this.plugin.runDropFileCommand({
-              mode,
-              source,
-              title,
-              maxFiles: Number.isFinite(maxFiles) && maxFiles > 0 ? maxFiles : 200,
-            }),
-          t("Drop File modal")
-        );
-      })
-    );
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Cancel")).onClick(() => {
-        this.close();
-      })
-    );
+    modalSubmitRow(contentEl, t("投文件"), t("取消"), function (btn) {
+      const source = String(sourceInput.value || "").trim();
+      if (!source) {
+        showInlineError(sourceError, t("来源不能为空。"));
+        return;
+      }
+      clearInlineError(sourceError);
+      setSubmitLoading(btn, t("投料中…"));
+      const mode = String(kindSelect.value || "pdf");
+      const title = String(titleInput.value || "").trim();
+      const maxFiles = Number.parseInt(String(maxFilesInput.value || "200"), 10);
+      self.close();
+      self.plugin.runUiAction(function () {
+        return self.plugin.runDropFileCommand({
+          mode, source, title,
+          maxFiles: Number.isFinite(maxFiles) && maxFiles > 0 ? maxFiles : 200,
+        });
+      }, t("投文件"));
+    }, function () { self.close(); });
 
     sourceInput.focus();
   }
@@ -1163,6 +3184,18 @@ class DropImageModal extends Modal {
   constructor(app, plugin) {
     super(app);
     this.plugin = plugin;
+    this.initialSource = "";
+    this.initialTitle = "";
+  }
+
+  setInitialSource(value) {
+    this.initialSource = String(value || "");
+    return this;
+  }
+
+  setInitialTitle(value) {
+    this.initialTitle = String(value || "").trim();
+    return this;
   }
 
   onOpen() {
@@ -1170,71 +3203,65 @@ class DropImageModal extends Modal {
     const t = this.plugin.t.bind(this.plugin);
     contentEl.empty();
     contentEl.addClass("furnace-shell-view");
-    contentEl.createEl("h2", { text: t("Drop Image") });
+    contentEl.createEl("h2", { text: t("投图片") });
+    contentEl.createDiv({ cls: "furnace-modal-help", text: t("投一张图片，原件会进入 raw/assets；视觉信息只作为运行层分析，不改写原料。") });
 
-    const description = contentEl.createDiv({ cls: "furnace-shell-meta" });
-    description.setText(t("Import an image into raw/inbox."));
-
-    const sourceSetting = new Setting(contentEl).setName(t("Source"));
+    const sourceSetting = new Setting(contentEl).setName(t("来源"));
+    sourceSetting.nameEl.addClass("furnace-modal-field-required");
     const sourceInput = sourceSetting.controlEl.createEl("input", { type: "text" });
-    sourceInput.placeholder = t("Local image path or image URL.");
+    sourceInput.placeholder = t("本地图片路径或图片 URL。");
     sourceInput.addClass("furnace-shell-code");
+    sourceInput.value = this.initialSource;
     const pickerInput = sourceSetting.controlEl.createEl("input", { type: "file" });
     pickerInput.style.display = "none";
     pickerInput.accept = "image/*";
-    sourceSetting.addButton((button) =>
-      button.setButtonText(t("Select local file")).onClick(() => {
+    sourceSetting.addButton(function (button) {
+      button.setButtonText(t("选择本地文件")).onClick(function () {
         pickerInput.click();
-      })
-    );
-    pickerInput.addEventListener("change", () => {
+      });
+    });
+    const sourceError = sourceSetting.controlEl.createDiv({ cls: "furnace-modal-error" });
+    const self = this;
+    pickerInput.addEventListener("change", async function () {
       const file = pickerInput.files && pickerInput.files[0];
-      const nextPath = file ? String(file.path || file.name || "") : "";
-      if (nextPath) {
-        sourceInput.value = nextPath;
+      if (!file) { return; }
+      try {
+        const nextPath = await resolvePluginFileSource(self.plugin, file);
+        if (nextPath) { sourceInput.value = nextPath; }
+        if (!String(titleInput.value || "").trim()) { titleInput.value = String(file.name || "").trim(); }
+      } catch (error) {
+        showInlineError(sourceError, self.plugin.t("提交失败：{message}（输入已保留，可重试）", { message: error && error.message ? error.message : String(error) }));
       }
     });
 
-    const titleSetting = new Setting(contentEl).setName(t("Title"));
+    const titleSetting = new Setting(contentEl).setName(t("标题"));
+    titleSetting.nameEl.addClass("furnace-modal-field-optional");
     const titleInput = titleSetting.controlEl.createEl("input", { type: "text" });
-    titleInput.placeholder = t("Optional note title...");
+    titleInput.placeholder = t("可选材料标题……");
     titleInput.addClass("furnace-shell-code");
+    titleInput.value = this.initialTitle;
 
     let skipVision = false;
     new Setting(contentEl)
-      .setName(t("Skip vision analysis"))
-      .addToggle((toggle) =>
-        toggle.setValue(false).onChange((value) => {
-          skipVision = Boolean(value);
-        })
-      );
+      .setName(t("跳过视觉分析"))
+      .addToggle(function (toggle) {
+        toggle.setValue(false).onChange(function (value) { skipVision = Boolean(value); });
+      });
 
-    const actionSetting = new Setting(contentEl);
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Drop Image")).setCta().onClick(async () => {
-        const source = String(sourceInput.value || "").trim();
-        if (!source) {
-          new Notice(t("Source cannot be empty."));
-          return;
-        }
-        const title = String(titleInput.value || "").trim();
-        this.close();
-        this.plugin.runUiAction(
-          () =>
-            this.plugin.runDropImageCommand({
-              source,
-              title,
-              noVision: skipVision,
-            }),
-          t("Drop Image modal")
-        );
-      })
-    );
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Cancel")).onClick(() => {
-        this.close();
-      })
-    );
+    modalSubmitRow(contentEl, t("投图片"), t("取消"), function (btn) {
+      const source = String(sourceInput.value || "").trim();
+      if (!source) {
+        showInlineError(sourceError, t("来源不能为空。"));
+        return;
+      }
+      clearInlineError(sourceError);
+      setSubmitLoading(btn, t("投料中…"));
+      const title = String(titleInput.value || "").trim();
+      self.close();
+      self.plugin.runUiAction(function () {
+        return self.plugin.runDropImageCommand({ source, title, noVision: skipVision });
+      }, t("投图片"));
+    }, function () { self.close(); });
 
     sourceInput.focus();
   }
@@ -1512,6 +3539,489 @@ class ExecutionCenterView extends ItemView {
   }
 }
 
+// --- src/state/repo-state.js ---
+
+// State: repo detection and validation.
+// Extracted from plugin.js to reduce monolithic Plugin class.
+// Note: fs and path are already required in the build header.
+
+function refreshRepoState(plugin) {
+  const adapter = plugin.app.vault && plugin.app.vault.adapter;
+  const root = adapter && typeof adapter.basePath === "string" ? adapter.basePath : "";
+  const launcherPath = resolveLauncherPath(root, plugin.settings);
+  const missingPaths = [];
+  if (!root) {
+    missingPaths.push("vault-root");
+  } else {
+    [
+      "raw",
+      "wiki",
+      "schema",
+      "output",
+      ".aiwiki",
+    ].forEach((relativePath) => {
+      if (!fs.existsSync(path.join(root, relativePath))) {
+        missingPaths.push(relativePath);
+      }
+    });
+    if (!launcherIsExecutable(launcherPath)) {
+      missingPaths.push(plugin.settings.launcherPath);
+    }
+  }
+  return {
+    valid: missingPaths.length === 0,
+    root,
+    launcherPath,
+    missingPaths,
+  };
+}
+
+function resolveLauncherPath(root, settings) {
+  const launcherPath = String((settings && settings.launcherPath) || (typeof DEFAULT_SETTINGS !== "undefined" ? DEFAULT_SETTINGS.launcherPath : "")).trim();
+  if (!root || !launcherPath) {
+    return "";
+  }
+  if (path.isAbsolute(launcherPath)) {
+    return launcherPath;
+  }
+  return path.join(root, launcherPath);
+}
+
+function launcherIsExecutable(launcherPath) {
+  if (!launcherPath) return false;
+  try {
+    fs.accessSync(launcherPath, fs.constants.X_OK);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+module.exports = { refreshRepoState, resolveLauncherPath, launcherIsExecutable };
+
+// --- src/bridge/launcher.js ---
+
+// Bridge: CLI launcher integration.
+// Extracted from plugin.js — wraps spawn/child_process calls to the aiwiki launcher.
+// Note: spawn, fs, path, buildNotifyEnv, readJsonText are already in the build header.
+
+const PRIMARY_SURFACE_COMMANDS = new Set(["drop", "today", "metrics", "advanced"]);
+const PRIMARY_DROP_REPLACEMENTS = {
+  "drop-url": ["drop", "url"],
+  "drop-pdf": ["drop", "pdf"],
+  "drop-image": ["drop", "image"],
+  "drop-repo": ["drop", "repo"],
+  "drop-note": ["drop", "markdown"],
+};
+
+function normalizeLauncherArgv(args) {
+  const argv = Array.isArray(args) ? args.map((item) => String(item)) : [];
+  const command = argv[0] || "";
+  if (!command || PRIMARY_SURFACE_COMMANDS.has(command)) {
+    return argv;
+  }
+  const dropReplacement = PRIMARY_DROP_REPLACEMENTS[command];
+  if (dropReplacement) {
+    return dropReplacement.concat(argv.slice(1));
+  }
+  return ["advanced", ...argv];
+}
+
+function execLauncher(plugin, args) {
+  if (!plugin.repoState.valid) {
+    throw new Error(plugin.t("Missing runtime paths: {missing}", { missing: plugin.repoState.missingPaths.join(", ") }));
+  }
+  const launcherArgs = normalizeLauncherArgv(args);
+  return new Promise((resolve, reject) => {
+    const env = Object.assign({}, process.env);
+    clearKnownLlmEnv(env);
+    Object.assign(env, buildLlmEnv(plugin.settings));
+    Object.assign(env, buildNotifyEnv(plugin.settings));
+    const child = spawn(plugin.repoState.launcherPath, launcherArgs, {
+      cwd: plugin.repoState.root,
+      env,
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += String(chunk);
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += String(chunk);
+    });
+    child.on("error", (error) => {
+      reject(error);
+    });
+    child.on("close", (code) => {
+      let payload = null;
+      try {
+        payload = readJsonText(stdout);
+      } catch (error) {
+        payload = null;
+      }
+      if (code === 0) {
+        resolve({ stdout, stderr, payload, code });
+        return;
+      }
+      const error = new Error(stderr.trim() || stdout.trim() || plugin.t("Command failed with exit code {code}", { code }));
+      error.code = code;
+      error.stdout = stdout;
+      error.stderr = stderr;
+      error.payload = payload;
+      reject(error);
+    });
+  });
+}
+
+function runUiAction(plugin, action) {
+  const label = arguments[2] || "ui-action";
+  Promise.resolve()
+    .then(() => action())
+    .catch((error) => {
+      console.error(`[furnace-product-shell] ${label} failed`, error);
+    });
+}
+
+module.exports = { execLauncher, runUiAction, normalizeLauncherArgv };
+
+// --- src/bridge/runtime_client.js ---
+
+// Bridge: runtime client abstraction for desktop launcher and vault queue.
+
+const RUNTIME_CLIENT_DESKTOP_LAUNCHER = "desktop-launcher";
+const RUNTIME_CLIENT_VAULT_QUEUE = "vault-queue";
+const VAULT_QUEUE_DIR = ".aiwiki/queue";
+const VAULT_QUEUE_SUPPORTED_COMMANDS = new Set(["ask", "run-ask", "run-ask-submit", "drop"]);
+
+function normalizeRuntimeClientMode(value) {
+  return value === RUNTIME_CLIENT_VAULT_QUEUE ? RUNTIME_CLIENT_VAULT_QUEUE : RUNTIME_CLIENT_DESKTOP_LAUNCHER;
+}
+
+function createRuntimeClient(plugin) {
+  const mode = normalizeRuntimeClientMode(plugin && plugin.settings && plugin.settings.runtimeClientMode);
+  if (mode === RUNTIME_CLIENT_VAULT_QUEUE) {
+    return new VaultQueueClient(plugin);
+  }
+  return new DesktopLauncherClient(plugin);
+}
+
+class DesktopLauncherClient {
+  constructor(plugin) {
+    this.plugin = plugin;
+    this.mode = RUNTIME_CLIENT_DESKTOP_LAUNCHER;
+  }
+
+  async exec(args) {
+    return execLauncher(this.plugin, args);
+  }
+
+  async ask(request) {
+    return this.exec(runtimeClientRequestArgs("ask", request));
+  }
+
+  async drop(request) {
+    return this.exec(runtimeClientRequestArgs("drop", request));
+  }
+
+  async summary() {
+    return this.exec(["shell-status"]);
+  }
+}
+
+class VaultQueueClient {
+  constructor(plugin) {
+    this.plugin = plugin;
+    this.mode = RUNTIME_CLIENT_VAULT_QUEUE;
+    this.queueDir = VAULT_QUEUE_DIR;
+  }
+
+  async exec(args) {
+    const argv = normalizeRuntimeClientArgv(args);
+    const command = argv[0] || "";
+    if (command === "shell-status") {
+      return this.readSummary();
+    }
+    if (!VAULT_QUEUE_SUPPORTED_COMMANDS.has(command)) {
+      throw new Error(`Vault queue runtime cannot execute ${command || "empty command"}; only shell-status is read-only and ask/drop/note are queued.`);
+    }
+    return this.enqueue(runtimeClientQueueKind(argv), { argv });
+  }
+
+  async ask(request) {
+    return this.enqueue("ask", { request });
+  }
+
+  async drop(request) {
+    const payload = request && typeof request === "object" ? request : {};
+    const kind = String(payload.kind || "markdown").trim().toLowerCase();
+    const argv = runtimeClientRequestArgs("drop", payload);
+    if (!kind || kind === "markdown" || kind === "md" || kind === "note") {
+      return this.enqueue("note", { request: payload, argv });
+    }
+    return this.enqueue("drop", { request: payload, argv });
+  }
+
+  async readSummary() {
+    const payload = await readVaultJson(this.plugin, SHELL_SUMMARY_PATH);
+    const stdout = payload ? `${JSON.stringify(payload, null, 2)}\n` : "";
+    return { stdout, stderr: "", payload, code: 0 };
+  }
+
+  async enqueue(kind, payload) {
+    const normalizedKind = kind === "ask" || kind === "note" ? kind : "drop";
+    const id = createVaultQueueId();
+    const queuePath = `${this.queueDir}/${id}.json`;
+    const item = {
+      version: 1,
+      id,
+      kind: normalizedKind,
+      created_at: new Date().toISOString(),
+      payload: payload && typeof payload === "object" ? payload : {},
+      status: "pending",
+      source: "companion",
+    };
+    await writeVaultJson(this.plugin, queuePath, item);
+    const result = {
+      kind: "vault-queue",
+      status: "queued",
+      queue_path: queuePath,
+      id,
+    };
+    return {
+      stdout: `${JSON.stringify(result, null, 2)}\n`,
+      stderr: "",
+      payload: result,
+      code: 0,
+    };
+  }
+}
+
+function runtimeClientRequestArgs(command, request) {
+  const payload = request && typeof request === "object" ? request : {};
+  if (command === "ask") {
+    const question = String(payload.question || "").trim();
+    const args = ["ask", question];
+    if (payload.format) args.push("--format", String(payload.format));
+    if (payload.protocol) args.push("--protocol", String(payload.protocol));
+    return args;
+  }
+  const source = String(payload.source || payload.url || payload.path || "").trim();
+  const args = ["drop", String(payload.kind || "markdown"), source];
+  if (payload.title) args.push("--title", String(payload.title));
+  return args;
+}
+
+function normalizeRuntimeClientArgv(args) {
+  return Array.isArray(args) ? args.map((value) => String(value || "")) : [];
+}
+
+function runtimeClientQueueKind(argv) {
+  const command = argv[0] || "";
+  if (command === "ask" || command === "run-ask" || command === "run-ask-submit") {
+    return "ask";
+  }
+  if (command === "drop") {
+    const subcommand = String(argv[1] || "").trim();
+    if (!subcommand || subcommand === "markdown" || subcommand === "md" || subcommand === "note") {
+      return "note";
+    }
+    return "drop";
+  }
+  return "drop";
+}
+
+function createVaultQueueId() {
+  const cryptoApi = typeof globalThis !== "undefined" && globalThis.crypto ? globalThis.crypto : null;
+  if (cryptoApi && typeof cryptoApi.randomUUID === "function") {
+    return cryptoApi.randomUUID();
+  }
+  return `queue-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+}
+
+function vaultAdapter(plugin) {
+  return plugin && plugin.app && plugin.app.vault && plugin.app.vault.adapter
+    ? plugin.app.vault.adapter
+    : null;
+}
+
+async function ensureVaultDir(plugin, dirPath) {
+  const adapter = vaultAdapter(plugin);
+  if (adapter && typeof adapter.mkdir === "function") {
+    const parts = String(dirPath || "").split("/").filter(Boolean);
+    let current = "";
+    for (const part of parts) {
+      current = current ? `${current}/${part}` : part;
+      if (typeof adapter.exists === "function" && await adapter.exists(current)) {
+        continue;
+      }
+      try {
+        await adapter.mkdir(current);
+      } catch (error) {
+        if (!(typeof adapter.exists === "function" && await adapter.exists(current))) {
+          throw error;
+        }
+      }
+    }
+    return;
+  }
+  const root = pluginVaultRoot(plugin);
+  if (!root) {
+    throw new Error("Vault root is unavailable; cannot create vault queue.");
+  }
+  nodeFs().mkdirSync(nodePath().join(root, dirPath), { recursive: true });
+}
+
+async function writeVaultJson(plugin, relativePath, value) {
+  const content = `${JSON.stringify(value, null, 2)}\n`;
+  const dir = relativePath.split("/").slice(0, -1).join("/");
+  if (dir) {
+    await ensureVaultDir(plugin, dir);
+  }
+  const adapter = vaultAdapter(plugin);
+  if (adapter && typeof adapter.write === "function") {
+    await adapter.write(relativePath, content);
+    return;
+  }
+  const root = pluginVaultRoot(plugin);
+  if (!root) {
+    throw new Error("Vault root is unavailable; cannot write vault queue item.");
+  }
+  nodeFs().writeFileSync(nodePath().join(root, relativePath), content, "utf8");
+}
+
+async function readVaultJson(plugin, relativePath) {
+  let text = "";
+  const adapter = vaultAdapter(plugin);
+  if (adapter && typeof adapter.read === "function") {
+    if (typeof adapter.exists === "function" && !(await adapter.exists(relativePath))) {
+      return null;
+    }
+    text = await adapter.read(relativePath);
+  } else {
+    const root = pluginVaultRoot(plugin);
+    if (!root) return null;
+    const absolute = nodePath().join(root, relativePath);
+    if (!nodeFs().existsSync(absolute)) return null;
+    text = nodeFs().readFileSync(absolute, "utf8");
+  }
+  if (!String(text || "").trim()) {
+    return null;
+  }
+  return JSON.parse(text);
+}
+
+module.exports = {
+  DesktopLauncherClient,
+  VaultQueueClient,
+  createRuntimeClient,
+  normalizeRuntimeClientMode,
+};
+
+// --- src/render/cards.js ---
+
+// Reusable card render helpers extracted from render_today.js and render_primitives.js.
+
+function renderFeedCard(plugin, container, entry) {
+  const card = container.createDiv({ cls: "furnace-feed-card" });
+
+  // Protocol-colored left bar
+  if (entry.protocol) {
+    card.addClass(`furnace-protocol-${entry.protocol}`);
+  }
+
+  const body = card.createDiv({ cls: "furnace-feed-card-body" });
+  const titleEl = body.createEl("div", { cls: "furnace-feed-card-title furnace-today-feed-title", text: entry.title });
+  if (entry.summary) {
+    body.createEl("div", { cls: "furnace-feed-card-summary furnace-today-feed-summary", text: entry.summary });
+  }
+
+  return { card, body };
+}
+
+function renderReportCard(plugin, cardEl, entry) {
+  const isUnread = isReportUnread(plugin, entry);
+  if (isUnread) {
+    cardEl.addClass("furnace-report-unread");
+  }
+
+  const actions = cardEl.createDiv({ cls: "furnace-feed-card-actions" });
+  const openBtn = actions.createEl("button", {
+    cls: "mod-cta",
+    text: plugin.t("Open report"),
+  });
+  openBtn.addEventListener("click", () => {
+    plugin.goToReport(entry.target);
+  });
+
+  // 仅 advanced mode 显示 View graph 按钮 (EP-004 SC#2)
+  if (plugin.settings && plugin.settings.showAdvancedCommands) {
+    const graphBtn = actions.createEl("button", {
+      text: plugin.t("View graph"),
+    });
+    graphBtn.addEventListener("click", async () => {
+      await plugin.runReportSubgraphCommand({ reportPath: entry.target });
+    });
+  }
+}
+
+function renderConfirmationCard(plugin, cardEl, entry) {
+  const actions = cardEl.createDiv({ cls: "furnace-feed-card-actions" });
+
+  if (entry.target && entry.target.startsWith("review:")) {
+    const reviewBtn = actions.createEl("button", {
+      cls: "mod-cta",
+      text: plugin.t("Review"),
+    });
+    reviewBtn.addEventListener("click", () => {
+      plugin.viewReviewTodayEntry(entry);
+    });
+
+    const snoozeBtn = actions.createEl("button", {
+      text: plugin.t("Snooze"),
+    });
+    snoozeBtn.addEventListener("click", () => {
+      plugin.snoozeTodayEntry(entry.target);
+    });
+  }
+}
+
+function renderAutomationCard(plugin, cardEl, entry) {
+  const state = String(entry.autoState || "idle");
+  var stateLabel, stateClass;
+  switch (state) {
+    case "ok":
+      stateLabel = plugin.t("正常运行");
+      stateClass = "furnace-auto-state-ok";
+      break;
+    case "pending":
+      stateLabel = plugin.t("待确认");
+      stateClass = "furnace-auto-state-pending";
+      break;
+    case "attention":
+      stateLabel = plugin.t("需要关注");
+      stateClass = "furnace-auto-state-attention";
+      break;
+    default:
+      stateLabel = plugin.t("空闲");
+      stateClass = "furnace-auto-state-idle";
+  }
+  var pill = cardEl.createDiv({ cls: "furnace-auto-state-pill " + stateClass, text: stateLabel });
+}
+
+function isReportUnread(plugin, entry) {
+  const lastViewed = plugin.settings && plugin.settings.lastViewedTimestamp;
+  if (!lastViewed || !entry.timestamp) return false;
+  return entry.timestamp > lastViewed;
+}
+
+module.exports = {
+  renderFeedCard,
+  renderReportCard,
+  renderConfirmationCard,
+  renderAutomationCard,
+  isReportUnread,
+};
+
 // --- src/settings.js ---
 
 // Plugin settings tab.
@@ -1526,7 +4036,10 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     const t = this.plugin.t.bind(this.plugin);
     containerEl.empty();
-    containerEl.createEl("h2", { text: t("Furnace Product Shell") });
+    containerEl.createEl("h2", { text: t("炼丹炉 Product Shell") });
+
+    // ── Language & Appearance ────────────────────────
+    containerEl.createEl("h3", { cls: "furnace-settings-section", text: t("Language & Appearance") });
 
     new Setting(containerEl)
       .setName(t("UI language"))
@@ -1547,6 +4060,24 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName(t("Show advanced commands"))
+      .setDesc(t("Register diagnostics, history, Review Center, and Execution Center commands in the command palette. Reload Obsidian after changing this toggle."))
+      .addToggle((toggle) =>
+        toggle.setValue(Boolean(this.plugin.settings.showAdvancedCommands)).onChange(async (value) => {
+          this.plugin.settings.showAdvancedCommands = Boolean(value);
+          await this.plugin.savePluginState();
+          new Notice(this.plugin.t("Advanced command visibility refreshes after reloading Obsidian."));
+        })
+      );
+
+    // ── Furnace Connection ──────────────────────────
+    containerEl.createEl("h3", { cls: "furnace-settings-section", text: t("Furnace Connection") });
+    containerEl.createEl("p", {
+      text: t("Full runtime is Desktop-only. iPad/iOS Obsidian can only be a future companion; it cannot run the local launcher, Python CLI, or full ingest/review flow."),
+      cls: "setting-item-description",
+    });
+
+    new Setting(containerEl)
       .setName(t("Aiwiki launcher"))
       .setDesc(t("Vault-local or absolute launcher path. This vault may point at an external runtime root."))
       .addText((text) =>
@@ -1561,31 +4092,17 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName(t("Default ask mode"))
-      .setDesc(t("Choose whether Ask defaults to deterministic `ask` or LLM-backed `run-ask`."))
+      .setName(t("Runtime client mode"))
+      .setDesc(t("Desktop launcher runs the local aiwiki runtime. Vault queue only writes .aiwiki/queue requests for desktop drain; it does not execute commands."))
       .addDropdown((dropdown) =>
         dropdown
-          .addOption("ask", "ask")
-          .addOption("run-ask", "run-ask")
-          .setValue(this.plugin.settings.defaultAskMode)
+          .addOption("desktop-launcher", t("Desktop launcher"))
+          .addOption("vault-queue", t("Vault queue companion"))
+          .setValue(normalizeRuntimeClientMode(this.plugin.settings.runtimeClientMode))
           .onChange(async (value) => {
-            this.plugin.settings.defaultAskMode = value;
+            this.plugin.settings.runtimeClientMode = normalizeRuntimeClientMode(value);
             await this.plugin.savePluginState();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName(t("Default ask format"))
-      .setDesc(t("Default output format for the Ask modal."))
-      .addDropdown((dropdown) =>
-        dropdown
-          .addOption("report", "report")
-          .addOption("slides", "slides")
-          .addOption("figure", "figure")
-          .setValue(this.plugin.settings.defaultAskFormat)
-          .onChange(async (value) => {
-            this.plugin.settings.defaultAskFormat = value;
-            await this.plugin.savePluginState();
+            this.plugin.refreshOpenViews();
           })
       );
 
@@ -1602,100 +4119,155 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
         })
       );
 
-    new Setting(containerEl)
-      .setName(t("Show advanced commands"))
-      .setDesc(t("Register review, execution, protocol, and legacy panel commands in the command palette. Reload Obsidian after changing this toggle."))
-      .addToggle((toggle) =>
-        toggle.setValue(Boolean(this.plugin.settings.showAdvancedCommands)).onChange(async (value) => {
-          this.plugin.settings.showAdvancedCommands = Boolean(value);
-          await this.plugin.savePluginState();
-          new Notice(this.plugin.t("Advanced command visibility refreshes after reloading Obsidian."));
-        })
-      );
-
-    new Setting(containerEl)
-      .setName(t("Show HTML shortcuts"))
-      .setDesc(t("Whether advanced panels should show HTML shortcuts when the summary exposes them."))
-      .addToggle((toggle) =>
-        toggle.setValue(this.plugin.settings.showHtmlShortcuts).onChange(async (value) => {
-          this.plugin.settings.showHtmlShortcuts = Boolean(value);
-          await this.plugin.savePluginState();
-          this.plugin.refreshOpenViews();
-        })
-      );
-
-    // ── LLM configuration ──────────────────────────────────
-    containerEl.createEl("h3", { text: t("LLM backend") });
-    const selectedBackend = String(this.plugin.settings.llmBackend || "").trim();
+    // ── LLM Configuration ──────────────────────────
+    containerEl.createEl("h3", { cls: "furnace-settings-section", text: t("LLM Configuration") });
+    const selectedProfile = llmProviderProfile(this.plugin.settings.llmBackend);
 
     new Setting(containerEl)
       .setName(t("LLM backend"))
-      .setDesc(t("Select the explicit LLM backend used by run-compile / run-ask / run-nightly. Empty = unconfigured."))
-      .addDropdown((dropdown) =>
-        dropdown
-          .addOption("", t("unconfigured"))
-          .addOption("codex-cli", "codex-cli")
-          .addOption("nvidia-nim-api", "nvidia-nim-api")
-          .addOption("copilot-cli", "copilot-cli")
-          .addOption("claude-cli", "claude-cli")
-          .setValue(this.plugin.settings.llmBackend || "")
+      .setDesc(t("Select the LLM provider used by run-compile / run-ask / run-nightly. Common providers are listed first; advanced entries are for local CLI sessions or custom OpenAI-compatible endpoints."))
+      .addDropdown((dropdown) => {
+        for (const profile of LLM_PROVIDER_PROFILES) {
+          const prefix = profile.tier === "advanced" ? "Advanced · " : "";
+          dropdown.addOption(profile.value, `${prefix}${profile.label}`);
+        }
+        return dropdown
+          .setValue(selectedProfile.value)
           .onChange(async (value) => {
-            this.plugin.settings.llmBackend = value;
+            const nextProfile = llmProviderProfile(value);
+            this.plugin.settings.llmBackend = nextProfile.value;
+            this.plugin.settings.llmModel = nextProfile.defaultModel || "";
             await this.plugin.savePluginState();
             this.display();
             new Notice(t("LLM settings saved. New runs will use the updated configuration."));
-          })
-      );
+          });
+      });
 
-    new Setting(containerEl)
-      .setName(t("LLM model"))
-      .setDesc(t("Override the model name (e.g. gpt-5.4, claude-sonnet-4.5). Empty = selected backend default strategy (`codex-cli`: `gpt-5.4`; `nvidia-nim-api`: `z-ai/glm-5.1 -> moonshotai/kimi-k2.5 -> minimaxai/minimax-m2.7`)."))
-      .addText((text) =>
-        text
-          .setPlaceholder("gpt-5.4 / z-ai/glm-5.1 / claude-sonnet-4.5")
-          .setValue(this.plugin.settings.llmModel || "")
-          .onChange(async (value) => {
-            this.plugin.settings.llmModel = String(value || "").trim();
-            await this.plugin.savePluginState();
-          })
-      );
-
-    if (selectedBackend === "nvidia-nim-api") {
+    if (llmProviderNeedsModel(selectedProfile)) {
       new Setting(containerEl)
-        .setName(t("NVIDIA NIM API key"))
-        .setDesc(t("Optional key for nvidia-nim-api. Stored locally in plugin data. Empty = use AIWIKI_NVIDIA_NIM_API_KEY / NVIDIA_NIM_API_KEY."))
+        .setName(t("LLM model"))
+        .setDesc(t("Model for the selected API provider. Empty uses that provider profile default when one exists."))
+        .addText((text) =>
+          text
+            .setPlaceholder(selectedProfile.defaultModel || "provider/model")
+            .setValue(this.plugin.settings.llmModel || "")
+            .onChange(async (value) => {
+              this.plugin.settings.llmModel = String(value || "").trim();
+              await this.plugin.savePluginState();
+            })
+        );
+    }
+
+    if (selectedProfile.apiKeySetting) {
+      new Setting(containerEl)
+        .setName(t("API key"))
+        .setDesc(t("Stored only in local Obsidian plugin data. New runs use the key saved here and ignore stale LLM environment variables."))
         .addText((text) => {
           text
-            .setPlaceholder("nvapi-...")
-            .setValue(this.plugin.settings.llmNvidiaNimApiKey || "")
+            .setPlaceholder(selectedProfile.keyPlaceholder || "sk-...")
+            .setValue(this.plugin.settings[selectedProfile.apiKeySetting] || "")
             .onChange(async (value) => {
-              this.plugin.settings.llmNvidiaNimApiKey = String(value || "").trim();
+              this.plugin.settings[selectedProfile.apiKeySetting] = String(value || "").trim();
               await this.plugin.savePluginState();
             });
           text.inputEl.type = "password";
           text.inputEl.autocomplete = "off";
         });
+    }
 
+    if (selectedProfile.baseUrlSetting) {
       new Setting(containerEl)
-        .setName(t("NVIDIA NIM base URL"))
-        .setDesc(t("Override the NVIDIA NIM endpoint. Empty = https://integrate.api.nvidia.com/v1."))
+        .setName(t("Base URL"))
+        .setDesc(t("Override the provider endpoint. Leave empty to use the provider profile default."))
         .addText((text) =>
           text
-            .setPlaceholder("https://integrate.api.nvidia.com/v1")
-            .setValue(this.plugin.settings.llmNvidiaNimBaseUrl || "")
+            .setPlaceholder(selectedProfile.defaultBaseUrl || "")
+            .setValue(this.plugin.settings[selectedProfile.baseUrlSetting] || "")
             .onChange(async (value) => {
-              this.plugin.settings.llmNvidiaNimBaseUrl = String(value || "").trim();
+              this.plugin.settings[selectedProfile.baseUrlSetting] = String(value || "").trim();
               await this.plugin.savePluginState();
             })
         );
     }
+
+    if (selectedProfile.cliHint) {
+      new Setting(containerEl)
+        .setName(t("CLI session"))
+        .setDesc(t("This backend uses a local CLI login/session. API key fields are not used."));
+      containerEl.createEl("p", {
+        text: selectedProfile.cliHint,
+        cls: "setting-item-description",
+      });
+    }
+
+    // ── 通知（webhook） ──────────────────────────────
+    // ── Notifications ────────────────────────────────
+    containerEl.createEl("h3", { cls: "furnace-settings-section", text: t("Notifications") });
+    containerEl.createEl("p", {
+      text: t("Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports."),
+      cls: "setting-item-description",
+    });
+
+    new Setting(containerEl)
+      .setName(t("Feishu webhook URL"))
+      .setDesc(t("Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports."))
+      .addText((text) => {
+        text
+          .setPlaceholder("https://open.feishu.cn/open-apis/bot/v2/hook/...")
+          .setValue(this.plugin.settings.feishuWebhookUrl || "")
+          .onChange(async (value) => {
+            this.plugin.settings.feishuWebhookUrl = String(value || "").trim();
+            await this.plugin.savePluginState();
+          });
+        text.inputEl.autocomplete = "off";
+      });
+
+    new Setting(containerEl)
+      .setName(t("WeCom webhook URL"))
+      .setDesc(t("Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports."))
+      .addText((text) => {
+        text
+          .setPlaceholder("https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...")
+          .setValue(this.plugin.settings.wecomWebhookUrl || "")
+          .onChange(async (value) => {
+            this.plugin.settings.wecomWebhookUrl = String(value || "").trim();
+            await this.plugin.savePluginState();
+          });
+        text.inputEl.autocomplete = "off";
+      });
+
+    const updateEnabledChannel = async (channel, enabled) => {
+      const channels = new Set(normalizeEnabledChannels(this.plugin.settings.enabledChannels));
+      if (enabled) {
+        channels.add(channel);
+      } else {
+        channels.delete(channel);
+      }
+      this.plugin.settings.enabledChannels = normalizeEnabledChannels(Array.from(channels));
+      await this.plugin.savePluginState();
+    };
+
+    new Setting(containerEl)
+      .setName(t("Enable Feishu"))
+      .addToggle((toggle) =>
+        toggle.setValue(normalizeEnabledChannels(this.plugin.settings.enabledChannels).includes("feishu")).onChange(async (value) => {
+          await updateEnabledChannel("feishu", Boolean(value));
+        })
+      );
+
+    new Setting(containerEl)
+      .setName(t("Enable WeCom"))
+      .addToggle((toggle) =>
+        toggle.setValue(normalizeEnabledChannels(this.plugin.settings.enabledChannels).includes("wecom")).onChange(async (value) => {
+          await updateEnabledChannel("wecom", Boolean(value));
+        })
+      );
   }
 }
 
-// --- src/render.js ---
+// --- src/render_primitives.js ---
 
-// Standalone render functions extracted from the Plugin class.
-// Each function takes the plugin instance as its first argument.
+// Render primitives shared by Product Shell sections.
 
 function renderCardGrid(plugin, container, cards) {
   const grid = container.createDiv({ cls: "furnace-shell-grid" });
@@ -1719,25 +4291,6 @@ function renderActionButtons(plugin, container, buttons) {
       plugin.runUiAction(() => buttonConfig.onClick(), localizedLabel);
     });
   });
-}
-
-function renderGettingStartedSection(plugin, container) {
-  const section = container.createDiv({ cls: "furnace-shell-section" });
-  section.createEl("h3", { text: plugin.t("Start Here") });
-  section.createDiv({
-    cls: "furnace-shell-meta",
-    text: plugin.t("Obsidian Product Shell and the launcher CLI share the same runtime: Ask works from both sides, and ingest can happen through Capture Note / raw/inbox / drop-*."),
-  });
-  const steps = section.createEl("ol");
-  steps.createEl("li", { text: plugin.t("Click Refresh first so shell-summary is generated.") });
-  steps.createEl("li", { text: plugin.t("Use Capture Note in Obsidian, or use drop-note / drop-url / drop-pdf / drop-image / drop-repo in the terminal.") });
-  steps.createEl("li", { text: plugin.t("Use the Ask modal when you need to ask a question, or run ./scripts/aiwiki-launcher.sh ask ...") });
-  steps.createEl("li", { text: plugin.t("Follow single writer for write actions: do not run compile / nightly / apply / revert in Obsidian and the terminal at the same time.") });
-  plugin.renderActionButtons(section, [
-    { label: "Capture Note", cta: true, onClick: async () => new CaptureNoteModal(plugin.app, plugin).open() },
-    { label: "Ask", onClick: async () => new AskCommandModal(plugin.app, plugin).open() },
-    { label: "Compile", onClick: async () => plugin.runCompileCommand() },
-  ]);
 }
 
 function renderPanel(plugin, container, title, description = "", options = {}) {
@@ -1785,15 +4338,6 @@ function renderPill(plugin, container, text, extraClass = "") {
   return pill;
 }
 
-function latestInteractionEntry(plugin) {
-  const telemetry = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary.route_telemetry || {} : {};
-  const entries = Array.isArray(telemetry.entries) ? telemetry.entries : [];
-  if (entries.length) {
-    return entries[0];
-  }
-  return telemetry.last_entry && typeof telemetry.last_entry === "object" ? telemetry.last_entry : null;
-}
-
 function renderMainHeader(plugin, container) {
   const header = container.createDiv({ cls: "furnace-shell-main-header" });
   const copy = header.createDiv({ cls: "furnace-shell-main-copy" });
@@ -1812,119 +4356,11 @@ function renderMainHeader(plugin, container) {
   }
 }
 
-function renderInteractionPanel(plugin, container) {
-  const panel = plugin.renderPanel(container, "Interaction", "Ask anything about the current workspace.");
-  const input = panel.createEl("textarea", { cls: "furnace-shell-composer-input" });
-  input.rows = 3;
-  input.placeholder = plugin.t("Type a question or keyword...");
-  input.addClass("furnace-shell-code");
-
-  plugin.renderInlineButtons(panel, [
-    {
-      label: "Send",
-      cta: true,
-      onClick: async () => {
-        const question = String(input.value || "").trim();
-        if (!question) {
-          new Notice(plugin.t("Question cannot be empty."));
-          return;
-        }
-        await plugin.runAskCommand({
-          question,
-          format: plugin.settings.defaultAskFormat,
-          mode: plugin.settings.defaultAskMode,
-          protocol: "",
-        });
-      },
-    },
-    {
-      label: "Search",
-      kind: "ghost",
-      onClick: async () => {
-        const query = String(input.value || "").trim();
-        if (!query) {
-          new Notice(plugin.t("Search query cannot be empty."));
-          return;
-        }
-        await plugin.runShellSearchCommand(query, 8);
-      },
-    },
-  ]);
-
-  input.addEventListener("keydown", (event) => {
-    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-      event.preventDefault();
-      const question = String(input.value || "").trim();
-      if (!question) {
-        new Notice(plugin.t("Question cannot be empty."));
-        return;
-      }
-      plugin.runUiAction(
-        () =>
-          plugin.runAskCommand({
-            question,
-            format: plugin.settings.defaultAskFormat,
-            mode: plugin.settings.defaultAskMode,
-            protocol: "",
-          }),
-        plugin.t("Ask")
-      );
-    }
-  });
-
-  const latestInteraction = plugin.latestInteractionEntry();
-  if (latestInteraction && latestInteraction.question_preview) {
-    panel.createDiv({
-      cls: "furnace-shell-panel-note",
-      text: `${truncateText(latestInteraction.question_preview, 120)} · ${formatDisplayTime(latestInteraction.occurred_at, plugin.locale())}`,
-    });
-  } else {
-    panel.createDiv({ cls: "furnace-shell-panel-note", text: plugin.t("No interaction yet. Ask a question or run a search.") });
-  }
-
-  const latestRun = plugin.latestPluginRun();
-  const runSection = panel.createDiv({ cls: "furnace-shell-run-section" });
-  runSection.createDiv({ cls: "furnace-shell-inline-heading", text: plugin.t("Latest run") });
-  if (!latestRun) {
-    runSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No plugin run yet. Send a question or use a command.") });
-  } else {
-    renderRunDetail(plugin, runSection, latestRun, { compact: true, includeOpenRecentRuns: true });
-  }
-
-  const searchResults = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary.search_results || {} : {};
-  const searchItems = Array.isArray(searchResults.results) ? searchResults.results : [];
-  if (String(searchResults.query || "").trim()) {
-    const resultBox = panel.createDiv({ cls: "furnace-shell-inline-list" });
-    resultBox.createDiv({
-      cls: "furnace-shell-inline-heading",
-      text: `${plugin.t("Search")} · ${truncateText(searchResults.query, 48)} (${searchResults.result_count || 0})`,
-    });
-    if (!searchItems.length) {
-      resultBox.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No matching pages in the compiled workspace.") });
-    } else {
-      searchItems.slice(0, 3).forEach((result) => {
-        const item = resultBox.createDiv({ cls: "furnace-shell-inline-item" });
-        item.createEl("strong", { text: result.title || result.path || plugin.t("result") });
-        item.createDiv({
-          cls: "furnace-shell-meta",
-          text: `${plugin.t(result.kind || "page")} · ${result.path || ""}`,
-        });
-        if (result.path) {
-          const openButton = item.createEl("button", { text: plugin.t("Open") });
-          openButton.addEventListener("click", () => {
-            plugin.runUiAction(() => plugin.openWorkspacePath(result.path), `Open search result: ${result.path}`);
-          });
-        }
-      });
-    }
-  }
-}
-
 function renderMaterialPanel(plugin, container) {
   const panel = plugin.renderPanel(container, "Materials", "Push new material into the furnace.");
   const grid = panel.createDiv({ cls: "furnace-shell-material-grid" });
   [
-    { icon: "📝", label: "Capture Note", onClick: async () => new CaptureNoteModal(plugin.app, plugin).open() },
+    { icon: "📝", label: "投文字材料", onClick: async () => new CaptureNoteModal(plugin.app, plugin).open() },
     { icon: "🔗", label: "Drop URL", onClick: async () => new DropUrlModal(plugin.app, plugin).open() },
     { icon: "📄", label: "Drop File", onClick: async () => new DropFileModal(plugin.app, plugin).open() },
     { icon: "📷", label: "Drop Image", onClick: async () => new DropImageModal(plugin.app, plugin).open() },
@@ -1996,10 +4432,46 @@ function syncToneClass(status) {
   if (status === "running") {
     return "is-running";
   }
-  if (status === "failed") {
-    return "is-degraded";
-  }
+  // EP-015: currentShellSyncState() is summary-only and only returns
+  // running / healthy / unknown. There is no "failed" domain state anymore.
   return "is-unknown";
+}
+
+function formatBackendFallbackReadiness(plugin, fallback) {
+  if (!fallback || typeof fallback !== "object") return "";
+  const backend = String(fallback.backend || "").trim() || plugin.t("unconfigured");
+  const model = String(fallback.model || "").trim();
+  const available = Boolean(fallback.available);
+  const configured = Boolean(fallback.configured);
+  const reason = String(fallback.reason || "").trim();
+  const state = available
+    ? plugin.t("available")
+    : configured
+      ? plugin.t("configured but unavailable")
+      : plugin.t("not configured");
+  const route = model ? `${backend}/${model}` : backend;
+  return reason ? `${route}: ${state} (${reason})` : `${route}: ${state}`;
+}
+
+function renderBackendFallbackReadiness(plugin, container, llmStatus) {
+  const fallbacks = llmStatus && Array.isArray(llmStatus.backend_fallbacks)
+    ? llmStatus.backend_fallbacks.filter((item) => item && typeof item === "object")
+    : [];
+  if (!fallbacks.length) {
+    container.createDiv({ cls: "furnace-shell-panel-note", text: plugin.t("No backup LLM route configured.") });
+    return;
+  }
+  const readyCount = fallbacks.filter((item) => Boolean(item.available)).length;
+  const summary = readyCount > 0
+    ? plugin.t("Backup LLM route ready: {count}/{total}", { count: readyCount, total: fallbacks.length })
+    : plugin.t("Backup LLM route not ready.");
+  container.createDiv({ cls: "furnace-shell-panel-note", text: summary });
+  const list = container.createDiv({ cls: "furnace-shell-inline-list furnace-shell-inline-list-compact" });
+  fallbacks.slice(0, 3).forEach((fallback) => {
+    const item = list.createDiv({ cls: "furnace-shell-inline-item" });
+    const text = formatBackendFallbackReadiness(plugin, fallback);
+    item.createDiv({ cls: "furnace-shell-meta", text });
+  });
 }
 
 function renderStatusPanel(plugin, container) {
@@ -2040,7 +4512,7 @@ function renderStatusPanel(plugin, container) {
     llmHealthToneClass(llmHealth.status)
   );
   if (llmHealth.fallbackCommand) {
-    plugin.renderPill(healthPills, plugin.t("Deterministic fallback active"), "is-degraded");
+    plugin.renderPill(healthPills, plugin.t("LLM failure notice active"), "is-degraded");
   }
   const routeParts = [];
   if (syncState.checkedAt) {
@@ -2058,14 +4530,37 @@ function renderStatusPanel(plugin, container) {
     healthBox.createDiv({ cls: "furnace-shell-meta", text: routeParts.join(" | ") });
   }
   healthBox.createDiv({
-    cls: syncState.status === "failed" ? "furnace-shell-panel-note furnace-shell-status-failed" : "furnace-shell-panel-note",
+    // EP-015: syncState.status ∈ {running, healthy, unknown}; no failed branch.
+    cls: "furnace-shell-panel-note",
     text: plugin.t(syncState.reason || "Summary unavailable. The panel will sync automatically when possible."),
   });
   healthBox.createDiv({
     cls: llmHealth.status === "degraded" ? "furnace-shell-panel-note furnace-shell-status-failed" : "furnace-shell-panel-note",
     text: plugin.t(llmHealth.reason || "No recent LLM health check yet."),
   });
+  renderBackendFallbackReadiness(plugin, healthBox, llmStatus);
   const healthActions = [];
+  if (llmHealth.rerunCommand) {
+    healthActions.push({
+      label: "Copy command",
+      kind: "ghost",
+      onClick: async () => plugin.copyText(llmHealth.rerunCommand),
+    });
+  }
+  if (llmHealth.resultPath) {
+    healthActions.push({
+      label: "Copy result path",
+      kind: "ghost",
+      onClick: async () => plugin.copyText(llmHealth.resultPath),
+    });
+  }
+  if (llmHealth.receiptPath) {
+    healthActions.push({
+      label: "Copy receipt path",
+      kind: "ghost",
+      onClick: async () => plugin.copyText(llmHealth.receiptPath),
+    });
+  }
   if (llmHealth.stderrRaw || llmHealth.stderrSummary) {
     healthActions.push({
       label: "Copy stderr",
@@ -2087,6 +4582,40 @@ function renderStatusPanel(plugin, container) {
     { label: "Refresh Furnace Shell", onClick: async () => plugin.refreshShellSummaryCommand() },
     { label: "Open Recent Runs", kind: "ghost", onClick: async () => plugin.openRecentRunsView() },
   ]);
+}
+
+function resolveBatchHintInvocation(plugin, action) {
+  // Round 43 / Stage C: batch hint commands -> existing pickers / runners.
+  // Returns { label, run } or null when the action is not a recognised batch hint.
+  if (!action || typeof action !== "object") {
+    return null;
+  }
+  const kind = String(action.kind || "");
+  if (kind !== "batch-review" && kind !== "batch-apply") {
+    return null;
+  }
+  const command = String(action.command || "");
+  if (kind === "batch-apply" && command.includes("apply-action --all-accepted-low-risk")) {
+    return {
+      label: plugin.t("Run batch"),
+      run: () => plugin.runApplyAllAcceptedLowRiskCommand(),
+    };
+  }
+  if (kind === "batch-review" && command.includes("review-page --all-pending")) {
+    return {
+      label: plugin.t("Run batch"),
+      run: () => plugin.openReviewBatchSuggestionPicker(),
+    };
+  }
+  if (kind === "batch-review" && command.includes("review-action --all-pending")) {
+    // Action-kind batch review still routes through the batch suggestion picker;
+    // the picker filters to the active suggestion bundle, so the same entry point works.
+    return {
+      label: plugin.t("Run batch"),
+      run: () => plugin.openReviewBatchSuggestionPicker(),
+    };
+  }
+  return null;
 }
 
 function renderSuggestedNextActionsBlock(plugin, container, options = {}) {
@@ -2115,6 +4644,13 @@ function renderSuggestedNextActionsBlock(plugin, container, options = {}) {
       copy.createDiv({ cls: "furnace-shell-meta", text: metaParts.join(" | ") });
     }
     const buttons = item.createDiv({ cls: "furnace-shell-inline-actions furnace-shell-inline-actions-compact" });
+    const batchInvocation = resolveBatchHintInvocation(plugin, action);
+    if (batchInvocation) {
+      const runButton = buttons.createEl("button", { text: batchInvocation.label, cls: "mod-cta" });
+      runButton.addEventListener("click", () => {
+        plugin.runUiAction(batchInvocation.run, `Run batch hint: ${action.title || action.command}`);
+      });
+    }
     if (action.path) {
       const openButton = buttons.createEl("button", { text: plugin.t("Open") });
       openButton.addEventListener("click", () => {
@@ -2129,13 +4665,6 @@ function renderSuggestedNextActionsBlock(plugin, container, options = {}) {
     }
   });
   return true;
-}
-
-function renderNextActionsPanel(plugin, container) {
-  const panel = plugin.renderPanel(container, "Suggested Next Actions", "Keep the next safe action visible from the main surface.");
-  if (!renderSuggestedNextActionsBlock(plugin, panel, { maxItems: 3 })) {
-    panel.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No suggested next action right now.") });
-  }
 }
 
 function renderDigestRow(plugin, container, label, value) {
@@ -2159,9 +4688,20 @@ function renderDigestPanel(plugin, container) {
   const review = plugin.shellSummary.review_backlog_counts || {};
   const aging = plugin.shellSummary.aging_summary || {};
   const nightly = plugin.shellSummary.nightly || {};
+  const watcher = plugin.shellSummary.watcher || {};
   const llmStatus = plugin.shellSummary.llm_status || {};
   const lintCounts = nightly.lint_counts || {};
   const lintTotal = sumNumericValues(lintCounts);
+  const nightlyReceipt = nightly.llm_receipt || {};
+  const rerunCommand = String(
+    nightly.rerun_command
+      || nightlyReceipt.rerun_command
+      || watcher.rerun_command
+      || nightly["recovery_" + "command"]
+      || nightlyReceipt["recovery_" + "command"]
+      || watcher["recovery_" + "command"]
+      || ""
+  ).trim();
 
   plugin.renderDigestRow(
     panel,
@@ -2185,94 +4725,1578 @@ function renderDigestPanel(plugin, container) {
       ? `${lintTotal || 0} ${plugin.t("warnings")} · ${formatDisplayTime(nightly.generated_at, plugin.locale()) || plugin.t("healthy")}`
       : plugin.t("No nightly state yet.")
   );
+  if (rerunCommand) {
+    renderDigestRow(plugin, panel, "Rerun command", rerunCommand);
+  }
   panel.createDiv({
     cls: "furnace-shell-panel-note",
     text: `${plugin.t("Last sync")} ${formatDisplayTime(plugin.shellSummary.generated_at, plugin.locale()) || plugin.t("unknown")}`,
   });
 }
 
-function renderAdvancedPanel(plugin, container) {
-  const details = container.createEl("details", { cls: "furnace-shell-advanced" });
-  const summary = details.createEl("summary", { cls: "furnace-shell-advanced-summary" });
-  const summaryCopy = summary.createDiv({ cls: "furnace-shell-advanced-copy" });
-  summaryCopy.createEl("span", { cls: "furnace-shell-advanced-title", text: plugin.t("Advanced Actions") });
-  summaryCopy.createEl("span", { cls: "furnace-shell-advanced-description", text: plugin.t("Core workflows stay available here, but hidden by default.") });
-  const summaryBadges = summary.createDiv({ cls: "furnace-shell-pill-row" });
-  const review = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary.review_backlog_counts || {} : {};
-  const pendingReviewCount = Number(review.pending_decisions || 0) + Number(review.pending_judgments || 0);
-  plugin.renderPill(summaryBadges, `${pendingReviewCount} ${plugin.t("Pending Reviews")}`);
-  plugin.renderPill(summaryBadges, `${review.ready_actions || 0} ${plugin.t("actions")}`);
-
-  const body = details.createDiv({ cls: "furnace-shell-advanced-body" });
-  plugin.renderInlineButtons(body, [
-    { label: "Compile", cta: true, onClick: async () => plugin.runCompileCommand() },
-    { label: "Nightly", onClick: async () => plugin.runNightlyCommand() },
-    { label: "Set Protocol", onClick: async () => new ProtocolCommandModal(plugin.app, plugin).open() },
-    { label: "Sync now", kind: "ghost", onClick: async () => plugin.refreshShellSummaryCommand() },
-  ]);
-
-  const suggestedActions = body.createDiv({ cls: "furnace-shell-subpanel furnace-shell-subpanel-compact" });
-  suggestedActions.createEl("h4", { text: plugin.t("Suggested Next Actions") });
-  if (!renderSuggestedNextActionsBlock(plugin, suggestedActions, { maxItems: 2 })) {
-    suggestedActions.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No suggested next action right now.") });
+function isHttpUrl(value) {
+  try {
+    const url = new URL(String(value || "").trim());
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch (error) {
+    return false;
   }
-
-  const columns = body.createDiv({ cls: "furnace-shell-advanced-grid" });
-
-  const reviewCard = columns.createDiv({ cls: "furnace-shell-subpanel" });
-  reviewCard.createEl("h4", { text: plugin.t("Quick review") });
-  reviewCard.createDiv({
-    cls: "furnace-shell-meta",
-    text: `${pendingReviewCount} ${plugin.t("Pending Reviews")} · ${(plugin.shellSummary && plugin.shellSummary.aging_summary && plugin.shellSummary.aging_summary.overdue_count) || 0} ${plugin.t("Overdue")}`,
-  });
-  const nextReview = plugin.nextReviewCandidate();
-  if (nextReview && nextReview.pagePath) {
-    reviewCard.createEl("strong", { text: nextReview.label || nextReview.pagePath });
-    reviewCard.createDiv({ cls: "furnace-shell-meta", text: nextReview.description || plugin.t("review object") });
-  }
-  plugin.renderInlineButtons(reviewCard, [
-    { label: "Review Next", onClick: async () => plugin.openReviewNextTransitionPicker() },
-    { label: "Batch Review", onClick: async () => plugin.openReviewBatchSuggestionPicker() },
-    { label: "Open Review Center", kind: "ghost", onClick: async () => plugin.openReviewCenterView() },
-  ], "furnace-shell-subpanel-actions");
-
-  const executionCard = columns.createDiv({ cls: "furnace-shell-subpanel" });
-  executionCard.createEl("h4", { text: plugin.t("Quick execution") });
-  executionCard.createDiv({
-    cls: "furnace-shell-meta",
-    text: `${review.ready_actions || 0} ${plugin.t("actions")} · ${review.overdue_actions || 0} ${plugin.t("Overdue")} · ${review.escalated_actions || 0} ${plugin.t("Escalation")}`,
-  });
-  plugin.renderInlineButtons(executionCard, [
-    { label: "Review Action", onClick: async () => plugin.openReviewActionContextPicker() },
-    { label: "Apply All Low-Risk", onClick: async () => plugin.runApplyAllAcceptedLowRiskCommand() },
-    { label: "Open Execution Center", kind: "ghost", onClick: async () => plugin.openExecutionCenterView() },
-  ], "furnace-shell-subpanel-actions");
-
-  const runsCard = columns.createDiv({ cls: "furnace-shell-subpanel" });
-  runsCard.createEl("h4", { text: plugin.t("Latest plugin runs") });
-  if (!plugin.pluginState.recentRuns.length) {
-    runsCard.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No recent plugin runs.") });
-  } else {
-    const runList = runsCard.createDiv({ cls: "furnace-shell-inline-list" });
-    plugin.pluginState.recentRuns.slice(0, 3).forEach((record) => {
-      const item = runList.createDiv({ cls: "furnace-shell-inline-item" });
-      item.createEl("strong", { text: record.label || record.args || plugin.t("command") });
-      item.createDiv({
-        cls: "furnace-shell-meta",
-        text: `${plugin.t(record.status || "status-unknown")} · ${formatDisplayTime(record.startedAt, plugin.locale())}`,
-      });
-    });
-  }
-  plugin.renderInlineButtons(runsCard, [
-    { label: "Open Recent Runs", kind: "ghost", onClick: async () => plugin.openRecentRunsView() },
-    { label: "Open Home Note", kind: "ghost", onClick: async () => plugin.openHomeNote() },
-  ], "furnace-shell-subpanel-actions");
 }
 
-function renderFurnaceCenter(plugin, contentEl) {
+// --- src/render_input.js ---
+
+// Render input controls for Product Shell.
+
+function renderUniversalInput(plugin, container) {
+  const wrapper = container.createDiv({ cls: "furnace-universal-input-wrapper furnace-conversation-composer" });
+  
+  // Drag and drop overlay
+  const dropOverlay = wrapper.createDiv({ cls: "furnace-universal-input-drop-overlay" });
+  dropOverlay.createDiv({ text: plugin.t("Drop file here") });
+  dropOverlay.style.display = "none";
+
+  const form = wrapper.createEl("form", { cls: "furnace-universal-input-form furnace-conversation-composer-form" });
+  const textarea = form.createEl("textarea", { 
+    cls: "furnace-universal-input-textarea",
+    attr: { "aria-label": plugin.t("Universal input") }
+  });
+  
+  textarea.placeholder = plugin.t("投 URL / PDF / Markdown / 图片 / repo，或直接问一个问题；炼丹炉会生成报告");
+  textarea.rows = 1;
+
+  const submitButton = form.createEl("button", { 
+    cls: "furnace-universal-input-button", 
+    text: plugin.t("Submit"),
+    attr: { type: "submit" }
+  });
+
+  const hint = wrapper.createDiv({ cls: "furnace-universal-input-hint" });
+      hint.setText(plugin.t("Ctrl+Enter 提交 · 拖入文件 · 结果会出现在“今天”"));
+
+  const attachmentsContainer = wrapper.createDiv({ cls: "furnace-input-attachments-container" });
+  
+  let attachedFiles = [];
+  let submitting = false;
+  let lastChordSubmitAt = 0;
+
+  const updateAttachmentPills = () => {
+    attachmentsContainer.empty();
+    if (attachedFiles.length === 0) {
+      attachmentsContainer.style.display = "none";
+      return;
+    }
+    attachmentsContainer.style.display = "flex";
+    attachedFiles.forEach((file, index) => {
+      const pill = attachmentsContainer.createDiv({ cls: "furnace-input-attachment" });
+      const nameSpan = pill.createSpan({ text: file.name, cls: "furnace-input-attachment-name" });
+      const removeBtn = pill.createSpan({ text: "×", cls: "furnace-input-attachment-remove" });
+      
+      removeBtn.addEventListener("click", () => {
+        attachedFiles.splice(index, 1);
+        updateAttachmentPills();
+      });
+    });
+  };
+
+  const addFile = (file) => {
+    if (file && (file.path || file.name || typeof file.arrayBuffer === "function")) {
+      attachedFiles.push(file);
+      updateAttachmentPills();
+    }
+  };
+
+  const autoResize = () => {
+    textarea.style.height = 'auto';
+    textarea.style.height = Math.min(textarea.scrollHeight, 300) + 'px';
+  };
+  textarea.addEventListener('input', autoResize);
+
+  const isSubmitChord = (event) => {
+    const isEnter = event.key === "Enter" || event.key === "NumpadEnter" || event.code === "Enter" || event.code === "NumpadEnter" || event.keyCode === 13;
+    return isEnter && (event.ctrlKey || event.metaKey);
+  };
+
+  const submitFromChord = (event) => {
+    if (!isSubmitChord(event)) return false;
+    if (typeof event.preventDefault === "function") event.preventDefault();
+    if (typeof event.stopPropagation === "function") event.stopPropagation();
+    const now = Date.now();
+    if (now - lastChordSubmitAt < 800) return true;
+    lastChordSubmitAt = now;
+    if (submitting) return true;
+    if (typeof form.requestSubmit === "function") {
+      form.requestSubmit();
+      return true;
+    }
+    handleSubmit(event);
+    return true;
+  };
+
+  const handleSubmit = async (event) => {
+    if (event && typeof event.preventDefault === "function") event.preventDefault();
+    if (submitting) return;
+    const value = textarea.value;
+    if (!value.trim() && attachedFiles.length === 0) return;
+    submitting = true;
+
+    const filesToProcess = [...attachedFiles];
+    const normalizedQuestion = String(value || "").trim();
+
+    // Lock UI during submit
+    submitButton.disabled = true;
+    textarea.disabled = true;
+    const originalLabel = submitButton.textContent;
+    submitButton.setText(plugin.t("处理中…"));
+    hint.setText(plugin.t("已提交，进度会出现在上方对话流"));
+
+    let succeeded = false;
+    // R88: 立即推一个"处理中"卡片到 Today，构成视觉闭环
+    let pendingId = "";
+    try {
+      if (filesToProcess.length > 0) {
+        const resolvedFiles = [];
+        for (const file of filesToProcess) {
+          const source = await resolvePluginFileSource(plugin, file);
+          resolvedFiles.push({ source, name: file.name || source });
+        }
+        const pendingDisplay = `${value || resolvedFiles.map((f) => f.name).join(", ")}`;
+        const retryArgs = {
+          kind: "files",
+          files: resolvedFiles.map((f) => ({ path: f.source, name: f.name })),
+          autoAsk: Boolean(normalizedQuestion),
+          question: normalizedQuestion,
+          materialPaths: [],
+          askQuestion: "",
+          longRunning: inferAutoAskFormat(normalizedQuestion, []) === "report",
+        };
+        pendingId = plugin.pushPendingSubmission(pendingDisplay, {
+          title: normalizedQuestion,
+          retryArgs,
+        });
+        const flowResult = await plugin.runDroppedFilesWithAutoAsk({
+          files: resolvedFiles.map((f) => ({ path: f.source, name: f.name })),
+          question: normalizedQuestion,
+        });
+        if (pendingId) {
+          const finalFormat = String(flowResult && flowResult.askFormat || retryArgs.format || "");
+          plugin.updatePendingSubmissionRetryArgs(pendingId, {
+            ...retryArgs,
+            materialPaths: Array.isArray(flowResult && flowResult.materialPaths) ? flowResult.materialPaths : [],
+            askQuestion: String(flowResult && flowResult.askQuestion || ""),
+            format: finalFormat,
+            longRunning: finalFormat === "report",
+            runNotesPath: String(flowResult && flowResult.runNotesPath || ""),
+            runId: String(flowResult && flowResult.runId || ""),
+            jobId: String(flowResult && flowResult.jobId || ""),
+          });
+          if (!normalizedQuestion) {
+            plugin.completePendingMaterialDrop(pendingId, flowResult && flowResult.materialPaths);
+          }
+        }
+      } else {
+        if (isObsidianOpenLink(normalizedQuestion)) {
+          const targetPath = obsidianOpenLinkFilePath(normalizedQuestion);
+          if (targetPath) {
+            const opened = await plugin.openWorkspacePath(targetPath);
+            succeeded = Boolean(opened);
+            if (!opened) {
+              new Notice(plugin.t("无法打开工作区路径：{path}", { path: targetPath }));
+            }
+          } else {
+            new Notice(plugin.t("Obsidian 打开链接是导航目标，不会作为问题提交。"));
+          }
+          return;
+        }
+        const materialQuestion = splitTextMaterialQuestion(value);
+        if (materialQuestion) {
+          const retryArgs = {
+            kind: "material-question",
+            payload: materialQuestion.payload,
+            question: materialQuestion.question,
+            materialPaths: [],
+            askQuestion: "",
+            longRunning: inferAutoAskFormat(materialQuestion.question, []) === "report",
+          };
+          pendingId = plugin.pushPendingSubmission(value, {
+            title: materialQuestion.question,
+            retryArgs,
+          });
+          const flowResult = await plugin.runDroppedPayloadsWithAutoAsk({
+            payloads: [materialQuestion.payload],
+            question: materialQuestion.question,
+          });
+          if (pendingId) {
+            const finalFormat = String(flowResult && flowResult.askFormat || retryArgs.format || "");
+            plugin.updatePendingSubmissionRetryArgs(pendingId, {
+              ...retryArgs,
+              materialPaths: Array.isArray(flowResult && flowResult.materialPaths) ? flowResult.materialPaths : [],
+              askQuestion: String(flowResult && flowResult.askQuestion || ""),
+              format: finalFormat,
+              longRunning: finalFormat === "report",
+              runNotesPath: String(flowResult && flowResult.runNotesPath || ""),
+              runId: String(flowResult && flowResult.runId || ""),
+              jobId: String(flowResult && flowResult.jobId || ""),
+            });
+          }
+        } else if (looksLikeUniversalMaterialPayload(normalizedQuestion)) {
+          const retryArgs = {
+            kind: "material",
+            payload: normalizedQuestion,
+            materialPaths: [],
+          };
+          pendingId = plugin.pushPendingSubmission(value, {
+            title: normalizedQuestion,
+            retryArgs,
+          });
+          const payload = await plugin.runUniversalInputCommand({ payload: normalizedQuestion });
+          const materialPaths = collectMaterialPathsFromPayload(payload);
+          if (pendingId) {
+            plugin.updatePendingSubmissionRetryArgs(pendingId, {
+              ...retryArgs,
+              materialPaths,
+            });
+            plugin.completePendingMaterialDrop(pendingId, materialPaths);
+          }
+        } else {
+          const askFormat = inferAutoAskFormat(normalizedQuestion, []);
+          const retryArgs = {
+            kind: "auto-ask",
+            question: normalizedQuestion,
+            askQuestion: normalizedQuestion,
+            format: askFormat,
+            longRunning: askFormat === "report",
+          };
+          pendingId = plugin.pushPendingSubmission(value, {
+            title: normalizedQuestion,
+            retryArgs,
+          });
+          const askPayload = await plugin.runAskCommand({
+            question: normalizedQuestion,
+            format: askFormat,
+            mode: "run-ask",
+          });
+          if (pendingId) {
+            plugin.updatePendingSubmissionRetryArgs(pendingId, {
+              ...retryArgs,
+              runNotesPath: String(askPayload && askPayload.run_notes_path || ""),
+              runId: String(askPayload && askPayload.run_id || ""),
+              jobId: String(askPayload && askPayload.job_id || ""),
+            });
+          }
+        }
+      }
+      succeeded = true;
+      // R89: 成功 ≠ 报告生成；先标 received（"已接收，等待生成报告"），等 reconcile 命中再 done
+      if (pendingId) plugin.markPendingSubmissionReceived(pendingId);
+    } catch (e) {
+      if (pendingId) plugin.markPendingSubmissionFailed(pendingId, e);
+      new Notice(plugin.t("提交失败：{message}（输入已保留，可重试）", { message: e && e.message ? e.message : String(e) }));
+    } finally {
+      submitButton.disabled = false;
+      textarea.disabled = false;
+      submitting = false;
+      submitButton.setText(originalLabel || plugin.t("Submit"));
+  hint.setText(plugin.t("Ctrl+Enter 提交 · 拖入文件 · 结果会出现在“今天”"));
+      if (succeeded) {
+        textarea.value = '';
+        autoResize();
+        attachedFiles = [];
+        updateAttachmentPills();
+      }
+      // 失败：保留 textarea.value 和 attachedFiles，便于用户修正后重试
+    }
+  };
+
+  form.addEventListener("submit", handleSubmit);
+  form.addEventListener("keydown", submitFromChord, true);
+  form.addEventListener("keyup", submitFromChord, true);
+  submitButton.addEventListener("click", (event) => {
+    if (typeof event.preventDefault === "function") event.preventDefault();
+    if (typeof form.requestSubmit === "function") {
+      form.requestSubmit();
+      return;
+    }
+    handleSubmit(event);
+  });
+
+  textarea.addEventListener("keydown", (e) => {
+    submitFromChord(e);
+  });
+  textarea.addEventListener("keyup", (e) => {
+    submitFromChord(e);
+  });
+
+  textarea.addEventListener("paste", (e) => {
+    if (e.clipboardData && e.clipboardData.files && e.clipboardData.files.length > 0) {
+      e.preventDefault();
+      for (let i = 0; i < e.clipboardData.files.length; i++) {
+        const file = e.clipboardData.files[i];
+        addFile(file);
+      }
+    }
+  });
+
+  // Drag and Drop handlers
+  let dragCounter = 0;
+  wrapper.addEventListener("dragenter", (e) => {
+    e.preventDefault();
+    dragCounter++;
+    dropOverlay.style.display = "flex";
+  });
+  wrapper.addEventListener("dragleave", (e) => {
+    e.preventDefault();
+    dragCounter--;
+    if (dragCounter === 0) {
+      dropOverlay.style.display = "none";
+    }
+  });
+  wrapper.addEventListener("dragover", (e) => {
+    e.preventDefault();
+  });
+  wrapper.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dragCounter = 0;
+    dropOverlay.style.display = "none";
+    
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      for (let i = 0; i < e.dataTransfer.files.length; i++) {
+        const file = e.dataTransfer.files[i];
+        addFile(file);
+      }
+    } else if (e.dataTransfer) {
+      const text = e.dataTransfer.getData("text/plain");
+      if (text) {
+        textarea.value = text;
+        autoResize();
+      }
+    }
+  });
+}
+
+// --- src/render_today.js ---
+
+// Render today feed and report surfaces for Product Shell.
+
+function renderTodayFeed(plugin, container) {
+  const summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : null;
+
+  const section = container.createDiv({ cls: "furnace-today-feed" });
+  // R90: Today 标题行 → 标题 + "刷新炉子"按钮 + last updated
+  const headRow = section.createDiv({ cls: "furnace-today-feed-head" });
+  headRow.createEl("h2", { text: plugin.t("Today"), cls: "furnace-today-feed-title" });
+  const refreshWrap = headRow.createDiv({ cls: "furnace-today-feed-refresh" });
+  const refreshBtn = refreshWrap.createEl("button", {
+    cls: "furnace-today-refresh-btn",
+    text: plugin.t("刷新炉子"),
+  });
+  refreshBtn.setAttr && refreshBtn.setAttr("aria-label", plugin.t("刷新炉子"));
+  refreshBtn.addEventListener("click", async () => {
+    refreshBtn.disabled = true;
+    try {
+      await plugin.refreshShellSummaryCommand();
+    } catch (e) { /* 已在 plugin 层 Notice */ }
+    finally { refreshBtn.disabled = false; }
+  });
+  refreshWrap.createEl("span", {
+    cls: "furnace-today-last-updated",
+    text: plugin.getLastSummaryRefreshLabel(),
+  });
+
+  // R88: pending submissions（用户刚提交、流水线未落地的"处理中"卡片）
+  // 始终在最前面渲染，独立于 shellSummary 状态，构成视觉闭环
+  renderPendingSubmissionsGroup(plugin, section);
+
+  renderFurnaceActivityTimeline(plugin, section);
+
+  if (!summary) {
+    section.createEl("div", {
+      cls: "furnace-today-feed-empty",
+      text: plugin.t("数据还没就绪。先点上方刷新，或等首次任务跑完。"),
+    });
+    // R88 #1 (P1 fix): summary 缺失也提供 CTA
+    renderTodayEmptyCta(plugin, section, container);
+    return;
+  }
+
+  const feed = buildTodayFeed(summary);
+
+  if (!feed.length) {
+    // 如果有 pending 卡片在上方，已经构成"投了在跑"的视觉反馈，不再渲染冷空态
+    const hasPending = Array.isArray(plugin.pendingSubmissions) && plugin.pendingSubmissions.length > 0;
+    if (hasPending) return;
+    const empty = section.createDiv({ cls: "furnace-today-feed-empty" });
+    empty.createEl("div", {
+      cls: "furnace-today-feed-empty-title",
+      text: plugin.t("今天还没有新报告"),
+    });
+    empty.createEl("div", {
+      cls: "furnace-today-feed-empty-hint",
+      text: plugin.t("拖入 URL / PDF / 图片 / repo，或在上方直接提一个问题；生成的报告会出现在这里。"),
+    });
+    renderTodayEmptyCta(plugin, empty, container);
+    return;
+  }
+  
+  const groups = { report: [], automation: [], decision: [], proposal: [], elixir: [], action: [] };
+  for (const entry of feed) groups[entry.kind].push(entry);
+  
+  const groupSpecs = [
+    ["report", plugin.t("新报告"), groups.report],
+    ["automation", plugin.t("系统动态"), groups.automation],
+    ["confirmation", plugin.t("需要你确认"), [...groups.decision, ...groups.proposal]],
+    ["elixir", plugin.t("已完成"), groups.elixir],
+    ["action", plugin.t("下一步建议"), groups.action],
+  ];
+  
+  for (const [kind, heading, items] of groupSpecs) {
+    if (!items.length) continue;
+    const groupEl = section.createDiv({ cls: `furnace-today-feed-group furnace-today-feed-${kind}` });
+    groupEl.createEl("h3", { text: heading });
+    const listEl = groupEl.createEl("ul", { cls: "furnace-today-feed-list" });
+    for (const entry of items) {
+      renderTodayFeedItem(plugin, listEl, entry);
+    }
+  }
+}
+
+const REVIEW_BUCKET_LABELS = {
+  counter_evidence_candidates: ["补充反证候选", "检查新来源是否足以反驳既有判断"],
+  escalated_actions: ["处理升级动作", "处理已升级、需要人工确认的动作"],
+  escalation_candidates: ["处理升级候选", "确认是否需要人工介入"],
+  judgment_review_actions: ["复核研究判断", "处理需要重新判断的结论"],
+  l3_proposals: ["处理 L3 提案", "确认采纳、拒绝或回滚提案"],
+  l3_proposal_attention: ["处理 L3 提案", "确认采纳、拒绝或回滚提案"],
+  machine_memory_actions: ["修复机器记忆", "处理可审计的记忆修复动作"],
+  overdue_actions: ["处理逾期动作", "确认是否继续执行或关闭"],
+  overdue_reviews: ["处理逾期复审", "确认旧判断是否仍成立"],
+  pending_decisions: ["处理待定决策", "确认待定判断与执行入口"],
+  pending_judgments: ["复核待定判断", "推进仍在等待复核的判断"],
+  ready_actions: ["确认待执行动作", "复核已经准备好的安全动作"],
+};
+
+function reviewBucketLabel(key) {
+  const k = String(key || "");
+  const entry = REVIEW_BUCKET_LABELS[k];
+  if (entry) return { title: entry[0], hint: entry[1] };
+  return { title: k, hint: "" };
+}
+
+function renderFurnaceActivityTimeline(plugin, parentEl) {
+  if (!plugin.settings || !plugin.settings.showAdvancedCommands) {
+    return;
+  }
+  const summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : null;
+  const feed = summary ? buildTodayFeed(summary) : [];
+  const recentRuns = plugin.pluginState && Array.isArray(plugin.pluginState.recentRuns) ? plugin.pluginState.recentRuns : [];
+  const items = [];
+  const seenTargets = new Set();
+
+  const addItem = (item) => {
+    const kind = String(item.kind || "");
+    const target = String(item.target || "");
+    if (target && (kind === "elixir" || kind === "decision" || kind === "receipt" || kind === "review-backlog")) {
+      if (seenTargets.has(target)) return;
+      seenTargets.add(target);
+    }
+    const timestamp = String(item.timestamp || "");
+    items.push({
+      ...item,
+      kind,
+      title: String(item.title || ""),
+      summary: String(item.summary || ""),
+      target,
+      timestamp,
+      _epochMs: normalizeTs(timestamp),
+    });
+  };
+
+  for (const entry of feed) {
+    if (!entry || typeof entry !== "object") continue;
+    addItem({
+      kind: String(entry.kind || ""),
+      title: String(entry.title || ""),
+      summary: String(entry.summary || ""),
+      timestamp: String(entry.timestamp || ""),
+      target: String(entry.target || ""),
+    });
+  }
+
+  for (const run of recentRuns) {
+    if (!run || typeof run !== "object") continue;
+    const timestamp = String(run.finishedAt || run.startedAt || "");
+    const status = String(run.status || "");
+    const protocol = String(run.protocol || "");
+    addItem({
+      kind: "plugin-run",
+      title: String(run.label || run.command || "Plugin run"),
+      summary: `${status} · ${protocol}`,
+      timestamp,
+    });
+  }
+
+  const receipts = summary && Array.isArray(summary.recent_receipts) ? summary.recent_receipts : [];
+  for (const receipt of receipts) {
+    if (!receipt || typeof receipt !== "object") continue;
+    addItem({
+      kind: "receipt",
+      title: String(receipt.title || receipt.subject_id || receipt.action_id || "Receipt"),
+      summary: String(receipt.operation || ""),
+      timestamp: String(receipt.applied_at || receipt.generated_at || receipt.created_at || ""),
+      target: String(receipt.receipt_path || receipt.path || ""),
+    });
+  }
+
+  const backlog = summary && summary.review_backlog_counts && typeof summary.review_backlog_counts === "object"
+    ? summary.review_backlog_counts
+    : {};
+  for (const [bucketKey, rawCount] of Object.entries(backlog)) {
+    const count = Number(rawCount);
+    if (!Number.isFinite(count) || count <= 0) continue;
+    if (!isPrimaryReviewBacklogBucket(bucketKey)) continue;
+    const target = `review:${bucketKey}`;
+    if (isTodaySnoozedTarget(target, summary)) continue;
+    const { title: bucketTitle, hint: bucketHint } = reviewBucketLabel(bucketKey);
+    addItem({
+      kind: "review-backlog",
+      title: bucketTitle,
+      summary: bucketHint ? `${count} 项待处理 · ${bucketHint}` : `${count} 项待处理`,
+      timestamp: String(summary.generated_at || ""),
+      target,
+    });
+  }
+
+  items.sort((left, right) => right._epochMs - left._epochMs);
+  const cappedItems = items.slice(0, 50);
+
+  const section = parentEl.createDiv({ cls: "furnace-activity-timeline" });
+  section.createEl("h3", { text: plugin.t("Furnace activity") });
+
+  if (!cappedItems.length) {
+    section.createDiv({ cls: "furnace-activity-timeline-empty", text: plugin.t("No recent furnace activity") });
+    return;
+  }
+
+  const listEl = section.createEl("ul", { cls: "furnace-activity-list" });
+  for (const item of cappedItems) {
+    const li = listEl.createEl("li", { cls: `furnace-activity-item furnace-activity-item-${item.kind}` });
+    li.createEl("span", { cls: "furnace-activity-kind", text: furnaceActivityKindLabel(plugin, item.kind) });
+    li.createEl("span", { cls: "furnace-activity-title", text: item.title });
+    li.createEl("span", { cls: "furnace-activity-summary", text: item.summary });
+  }
+}
+
+function isPrimaryReviewBacklogBucket(bucketKey) {
+  const key = String(bucketKey || "").trim();
+  if (!key) return false;
+  if (typeof PRIMARY_REVIEW_BUCKETS !== "undefined" && PRIMARY_REVIEW_BUCKETS && typeof PRIMARY_REVIEW_BUCKETS.has === "function") {
+    return PRIMARY_REVIEW_BUCKETS.has(key);
+  }
+  return [
+    "counter_evidence_candidates",
+    "escalated_actions",
+    "escalation_candidates",
+    "judgment_review_actions",
+    "pending_decisions",
+    "pending_judgments",
+  ].includes(key);
+}
+
+function isTodaySnoozedTarget(target, summary) {
+  const text = String(target || "").trim();
+  if (!text || !summary || typeof summary !== "object") return false;
+  const todayDate = activityTimelineTodayDateOf(summary);
+  const state = summary.today_snooze && typeof summary.today_snooze === "object" ? summary.today_snooze : null;
+  const items = state && Array.isArray(state.items) ? state.items : [];
+  for (const item of items) {
+    if (!item || typeof item !== "object") continue;
+    const snoozedTarget = String(item.target || "").trim();
+    const until = activityTimelineDatePart(String(item.snoozed_until || ""));
+    if (snoozedTarget === text && until && until >= todayDate) return true;
+  }
+  return false;
+}
+
+function activityTimelineTodayDateOf(summary) {
+  return activityTimelineDatePart(String(summary.generated_at || ""));
+}
+
+function activityTimelineDatePart(value) {
+  const text = String(value || "").trim();
+  if (text.includes("T")) return text.split("T")[0];
+  if (text.includes(" ")) return text.split(" ")[0];
+  return text.substring(0, 10);
+}
+
+function furnaceActivityKindLabel(plugin, kind) {
+  switch (kind) {
+    case "plugin-run": return plugin.t("Plugin run");
+    case "receipt": return plugin.t("Receipt");
+    case "review-backlog": return plugin.t("Review backlog");
+    case "report": return plugin.t("新报告");
+    case "automation": return plugin.t("系统动态");
+    case "decision":
+    case "proposal": return plugin.t("需要你确认");
+    case "elixir": return plugin.t("已完成");
+    case "action": return plugin.t("下一步建议");
+    default: return plugin.t(kind || "unknown");
+  }
+}
+
+function normalizeTs(ts) {
+  const parsed = Date.parse(ts);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+// R88 #1: 空态 CTA — 聚焦上方 UniversalInput textarea
+function renderTodayEmptyCta(plugin, parentEl, viewRoot) {
+  const ctaRow = parentEl.createDiv({ cls: "furnace-today-feed-empty-cta" });
+  const ctaBtn = ctaRow.createEl("button", {
+    cls: "furnace-today-cta-submit mod-cta",
+    text: plugin.t("投一份材料"),
+  });
+  ctaBtn.addEventListener("click", () => {
+    // 优先在当前视图根内查找；不要跨 view 全局 fallback（避免误聚焦）
+    const root = (viewRoot && viewRoot.closest && (viewRoot.closest(".furnace-shell-view") || viewRoot)) || viewRoot;
+    const textarea = root && root.querySelector
+      ? root.querySelector(".furnace-universal-input-textarea")
+      : null;
+    if (textarea) {
+      textarea.focus();
+      try { textarea.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {}
+    }
+  });
+}
+
+// R88 #2: 渲染"处理中"卡片（runtime-only pending submissions）
+function renderPendingSubmissionsGroup(plugin, section) {
+  const items = Array.isArray(plugin.pendingSubmissions) ? plugin.pendingSubmissions : [];
+  if (!items.length) return;
+  const groupEl = section.createDiv({ cls: "furnace-today-feed-group furnace-conversation-stream" });
+  for (const entry of items) {
+    const streamItem = groupEl.createDiv({ cls: "furnace-conversation-item" });
+
+    // User Bubble
+    const userBubble = streamItem.createDiv({ cls: "furnace-conversation-bubble furnace-bubble-user" });
+    userBubble.createDiv({ cls: "furnace-bubble-text", text: entry.displayText || entry.title || "" });
+    if (entry.retryArgs && entry.retryArgs.kind === "files" && Array.isArray(entry.retryArgs.files) && entry.retryArgs.files.length > 0) {
+      const attachments = userBubble.createDiv({ cls: "furnace-bubble-attachments" });
+      for (const file of entry.retryArgs.files) {
+        attachments.createSpan({ cls: "furnace-bubble-attachment-pill", text: file.name || file.path || "文件" });
+      }
+    }
+    userBubble.createDiv({ cls: "furnace-bubble-time", text: formatDisplayTime(entry.startedAt, plugin.locale()) || "" });
+
+    // AI Bubble
+    const aiBubble = streamItem.createDiv({ cls: `furnace-conversation-bubble furnace-bubble-ai furnace-pending-${entry.status || "running"}` });
+
+    const statusLabel = pendingSubmissionStageLabel(plugin, entry);
+
+    if (entry.status === "running" || entry.status === "received") {
+      const skeleton = aiBubble.createDiv({ cls: "furnace-bubble-shimmer" });
+      skeleton.createDiv({ cls: "furnace-bubble-shimmer-line" });
+      skeleton.createDiv({ cls: "furnace-bubble-shimmer-line short" });
+    }
+
+    aiBubble.createDiv({ cls: "furnace-bubble-status-text", text: statusLabel });
+    renderPendingProgressSteps(plugin, aiBubble, entry);
+    renderPendingRunNotesLink(plugin, aiBubble, entry);
+
+    if (entry.status === "failed") {
+      const exceptionCard = aiBubble.createDiv({ cls: "furnace-inline-exception-card furnace-inline-exception-failed" });
+      exceptionCard.createDiv({ cls: "furnace-inline-exception-title", text: plugin.t("生成被阻断") });
+      exceptionCard.createDiv({
+        cls: "furnace-bubble-hint",
+        text: plugin.t("这次没成功。可以点重试，或检查输入是否完整。"),
+      });
+      const errEl = exceptionCard.createDiv({ cls: "furnace-bubble-error", text: entry.error || plugin.t("失败") });
+      errEl.setAttr && errEl.setAttr("title", entry.error || "");
+      const actions = aiBubble.createDiv({ cls: "furnace-bubble-actions" });
+      const retryBtn = actions.createEl("button", { cls: "mod-cta", text: plugin.t("重试") });
+      retryBtn.addEventListener("click", async () => {
+        const args = entry.retryArgs || {};
+        plugin.resetPendingSubmissionForRetry(entry.id);
+        try {
+          if (args.kind === "files" && Array.isArray(args.files)) {
+            const flowResult = await plugin.runDroppedFilesWithAutoAsk({
+              files: args.files,
+              question: args.question || "",
+            });
+            const finalFormat = String(flowResult && flowResult.askFormat || args.format || "");
+            plugin.updatePendingSubmissionRetryArgs(entry.id, {
+              ...args,
+              materialPaths: Array.isArray(flowResult && flowResult.materialPaths) ? flowResult.materialPaths : Array.isArray(args.materialPaths) ? args.materialPaths : [],
+              askQuestion: String(flowResult && flowResult.askQuestion || args.askQuestion || ""),
+              format: finalFormat,
+              longRunning: finalFormat === "report",
+              runNotesPath: String(flowResult && flowResult.runNotesPath || args.runNotesPath || ""),
+              runId: String(flowResult && flowResult.runId || args.runId || ""),
+            });
+          } else if (args.kind === "auto-ask") {
+            await plugin.runAskCommand({
+              question: args.askQuestion || args.question || entry.displayText || "",
+              format: args.format || "report",
+              mode: "run-ask",
+              protocol: args.protocol || "",
+            });
+          } else if (args.kind === "material-question") {
+            const flowResult = await plugin.runDroppedPayloadsWithAutoAsk({
+              payloads: [args.payload || ""],
+              question: args.question || "",
+              protocol: args.protocol || "",
+            });
+            const finalFormat = String(flowResult && flowResult.askFormat || args.format || "");
+            plugin.updatePendingSubmissionRetryArgs(entry.id, {
+              ...args,
+              materialPaths: Array.isArray(flowResult && flowResult.materialPaths) ? flowResult.materialPaths : Array.isArray(args.materialPaths) ? args.materialPaths : [],
+              askQuestion: String(flowResult && flowResult.askQuestion || args.askQuestion || ""),
+              format: finalFormat,
+              longRunning: finalFormat === "report",
+              runNotesPath: String(flowResult && flowResult.runNotesPath || args.runNotesPath || ""),
+              runId: String(flowResult && flowResult.runId || args.runId || ""),
+            });
+          } else {
+            const retryText = String(args.payload || entry.displayText || "").trim();
+            if (retryText && looksLikeUniversalMaterialPayload(retryText)) {
+              const payload = await plugin.runUniversalInputCommand({ payload: retryText });
+              const materialPaths = collectMaterialPathsFromPayload(payload);
+              plugin.updatePendingSubmissionRetryArgs(entry.id, { ...args, kind: "material", payload: retryText, materialPaths });
+              plugin.completePendingMaterialDrop(entry.id, materialPaths);
+            } else {
+              await plugin.runAskCommand({
+                question: retryText,
+                format: args.format || inferAutoAskFormat(retryText, []),
+                mode: "run-ask",
+                protocol: args.protocol || "",
+              });
+            }
+          }
+          plugin.markPendingSubmissionReceived(entry.id);
+        } catch (e) {
+          plugin.markPendingSubmissionFailed(entry.id, e);
+        }
+      });
+      const dismissBtn = actions.createEl("button", { text: plugin.t("Dismiss") });
+      dismissBtn.addEventListener("click", () => plugin.removePendingSubmission(entry.id));
+    } else if (entry.status === "escalated") {
+      const exceptionCard = aiBubble.createDiv({ cls: "furnace-inline-exception-card furnace-inline-exception-escalated" });
+      exceptionCard.createDiv({ cls: "furnace-inline-exception-title", text: plugin.t("需要人工确认") });
+      exceptionCard.createDiv({
+        cls: "furnace-bubble-hint",
+        text: entry.error || plugin.t("已进入 Exception Queue，需要人工确认后继续。"),
+      });
+      const actions = aiBubble.createDiv({ cls: "furnace-bubble-actions" });
+      const openBtn = actions.createEl("button", { cls: "mod-cta furnace-pending-exception-btn", text: plugin.t("打开异常队列") });
+      openBtn.addEventListener("click", async () => plugin.openReviewCenterView());
+      const dismissBtn = actions.createEl("button", { text: plugin.t("Dismiss") });
+      dismissBtn.addEventListener("click", () => plugin.removePendingSubmission(entry.id));
+    } else if (entry.status === "received" || entry.status === "running") {
+      const actions = aiBubble.createDiv({ cls: "furnace-bubble-actions" });
+      const refreshBtn = actions.createEl("button", { cls: "furnace-bubble-refresh-btn", text: plugin.t("刷新状态") });
+      refreshBtn.addEventListener("click", async () => {
+        refreshBtn.disabled = true;
+        try { await plugin.refreshShellSummaryCommand(); } catch (e) {}
+        finally { refreshBtn.disabled = false; }
+      });
+      if (entry.status === "received") {
+         const dismissBtn = actions.createEl("button", { text: plugin.t("Dismiss") });
+         dismissBtn.addEventListener("click", () => plugin.removePendingSubmission(entry.id));
+      }
+    } else if (entry.status === "done" || entry.status === "degraded") {
+      const target = String(entry.reconcileTarget || "");
+      const reconcilePath = String(entry.reconcilePath || "");
+      const resultCard = aiBubble.createDiv({ cls: "furnace-artifact-card furnace-bubble-result-card" });
+      resultCard.createDiv({ cls: "furnace-artifact-eyebrow", text: pendingSubmissionArtifactKind(plugin, entry) });
+      resultCard.createDiv({ cls: "furnace-bubble-result-title furnace-artifact-title", text: pendingSubmissionResultTitle(plugin, entry) });
+      if (reconcilePath) {
+        resultCard.createDiv({ cls: "furnace-bubble-result-path furnace-artifact-path", text: reconcilePath });
+      }
+      const snippet = resultCard.createDiv({ cls: "furnace-artifact-snippet", text: pendingSubmissionSnippetFallback(plugin, entry) });
+      hydratePendingArtifactSnippet(plugin, snippet, entry);
+      const meta = resultCard.createDiv({ cls: "furnace-artifact-meta" });
+      meta.createSpan({ text: pendingSubmissionArtifactMeta(plugin, entry) });
+      if (entry.runNotesPath || entry.run_notes_path) {
+        meta.createSpan({ text: plugin.t("有进度笔记") });
+      }
+      const actions = aiBubble.createDiv({ cls: "furnace-bubble-actions furnace-artifact-actions" });
+      const degradedOutput = target === "outputs" && pendingSubmissionIsDegraded(entry);
+      const openReceiptTarget = () => plugin.openPendingDoneTarget("receipts", reconcilePath);
+      if (target === "outputs") {
+        const openBtn = actions.createEl("button", { cls: "mod-cta furnace-pending-open-report-btn", text: degradedOutput ? plugin.t("打开产物") : plugin.t("打开报告") });
+        openBtn.addEventListener("click", () => {
+          plugin.openPendingDoneTarget("outputs", reconcilePath);
+        });
+        if (degradedOutput) {
+          const retryBtn = actions.createEl("button", { cls: "furnace-pending-retry-report-btn", text: plugin.t("重试") });
+          retryBtn.addEventListener("click", async () => {
+            const args = entry.retryArgs || {};
+            plugin.resetPendingSubmissionForRetry(entry.id);
+            try {
+              const retryPayload = await plugin.runAskCommand({
+                question: args.askQuestion || args.question || entry.displayText || "",
+                format: args.format || "report",
+                mode: "run-ask",
+                protocol: args.protocol || "",
+              });
+              if (retryPayload && typeof plugin.updatePendingSubmissionRetryArgs === "function") {
+                plugin.updatePendingSubmissionRetryArgs(entry.id, Object.assign({}, args, {
+                  jobId: retryPayload.job_id || retryPayload.jobId || "",
+                  runId: retryPayload.run_id || retryPayload.runId || "",
+                  runNotesPath: retryPayload.run_notes_path || retryPayload.runNotesPath || "",
+                  longRunning: true,
+                }));
+              }
+              plugin.markPendingSubmissionReceived(entry.id);
+            } catch (e) {
+              plugin.markPendingSubmissionFailed(entry.id, e);
+            }
+          });
+        } else {
+          const quoteBtn = actions.createEl("button", { cls: "furnace-pending-quote-report-btn", text: plugin.t("引用此报告追问") });
+          quoteBtn.addEventListener("click", () => {
+            if (typeof plugin.quoteFileToComposer === "function") {
+              plugin.quoteFileToComposer(reconcilePath);
+            }
+          });
+        }
+      } else if (target === "receipts") {
+        const openBtn = actions.createEl("button", { cls: "mod-cta furnace-pending-open-receipt-btn", text: plugin.t("查看回执") });
+        openBtn.addEventListener("click", openReceiptTarget);
+      }
+      const doneBtn = actions.createEl("button", { cls: "furnace-pending-done-btn", text: plugin.t("完成") });
+      doneBtn.addEventListener("click", () => plugin.removePendingSubmission(entry.id));
+    }
+  }
+}
+
+function renderPendingProgressSteps(plugin, aiBubble, entry) {
+  const status = String(entry && entry.status || "running");
+  if (status !== "running" && status !== "received") return;
+  const steps = pendingSubmissionProgressSteps(plugin, entry);
+  if (!steps.length) return;
+  const list = aiBubble.createDiv({ cls: "furnace-progress-steps" });
+  steps.forEach((step, index) => {
+    const item = list.createDiv({ cls: `furnace-progress-step ${index === steps.length - 1 ? "is-active" : "is-done"}` });
+    item.createSpan({ cls: "furnace-progress-step-dot" });
+    item.createSpan({ cls: "furnace-progress-step-label", text: step });
+  });
+}
+
+function pendingSubmissionProgressSteps(plugin, entry) {
+  if (entry && entry.retryArgs && entry.retryArgs.longRunning) {
+    return [plugin.t("已接收长程报告任务"), plugin.t("LLM 正在生成结构化报告"), plugin.t("完成后会写入本地报告")];
+  }
+  const startedMs = Date.parse(entry && entry.startedAt || "");
+  const elapsed = Number.isFinite(startedMs) ? Math.max(0, Date.now() - startedMs) : 0;
+  if (entry && entry.status === "received") {
+    return [plugin.t("已接收请求"), plugin.t("等待产物写入"), plugin.t("刷新后关联报告")];
+  }
+  if (elapsed > 30 * 1000) {
+    return [plugin.t("已接收请求"), plugin.t("交叉对比知识库"), plugin.t("整理报告结构")];
+  }
+  if (elapsed > 10 * 1000) {
+    return [plugin.t("已接收请求"), plugin.t("提取材料与上下文"), plugin.t("交叉对比知识库")];
+  }
+  return [plugin.t("已接收请求"), plugin.t("提取材料与上下文")];
+}
+
+function hydratePendingArtifactSnippet(plugin, snippetEl, entry) {
+  const path = String(entry && entry.reconcilePath || "").trim();
+  if (!path || !plugin || typeof plugin.readWorkspaceSnippet !== "function") return;
+  plugin.readWorkspaceSnippet(path, 360).then((snippet) => {
+    const text = String(snippet || "").trim();
+    if (text) snippetEl.setText(text);
+  }).catch(() => {});
+}
+
+function pendingSubmissionSnippetFallback(plugin, entry) {
+  const target = String(entry && entry.reconcileTarget || "");
+  if (pendingSubmissionIsDegraded(entry)) return plugin.t("LLM 未完成；这是保留 provenance 的本地恢复产物，可打开检查上下文后重试。");
+  if (target === "outputs") return plugin.t("报告已写入本地文件；摘要加载中…");
+  if (target === "receipts") return plugin.t("回执已写入控制层，可用于审计与回滚追踪。");
+  if (target === "raw") return plugin.t("原料已进入 raw/，等待后续编译沉淀。");
+  return plugin.t("任务已完成，结果已关联到本地工作区。");
+}
+
+function pendingSubmissionArtifactKind(plugin, entry) {
+  const target = String(entry && entry.reconcileTarget || "");
+  if (pendingSubmissionIsDegraded(entry)) return plugin.t("恢复产物 Artifact");
+  if (target === "outputs") return plugin.t("本地报告 Artifact");
+  if (target === "receipts") return plugin.t("执行回执 Receipt");
+  if (target === "raw") return plugin.t("原料 Raw Input");
+  return plugin.t("炼丹炉 Artifact");
+}
+
+function pendingSubmissionArtifactMeta(plugin, entry) {
+  const target = String(entry && entry.reconcileTarget || "");
+  if (pendingSubmissionIsDegraded(entry)) return plugin.t("LLM 未完成；不是最终报告，可打开、查看进度或重试");
+  if (target === "outputs") return plugin.t("文件是事实源，可打开继续阅读");
+  if (target === "receipts") return plugin.t("保留 provenance / audit 线索");
+  if (target === "raw") return plugin.t("后续 compile 会沉淀到 wiki/output");
+  return plugin.t("本地可审计交付物");
+}
+
+function renderPendingRunNotesLink(plugin, aiBubble, entry) {
+  const runNotesPath = String(entry && entry.runNotesPath || entry && entry.run_notes_path || "").trim();
+  if (!runNotesPath) return;
+  const details = aiBubble.createEl("details", { cls: "furnace-run-notes-details" });
+  details.createEl("summary", { text: plugin.t("查看进度笔记") });
+  details.createDiv({
+    cls: "furnace-run-notes-boundary",
+    text: plugin.t("只包含外部化阶段记录，不包含模型内部过程。"),
+  });
+  const actions = details.createDiv({ cls: "furnace-bubble-actions" });
+  const openBtn = actions.createEl("button", { cls: "furnace-run-notes-open-btn", text: plugin.t("打开进度笔记") });
+  openBtn.addEventListener("click", async () => plugin.openWorkspacePath(runNotesPath));
+}
+
+function pendingSubmissionStageLabel(plugin, entry) {
+  const status = String(entry && entry.status || "running");
+  if (status === "degraded") return plugin.t("LLM 未完成，已保留恢复产物");
+  if (status === "done") {
+    if (pendingSubmissionIsDegraded(entry)) return plugin.t("LLM 未完成，已保留恢复产物");
+    if (entry && entry.reconcileTarget === "receipts") return plugin.t("已记录回执");
+    if (entry && entry.reconcileTarget === "raw") return plugin.t("已收料");
+    return plugin.t("报告已生成");
+  }
+  if (status === "received") {
+    if (entry && entry.retryArgs && entry.retryArgs.longRunning) {
+      return entry._stale ? plugin.t("长程报告可能已完成，刷新看看") : plugin.t("长程报告生成中，可稍后刷新");
+    }
+    return entry && entry._stale ? plugin.t("可能已完成，刷新看看") : plugin.t("已接收，正在排队生成报告");
+  }
+  if (status === "failed") return plugin.t("失败");
+  if (status === "escalated") return plugin.t("需要人工确认");
+  return plugin.t("正在整理材料与上下文");
+}
+
+function pendingSubmissionResultTitle(plugin, entry) {
+  const target = String(entry && entry.reconcileTarget || "");
+  if (pendingSubmissionIsDegraded(entry)) return plugin.t("恢复产物已就绪");
+  if (target === "outputs") return plugin.t("报告卡片已就绪");
+  if (target === "receipts") return plugin.t("回执已就绪");
+  if (target === "raw") return plugin.t("原料已入库");
+  return plugin.t("任务已完成");
+}
+
+function pendingSubmissionIsDegraded(entry) {
+  const status = String(entry && entry.status || "").trim();
+  if (status === "degraded") return true;
+  const deliveryMode = String(entry && entry.deliveryMode || entry && entry.delivery_mode || "").trim();
+  const llmStatus = String(entry && entry.llmStatus || entry && entry.llm_status || "").trim();
+  const backgroundStatus = String(entry && entry.backgroundStatus || entry && entry.background_status || "").trim();
+  const artifactQuality = String(entry && entry.artifactQuality || entry && entry.artifact_quality || "").trim();
+  return deliveryMode === "deterministic-fallback"
+    || deliveryMode === "llm-failed"
+    || llmStatus === "timeout_or_unavailable"
+    || llmStatus === "validation_failed"
+    || llmStatus === "failed"
+    || llmStatus === "degraded"
+    || backgroundStatus === "degraded"
+    || artifactQuality === "degraded";
+}
+
+function renderTodayFeedItem(plugin, listEl, entry) {
+  const li = listEl.createEl("li", { cls: "furnace-today-feed-item" });
+  const { card } = renderFeedCard(plugin, li, entry);
+
+  if (entry.kind === "report") {
+    renderReportCard(plugin, card, entry);
+  } else if (entry.kind === "decision" || entry.kind === "proposal") {
+    renderConfirmationCard(plugin, card, entry);
+  } else if (entry.kind === "automation") {
+    renderAutomationCard(plugin, card, entry);
+  }
+
+  // Fallback action buttons (for entries not handled by card renderers)
+  if (entry.kind !== "report" && entry.kind !== "decision" && entry.kind !== "proposal" && entry.kind !== "automation") {
+    const targetLabel = todayFeedTargetLabel(plugin, entry);
+    if (targetLabel && card.querySelector) {
+      const meta = card.createDiv({ cls: "furnace-today-feed-target" });
+      meta.setText(targetLabel);
+    }
+  }
+}
+
+function todayFeedActions(plugin, entry) {
+  const target = String(entry && entry.target || "").trim();
+  if (!target) {
+    return [];
+  }
+  if (isReviewTarget(target)) {
+    return [
+      {
+        label: "Open Review",
+        description: `Open review surface: ${target}`,
+        onClick: async () => plugin.openReviewCenterView(),
+      },
+      {
+        label: "Snooze",
+        description: `Snooze today item: ${target}`,
+        onClick: async () => plugin.runTodaySnoozeCommand(target),
+      },
+    ];
+  }
+  if (isWorkspaceTarget(target)) {
+    return [
+      {
+        label: workspaceTargetActionLabel(target, entry),
+        description: `Open today target: ${target}`,
+        onClick: async () => plugin.openWorkspacePath(target),
+      },
+    ];
+  }
+  if (entry.kind === "action" || looksLikeCommandTarget(target)) {
+    return [
+      {
+        label: "Copy command",
+        description: `Copy today command: ${target}`,
+        onClick: async () => plugin.copyText(target),
+      },
+    ];
+  }
+  return [
+    {
+      label: "Copy target",
+      description: `Copy today target: ${target}`,
+      onClick: async () => plugin.copyText(target),
+    },
+  ];
+}
+
+function todayFeedTargetLabel(plugin, entry) {
+  const target = String(entry && entry.target || "").trim();
+  if (!target) {
+    return "";
+  }
+  if (isReviewTarget(target)) {
+    return reviewBucketDisplayLabel(plugin, target);
+  }
+  if (isWorkspaceTarget(target)) {
+    return workspaceTargetDisplayLabel(plugin, target, entry);
+  }
+  if (entry.kind === "action" || looksLikeCommandTarget(target)) {
+    if (target.startsWith("metric:")) {
+      return plugin.t("指标提醒");
+    }
+    switch (entry.kind) {
+      case "report": return plugin.t("新报告");
+      case "automation": return plugin.t("自动维护");
+      case "elixir": return plugin.t("金丹完成");
+      default: return plugin.t("待确认操作");
+    }
+  }
+  return target;
+}
+
+function reviewBucketDisplayLabel(plugin, target) {
+  var kind = String(target || "").replace(/^review:/, "").trim();
+  switch (kind) {
+    case "counter_evidence_candidates": return plugin.t("新反证待审");
+    case "judgment_review_actions": return plugin.t("判断需要复核");
+    case "machine_memory_actions": return plugin.t("机器记忆待修复");
+    case "pending_judgments": return plugin.t("待定判断");
+    case "pending_decisions": return plugin.t("待定决策");
+    case "ready_actions": return plugin.t("安全动作待确认");
+    case "escalated_actions": return plugin.t("升级动作");
+    case "escalation_candidates": return plugin.t("升级候选");
+    case "overdue_actions": return plugin.t("逾期动作");
+    case "overdue_reviews": return plugin.t("逾期复审");
+    case "l3_proposals": return plugin.t("L3 提案");
+    case "l3_proposal_attention": return plugin.t("L3 提案需要关注");
+    case "drift": return plugin.t("数据漂移");
+    default: return plugin.t("待审队列");
+  }
+}
+
+function workspaceTargetActionLabel(target, entry) {
+  const text = String(target || "").trim();
+  if (entry && entry.kind === "proposal") {
+    return "Open proposal";
+  }
+  if (text.startsWith("output/reports/")) {
+    return "Open report";
+  }
+  if (text.startsWith("wiki/decisions/")) {
+    return "Open decision";
+  }
+  if (text.startsWith("wiki/judgments/")) {
+    return "Open judgment";
+  }
+  return "Open page";
+}
+
+function workspaceTargetDisplayLabel(plugin, target, entry) {
+  const text = String(target || "").trim();
+  if (entry && entry.kind === "proposal") {
+    return plugin.t("Proposal page");
+  }
+  if (text.startsWith("output/reports/")) {
+    return plugin.t("Report");
+  }
+  if (text.startsWith("wiki/decisions/")) {
+    return plugin.t("Decision page");
+  }
+  if (text.startsWith("wiki/judgments/")) {
+    return plugin.t("Judgment page");
+  }
+  if (text.startsWith("wiki/rewrite-proposals/") || text.startsWith("output/_proposals/")) {
+    return plugin.t("Proposal page");
+  }
+  if (text.startsWith("output/graph/") || text.startsWith("wiki/indexes/graph")) {
+    return plugin.t("Graph page");
+  }
+  if (text.startsWith("output/review/") || text.startsWith("wiki/indexes/review")) {
+    return plugin.t("Review surface");
+  }
+  return plugin.t("Workspace page");
+}
+
+function isReviewTarget(target) {
+  return String(target || "").startsWith("review:");
+}
+
+function isWorkspaceTarget(target) {
+  const text = String(target || "").trim();
+  if (!text || text.includes("\n")) {
+    return false;
+  }
+  if (/^(?:raw|wiki|output|schema|docs|\.aiwiki)\//.test(text)) {
+    return true;
+  }
+  return /\.(?:md|json|html|pdf|png|jpg|jpeg|webp|svg)$/i.test(text);
+}
+
+function looksLikeCommandTarget(target) {
+  const text = String(target || "").trim();
+  if (!text) {
+    return false;
+  }
+  return /^(?:aiwiki|python3?|PYTHONPATH=|drop-|run-|ask\b|compile\b|nightly\b|review-|apply-|revert-|file-back\b|metrics\b|today\b)/.test(text);
+}
+
+function renderReportsPanel(plugin, container, reports) {
+  const grouped = splitReportsByLocalDate(reports, { limitPreviousDays: 7 });
+  const section = container.createDiv({ cls: "furnace-shell-reports-section" });
+
+  const todaySection = section.createDiv({ cls: "furnace-shell-reports-group furnace-shell-reports-today" });
+  todaySection.createEl("h3", { text: plugin.t("Today's Reports") });
+  renderReportsGroup(plugin, todaySection, grouped.today, "(no reports today)");
+
+  const previousSection = section.createDiv({ cls: "furnace-shell-reports-group furnace-shell-previous-reports" });
+  previousSection.createEl("h3", { text: plugin.t("Previous Reports") });
+  if (!grouped.previous.length) {
+    previousSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("(no previous reports)") });
+    return;
+  }
+  grouped.previous.forEach((group) => {
+    const groupEl = previousSection.createDiv({ cls: "furnace-shell-date-group" });
+    groupEl.createDiv({ cls: "furnace-shell-date-header", text: plugin.t(group.label) });
+    renderReportsGroup(plugin, groupEl, group.items, "(no previous reports)");
+  });
+}
+
+function renderReportsGroup(plugin, container, reports, emptyText) {
+  const items = Array.isArray(reports) ? reports : [];
+  if (!items.length) {
+    container.createDiv({ cls: "furnace-shell-empty", text: plugin.t(emptyText) });
+    return;
+  }
+  const list = container.createDiv({ cls: "furnace-shell-report-list" });
+  items.forEach((report) => renderReportItem(plugin, list, report));
+}
+
+function renderReportItem(plugin, container, report) {
+  const isUnread = isReportUnread(report, plugin.settings.lastViewedTimestamp);
+  const titleText = report.title || report.path || plugin.t("output");
+  const card = container.createDiv({ cls: "furnace-shell-report-card" });
+  if (isUnread) {
+    card.addClass("is-unread");
+  }
+
+  const openReport = async () => {
+    if (!report.path) {
+      return;
+    }
+    await plugin.openWorkspacePath(report.path);
+    plugin.settings.lastViewedTimestamp = new Date().toISOString();
+    await plugin.savePluginState();
+    plugin.refreshOpenViews();
+  };
+
+  card.addEventListener("click", () => {
+    plugin.runUiAction(() => openReport(), `Open output: ${report.path || titleText}`);
+  });
+
+  const content = card.createDiv({ cls: "furnace-shell-report-content" });
+  content.createEl("span", { cls: "furnace-shell-report-dot", attr: { "aria-hidden": "true" } });
+  const copy = content.createDiv({ cls: "furnace-shell-report-copy" });
+  copy.createEl("span", { cls: "furnace-shell-report-title", text: titleText });
+  copy.createDiv({
+    cls: "furnace-shell-report-meta",
+    text: `${plugin.t(report.protocol || "general")} · ${plugin.t(report.format || "markdown")} · ${formatDisplayTime(report.created_at, plugin.locale()) || report.created_at || plugin.t("unknown")}`,
+  });
+
+  const openBtn = card.createEl("button", { text: plugin.t("Open report") });
+  openBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    plugin.runUiAction(() => openReport(), `Open output: ${report.path || titleText}`);
+  });
+}
+
+function renderNeedsDecisionSection(plugin, container) {
+  const summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : null;
+  if (!summary) {
+    return;
+  }
+  const suggested = Array.isArray(summary.suggested_next_actions) ? summary.suggested_next_actions : [];
+  const drifts = Array.isArray(summary.drift_warnings) ? summary.drift_warnings : [];
+  const rewrites = Array.isArray(summary.rewrite_followup_actions)
+    ? summary.rewrite_followup_actions
+    : Array.isArray(summary["rewrite_" + "recovery_actions"])
+      ? summary["rewrite_" + "recovery_actions"]
+      : [];
+  const backlog = summary.review_backlog_counts && typeof summary.review_backlog_counts === "object" ? summary.review_backlog_counts : {};
+  const backlogTotal = Object.values(backlog).reduce((acc, v) => acc + (Number.isFinite(Number(v)) ? Number(v) : 0), 0);
+
+  if (!suggested.length && !drifts.length && !rewrites.length && backlogTotal <= 0) {
+    return;
+  }
+
+  const section = container.createDiv({ cls: "furnace-shell-needs-section" });
+  section.createEl("h3", { text: plugin.t("Needs your decision") });
+
+  const maxItems = 5;
+  if (suggested.length) {
+    renderSuggestedNextActionsBlock(plugin, section, { maxItems: Math.min(suggested.length, maxItems) });
+  }
+
+  const renderItem = (item, kindLabel) => {
+    const wrapper = section.createDiv({ cls: "furnace-shell-inline-list" });
+    const row = wrapper.createDiv({ cls: "furnace-shell-inline-item" });
+    const copy = row.createDiv({ cls: "furnace-shell-output-copy" });
+    copy.createEl("strong", { text: item.title || item.path || item.message || plugin.t(kindLabel) });
+    const metaParts = [plugin.t(kindLabel)];
+    if (item.reason) {
+      metaParts.push(plugin.t("reason {value}", { value: item.reason }));
+    }
+    if (item.path) {
+      metaParts.push(item.path);
+    }
+    if (metaParts.length) {
+      copy.createDiv({ cls: "furnace-shell-meta", text: metaParts.join(" | ") });
+    }
+    if (item.path) {
+      const buttons = row.createDiv({ cls: "furnace-shell-inline-actions furnace-shell-inline-actions-compact" });
+      const openButton = buttons.createEl("button", { text: plugin.t("Open") });
+      openButton.addEventListener("click", () => {
+        plugin.runUiAction(() => plugin.openWorkspacePath(item.path), `Open needs item: ${item.path}`);
+      });
+    }
+  };
+
+  let used = Math.min(suggested.length, maxItems);
+  let truncated = Math.max(0, suggested.length - maxItems);
+  for (const item of drifts) {
+    if (used >= maxItems) {
+      truncated += 1;
+      continue;
+    }
+    renderItem(item, "drift warning");
+    used += 1;
+  }
+  for (const item of rewrites) {
+    if (used >= maxItems) {
+      truncated += 1;
+      continue;
+    }
+    renderItem(item, "rewrite recovery");
+    used += 1;
+  }
+
+  if (backlogTotal > 0) {
+    const backlogRow = section.createDiv({ cls: "furnace-shell-needs-backlog" });
+    backlogRow.setText(plugin.t("Review backlog: {value} pending", { value: String(backlogTotal) }));
+  }
+
+  if (truncated > 0) {
+    const more = section.createDiv({ cls: "furnace-shell-needs-more" });
+    more.setText(plugin.t("+{value} more in Advanced", { value: String(truncated) }));
+  }
+}
+
+function renderNextActionsPanel(plugin, container) {
+  const panel = plugin.renderPanel(container, "Suggested Next Actions", "Keep the next safe action visible from the main surface.");
+  if (!renderSuggestedNextActionsBlock(plugin, panel, { maxItems: 3 })) {
+    panel.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No suggested next action right now.") });
+  }
+}
+
+// --- src/render_advanced.js ---
+
+// Advanced drawer and metrics rendering helpers.
+// Operator-only diagnostics/history surface; the default shell path does not render this drawer.
+function renderAdvancedDrawer(plugin, container) {
+  const wrapper = container.createDiv({ cls: "furnace-advanced-drawer" });
+
+  wrapper.createEl("div", {
+    cls: "furnace-advanced-dev-banner",
+    text: plugin.t("以下为运行诊断与历史"),
+  });
+
+  const body = wrapper;
+
+  renderAdvancedSection(plugin, body, {
+    key: "status",
+    title: plugin.t("系统状态"),
+    summaryText: buildStatusSectionSummary(plugin),
+    render: (el) => {
+      plugin.renderMainHeader(el);
+      plugin.renderStatusPanel(el);
+      renderAdvancedMetricsPanel(plugin, el);
+    },
+  });
+
+  renderAdvancedSection(plugin, body, {
+    key: "history",
+    title: plugin.t("运行与历史"),
+    summaryText: buildHistorySectionSummary(plugin),
+    render: (el) => {
+      renderHistorySectionBody(plugin, el);
+    },
+  });
+
+}
+
+// R91: 单个 section 渲染。<details>/<summary> 原生折叠 + toggle 持久化。
+function renderAdvancedSection(plugin, parentEl, spec) {
+  const expanded = plugin.getAdvancedSectionExpanded(spec.key);
+  const sectionAttr = { "data-section-key": spec.key };
+  if (expanded) sectionAttr.open = "open";
+  const sectionEl = parentEl.createEl("details", {
+    cls: `furnace-advanced-section furnace-advanced-section-${spec.key}`,
+    attr: sectionAttr,
+  });
+  const summaryEl = sectionEl.createEl("summary", {
+    cls: "furnace-advanced-section-summary",
+    attr: { tabindex: "0" },
+  });
+  summaryEl.createEl("span", {
+    cls: "furnace-advanced-section-title",
+    text: spec.title,
+  });
+  const summaryHint = String(spec.summaryText || "").trim() || plugin.t("点击展开查看详细信息");
+  summaryEl.createEl("span", {
+    cls: "furnace-advanced-section-hint",
+    text: summaryHint,
+  });
+  sectionEl.addEventListener("toggle", () => {
+    const isOpen = Boolean(sectionEl.open);
+    if (isOpen === plugin.getAdvancedSectionExpanded(spec.key)) return;
+    plugin.setAdvancedSectionExpanded(spec.key, isOpen);
+  });
+  const bodyEl = sectionEl.createDiv({ cls: "furnace-advanced-section-body" });
+  try {
+    spec.render(bodyEl);
+  } catch (error) {
+    bodyEl.createEl("div", {
+      cls: "furnace-advanced-section-error",
+      text: String(error && error.message ? error.message : error),
+    });
+  }
+}
+
+// R91: 系统状态 section 摘要。默认产品面不暴露 protocol/LLM/sync 机制名。
+function buildStatusSectionSummary(plugin) {
+  let syncLabel = plugin.t("未知");
+  try {
+    const sync = plugin.currentShellSyncState();
+    const status = String((sync && sync.status) || "").trim();
+    if (status === "healthy") syncLabel = plugin.t("正常");
+    else if (status === "running") syncLabel = plugin.t("Refreshing shell summary.");
+    else if (status === "unknown") syncLabel = plugin.t("未知");
+    else syncLabel = plugin.t("异常");
+  } catch (error) {
+    // keep 未知
+  }
+
+  return plugin.t("运行诊断 · 同步 {sync}", {
+    sync: syncLabel,
+  });
+}
+
+// R91: 运行与历史 section 摘要 — 最近运行数 + review/execution 待办
+function buildHistorySectionSummary(plugin) {
+  const counts = advancedDrawerCounts(plugin);
+  return plugin.t("最近运行 {n} 条 · 待审 {review} · 待执行 {execution}", {
+    n: counts.runs,
+    review: counts.review,
+    execution: counts.execution,
+  });
+}
+
+// R91: 运行与历史 section 主体 — 入口按钮 + 最近 LLM 运行摘要
+function renderHistorySectionBody(plugin, container) {
+  const buttons = [
+    {
+      key: "open-recent-runs",
+      label: plugin.t("Open Recent Runs"),
+      onClick: () => {
+        try {
+          plugin.openRecentRunsView();
+        } catch (error) {
+          // surface via Notice if available
+        }
+      },
+    },
+    {
+      key: "open-review-center",
+      label: plugin.t("Open Review Center"),
+      onClick: () => {
+        try {
+          plugin.openReviewCenterView();
+        } catch (error) {}
+      },
+    },
+    {
+      key: "open-execution-center",
+      label: plugin.t("Open Execution Center"),
+      onClick: () => {
+        try {
+          plugin.openExecutionCenterView();
+        } catch (error) {}
+      },
+    },
+  ];
+  if (typeof plugin.renderInlineButtons === "function") {
+    plugin.renderInlineButtons(container, buttons, "furnace-advanced-section-actions");
+  } else {
+    const row = container.createDiv({ cls: "furnace-advanced-section-actions" });
+    for (const btn of buttons) {
+      const el = row.createEl("button", { cls: "furnace-shell-button", text: btn.label });
+      el.addEventListener("click", btn.onClick);
+    }
+  }
+
+  // 最近 LLM 运行摘要（若有）
+  try {
+    const latest = plugin.latestLlmRun();
+    if (latest && (latest.command || latest.backend || latest.model)) {
+      const card = container.createDiv({ cls: "furnace-advanced-section-latest-llm" });
+      const head = card.createDiv({ cls: "furnace-advanced-section-latest-llm-head" });
+      head.createEl("span", { cls: "furnace-advanced-section-latest-llm-label", text: plugin.t("Latest LLM run") });
+      const parts = [];
+      if (latest.command) parts.push(latest.command);
+      if (latest.backend) parts.push(latest.backend);
+      if (latest.model) parts.push(latest.model);
+      if (latest.status) parts.push(latest.status);
+      head.createEl("span", { cls: "furnace-advanced-section-latest-llm-meta", text: parts.join(" · ") });
+      if (latest.errorSummary) {
+        card.createEl("div", { cls: "furnace-advanced-section-latest-llm-error", text: latest.errorSummary });
+      }
+    }
+  } catch (error) {
+    // 静默
+  }
+}
+
+function advancedDrawerCounts(plugin) {
+  const summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : {};
+  const review = sumNumericValues(summary.review_backlog_counts || {});
+  const executionControls = summary.execution_controls && typeof summary.execution_controls === "object" ? summary.execution_controls : {};
+  const actionCount = Array.isArray(executionControls.actions)
+    ? executionControls.actions.filter((action) => action && typeof action === "object" && (action.can_apply || action.can_review || action.can_revert)).length
+    : 0;
+  const archiveCount = Array.isArray(executionControls.archives)
+    ? executionControls.archives.filter((entry) => entry && typeof entry === "object" && (entry.can_apply || entry.can_revert)).length
+    : 0;
+  const runs = plugin.pluginState && Array.isArray(plugin.pluginState.recentRuns) ? plugin.pluginState.recentRuns.length : 0;
+  return { review, execution: actionCount + archiveCount, runs };
+}
+
+function renderAdvancedMetricsPanel(plugin, container) {
+  const summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : null;
+  if (!summary) return;
+  
+  const metrics = Array.isArray(summary.metrics) ? summary.metrics : [];
+  
+  const section = container.createDiv({ cls: "furnace-advanced-metrics" });
+  section.createEl("h3", { text: plugin.t("Knowledge Compounding Metrics") });
+  
+  if (!metrics.length) {
+    section.createEl("div", {
+      cls: "furnace-advanced-metrics-empty",
+      text: plugin.t("(metrics unavailable; run aiwiki metrics for details)"),
+    });
+    return;
+  }
+  
+  const list = section.createEl("ul", { cls: "furnace-advanced-metrics-list" });
+  
+  const labels = {
+    provenance_completeness: plugin.t("Provenance Completeness"),
+    stale_ratio: plugin.t("Stale Page Ratio"),
+    review_closure_rate: plugin.t("Review Closure Rate (7d)"),
+    proposal_acceptance_rate: plugin.t("Proposal Acceptance Rate"),
+    judgment_revisit_rate: plugin.t("Judgment Revisit Rate"),
+    output_file_back_rate: plugin.t("Output File-back Rate"),
+    elixir_reuse_count: plugin.t("Elixir Reuse Count"),
+  };
+  
+  for (const m of metrics) {
+    if (!m || typeof m !== "object") continue;
+    const li = list.createEl("li", { cls: "furnace-advanced-metrics-item" });
+    const labelText = labels[m.key] || m.key;
+    li.createEl("span", { cls: "furnace-advanced-metrics-label", text: labelText });
+    
+    if (m.value === null || m.value === undefined) {
+      li.createEl("span", {
+        cls: "furnace-advanced-metrics-value furnace-advanced-metrics-unavailable",
+        text: plugin.t("unavailable"),
+      });
+      if (m.reason) {
+        li.createEl("span", {
+          cls: "furnace-advanced-metrics-reason",
+          text: ` — ${m.reason}`,
+        });
+      }
+    } else {
+      const formatted = formatMetricValue(m.value, m.unit);
+      li.createEl("span", {
+        cls: "furnace-advanced-metrics-value",
+        text: formatted,
+      });
+      if (typeof m.sample_size === "number" && m.sample_size > 0) {
+        li.createEl("span", {
+          cls: "furnace-advanced-metrics-sample",
+          text: ` (n=${m.sample_size})`,
+        });
+      }
+    }
+  }
+  
+  section.createEl("div", {
+    cls: "furnace-advanced-metrics-hint",
+    text: plugin.t("Run `aiwiki metrics --json` for full data."),
+  });
+}
+
+function formatMetricValue(value, unit) {
+  if (typeof value !== "number") return String(value);
+  if (unit === "ratio") return (value * 100).toFixed(1) + "%";
+  if (unit === "percent") return value.toFixed(1) + "%";
+  if (unit === "count") return String(value);
+  return String(value);
+}
+
+// --- src/render_runs.js ---
+
+// Simplified Recent Runs — only latest runs with basic status.
+// renderRunDetail / renderRunTimeline helpers kept for cross-module use.
+
+function renderRecentRuns(plugin, contentEl) {
   contentEl.empty();
   contentEl.addClass("furnace-shell-view");
-  contentEl.addClass("furnace-shell-main-view");
+  contentEl.createEl("h2", { text: plugin.t("Recent Runs") });
 
   if (!plugin.repoState.valid) {
     contentEl.createDiv({
@@ -2281,119 +6305,55 @@ function renderFurnaceCenter(plugin, contentEl) {
         missing: plugin.repoState.missingPaths.join(", "),
       }),
     });
-    contentEl.createDiv({
-      cls: "furnace-shell-meta",
-      text: plugin.t("Expected a vault scaffold (`raw/wiki/schema/output/.aiwiki`) plus an executable launcher script."),
-    });
     return;
   }
 
-  plugin.renderMainHeader(contentEl);
-  plugin.renderStatusPanel(contentEl);
-  plugin.renderInteractionPanel(contentEl);
-  plugin.renderMaterialPanel(contentEl);
-  plugin.renderOutputsPanel(contentEl);
-  plugin.renderAdvancedPanel(contentEl);
-}
+  plugin.renderActionButtons(contentEl, [
+    { label: "Refresh", cta: true, onClick: async () => plugin.refreshShellSummaryCommand() },
+    { label: "Furnace Center", onClick: async () => plugin.openFurnaceCenterView() },
+  ]);
 
-function renderRecentRuns(plugin, contentEl) {
-  contentEl.empty();
-  contentEl.addClass("furnace-shell-view");
-  contentEl.createEl("h2", { text: plugin.t("Recent Runs") });
+  var section = contentEl.createDiv({ cls: "furnace-shell-section" });
+  section.createEl("h3", { text: plugin.t("最近运行") });
 
-  const pluginRunsSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-  pluginRunsSection.createEl("h3", { text: plugin.t("Plugin-triggered Commands") });
   if (!plugin.pluginState.recentRuns.length) {
-    pluginRunsSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No plugin-triggered commands yet.") });
-  } else {
-    const list = pluginRunsSection.createEl("ul", { cls: "furnace-shell-list" });
-    plugin.pluginState.recentRuns.forEach((record) => {
-      const item = list.createEl("li");
-      renderRunDetail(plugin, item, record);
-    });
+    section.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No plugin-triggered commands yet.") });
+    return;
   }
 
-  const runtimeSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-  runtimeSection.createEl("h3", { text: plugin.t("Runtime Events from shell-summary") });
-  const runtimeEvents = plugin.shellSummary && Array.isArray(plugin.shellSummary.recent_runs) ? plugin.shellSummary.recent_runs : [];
-  if (!runtimeEvents.length) {
-    runtimeSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No shell summary recent runs are available.") });
-  } else {
-    const list = runtimeSection.createEl("ul", { cls: "furnace-shell-list" });
-    runtimeEvents.forEach((entry) => {
-      const item = list.createEl("li");
-      item.createEl("strong", { text: entry.title || plugin.t(entry.event_type || "runtime-event") });
-      item.createDiv({
-        cls: "furnace-shell-meta",
-        text: `${plugin.t(entry.event_type || "event")} | ${plugin.t(entry.protocol || "general")} | ${entry.occurred_at || plugin.t("unknown")}`,
-      });
-      const pathValue = entry.output_path || entry.receipt_path || entry.page_path || entry.path || "";
-      if (pathValue) {
-        const actions = item.createDiv({ cls: "furnace-shell-inline-actions" });
-        const button = actions.createEl("button", { text: plugin.t("Open") });
-        button.addEventListener("click", () => {
-          plugin.runUiAction(() => plugin.openWorkspacePath(pathValue), `Open runtime event path: ${pathValue}`);
-        });
-      }
-    });
-  }
-
-  const receiptSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-  receiptSection.createEl("h3", { text: plugin.t("Recent Receipts") });
-  const receipts = plugin.shellSummary && Array.isArray(plugin.shellSummary.recent_receipts) ? plugin.shellSummary.recent_receipts : [];
-  if (!receipts.length) {
-    receiptSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No recent receipts are available.") });
-  } else {
-    const list = receiptSection.createEl("ul", { cls: "furnace-shell-list" });
-    receipts.forEach((receipt) => {
-      const item = list.createEl("li");
-      item.createEl("strong", { text: receipt.title || receipt.subject_id || plugin.t("receipt") });
-      item.createDiv({
-        cls: "furnace-shell-meta",
-        text: `${plugin.t(receipt.operation || "operation")} | ${plugin.t(receipt.protocol || "general")} | ${receipt.applied_at || plugin.t("unknown")}`,
-      });
-      if (receipt.receipt_path) {
-        const actions = item.createDiv({ cls: "furnace-shell-inline-actions" });
-        const button = actions.createEl("button", { text: plugin.t("Open receipt") });
-        button.addEventListener("click", () => {
-          plugin.runUiAction(() => plugin.openWorkspacePath(receipt.receipt_path), `Open receipt: ${receipt.receipt_path}`);
-        });
-        const copyButton = actions.createEl("button", { text: plugin.t("Copy receipt path") });
-        copyButton.addEventListener("click", () => {
-          plugin.runUiAction(() => plugin.copyText(receipt.receipt_path), `Copy receipt path: ${receipt.receipt_path}`);
-        });
-        const revealButton = actions.createEl("button", { text: plugin.t("Reveal receipt") });
-        revealButton.addEventListener("click", () => {
-          plugin.runUiAction(() => plugin.revealWorkspacePath(receipt.receipt_path), `Reveal receipt: ${receipt.receipt_path}`);
-        });
-      }
-    });
-  }
+  var list = section.createEl("ul", { cls: "furnace-shell-list" });
+  plugin.pluginState.recentRuns.slice(0, 5).forEach(function (record) {
+    var item = list.createEl("li");
+    var label = record.command || record.label || plugin.t("command");
+    var status = record.status || "unknown";
+    var metaText = plugin.t(status) + " | " + (record.finishedAt || "");
+    item.createEl("strong", { text: label });
+    item.createDiv({ cls: "furnace-shell-meta", text: metaText });
+  });
 }
 
 function runStatusClass(status) {
-  if (status === "success") {
-    return "furnace-shell-status-ok";
-  }
-  if (status === "failed") {
-    return "furnace-shell-status-failed";
-  }
+  if (status === "success") return "furnace-shell-status-ok";
+  if (status === "failed") return "furnace-shell-status-failed";
   return "furnace-shell-status-running";
 }
 
-function renderRunTimeline(plugin, container, record, compact = false) {
-  const timeline = Array.isArray(record.timeline) ? record.timeline : [];
-  const section = container.createDiv({ cls: "furnace-shell-run-timeline" });
+function renderRunTimeline(plugin, container, record, compact) {
+  compact = Boolean(compact);
+  var timeline = Array.isArray(record.timeline) ? record.timeline : [];
+  var section = container.createDiv({ cls: "furnace-shell-run-timeline" });
   section.createDiv({ cls: "furnace-shell-inline-heading", text: plugin.t("Stage timeline") });
   if (!timeline.length) {
     section.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No stage events recorded.") });
     return section;
   }
-  const list = section.createEl("ul", { cls: "furnace-shell-run-timeline-list" });
-  const visibleEvents = compact ? timeline.slice(-4) : timeline;
-  visibleEvents.forEach((event) => {
-    const item = list.createEl("li", { cls: "furnace-shell-run-event" });
-    const header = item.createDiv({ cls: "furnace-shell-run-event-header" });
+  var list = section.createEl("ul", { cls: "furnace-shell-run-timeline-list" });
+  var visibleEvents = compact ? timeline.slice(-4) : timeline;
+  visibleEvents.forEach(function (event) {
+    var item = list.createEl("li", { cls: "furnace-shell-run-event" });
+    var statusCls = event.status === "failed" ? "furnace-shell-status-failed" : (event.status === "success" ? "furnace-shell-status-ok" : "furnace-shell-status-running");
+    item.addClass(statusCls);
+    var header = item.createDiv({ cls: "furnace-shell-run-event-header" });
     header.createEl("strong", { text: plugin.t(event.stage || "event") });
     if (event.at) {
       header.createDiv({ cls: "furnace-shell-meta", text: formatDisplayTime(event.at, plugin.locale()) });
@@ -2405,13 +6365,14 @@ function renderRunTimeline(plugin, container, record, compact = false) {
   return section;
 }
 
-function renderRunDetail(plugin, container, record, options = {}) {
-  const compact = Boolean(options.compact);
-  const detail = container.createDiv({ cls: compact ? "furnace-shell-run-card is-compact" : "furnace-shell-run-card" });
-  const header = detail.createDiv({ cls: "furnace-shell-run-header" });
+function renderRunDetail(plugin, container, record, options) {
+  options = options || {};
+  var compact = Boolean(options.compact);
+  var detail = container.createDiv({ cls: compact ? "furnace-shell-run-card is-compact" : "furnace-shell-run-card" });
+  var header = detail.createDiv({ cls: "furnace-shell-run-header" });
   header.createEl("strong", { text: plugin.t(record.label || record.args || "command") });
   header.createDiv({
-    cls: `furnace-shell-meta ${runStatusClass(record.status)}`,
+    cls: "furnace-shell-meta " + runStatusClass(record.status),
     text: plugin.t("status {status} | started {started}{finished}", {
       status: plugin.t(record.status || "unknown"),
       started: formatDisplayTime(record.startedAt, plugin.locale()) || plugin.t("unknown"),
@@ -2425,144 +6386,132 @@ function renderRunDetail(plugin, container, record, options = {}) {
     detail.createDiv({ cls: "furnace-shell-code", text: record.args });
   }
 
-  const contextParts = [];
-  if (record.protocol) {
-    contextParts.push(plugin.t("protocol {value}", { value: plugin.t(record.protocol) }));
+  var contextParts = [];
+  if (record.protocol) contextParts.push(plugin.t("protocol {value}", { value: plugin.t(record.protocol) }));
+  if (record.backend) contextParts.push(plugin.t("backend {value}", { value: record.backend }));
+  if (record.model) contextParts.push(plugin.t("model {value}", { value: record.model }));
+  if (!compact && record.modelSelected && record.modelFinal && record.modelSelected !== record.modelFinal) {
+    contextParts.push(plugin.t("selected") + " " + record.modelSelected + " -> " + plugin.t("final") + " " + record.modelFinal);
   }
-  if (record.backend) {
-    contextParts.push(plugin.t("backend {value}", { value: record.backend }));
-  }
-  if (record.model) {
-    contextParts.push(plugin.t("model {value}", { value: record.model }));
-  }
-  if (contextParts.length) {
-    detail.createDiv({ cls: "furnace-shell-meta", text: contextParts.join(" | ") });
-  }
+  if (contextParts.length) detail.createDiv({ cls: "furnace-shell-meta", text: contextParts.join(" | ") });
 
   if (!compact) {
-    const diagnosticParts = [];
-    if (record.codexReasoningEffort) {
-      diagnosticParts.push(plugin.t("codex effort {value}", { value: record.codexReasoningEffort }));
-    }
-    if (record.promptProfile) {
-      diagnosticParts.push(plugin.t("prompt {value}", { value: record.promptProfile }));
-    }
-    if (record.retryPromptProfile) {
-      diagnosticParts.push(plugin.t("retry {value}", { value: record.retryPromptProfile }));
-    }
-    if (diagnosticParts.length) {
-      detail.createDiv({ cls: "furnace-shell-meta", text: diagnosticParts.join(" | ") });
-    }
+    var diagnosticParts = [];
+    if (record.codexReasoningEffort) diagnosticParts.push(plugin.t("codex effort {value}", { value: record.codexReasoningEffort }));
+    if (record.promptProfile) diagnosticParts.push(plugin.t("prompt {value}", { value: record.promptProfile }));
+    if (record.retryPromptProfile) diagnosticParts.push(plugin.t("retry {value}", { value: record.retryPromptProfile }));
+    if (record.fallbackStage) diagnosticParts.push(plugin.t("fallback {value}", { value: record.fallbackStage }));
+    if (diagnosticParts.length) detail.createDiv({ cls: "furnace-shell-meta", text: diagnosticParts.join(" | ") });
   }
 
-  const rewriteSummary = plugin.rewriteProposalSummary(record);
-  if (rewriteSummary && !compact) {
-    detail.createDiv({ cls: "furnace-shell-meta", text: rewriteSummary });
-  }
+  var rewriteSummary = plugin.rewriteProposalSummary(record);
+  if (rewriteSummary && !compact) detail.createDiv({ cls: "furnace-shell-meta", text: rewriteSummary });
 
   if (compact) {
-    const compactSummary = [
-      rewriteSummary,
-      record.resultPath || "",
-      record.receiptPath || "",
-      record.errorSummary || "",
-      record.stderrSummary || "",
-    ].find((value) => String(value || "").trim());
-    if (compactSummary) {
-      detail.createDiv({ cls: "furnace-shell-panel-note furnace-shell-run-summary", text: compactSummary });
-    }
+    var compactSummary = [rewriteSummary, record.resultPath || "", record.receiptPath || "", record.errorSummary || "", record.stderrSummary || ""].find(function (value) { return String(value || "").trim(); });
+    if (compactSummary) detail.createDiv({ cls: "furnace-shell-panel-note furnace-shell-run-summary", text: compactSummary });
   } else {
     renderRunTimeline(plugin, detail, record, compact);
   }
 
-  if (!compact && record.stdoutSummary) {
-    detail.createDiv({ cls: "furnace-shell-meta", text: plugin.t("stdout: {value}", { value: record.stdoutSummary }) });
-  }
-  if (!compact && record.stderrSummary) {
-    detail.createDiv({ cls: "furnace-shell-meta", text: plugin.t("stderr: {value}", { value: record.stderrSummary }) });
-  }
-  if (!compact && record.errorSummary) {
-    detail.createDiv({ cls: "furnace-shell-meta", text: plugin.t("error: {value}", { value: record.errorSummary }) });
+  if (!compact && record.stdoutSummary) detail.createDiv({ cls: "furnace-shell-meta", text: plugin.t("stdout: {value}", { value: record.stdoutSummary }) });
+  if (!compact && record.stderrSummary) detail.createDiv({ cls: "furnace-shell-meta", text: plugin.t("stderr: {value}", { value: record.stderrSummary }) });
+  if (!compact && record.errorSummary) detail.createDiv({ cls: "furnace-shell-meta", text: plugin.t("error: {value}", { value: record.errorSummary }) });
+
+  var actions = detail.createDiv({ cls: "furnace-shell-inline-actions" });
+  var rewriteProposalObjects = Array.isArray(record.rewriteProposalObjects) ? record.rewriteProposalObjects : [];
+  var rewriteProposalPaths = rewriteProposalObjects.length
+    ? plugin.rewriteProposalPathsFromObjects(rewriteProposalObjects)
+    : (Array.isArray(record.rewriteProposalPaths) ? record.rewriteProposalPaths : []);
+
+  if (!compact && Array.isArray(record.argv) && record.argv.length) {
+    var rerunButton = actions.createEl("button", { text: plugin.t("Re-run") });
+    rerunButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.rerunRecord(record); }, "Re-run: " + record.args); });
+    var copyCmdButton = actions.createEl("button", { text: plugin.t("Copy command") });
+    copyCmdButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.copyText(record.args); }, "Copy command: " + record.args); });
   }
 
-  const actions = detail.createDiv({ cls: "furnace-shell-inline-actions" });
-  const rewriteProposalPaths = Array.isArray(record.rewriteProposalPaths) ? record.rewriteProposalPaths : [];
-  if (!compact && Array.isArray(record.argv) && record.argv.length) {
-    const rerunButton = actions.createEl("button", { text: plugin.t("Re-run") });
-    rerunButton.addEventListener("click", () => {
-      plugin.runUiAction(() => plugin.rerunRecord(record), `Re-run: ${record.args}`);
-    });
-    const copyCommandButton = actions.createEl("button", { text: plugin.t("Copy command") });
-    copyCommandButton.addEventListener("click", () => {
-      plugin.runUiAction(() => plugin.copyText(record.args), `Copy command: ${record.args}`);
-    });
-  }
   if (rewriteProposalPaths.length && !compact) {
-    const proposalButton = actions.createEl("button", { text: plugin.t("Open proposal") });
-    proposalButton.addEventListener("click", () => {
-      plugin.runUiAction(() => plugin.openWorkspacePath(rewriteProposalPaths[0]), `Open rewrite proposal: ${rewriteProposalPaths[0]}`);
-    });
+    var firstProposalPath = rewriteProposalObjects[0] && rewriteProposalObjects[0].proposalPath ? rewriteProposalObjects[0].proposalPath : rewriteProposalPaths[0];
+    var proposalButton = actions.createEl("button", { text: plugin.t("Open proposal") });
+    proposalButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.openWorkspacePath(firstProposalPath); }, "Open rewrite proposal: " + firstProposalPath); });
   }
+
   if (rewriteProposalPaths.length) {
-    const reviewRewriteButton = actions.createEl("button", { text: plugin.t("Review Rewrite") });
-    reviewRewriteButton.addEventListener("click", () => {
-      plugin.runUiAction(() => plugin.openRewriteRecovery(record), `Rewrite recovery: ${record.args || record.command}`);
-    });
+    var reviewRewriteButton = actions.createEl("button", { text: plugin.t("Review Rewrite") });
+    reviewRewriteButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.openRewriteFollowup(record); }, "Rewrite follow-up: " + (record.args || record.command)); });
   }
-  if (rewriteProposalPaths.length > 1 && !compact) {
-    const reviewCenterButton = actions.createEl("button", { text: plugin.t("Open Review Center") });
-    reviewCenterButton.addEventListener("click", () => {
-      plugin.runUiAction(() => plugin.openReviewCenterView(), plugin.t("Open Review Center"));
-    });
-  }
+
   if (record.resultPath) {
-    const outputButton = actions.createEl("button", { text: plugin.t("Open result") });
-    outputButton.addEventListener("click", () => {
-      plugin.runUiAction(() => plugin.openWorkspacePath(record.resultPath), `Open result: ${record.resultPath}`);
-    });
-    const copyResultPathButton = actions.createEl("button", { text: plugin.t("Copy result path") });
-    copyResultPathButton.addEventListener("click", () => {
-      plugin.runUiAction(() => plugin.copyText(record.resultPath), `Copy result path: ${record.resultPath}`);
-    });
-    const revealResultButton = actions.createEl("button", { text: plugin.t("Reveal result") });
-    revealResultButton.addEventListener("click", () => {
-      plugin.runUiAction(() => plugin.revealWorkspacePath(record.resultPath), `Reveal result: ${record.resultPath}`);
-    });
+    var outputButton = actions.createEl("button", { text: plugin.t("Open result") });
+    outputButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.openWorkspacePath(record.resultPath); }, "Open result: " + record.resultPath); });
+    var copyResultButton = actions.createEl("button", { text: plugin.t("Copy result path") });
+    copyResultButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.copyText(record.resultPath); }, "Copy result path: " + record.resultPath); });
+    var revealResultButton = actions.createEl("button", { text: plugin.t("Reveal result") });
+    revealResultButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.revealWorkspacePath(record.resultPath); }, "Reveal result: " + record.resultPath); });
   }
+
   if (record.receiptPath) {
-    const receiptButton = actions.createEl("button", { text: plugin.t("Open receipt") });
-    receiptButton.addEventListener("click", () => {
-      plugin.runUiAction(() => plugin.openWorkspacePath(record.receiptPath), `Open receipt: ${record.receiptPath}`);
-    });
-    const copyReceiptPathButton = actions.createEl("button", { text: plugin.t("Copy receipt path") });
-    copyReceiptPathButton.addEventListener("click", () => {
-      plugin.runUiAction(() => plugin.copyText(record.receiptPath), `Copy receipt path: ${record.receiptPath}`);
-    });
-    const revealReceiptButton = actions.createEl("button", { text: plugin.t("Reveal receipt") });
-    revealReceiptButton.addEventListener("click", () => {
-      plugin.runUiAction(() => plugin.revealWorkspacePath(record.receiptPath), `Reveal receipt: ${record.receiptPath}`);
-    });
+    var receiptButton = actions.createEl("button", { text: plugin.t("Open receipt") });
+    receiptButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.openWorkspacePath(record.receiptPath); }, "Open receipt: " + record.receiptPath); });
+    var copyReceiptButton = actions.createEl("button", { text: plugin.t("Copy receipt path") });
+    copyReceiptButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.copyText(record.receiptPath); }, "Copy receipt path: " + record.receiptPath); });
+    var revealReceiptButton = actions.createEl("button", { text: plugin.t("Reveal receipt") });
+    revealReceiptButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.revealWorkspacePath(record.receiptPath); }, "Reveal receipt: " + record.receiptPath); });
   }
+
   if (!compact && (record.stderrRaw || record.stderrSummary)) {
-    const copyStderrButton = actions.createEl("button", { text: plugin.t("Copy stderr") });
-    copyStderrButton.addEventListener("click", () => {
-      plugin.runUiAction(() => plugin.copyText(record.stderrRaw || record.stderrSummary), `Copy stderr: ${record.args}`);
-    });
+    var copyStderrButton = actions.createEl("button", { text: plugin.t("Copy stderr") });
+    copyStderrButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.copyText(record.stderrRaw || record.stderrSummary); }, "Copy stderr: " + record.args); });
   }
+
   if (!compact && record.logPath) {
-    const logButton = actions.createEl("button", { text: plugin.t("Open log") });
-    logButton.addEventListener("click", () => {
-      plugin.runUiAction(() => plugin.openWorkspacePath(record.logPath), `Open log: ${record.logPath}`);
-    });
+    var logButton = actions.createEl("button", { text: plugin.t("Open log") });
+    logButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.openWorkspacePath(record.logPath); }, "Open log: " + record.logPath); });
   }
+
   if (options.includeOpenRecentRuns) {
-    const recentRunsButton = actions.createEl("button", { text: plugin.t("Open Recent Runs") });
-    recentRunsButton.addEventListener("click", () => {
-      plugin.runUiAction(() => plugin.openRecentRunsView(), plugin.t("Open Recent Runs"));
-    });
+    var recentRunsButton = actions.createEl("button", { text: plugin.t("Open Recent Runs") });
+    recentRunsButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.openRecentRunsView(); }, "Open Recent Runs"); });
   }
+
   return detail;
 }
+
+// --- src/render_home.js ---
+
+// Furnace center render entrypoint.
+function renderFurnaceCenter(plugin, contentEl) {
+  contentEl.empty();
+  contentEl.addClass("furnace-shell-view");
+  contentEl.addClass("furnace-shell-main-view");
+  contentEl.addClass("furnace-shell-v3");
+
+  if (!plugin.repoState.valid) {
+    contentEl.createDiv({
+      cls: "furnace-shell-empty",
+      text: plugin.t("Vault runtime unavailable. Missing scaffold or launcher: {missing}", {
+        missing: plugin.repoState.missingPaths.join(", "),
+      }),
+    });
+    return;
+  }
+
+  // 1. Today Feed / conversation stream
+  renderTodayFeed(plugin, contentEl);
+
+  // 2. Operator drawer stays out of the default product path.
+  if (plugin.settings && plugin.settings.showAdvancedCommands) {
+    renderAdvancedDrawer(plugin, contentEl);
+  }
+
+  // 3. Conversation Composer — keep it at the bottom of the shell surface.
+  renderUniversalInput(plugin, contentEl);
+}
+
+// --- src/render_review.js ---
+
+// Simplified Review Center — only key summary and next action.
 
 function renderReviewCenter(plugin, contentEl) {
   contentEl.empty();
@@ -2582,348 +6531,61 @@ function renderReviewCenter(plugin, contentEl) {
   plugin.renderActionButtons(contentEl, [
     { label: "Refresh", cta: true, onClick: async () => plugin.refreshShellSummaryCommand() },
     { label: "Furnace Center", onClick: async () => plugin.openFurnaceCenterView() },
-    { label: "Execution Center", onClick: async () => plugin.openExecutionCenterView() },
-  ]);
-  plugin.renderActionButtons(contentEl, [
-    { label: "Review Next", onClick: async () => plugin.openReviewNextTransitionPicker() },
-    { label: "Batch Review", onClick: async () => plugin.openReviewBatchSuggestionPicker() },
-    { label: "Review Page", onClick: async () => plugin.openReviewPageContextPicker() },
-    { label: "Review Rewrite", onClick: async () => plugin.openReviewRewriteContextPicker() },
-    { label: "Apply Rewrite", onClick: async () => plugin.openApplyRewriteModal() },
-    { label: "Retire Concept", onClick: async () => plugin.openRetireConceptModal() },
-    { label: "Reactivate Concept", onClick: async () => plugin.openReactivateConceptModal() },
-    { label: "File Back", onClick: async () => plugin.openFileBackModal() },
   ]);
 
   if (!plugin.shellSummary) {
     contentEl.createDiv({
       cls: "furnace-shell-empty",
-      text: plugin.t("shell-summary.json is not available yet. Run Refresh, Compile, or Nightly first."),
+      text: plugin.t("数据还没准备好。先点上方刷新，或等当前任务跑完。"),
     });
     return;
   }
 
-  const review = plugin.shellSummary.review_backlog_counts || {};
-  const aging = plugin.shellSummary.aging_summary || {};
-  const judgmentAssets = plugin.shellSummary.judgment_assets || {};
-  const judgmentCounts = judgmentAssets.counts || {};
-  plugin.renderCardGrid(contentEl, [
-    { label: "Pending Decisions", value: review.pending_decisions || 0 },
-    { label: "Pending Judgments", value: review.pending_judgments || 0 },
-    { label: "Overdue Reviews", value: aging.overdue_count || 0 },
-    { label: "Escalation", value: aging.escalated_count || 0 },
-    { label: "Concept Backlog", value: review.concept_backlog || 0 },
-    { label: "Review Concepts", value: review.review_concepts || 0 },
-    { label: "Revisit Concepts", value: review.revisit_concepts || 0 },
-    { label: "Retired Concepts", value: review.retired_concepts || 0 },
-  ]);
-
-  const nextReview = plugin.nextReviewCandidate();
-  const batchSuggestions = plugin.reviewBatchSuggestions();
-
-  const nextSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-  nextSection.createEl("h3", { text: plugin.t("Next Review") });
-  if (!nextReview) {
-    nextSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No explicit next review item is available.") });
-  } else {
-    const nextCard = nextSection.createDiv({ cls: "furnace-shell-card" });
-    nextCard.createEl("strong", { text: nextReview.label || nextReview.pagePath || plugin.t("review-page") });
-      nextCard.createDiv({
-        cls: "furnace-shell-meta",
-        text: nextReview.description || plugin.t("review object"),
-      });
-    if (nextReview.pagePath) {
-      nextCard.createDiv({ cls: "furnace-shell-meta furnace-shell-code", text: nextReview.pagePath });
-    }
-    const actions = nextCard.createDiv({ cls: "furnace-shell-inline-actions" });
-    const openButton = actions.createEl("button", { text: plugin.t("Open page") });
-    openButton.addEventListener("click", () => {
-      plugin.runUiAction(() => plugin.openWorkspacePath(nextReview.pagePath), `Open next review page: ${nextReview.pagePath}`);
-    });
-    plugin.preferredTransitionOptions("page", nextReview).forEach((transition) => {
-      const transitionButton = actions.createEl("button", { text: transition.label });
-      transitionButton.addEventListener("click", () => {
-        plugin.runUiAction(
-          () => plugin.runReviewPageTransition(nextReview.pagePath, transition.value),
-          `Next review quick action: ${nextReview.pagePath} -> ${transition.value}`
-        );
-      });
-    });
-    const moreButton = actions.createEl("button", { text: plugin.t("More") });
-    moreButton.addEventListener("click", () => {
-      plugin.runUiAction(() => plugin.openReviewPageTransitionPicker(nextReview), `Open next review transitions: ${nextReview.pagePath}`);
-    });
-  }
-
-  const batchSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-  batchSection.createEl("h3", { text: plugin.t("Batch Suggestions") });
-  if (!batchSuggestions.length) {
-    batchSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No batch review groups share the same recommended transition.") });
-  } else {
-    const list = batchSection.createEl("ul", { cls: "furnace-shell-list" });
-    batchSuggestions.slice(0, 6).forEach((suggestion) => {
-      const item = list.createEl("li");
-      item.createEl("strong", { text: suggestion.label });
-      item.createDiv({ cls: "furnace-shell-meta", text: suggestion.description });
-      const preview = suggestion.pages
-        .slice(0, 3)
-        .map((page) => page.label || page.pagePath)
-        .filter(Boolean)
-        .join(" · ");
-      if (preview) {
-        item.createDiv({ cls: "furnace-shell-meta", text: truncateText(preview, 180) });
-      }
-      const actions = item.createDiv({ cls: "furnace-shell-inline-actions" });
-      const batchButton = actions.createEl("button", { text: plugin.t("Batch review") });
-      batchButton.addEventListener("click", () => {
-        plugin.runUiAction(() => plugin.openReviewPageBatchModal(suggestion), `Open batch review modal: ${suggestion.key}`);
-      });
-      const openFirstButton = actions.createEl("button", { text: plugin.t("Open first") });
-      openFirstButton.addEventListener("click", () => {
-        const firstPath = suggestion.pagePaths[0] || "";
-        if (!firstPath) {
-          return;
-        }
-        plugin.runUiAction(() => plugin.openWorkspacePath(firstPath), `Open first batch review page: ${firstPath}`);
-      });
-    });
-  }
-
-  const judgmentSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-  judgmentSection.createEl("h3", { text: plugin.t("Judgment Assets") });
-  plugin.renderCardGrid(judgmentSection, [
-    { label: "Strong Assets", value: judgmentCounts.strong_assets || 0 },
-    { label: "Attention Pages", value: judgmentCounts.attention_pages || 0 },
-    { label: "Missing Counter Evidence", value: judgmentCounts.missing_counter_evidence || 0 },
-    { label: "Missing Invalidation", value: judgmentCounts.missing_invalidation || 0 },
-    { label: "Missing Review History", value: judgmentCounts.missing_review_history || 0 },
-    { label: "Citation Drift", value: judgmentCounts.citation_drift || 0 },
-  ]);
-
-  const reviewControlObjects = plugin.reviewControlList("pages");
-  const decisionControlObjects = plugin.reviewControlList("decision_pages").length
-    ? plugin.reviewControlList("decision_pages")
-    : reviewControlObjects.filter((page) => String(page.kind || "").trim() === "decision");
-  const judgmentControlObjects = plugin.reviewControlList("judgment_pages").length
-    ? plugin.reviewControlList("judgment_pages")
-    : reviewControlObjects.filter((page) => String(page.kind || "").trim() === "judgment");
-  const reviewControlsByPath = new Map(
-    reviewControlObjects
-      .filter((page) => page && typeof page === "object" && String(page.path || "").trim())
-      .map((page) => [String(page.path || "").trim(), page])
+  var review = plugin.shellSummary.review_backlog_counts || {};
+  var summaryRow = contentEl.createDiv({ cls: "furnace-shell-section" });
+  summaryRow.createEl("h3", { text: plugin.t("审阅概况") });
+  var stats = summaryRow.createDiv({ cls: "furnace-shell-meta" });
+  stats.setText(
+    plugin.t("待决策") + ": " + (review.pending_decisions || 0) +
+    "  |  " + plugin.t("待判断") + ": " + (review.pending_judgments || 0)
   );
-  const renderReviewObjectSection = (title, pages, emptyText) => {
-    const section = contentEl.createDiv({ cls: "furnace-shell-section" });
-    section.createEl("h3", { text: title });
-    if (!pages.length) {
-      section.createDiv({ cls: "furnace-shell-empty", text: emptyText });
-      return;
-    }
-    const list = section.createEl("ul", { cls: "furnace-shell-list" });
-    pages.slice(0, 10).forEach((page) => {
-      const item = list.createEl("li");
-      item.createEl("strong", { text: page.title || page.path || plugin.t("review-page") });
-      item.createDiv({
-        cls: "furnace-shell-meta",
-        text: reviewObjectMetaText(page, plugin.locale()) || plugin.t("review-object"),
-      });
-      if (page.latest_review_history_entry) {
-        item.createDiv({
-          cls: "furnace-shell-meta",
-          text: truncateText(page.latest_review_history_entry, 180),
-        });
-      }
-      const actions = item.createDiv({ cls: "furnace-shell-inline-actions" });
-      const openButton = actions.createEl("button", { text: plugin.t("Open page") });
-      openButton.addEventListener("click", () => {
-        plugin.runUiAction(() => plugin.openWorkspacePath(page.path), `Open review control page: ${page.path}`);
-      });
-      if (page.can_refresh_review) {
-        const refreshButton = actions.createEl("button", { text: plugin.t("Re-review") });
-        refreshButton.addEventListener("click", () => {
-          plugin.runUiAction(
-            () => plugin.openReviewPageModal({ pagePath: page.path, status: page.current_status || page.status || "", confidence: page.confidence || "" }),
-            `Re-review control page: ${page.path}`
-          );
-        });
-      }
-      plugin.preferredTransitionOptions("page", page).forEach((transition) => {
-        const transitionButton = actions.createEl("button", { text: transition.label });
-        transitionButton.addEventListener("click", () => {
-          plugin.runUiAction(
-            () => plugin.runReviewPageTransition(page.path, transition.value),
-            `Review control quick action: ${page.path} -> ${transition.value}`
-          );
-        });
-      });
-      if (Array.isArray(page.allowed_transitions) && page.allowed_transitions.length) {
-        const reviewButton = actions.createEl("button", { text: plugin.t("More") });
-        reviewButton.addEventListener("click", () => {
-          plugin.runUiAction(() => plugin.openReviewPageTransitionPicker(page), `Review control page: ${page.path}`);
-        });
-      }
-    });
-  };
-  renderReviewObjectSection(plugin.t("Decision Objects"), decisionControlObjects, plugin.t("No explicit decision review object is available."));
-  renderReviewObjectSection(plugin.t("Judgment Objects"), judgmentControlObjects, plugin.t("No explicit judgment review object is available."));
 
-  const rewriteControlObjects = plugin.reviewControlList("rewrite_proposals");
-  const rewriteSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-  rewriteSection.createEl("h3", { text: plugin.t("Rewrite Proposal Objects") });
-  if (!rewriteControlObjects.length) {
-    rewriteSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No explicit rewrite proposal object is available.") });
-  } else {
-    const list = rewriteSection.createEl("ul", { cls: "furnace-shell-list" });
-    rewriteControlObjects.slice(0, 10).forEach((proposal) => {
-      const item = list.createEl("li");
-      item.createEl("strong", { text: proposal.title || proposal.slug || plugin.t("rewrite-proposal") });
-      item.createDiv({
-        cls: "furnace-shell-meta",
-        text: `${displayRewriteStatus(proposal.status, plugin.locale())} | ${plugin.t("priority")} ${plugin.t(proposal.priority || "medium")} | ${plugin.t("score")} ${proposal.score || 0}`,
-      });
-      const actions = item.createDiv({ cls: "furnace-shell-inline-actions" });
-      if (proposal.proposal_path) {
-        const proposalButton = actions.createEl("button", { text: plugin.t("Open proposal") });
-        proposalButton.addEventListener("click", () => {
-          plugin.runUiAction(() => plugin.openWorkspacePath(proposal.proposal_path), `Open rewrite proposal: ${proposal.proposal_path}`);
-        });
-      }
-      if (proposal.target_path) {
-        const targetButton = actions.createEl("button", { text: plugin.t("Open target") });
-        targetButton.addEventListener("click", () => {
-          plugin.runUiAction(() => plugin.openWorkspacePath(proposal.target_path), `Open rewrite target: ${proposal.target_path}`);
-        });
-      }
-      if (proposal.can_refresh_review) {
-        const refreshButton = actions.createEl("button", { text: plugin.t("Re-review") });
-        refreshButton.addEventListener("click", () => {
-          plugin.runUiAction(
-            () => plugin.openReviewRewriteModal({ slug: proposal.slug, status: proposal.current_status || proposal.status || "" }),
-            `Re-review rewrite object: ${proposal.slug}`
-          );
-        });
-      }
-      plugin.preferredTransitionOptions("rewrite", proposal).forEach((transition) => {
-        const transitionButton = actions.createEl("button", { text: transition.label });
-        transitionButton.addEventListener("click", () => {
-          plugin.runUiAction(
-            () => plugin.runReviewRewriteTransition(proposal.slug, transition.value),
-            `Rewrite quick action: ${proposal.slug} -> ${transition.value}`
-          );
-        });
-      });
-      if (proposal.can_review && Array.isArray(proposal.allowed_transitions) && proposal.allowed_transitions.length) {
-        const reviewButton = actions.createEl("button", { text: plugin.t("More") });
-        reviewButton.addEventListener("click", () => {
-          plugin.runUiAction(() => plugin.openReviewRewriteTransitionPicker(proposal), `Review rewrite object: ${proposal.slug}`);
-        });
-      }
-      if (proposal.can_apply) {
-        const applyButton = actions.createEl("button", { text: plugin.t("Apply rewrite") });
-        applyButton.addEventListener("click", () => {
-          plugin.runUiAction(() => plugin.openApplyRewriteModal({ slug: proposal.slug }), `Apply rewrite object: ${proposal.slug}`);
-        });
-      }
+  var nextReview = plugin.nextReviewCandidate();
+  if (nextReview) {
+    var nextSection = contentEl.createDiv({ cls: "furnace-shell-section" });
+    nextSection.createEl("h3", { text: plugin.t("下一个审阅") });
+    var nextCard = nextSection.createDiv({ cls: "furnace-shell-card" });
+    nextCard.createEl("strong", { text: nextReview.label || nextReview.pagePath || plugin.t("review-page") });
+    nextCard.createDiv({ cls: "furnace-shell-meta", text: nextReview.description || "" });
+    var actions = nextCard.createDiv({ cls: "furnace-shell-inline-actions" });
+    var openBtn = actions.createEl("button", { text: plugin.t("Open page") });
+    openBtn.addEventListener("click", function () {
+      plugin.runUiAction(function () { return plugin.openWorkspacePath(nextReview.pagePath); }, "Open review page: " + nextReview.pagePath);
     });
+    plugin.preferredTransitionOptions("page", nextReview).forEach(function (transition) {
+      var btn = actions.createEl("button", { text: transition.label });
+      btn.addEventListener("click", function () {
+        plugin.runUiAction(function () { return plugin.runReviewPageTransition(nextReview.pagePath, transition.value); }, "Next review: " + nextReview.pagePath + " -> " + transition.value);
+      });
+    });
+  } else {
+    contentEl.createDiv({ cls: "furnace-shell-empty", text: plugin.t("当前没有待审阅项。") });
   }
 
-  const agingSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-  agingSection.createEl("h3", { text: plugin.t("Aging Summary") });
-  const agingList = agingSection.createEl("ul", { cls: "furnace-shell-list" });
-  [
-    ["Overdue pages", aging.overdue_pages || []],
-    ["Escalated pages", aging.escalated_pages || []],
-    ["Scheduled pages", aging.scheduled_pages || []],
-  ].forEach(([label, pages]) => {
-    const item = agingList.createEl("li");
-    item.createEl("strong", { text: `${label}: ${pages.length}` });
-    if (!pages.length) {
-      item.createDiv({ cls: "furnace-shell-meta", text: plugin.t("none") });
-      return;
-    }
-    const pageList = item.createEl("ul", { cls: "furnace-shell-list" });
-    pages.slice(0, 6).forEach((pagePath) => {
-      const pageItem = pageList.createEl("li");
-      pageItem.createEl("span", { text: pagePath });
-      const actions = pageItem.createDiv({ cls: "furnace-shell-inline-actions" });
-      const reviewControl = reviewControlsByPath.get(String(pagePath || "").trim());
-      const openButton = actions.createEl("button", { text: plugin.t("Open") });
-      openButton.addEventListener("click", () => {
-        plugin.runUiAction(() => plugin.openWorkspacePath(pagePath), `Open aging page: ${pagePath}`);
-      });
-      const reviewButton = actions.createEl("button", { text: plugin.t("Review") });
-      reviewButton.addEventListener("click", () => {
-        plugin.runUiAction(
-          () => (reviewControl ? plugin.openReviewPageTransitionPicker(reviewControl) : plugin.openReviewPageModal({ pagePath })),
-          `Review aging page: ${pagePath}`
-        );
-      });
-    });
-  });
-
-  const reviewEvents = Array.isArray(plugin.shellSummary.recent_runs)
-    ? plugin.shellSummary.recent_runs.filter((entry) => entry.event_type === "review")
-    : [];
-  const eventsSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-  eventsSection.createEl("h3", { text: plugin.t("Recent Review Events") });
-  if (!reviewEvents.length) {
-    eventsSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No recent review events are available.") });
-  } else {
-    const list = eventsSection.createEl("ul", { cls: "furnace-shell-list" });
-    reviewEvents.slice(0, 8).forEach((entry) => {
-      const item = list.createEl("li");
-      const reviewControl = reviewControlsByPath.get(String(entry.page_path || "").trim());
-      item.createEl("strong", { text: entry.title || entry.page_path || plugin.t("review") });
-      item.createDiv({
-        cls: "furnace-shell-meta",
-        text: `${plugin.t(entry.status || "status-unknown")} | ${entry.occurred_at || plugin.t("unknown")}`,
-      });
-      if (entry.page_path) {
-        const actions = item.createDiv({ cls: "furnace-shell-inline-actions" });
-        const button = actions.createEl("button", { text: plugin.t("Open page") });
-        button.addEventListener("click", () => {
-          plugin.runUiAction(() => plugin.openWorkspacePath(entry.page_path), `Open review page: ${entry.page_path}`);
-        });
-        const reviewButton = actions.createEl("button", { text: plugin.t("Review") });
-        reviewButton.addEventListener("click", () => {
-          plugin.runUiAction(
-            () => (
-              reviewControl
-                ? plugin.openReviewPageTransitionPicker(reviewControl)
-                : plugin.openReviewPageModal({ pagePath: entry.page_path, status: entry.status || "" })
-            ),
-            `Review event page: ${entry.page_path}`
-          );
-        });
-      }
+  // Quick link to full review markdown page
+  var links = plugin.shellSummary.links || {};
+  if (links.review_center_markdown) {
+    var linkDiv = contentEl.createDiv({ cls: "furnace-shell-section" });
+    var linkBtn = linkDiv.createEl("button", { text: plugin.t("查看完整审阅页") });
+    linkBtn.addEventListener("click", function () {
+      plugin.runUiAction(function () { return plugin.openWorkspacePath(links.review_center_markdown); }, "Open review markdown");
     });
   }
-
-  const links = plugin.shellSummary.links || {};
-  const linksSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-  linksSection.createEl("h3", { text: plugin.t("Governance Links") });
-  const linkList = linksSection.createEl("ul", { cls: "furnace-shell-list" });
-  [
-    ["review_center_markdown", "Review Center Index"],
-    ["review_center_html", "Review Center HTML"],
-    ["judgment_assets_markdown", "Judgment Assets"],
-    ["cognitive_history_markdown", "Cognitive History"],
-    ["protocols_markdown", "Protocols"],
-    ["domain_pilots_markdown", "Domain Pilots"],
-    ["output_packs_markdown", "Output Packs"],
-  ].forEach(([key, label]) => {
-    if (!links[key]) {
-      return;
-    }
-    const item = linkList.createEl("li");
-    item.createEl("span", { text: plugin.t(label) });
-    const actions = item.createDiv({ cls: "furnace-shell-inline-actions" });
-    const button = actions.createEl("button", { text: plugin.t("Open") });
-    button.addEventListener("click", () => {
-      plugin.runUiAction(() => plugin.openWorkspacePath(links[key]), `Open link: ${links[key]}`);
-    });
-  });
 }
+
+// --- src/render_execution.js ---
+
+// Simplified Execution Center — only key summary and recent activity.
 
 function renderExecutionCenter(plugin, contentEl) {
   contentEl.empty();
@@ -2943,309 +6605,2906 @@ function renderExecutionCenter(plugin, contentEl) {
   plugin.renderActionButtons(contentEl, [
     { label: "Refresh", cta: true, onClick: async () => plugin.refreshShellSummaryCommand() },
     { label: "Furnace Center", onClick: async () => plugin.openFurnaceCenterView() },
-    { label: "Review Center", onClick: async () => plugin.openReviewCenterView() },
-    { label: "Recent Runs", onClick: async () => plugin.openRecentRunsView() },
-  ]);
-  plugin.renderActionButtons(contentEl, [
-    { label: "Review Action", onClick: async () => plugin.openReviewActionContextPicker() },
-    { label: "Apply Action", onClick: async () => plugin.openApplyActionContextPicker() },
-    { label: "Revert Action", onClick: async () => plugin.openRevertActionContextPicker() },
-    { label: "Apply All Low-Risk", onClick: async () => plugin.runApplyAllAcceptedLowRiskCommand() },
-    { label: "Revert Last Batch", onClick: async () => plugin.runRevertLastBatchCommand() },
-    { label: "Apply Archive", onClick: async () => plugin.openApplyArchiveContextPicker() },
-    { label: "Revert Archive", onClick: async () => plugin.openRevertArchiveContextPicker() },
   ]);
 
   if (!plugin.shellSummary) {
     contentEl.createDiv({
       cls: "furnace-shell-empty",
-      text: plugin.t("shell-summary.json is not available yet. Run Refresh, Compile, or Nightly first."),
+      text: plugin.t("数据还没准备好。先点上方刷新，或等当前任务跑完。"),
     });
     return;
   }
 
-  const receipts = Array.isArray(plugin.shellSummary.recent_receipts) ? plugin.shellSummary.recent_receipts : [];
-  const executionEvents = Array.isArray(plugin.shellSummary.recent_runs)
-    ? plugin.shellSummary.recent_runs.filter((entry) =>
-        ["archive-apply", "archive-revert", "knowledge-lifecycle-override", "nightly"].includes(entry.event_type)
-      )
-    : [];
-  const actionControlsById = plugin.actionControlsById();
-  const archiveControlsById = plugin.archiveControlsById();
-  const actionControlObjects = plugin.executionControlList("actions");
-  plugin.renderCardGrid(contentEl, [
-    { label: "Recent Receipts", value: receipts.length },
-    { label: "Execution Events", value: executionEvents.length },
-    {
-      label: "Archive Events",
-      value: executionEvents.filter((entry) => ["archive-apply", "archive-revert"].includes(entry.event_type)).length,
-    },
-    {
-      label: "Lifecycle Overrides",
-      value: executionEvents.filter((entry) => entry.event_type === "knowledge-lifecycle-override").length,
-    },
-    {
-      label: "Nightly Runs",
-      value: executionEvents.filter((entry) => entry.event_type === "nightly").length,
-    },
-  ]);
+  // Summary stats only
+  var receipts = Array.isArray(plugin.shellSummary.recent_receipts) ? plugin.shellSummary.recent_receipts : [];
+  var actionControls = plugin.executionControlList("actions");
+  var pendingActions = actionControls.filter(function (a) { return a && a.can_apply; }).length;
 
-  const planner = plugin.shellSummary.planner || {};
-  const plannerCounts = planner.counts || {};
-  const plannerQueue = Array.isArray(planner.priority_queue) ? planner.priority_queue : [];
-  const plannerNextAction = planner.next_action || {};
-  if (plannerQueue.length || plannerCounts.pending_proposals) {
-    const plannerSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-    plannerSection.createEl("h3", { text: plugin.t("Planner Queue") });
-    plugin.renderCardGrid(plannerSection, [
-      { label: "Pending Proposals", value: plannerCounts.pending_proposals || 0 },
-      { label: "Executed", value: plannerCounts.executed_actions || 0 },
-      { label: "Unblocked", value: plannerCounts.unblocked || 0 },
-      { label: "Blocked", value: plannerCounts.blocked || 0 },
-    ]);
-    if (plannerNextAction.action_id) {
-      const nextDiv = plannerSection.createDiv({ cls: "furnace-shell-section" });
-      nextDiv.createEl("h4", { text: plugin.t("Next Action") });
-      const item = nextDiv.createDiv();
-      item.createEl("strong", { text: plannerNextAction.title || plannerNextAction.action_id });
+  var summaryRow = contentEl.createDiv({ cls: "furnace-shell-section" });
+  summaryRow.createEl("h3", { text: plugin.t("执行概况") });
+  var stats = summaryRow.createDiv({ cls: "furnace-shell-meta" });
+  stats.setText(
+    plugin.t("待执行动作") + ": " + pendingActions + "  |  " + plugin.t("最近运行记录") + ": " + receipts.length
+  );
+
+  // Recent activity: last 3 receipts
+  if (receipts.length) {
+    var recentSection = contentEl.createDiv({ cls: "furnace-shell-section" });
+    recentSection.createEl("h3", { text: plugin.t("最近活动") });
+    var list = recentSection.createEl("ul", { cls: "furnace-shell-list" });
+    receipts.slice(0, 3).forEach(function (entry) {
+      var item = list.createEl("li");
+      item.createEl("strong", { text: entry.title || entry.event_type || plugin.t("operation") });
       item.createDiv({
         cls: "furnace-shell-meta",
-        text: `${plugin.t("score")}: ${plannerNextAction.priority_score || 0} | ${plannerNextAction.action_id || ""}`,
+        text: (entry.status || "") + " | " + (entry.occurred_at || ""),
       });
-      const nextActions = item.createDiv({ cls: "furnace-shell-inline-actions" });
-      const reviewBtn = nextActions.createEl("button", { text: plugin.t("Review") });
-      reviewBtn.addEventListener("click", () => {
-        plugin.runUiAction(
-          () => plugin.openReviewActionModal({ actionId: plannerNextAction.action_id, status: "accepted" }),
-          `Review planner next: ${plannerNextAction.action_id}`
-        );
-      });
-    }
-    if (plannerQueue.length > 1) {
-      const queueList = plannerSection.createEl("ul", { cls: "furnace-shell-list" });
-      plannerQueue.slice(0, 8).forEach((queueItem) => {
-        const item = queueList.createEl("li");
-        item.createEl("strong", { text: queueItem.title || queueItem.action_id || plugin.t("action") });
-        item.createDiv({
-          cls: "furnace-shell-meta",
-          text: `${plugin.t("score")}: ${queueItem.priority_score || 0} | ${queueItem.action_id || ""}`,
-        });
-      });
-    }
-  }
-
-  const actionObjectsSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-  actionObjectsSection.createEl("h3", { text: plugin.t("Action Control Objects") });
-  if (!actionControlObjects.length) {
-    actionObjectsSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No explicit action control object is available.") });
+    });
   } else {
-    const list = actionObjectsSection.createEl("ul", { cls: "furnace-shell-list" });
-    actionControlObjects.slice(0, 10).forEach((action) => {
-      const item = list.createEl("li");
-      item.createEl("strong", { text: action.title || action.action_id || plugin.t("action") });
-      item.createDiv({
-        cls: "furnace-shell-meta",
-        text: `${displayActionStatus(action.status, plugin.locale())} | ${plugin.t(action.priority || "medium")} | ${action.primary_path || ""}`,
-      });
-      const actions = item.createDiv({ cls: "furnace-shell-inline-actions" });
-      if (action.primary_path) {
-        const openPrimary = actions.createEl("button", { text: plugin.t("Open primary") });
-        openPrimary.addEventListener("click", () => {
-          plugin.runUiAction(() => plugin.openWorkspacePath(action.primary_path), `Open action primary: ${action.primary_path}`);
-        });
-      }
-      if (action.proposal_path) {
-        const openProposal = actions.createEl("button", { text: plugin.t("Open proposal") });
-        openProposal.addEventListener("click", () => {
-          plugin.runUiAction(() => plugin.openWorkspacePath(action.proposal_path), `Open action proposal: ${action.proposal_path}`);
-        });
-      }
-      if (action.can_refresh_review) {
-        const refreshButton = actions.createEl("button", { text: plugin.t("Re-review") });
-        refreshButton.addEventListener("click", () => {
-          plugin.runUiAction(
-            () => plugin.openReviewActionModal({ actionId: action.action_id, status: action.current_status || action.status || "" }),
-            `Re-review action object: ${action.action_id}`
-          );
-        });
-      }
-      plugin.preferredTransitionOptions("action", action).forEach((transition) => {
-        const transitionButton = actions.createEl("button", { text: transition.label });
-        transitionButton.addEventListener("click", () => {
-          plugin.runUiAction(
-            () => plugin.runReviewActionTransition(action.action_id, transition.value),
-            `Action quick transition: ${action.action_id} -> ${transition.value}`
-          );
-        });
-      });
-      if (action.can_review && Array.isArray(action.allowed_transitions) && action.allowed_transitions.length) {
-        const moreButton = actions.createEl("button", { text: plugin.t("More") });
-        moreButton.addEventListener("click", () => {
-          plugin.runUiAction(() => plugin.openReviewActionTransitionPicker(action), `Review action object: ${action.action_id}`);
-        });
-      }
-      if (action.can_apply) {
-        const applyButton = actions.createEl("button", { text: plugin.t("Apply action") });
-        applyButton.addEventListener("click", () => {
-          plugin.runUiAction(
-            () => plugin.openApplyActionModal({ actionId: action.action_id, bundle: action.bundle_path || "" }),
-            `Apply action object: ${action.action_id}`
-          );
-        });
-      }
-      if (action.can_revert) {
-        const revertButton = actions.createEl("button", { text: plugin.t("Revert action") });
-        revertButton.addEventListener("click", () => {
-          plugin.runUiAction(() => plugin.openRevertActionModal({ actionId: action.action_id }), `Revert action object: ${action.action_id}`);
-        });
-      }
-    });
+    contentEl.createDiv({ cls: "furnace-shell-empty", text: plugin.t("暂无最近运行记录。") });
   }
 
-  const receiptsSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-  receiptsSection.createEl("h3", { text: plugin.t("Recent Receipts") });
-  if (!receipts.length) {
-    receiptsSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No recent receipts are available.") });
-  } else {
-    const list = receiptsSection.createEl("ul", { cls: "furnace-shell-list" });
-    receipts.slice(0, 8).forEach((receipt) => {
-      const item = list.createEl("li");
-      const actionId = plugin.inferActionIdFromReceipt(receipt);
-      const actionControl = actionControlsById.get(actionId);
-      const archiveEntryId = String(receipt.subject_id || "").trim();
-      const archiveControl = archiveControlsById.get(archiveEntryId);
-      item.createEl("strong", { text: receipt.title || receipt.subject_id || plugin.t("receipt") });
-      item.createDiv({
-        cls: "furnace-shell-meta",
-        text: `${plugin.t(receipt.operation || "operation")} | ${plugin.t(receipt.protocol || "general")} | ${receipt.applied_at || plugin.t("unknown")}`,
-      });
-      if (receipt.receipt_path) {
-        const actions = item.createDiv({ cls: "furnace-shell-inline-actions" });
-        const button = actions.createEl("button", { text: plugin.t("Open receipt") });
-        button.addEventListener("click", () => {
-          plugin.runUiAction(() => plugin.openWorkspacePath(receipt.receipt_path), `Open receipt: ${receipt.receipt_path}`);
-        });
-        if (String(receipt.subject_kind || "") === "material-archive" && archiveControl) {
-          if (archiveControl.can_revert || archiveControl.can_apply) {
-            const archiveButton = actions.createEl("button", {
-              text: plugin.t(archiveControl.can_revert ? "Revert archive" : "Apply archive"),
-            });
-            archiveButton.addEventListener("click", () => {
-              plugin.runUiAction(
-                () =>
-                  (archiveControl.can_revert
-                    ? plugin.openRevertArchiveModal({ entryId: archiveControl.entry_id })
-                    : plugin.openApplyArchiveModal({ entryId: archiveControl.entry_id })),
-                `Archive receipt action: ${archiveControl.entry_id}`
-              );
-            });
-          }
-        } else if (actionControl) {
-          if (actionControl.can_review) {
-            const reviewButton = actions.createEl("button", { text: plugin.t("Review action") });
-            reviewButton.addEventListener("click", () => {
-              plugin.runUiAction(() => plugin.openReviewActionTransitionPicker(actionControl), `Review action from receipt: ${actionId}`);
-            });
-          }
-          if (actionControl.can_revert || actionControl.can_apply) {
-            const actionButton = actions.createEl("button", {
-              text: plugin.t(actionControl.can_revert ? "Revert action" : "Apply action"),
-            });
-            actionButton.addEventListener("click", () => {
-              plugin.runUiAction(
-                () =>
-                  (actionControl.can_revert
-                    ? plugin.openRevertActionModal({ actionId })
-                    : plugin.openApplyActionModal({ actionId, bundle: actionControl.bundle_path || "" })),
-                `Execution receipt action: ${actionId}`
-              );
-            });
-          }
-        }
-      }
+  // Quick link to full execution page
+  var links = plugin.shellSummary.links || {};
+  if (links.execution_center_markdown) {
+    var linkDiv = contentEl.createDiv({ cls: "furnace-shell-section" });
+    var linkBtn = linkDiv.createEl("button", { text: plugin.t("查看完整执行页") });
+    linkBtn.addEventListener("click", function () {
+      plugin.runUiAction(function () { return plugin.openWorkspacePath(links.execution_center_markdown); }, "Open execution markdown");
     });
   }
+}
 
-  const eventsSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-  eventsSection.createEl("h3", { text: plugin.t("Recent Execution Events") });
-  if (!executionEvents.length) {
-    eventsSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No recent execution events are available.") });
-  } else {
-    const list = eventsSection.createEl("ul", { cls: "furnace-shell-list" });
-    executionEvents.slice(0, 10).forEach((entry) => {
-      const item = list.createEl("li");
-      const archiveEntryId = String(entry.entry_id || (Array.isArray(entry.source_ids) && entry.source_ids.length ? entry.source_ids[0] : "") || "");
-      const archiveControl = archiveControlsById.get(archiveEntryId);
-      item.createEl("strong", { text: entry.title || plugin.t(entry.event_type || "event") });
-      item.createDiv({
-        cls: "furnace-shell-meta",
-        text: `${plugin.t(entry.event_type || "event")} | ${plugin.t(entry.protocol || "general")} | ${entry.occurred_at || plugin.t("unknown")}`,
-      });
-      const pathValue = entry.receipt_path || entry.path || entry.output_path || "";
-      const actions = item.createDiv({ cls: "furnace-shell-inline-actions" });
-      if (pathValue) {
-        const button = actions.createEl("button", { text: plugin.t("Open") });
-        button.addEventListener("click", () => {
-          plugin.runUiAction(() => plugin.openWorkspacePath(pathValue), `Open execution path: ${pathValue}`);
-        });
-      }
-      if (["archive-apply", "archive-revert"].includes(String(entry.event_type || "")) && archiveControl) {
-        if (archiveControl.can_revert || archiveControl.can_apply) {
-          const archiveButton = actions.createEl("button", {
-              text: plugin.t(archiveControl.can_revert ? "Revert archive" : "Apply archive"),
-          });
-          archiveButton.addEventListener("click", () => {
-            plugin.runUiAction(
-              () =>
-                (archiveControl.can_revert
-                  ? plugin.openRevertArchiveModal({ entryId: archiveControl.entry_id })
-                  : plugin.openApplyArchiveModal({ entryId: archiveControl.entry_id })),
-              `Archive event action: ${archiveControl.entry_id}`
-            );
-          });
-        }
-      }
-      if (String(entry.event_type || "") === "knowledge-lifecycle-override" && String(entry.path || "").startsWith("wiki/concepts/")) {
-        const slug = path.basename(String(entry.path || ""), ".md");
-        const lifecycleButton = actions.createEl("button", {
-          text: plugin.t(String(entry.lifecycle_state || "") === "retired" ? "Reactivate concept" : "Retire concept"),
-        });
-        lifecycleButton.addEventListener("click", () => {
-          plugin.runUiAction(
-            () =>
-              String(entry.lifecycle_state || "") === "retired"
-                ? plugin.openReactivateConceptModal({ slug })
-                : plugin.openRetireConceptModal({ slug }),
-            `Lifecycle override action: ${slug}`
-          );
-        });
-      }
-    });
+// --- src/plugin_helpers.js ---
+
+// Pure helpers extracted from plugin.js (no class state).
+
+// extracted from plugin.js lines 382-391
+function trimDiagnosticText(value, limit = 16000) {
+  const text = String(value || "");
+  if (!text) {
+    return "";
+  }
+  if (text.length <= limit) {
+    return text;
+  }
+  return `${text.slice(0, limit)}\n...[truncated]`;
+}
+
+// extracted from plugin.js lines 426-432
+function isLlmRelevantRecord(record) {
+  if (!record || typeof record !== "object") {
+    return false;
+  }
+  const command = String(record.command || "").trim();
+  return command === "run-ask" || command === "run-ask-frontdoor" || String(record.fallbackFrom || "").trim() === "run-ask";
+}
+
+// extracted from plugin.js lines 529-532
+function parseTimestampMs(value) {
+  const timestamp = Date.parse(String(value || ""));
+  return Number.isFinite(timestamp) ? timestamp : NaN;
+}
+
+// extracted from plugin.js lines 711-721
+function launcherIsExecutable(launcherPath) {
+  if (!launcherPath || !fs.existsSync(launcherPath)) {
+    return false;
+  }
+  try {
+    fs.accessSync(launcherPath, fs.constants.X_OK);
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+// extracted from plugin.js lines 822-829
+function appendOptionalArg(args, flag, value) {
+  const normalized = String(value || "").trim();
+  if (!normalized) {
+    return args;
+  }
+  args.push(flag, normalized);
+  return args;
+}
+
+// extracted from plugin.js lines 831-840
+function parseLineList(value) {
+  return Array.from(
+    new Set(
+      String(value || "")
+        .split(/\r?\n/)
+        .map((item) => String(item || "").trim())
+        .filter(Boolean)
+    )
+  );
+}
+
+// extracted from plugin.js lines 842-851
+function normalizeRelativePathList(value) {
+  const items = Array.isArray(value) ? value : [value];
+  return Array.from(
+    new Set(
+      items
+        .map((item) => String(item || "").trim())
+        .filter(Boolean)
+    )
+  );
+}
+
+function knownReportIdsUpdateFromSummary(summary, lastKnownReportIds) {
+  if (!summary || !Array.isArray(summary.recent_outputs)) {
+    return { shouldSave: false, ids: [] };
+  }
+  const outputs = summary.recent_outputs.filter((item) => item && typeof item === "object");
+  const currentIds = outputs.map((item) => item.path || item.title || item.created_at).filter(Boolean);
+  const lastIds = Array.isArray(lastKnownReportIds) ? lastKnownReportIds.filter(Boolean) : [];
+
+  if (!currentIds.length) {
+    return { shouldSave: true, ids: [] };
   }
 
-  const links = plugin.shellSummary.links || {};
-  const linksSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-  linksSection.createEl("h3", { text: plugin.t("Execution Links") });
-  const linkList = linksSection.createEl("ul", { cls: "furnace-shell-list" });
-  [
-    ["execution_center_markdown", "Execution Center Index"],
-    ["execution_center_html", "Execution Center HTML"],
-    ["execution_audit_markdown", "Execution Audit"],
-    ["execution_audit_html", "Execution Audit HTML"],
-    ["graph_view_markdown", "Graph View"],
-  ].forEach(([key, label]) => {
-    if (!links[key]) {
-      return;
+  if (!lastIds.length && outputs.length > 0) {
+    return { shouldSave: true, ids: currentIds };
+  }
+
+  const newIds = currentIds.filter((id) => !lastIds.includes(id));
+  if (newIds.length) {
+    return { shouldSave: true, ids: currentIds };
+  }
+
+  const changedOrderOrLength = currentIds.length !== lastIds.length || currentIds.some((id, index) => id !== lastIds[index]);
+  return { shouldSave: changedOrderOrLength, ids: changedOrderOrLength ? currentIds : lastIds };
+}
+
+function normalizeWorkspaceRelativePath(relativePath) {
+  const normalized = String(relativePath || "").trim();
+  if (!normalized || path.isAbsolute(normalized)) {
+    return "";
+  }
+  const safePath = path.normalize(normalized).replace(/^\/+/, "");
+  if (!safePath || safePath === "." || safePath.startsWith("..")) {
+    return "";
+  }
+  return safePath;
+}
+
+function resolveWorkspaceSnippetPath(rootPath, relativePath) {
+  const root = String(rootPath || "").trim();
+  if (!root) {
+    return "";
+  }
+  const safePath = normalizeWorkspaceRelativePath(relativePath);
+  if (!safePath) {
+    return "";
+  }
+  const resolvedRoot = path.resolve(root);
+  const resolvedPath = path.resolve(path.join(resolvedRoot, safePath));
+  if (resolvedPath !== resolvedRoot && !resolvedPath.startsWith(resolvedRoot + path.sep)) {
+    return "";
+  }
+  return resolvedPath;
+}
+
+function workspaceSnippetFromMarkdown(raw, length = 420) {
+  const withoutFrontmatter = String(raw || "").startsWith("---")
+    ? String(raw || "").replace(/^---\s*[\s\S]*?\n---\s*/, "")
+    : String(raw || "");
+  const normalizedText = withoutFrontmatter
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#"))
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const limit = Number.isFinite(Number(length)) && Number(length) > 0 ? Number(length) : 420;
+  return normalizedText.length > limit ? `${normalizedText.slice(0, Math.max(0, limit - 1))}…` : normalizedText;
+}
+
+function appendComposerReportQuote(currentValue, quoteLine) {
+  const current = String(currentValue || "").trimEnd();
+  const normalizedQuote = String(quoteLine || "").trim();
+  if (!normalizedQuote) {
+    return { changed: false, value: String(currentValue || "") };
+  }
+  const existingLines = current.split(/\r?\n/).map((line) => line.trim());
+  if (existingLines.includes(normalizedQuote)) {
+    return { changed: false, value: String(currentValue || "") };
+  }
+  return {
+    changed: true,
+    value: current ? `${current}\n${normalizedQuote}\n` : `${normalizedQuote}\n`,
+  };
+}
+
+// extracted from plugin.js lines 853-882
+function normalizeRewriteProposalObject(value) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const slug = String(value.slug || "").trim();
+  if (!slug) {
+    return null;
+  }
+  return {
+    slug,
+    title: String(value.title || slug).trim(),
+    status: String(value.status || value.current_status || "").trim(),
+    currentStatus: String(value.currentStatus || value.current_status || value.status || "").trim(),
+    proposalPath: String(value.proposalPath || value.proposal_path || "").trim(),
+    targetPath: String(value.targetPath || value.target_path || "").trim(),
+    canApply: Boolean(value.canApply || value.can_apply),
+    canReview: Boolean(value.canReview || value.can_review),
+    canRevert: Boolean(value.canRevert || value.can_revert),
+    canRefreshReview: Boolean(value.canRefreshReview || value.can_refresh_review),
+    allowedTransitions: Array.isArray(value.allowedTransitions || value.allowed_transitions)
+      ? (value.allowedTransitions || value.allowed_transitions).map((item) => String(item || "").trim()).filter(Boolean)
+      : [],
+    preferredTransitions: Array.isArray(value.preferredTransitions || value.preferred_transitions)
+      ? (value.preferredTransitions || value.preferred_transitions).map((item) => String(item || "").trim()).filter(Boolean)
+      : [],
+    defaultTransition: String(value.defaultTransition || value.default_transition || "").trim(),
+    reason: String(value.reason || "").trim(),
+    command: String(value.command || "").trim(),
+  };
+}
+
+// extracted from plugin.js lines 901-933
+function normalizeRewriteFollowupAction(value) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const slug = String(value.slug || "").trim();
+  const command = String(value.command || "").trim();
+  if (!slug || !command) {
+    return null;
+  }
+  return {
+    slug,
+    kind: String(value.kind || "review-rewrite").trim(),
+    title: String(value.title || slug).trim(),
+    command,
+    path: String(value.path || value.proposal_path || value.target_path || "").trim(),
+    reason: String(value.reason || "").trim(),
+    transition: String(value.transition || value.default_transition || "").trim(),
+    status: String(value.status || value.current_status || "").trim(),
+    currentStatus: String(value.currentStatus || value.current_status || value.status || "").trim(),
+    proposalPath: String(value.proposalPath || value.proposal_path || "").trim(),
+    targetPath: String(value.targetPath || value.target_path || "").trim(),
+    canApply: Boolean(value.canApply || value.can_apply),
+    canReview: Boolean(value.canReview || value.can_review),
+    canRevert: Boolean(value.canRevert || value.can_revert),
+    allowedTransitions: Array.isArray(value.allowedTransitions || value.allowed_transitions)
+      ? (value.allowedTransitions || value.allowed_transitions).map((item) => String(item || "").trim()).filter(Boolean)
+      : [],
+    preferredTransitions: Array.isArray(value.preferredTransitions || value.preferred_transitions)
+      ? (value.preferredTransitions || value.preferred_transitions).map((item) => String(item || "").trim()).filter(Boolean)
+      : [],
+    defaultTransition: String(value.defaultTransition || value.default_transition || "").trim(),
+  };
+}
+
+// extracted from plugin.js lines 1093-1106
+function uniqueContextOptions(options, keyName = "value") {
+  const seen = new Set();
+  return (Array.isArray(options) ? options : []).filter((option) => {
+    if (!option || typeof option !== "object") {
+      return false;
     }
-    const item = linkList.createEl("li");
-    item.createEl("span", { text: plugin.t(label) });
-    const actions = item.createDiv({ cls: "furnace-shell-inline-actions" });
-    const button = actions.createEl("button", { text: plugin.t("Open") });
-    button.addEventListener("click", () => {
-      plugin.runUiAction(() => plugin.openWorkspacePath(links[key]), `Open link: ${links[key]}`);
-    });
+    const key = String(option[keyName] || option.value || option.pagePath || option.actionId || option.entryId || "").trim();
+    if (!key || seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
   });
 }
+
+// extracted from plugin.js lines 1108-1113
+function inferActionIdFromReceipt(receipt) {
+  if (!receipt || typeof receipt !== "object") {
+    return "";
+  }
+  return String(receipt.action_id || "").trim();
+}
+
+// extracted from plugin.js lines 1657-1659
+function runLogRelativePath(record) {
+  return `output/control/plugin-runs/${String(record && record.id ? record.id : "").trim()}.md`;
+}
+
+// extracted from plugin.js lines 1872-1884
+function extractPrimaryPath(payload) {
+  if (!payload || typeof payload !== "object") {
+    return "";
+  }
+  const candidateKeys = ["path", "output_path", "receipt_path", "state_path", "index_path", "report_path", "note_path", "stored_path", "asset_path"];
+  for (const key of candidateKeys) {
+    const value = payload[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return "";
+}
+
+// extracted from plugin.js lines 2132-2146
+function llmBackendUnavailable(error) {
+  const text = String(error && error.message ? error.message : error || "").toLowerCase();
+  return [
+    "usage limit",
+    "no quota",
+    "upgrade to pro",
+    "purchase more credits",
+    "organization does not have access",
+    "login again",
+    "timed out",
+    "timeout",
+    "authentication",
+    "auth",
+  ].some((pattern) => text.includes(pattern));
+}
+
+// extracted from plugin.js lines 1631-1644
+function appendRunEvent(record, stage, summary = "", status = "") {
+  if (!record || typeof record !== "object") {
+    return;
+  }
+  if (!Array.isArray(record.timeline)) {
+    record.timeline = [];
+  }
+  record.timeline.push({
+    stage: String(stage || "").trim(),
+    at: new Date().toISOString(),
+    summary: String(summary || "").trim(),
+    status: String(status || "").trim(),
+  });
+}
+
+// --- src/rewrite_state.js ---
+
+// Pure rewrite proposal/recovery state helpers.
+
+function normalizeRewriteProposalObjects(value) {
+  const items = Array.isArray(value) ? value : [value];
+  const seen = new Set();
+  return items
+    .map((item) => normalizeRewriteProposalObject(item))
+    .filter((item) => {
+      if (!item) {
+        return false;
+      }
+      if (seen.has(item.slug)) {
+        return false;
+      }
+      seen.add(item.slug);
+      return true;
+    });
+}
+
+function normalizeRewriteFollowupActions(value) {
+  const items = Array.isArray(value) ? value : [value];
+  const seen = new Set();
+  return items
+    .map((item) => normalizeRewriteFollowupAction(item))
+    .filter((item) => {
+      if (!item) {
+        return false;
+      }
+      if (seen.has(item.command)) {
+        return false;
+      }
+      seen.add(item.command);
+      return true;
+    });
+}
+
+function rewriteProposalPathsFromObjects(objects) {
+  return normalizeRelativePathList(
+    (Array.isArray(objects) ? objects : []).map((item) => item && item.proposalPath ? item.proposalPath : "")
+  );
+}
+
+function rewriteProposalSlugsFromObjects(objects) {
+  return normalizeRelativePathList(
+    (Array.isArray(objects) ? objects : []).map((item) => item && item.slug ? item.slug : "")
+  );
+}
+
+function extractRewriteProposalObjects(payload) {
+  if (!payload || typeof payload !== "object") {
+    return [];
+  }
+  return normalizeRewriteProposalObjects(payload.updated_rewrite_proposals || []);
+}
+
+function extractRewriteFollowupActions(payload) {
+  if (!payload || typeof payload !== "object") {
+    return [];
+  }
+  const preferred = payload.rewrite_followup_actions;
+  const historical = payload["rewrite_" + "recovery_actions"];
+  return normalizeRewriteFollowupActions(
+    Array.isArray(preferred) ? preferred : Array.isArray(historical) ? historical : []
+  );
+}
+
+function extractRewriteProposalPaths(payload) {
+  if (!payload || typeof payload !== "object") {
+    return [];
+  }
+  const objects = extractRewriteProposalObjects(payload);
+  return objects.length
+    ? rewriteProposalPathsFromObjects(objects)
+    : normalizeRelativePathList(payload.updated_rewrite_proposal_pages);
+}
+
+function extractRewriteProposalSlugs(paths) {
+  return normalizeRelativePathList(paths).map((proposalPath) => path.basename(proposalPath, ".md"));
+}
+
+function rewriteProposalSummary(plugin, record) {
+  const count = Array.isArray(record && record.rewriteProposalObjects) && record.rewriteProposalObjects.length
+    ? record.rewriteProposalObjects.length
+    : (Array.isArray(record && record.rewriteProposalPaths) ? record.rewriteProposalPaths.length : 0);
+  if (!count) {
+    return "";
+  }
+  return plugin.t("rewrite proposals: {count}", { count });
+}
+
+function openRewriteFollowupForRecord(plugin, record) {
+  const recoveryActions = Array.isArray(record && record.rewriteFollowupActions)
+    ? plugin.normalizeRewriteFollowupActions(record.rewriteFollowupActions)
+    : [];
+  const proposalObjects = Array.isArray(record && record.rewriteProposalObjects)
+    ? plugin.normalizeRewriteProposalObjects(record.rewriteProposalObjects)
+    : [];
+  if (recoveryActions.length === 1) {
+    const action = recoveryActions[0];
+    const control = proposalObjects.find((item) => item.slug === action.slug) || action;
+    if (action.kind === "apply-rewrite") {
+      plugin.openApplyRewriteModal({ slug: action.slug });
+      return;
+    }
+    plugin.openReviewRewriteTransitionPicker({
+      ...control,
+      slug: action.slug,
+      status: action.status || control.status || control.currentStatus || "",
+      currentStatus: action.currentStatus || control.currentStatus || control.status || "",
+      allowedTransitions: action.allowedTransitions || control.allowedTransitions || [],
+      preferredTransitions: action.preferredTransitions || control.preferredTransitions || [],
+      defaultTransition: action.transition || action.defaultTransition || control.defaultTransition || "",
+    });
+    return;
+  }
+  if (proposalObjects.length > 1) {
+    plugin.openReviewRewriteContextPicker(
+      proposalObjects.map((proposal) => ({
+        ...proposal,
+        value: proposal.slug,
+        label: proposal.title || proposal.slug || "rewrite-proposal",
+        description: `${displayRewriteStatus(proposal.status || proposal.currentStatus || "unknown", plugin.locale())} | ${proposal.proposalPath || proposal.targetPath || ""}`,
+      }))
+    );
+    return;
+  }
+  const rewriteControls = plugin.rewriteCandidatesForSlugs(record && record.rewriteProposalSlugs, "review");
+  if (rewriteControls.length === 1) {
+    plugin.openReviewRewriteTransitionPicker(rewriteControls[0]);
+    return;
+  }
+  if (rewriteControls.length > 1) {
+    plugin.openReviewRewriteContextPicker(rewriteControls);
+    return;
+  }
+  const rewriteSlugs = normalizeRelativePathList(record && record.rewriteProposalSlugs);
+  if (rewriteSlugs.length === 1) {
+    plugin.openReviewRewriteModal({ slug: rewriteSlugs[0] });
+    return;
+  }
+  plugin.runUiAction(() => plugin.openReviewCenterView(), plugin.t("Open Review Center"));
+}
+
+// --- src/control_items.js ---
+
+// Pure control-option builders for review and execution center context pickers.
+
+function controlIdSet(plugin, key) {
+  const executionControls = plugin.shellSummary && typeof plugin.shellSummary === "object"
+    ? plugin.shellSummary.execution_controls
+    : null;
+  const values = executionControls && Array.isArray(executionControls[key]) ? executionControls[key] : [];
+  return new Set(values.map((item) => String(item || "").trim()).filter(Boolean));
+}
+
+function reviewControlList(plugin, key) {
+  const reviewControls = plugin.shellSummary && typeof plugin.shellSummary === "object"
+    ? plugin.shellSummary.review_controls
+    : null;
+  return reviewControls && Array.isArray(reviewControls[key]) ? reviewControls[key] : [];
+}
+
+function executionControlList(plugin, key) {
+  const executionControls = plugin.shellSummary && typeof plugin.shellSummary === "object"
+    ? plugin.shellSummary.execution_controls
+    : null;
+  return executionControls && Array.isArray(executionControls[key]) ? executionControls[key] : [];
+}
+
+function reviewPageControlItems(plugin) {
+  const pages = reviewControlList(plugin, "pages");
+  return uniqueContextOptions(
+    pages.map((page) => {
+      const kind = String(page.kind || "").trim() || "page";
+      const status = String(page.status || "").trim() || "unknown";
+      const metaText = truncateText(reviewObjectMetaText(page, plugin.locale()) || "review object", 180);
+      return {
+        value: page.path,
+        label: page.title || page.path || "review-page",
+        description: metaText || `${plugin.t(kind)} | ${displayCuratedStatus(status, plugin.locale())} | ${plugin.t("review object")}`,
+        pageId: String(page.page_id || ""),
+        pagePath: String(page.path || ""),
+        pageKind: kind,
+        currentStatus: status,
+        confidence: String(page.confidence || ""),
+        canRefreshReview: Boolean(page.can_refresh_review),
+        allowedTransitions: Array.isArray(page.allowed_transitions) ? page.allowed_transitions : [],
+        preferredTransitions: Array.isArray(page.preferred_transitions) ? page.preferred_transitions : [],
+        defaultTransition: String(page.default_transition || ""),
+      };
+    }),
+    "pagePath"
+  );
+}
+
+function reviewKindLabel(plugin, kind, count = 1) {
+  const normalized = String(kind || "").trim();
+  if (normalized === "decision") {
+    return count === 1 ? plugin.t("decision") : plugin.t("decisions");
+  }
+  if (normalized === "judgment") {
+    return count === 1 ? plugin.t("judgment") : plugin.t("judgments");
+  }
+  return count === 1 ? plugin.t("page") : plugin.t("pages");
+}
+
+function transitionLabel(plugin, controlType, transition) {
+  if (controlType === "page") {
+    return displayCuratedStatus(transition, plugin.locale());
+  }
+  if (controlType === "rewrite") {
+    return displayRewriteStatus(transition, plugin.locale());
+  }
+  if (controlType === "action") {
+    return displayActionStatus(transition, plugin.locale());
+  }
+  if (controlType === "archive") {
+    return transition === "revert" ? plugin.t("Revert archive") : plugin.t("Apply archive");
+  }
+  return plugin.t(String(transition || "transition"));
+}
+
+function transitionOptions(plugin, controlType, control) {
+  if (!control || typeof control !== "object") {
+    return [];
+  }
+  const allowed = Array.isArray(control.allowedTransitions || control.allowed_transitions)
+    ? (control.allowedTransitions || control.allowed_transitions)
+    : [];
+  const preferredSet = new Set(
+    (Array.isArray(control.preferredTransitions || control.preferred_transitions)
+      ? (control.preferredTransitions || control.preferred_transitions)
+      : []
+    ).map((item) => String(item || "").trim()).filter(Boolean)
+  );
+  const defaultTransition = String(control.defaultTransition || control.default_transition || "").trim();
+  return allowed
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .map((value) => ({
+      value,
+      label: transitionLabel(plugin, controlType, value),
+      description: preferredSet.has(value) ? plugin.t("preferred transition") : plugin.t("allowed transition"),
+      isDefault: value === defaultTransition,
+      isPreferred: preferredSet.has(value),
+    }))
+    .sort((left, right) => {
+      if (left.isDefault !== right.isDefault) {
+        return left.isDefault ? -1 : 1;
+      }
+      if (left.isPreferred !== right.isPreferred) {
+        return left.isPreferred ? -1 : 1;
+      }
+      return String(left.label || "").localeCompare(String(right.label || ""));
+    });
+}
+
+function preferredTransitionOptions(plugin, controlType, control) {
+  return transitionOptions(plugin, controlType, control).filter((option) => option.isPreferred).slice(0, 2);
+}
+
+function commonReviewTransitionOptions(plugin, pages) {
+  const controls = Array.isArray(pages) ? pages.filter((page) => page && typeof page === "object") : [];
+  if (!controls.length) {
+    return [];
+  }
+  const stats = new Map();
+  controls.forEach((page) => {
+    const seen = new Set();
+    transitionOptions(plugin, "page", page).forEach((option) => {
+      if (seen.has(option.value)) {
+        return;
+      }
+      seen.add(option.value);
+      const current = stats.get(option.value) || {
+        value: option.value,
+        label: option.label,
+        sharedCount: 0,
+        preferredCount: 0,
+        defaultCount: 0,
+      };
+      current.label = option.label;
+      current.sharedCount += 1;
+      if (option.isPreferred) {
+        current.preferredCount += 1;
+      }
+      if (option.isDefault) {
+        current.defaultCount += 1;
+      }
+      stats.set(option.value, current);
+    });
+  });
+  return Array.from(stats.values())
+    .filter((option) => option.sharedCount === controls.length)
+    .sort((left, right) => {
+      if (left.defaultCount !== right.defaultCount) {
+        return right.defaultCount - left.defaultCount;
+      }
+      if (left.preferredCount !== right.preferredCount) {
+        return right.preferredCount - left.preferredCount;
+      }
+      return String(left.label || "").localeCompare(String(right.label || ""));
+    });
+}
+
+function reviewBatchSuggestions(plugin) {
+  const groups = new Map();
+  reviewPageControlItems(plugin).forEach((page) => {
+    const prioritized = preferredTransitionOptions(plugin, "page", page);
+    const selectedOptions = prioritized.length
+      ? prioritized
+      : transitionOptions(plugin, "page", page).filter((option) => option.isDefault).slice(0, 1);
+    selectedOptions.forEach((transition) => {
+      const kind = String(page.pageKind || "page").trim() || "page";
+      const key = `${kind}::${transition.value}`;
+      const current = groups.get(key) || {
+        key,
+        kind,
+        status: transition.value,
+        transitionLabel: transition.label,
+        pages: [],
+      };
+      current.pages.push(page);
+      groups.set(key, current);
+    });
+  });
+  return Array.from(groups.values())
+    .filter((group) => group.pages.length >= 2)
+    .map((group) => {
+      const count = group.pages.length;
+      const kindLabel = reviewKindLabel(plugin, group.kind, count);
+      return {
+        key: group.key,
+        kind: group.kind,
+        status: group.status,
+        label: `${group.transitionLabel} · ${count} ${kindLabel}`,
+        description: `${count} ${kindLabel} ${plugin.t("share the recommended transition")} ${String(group.transitionLabel || "").toLowerCase()}.`,
+        pagePaths: group.pages.map((page) => page.pagePath).filter(Boolean),
+        pages: group.pages,
+        statusOptions: commonReviewTransitionOptions(plugin, group.pages),
+      };
+    })
+    .sort((left, right) => {
+      if (right.pagePaths.length !== left.pagePaths.length) {
+        return right.pagePaths.length - left.pagePaths.length;
+      }
+      return String(left.label || "").localeCompare(String(right.label || ""));
+    });
+}
+
+function rewriteControlItems(plugin, mode = "review") {
+  const proposals = reviewControlList(plugin, "rewrite_proposals");
+  return uniqueContextOptions(
+    proposals
+      .filter((proposal) => (mode === "apply" ? Boolean(proposal.can_apply) : Boolean(proposal.can_review)))
+      .map((proposal) => {
+        const status = String(proposal.status || "").trim() || "unknown";
+        const priority = String(proposal.priority || "").trim() || "medium";
+        return {
+          value: proposal.slug,
+          label: proposal.title || proposal.slug || "rewrite-proposal",
+          description: `${displayRewriteStatus(status, plugin.locale())} | ${plugin.t("priority")} ${priority} | ${plugin.t("score")} ${proposal.score || 0}`,
+          slug: String(proposal.slug || ""),
+          status,
+          currentStatus: String(proposal.current_status || status),
+          proposalPath: String(proposal.proposal_path || ""),
+          targetPath: String(proposal.target_path || ""),
+          canApply: Boolean(proposal.can_apply),
+          canRefreshReview: Boolean(proposal.can_refresh_review),
+          allowedTransitions: Array.isArray(proposal.allowed_transitions) ? proposal.allowed_transitions : [],
+          preferredTransitions: Array.isArray(proposal.preferred_transitions) ? proposal.preferred_transitions : [],
+          defaultTransition: String(proposal.default_transition || ""),
+        };
+      }),
+    "slug"
+  );
+}
+
+function actionControlItems(plugin, mode = "review") {
+  return uniqueContextOptions(
+    executionControlList(plugin, "actions")
+      .filter((action) => {
+        if (mode === "apply") {
+          return Boolean(action.can_apply);
+        }
+        if (mode === "revert") {
+          return Boolean(action.can_revert);
+        }
+        return Boolean(action.can_review);
+      })
+      .map((action) => {
+        const status = String(action.status || "").trim() || "unknown";
+        const priority = String(action.priority || "").trim() || "medium";
+        const primaryPath = String(action.primary_path || "").trim();
+        return {
+          value: action.action_id,
+          label: action.title || action.action_id || "action",
+          description: `${displayActionStatus(status, plugin.locale())} | ${plugin.t("priority")} ${priority}${primaryPath ? ` | ${primaryPath}` : ""}`,
+          actionId: String(action.action_id || ""),
+          status,
+          currentStatus: String(action.current_status || status),
+          bundlePath: String(action.bundle_path || ""),
+          canRefreshReview: Boolean(action.can_refresh_review),
+          allowedTransitions: Array.isArray(action.allowed_transitions) ? action.allowed_transitions : [],
+          preferredTransitions: Array.isArray(action.preferred_transitions) ? action.preferred_transitions : [],
+          defaultTransition: String(action.default_transition || ""),
+        };
+      }),
+    "actionId"
+  );
+}
+
+function archiveControlItems(plugin, mode = "apply") {
+  return uniqueContextOptions(
+    executionControlList(plugin, "archives")
+      .filter((entry) => (mode === "revert" ? Boolean(entry.can_revert) : Boolean(entry.can_apply)))
+      .map((entry) => {
+        const candidateStatus = String(entry.candidate_status || "").trim();
+        const currentTemperature = String(entry.current_temperature || "").trim();
+        return {
+          value: entry.entry_id,
+          label: entry.title || entry.entry_id || "archive-entry",
+          description: `${plugin.t(candidateStatus || currentTemperature || "archive")} | ${entry.source_path || ""}`,
+          entryId: String(entry.entry_id || ""),
+          allowedTransitions: Array.isArray(entry.allowed_transitions) ? entry.allowed_transitions : [],
+          preferredTransitions: Array.isArray(entry.preferred_transitions) ? entry.preferred_transitions : [],
+          defaultTransition: String(entry.default_transition || ""),
+        };
+      }),
+    "entryId"
+  );
+}
+
+function actionControlsById(plugin) {
+  const controls = executionControlList(plugin, "actions");
+  return new Map(
+    controls
+      .filter((action) => action && typeof action === "object" && String(action.action_id || "").trim())
+      .map((action) => [String(action.action_id || "").trim(), action])
+  );
+}
+
+function archiveControlsById(plugin) {
+  const controls = executionControlList(plugin, "archives");
+  return new Map(
+    controls
+      .filter((entry) => entry && typeof entry === "object" && String(entry.entry_id || "").trim())
+      .map((entry) => [String(entry.entry_id || "").trim(), entry])
+  );
+}
+
+function manualReviewOption(plugin, controlType) {
+  const labelMap = {
+    page: plugin.t("Manual review..."),
+    rewrite: plugin.t("Manual rewrite review..."),
+    action: plugin.t("Manual action review..."),
+  };
+  return {
+    value: "__manual__",
+    label: labelMap[controlType] || plugin.t("Manual review..."),
+    description: plugin.t("keep current status and capture note / confidence in the full form"),
+    isManual: true,
+    isPreferred: false,
+    isDefault: false,
+  };
+}
+
+function openTransitionPickerForControl(plugin, { title, description, controlType, control, onSubmit, onFallback, onManual, emptyNotice }) {
+  const transitionOptions = plugin.transitionOptions(controlType, control);
+  if (!transitionOptions.length && typeof onManual !== "function") {
+    if (emptyNotice) {
+      new Notice(emptyNotice);
+    }
+    if (typeof onFallback === "function") {
+      onFallback();
+    }
+    return;
+  }
+  if (!transitionOptions.length && typeof onManual === "function") {
+    onManual();
+    return;
+  }
+  if (transitionOptions.length === 1 && typeof onManual !== "function") {
+    onSubmit(transitionOptions[0].value);
+    return;
+  }
+  const options = transitionOptions.slice();
+  if (typeof onManual === "function") {
+    options.push(plugin.manualReviewOption(controlType));
+  }
+  plugin.openContextPicker({
+    title,
+    description,
+    submitLabel: plugin.t("Use"),
+    options,
+    onSubmit: (option) => {
+      if (option && option.isManual && typeof onManual === "function") {
+        onManual();
+        return;
+      }
+      onSubmit(option.value);
+    },
+  });
+}
+
+function openContextAwareActionForSpec(plugin, spec) {
+  const options = uniqueContextOptions(spec.options || [], spec.keyName || "value");
+  if (!options.length) {
+    new Notice(spec.emptyNotice || plugin.t("No context is currently available; fell back to the manual form."));
+    spec.onFallback();
+    return;
+  }
+  if (options.length === 1) {
+    spec.onSubmit(options[0]);
+    return;
+  }
+  plugin.openContextPicker({
+    title: spec.title,
+    description: spec.description,
+    submitLabel: spec.submitLabel || "Use",
+    options,
+    onSubmit: spec.onSubmit,
+  });
+}
+
+// --- src/modal_specs.js ---
+
+// Structured command modal specs for Product Shell operator actions.
+
+function buildReportSubgraphModalSpec(plugin, candidates) {
+  const reportCandidates = Array.isArray(candidates) ? candidates : [];
+  const fieldSpec = {
+    key: "reportPath",
+    label: plugin.t("Report path"),
+    placeholder: "output/reports/...md",
+    required: true,
+  };
+  if (reportCandidates.length) {
+    fieldSpec.kind = "select";
+    fieldSpec.options = reportCandidates;
+    fieldSpec.initialValue = reportCandidates[0].value;
+  }
+  return {
+    title: plugin.t("View report graph"),
+    description: reportCandidates.length
+      ? plugin.t("Choose a recent report.")
+      : plugin.t("No recent reports available; enter a path manually."),
+    fields: [fieldSpec],
+    onSubmit: async (values) => {
+      await plugin.runReportSubgraphCommand({ reportPath: values.reportPath });
+    },
+  };
+}
+
+function buildFileBackModalSpec(plugin, prefill = {}) {
+  return {
+    title: plugin.t("File Back"),
+    description: plugin.t("File an output artifact back into wiki/derived, wiki/decisions, or wiki/judgments."),
+    fields: [
+      {
+        key: "artifact",
+        label: plugin.t("Artifact path"),
+        required: true,
+        placeholder: plugin.t("output/reports/....md"),
+        initialValue: () => prefill.artifact || plugin.getActiveOutputPath(),
+      },
+      {
+        key: "title",
+        label: plugin.t("Title"),
+        placeholder: plugin.t("Optional filed-back title"),
+        initialValue: prefill.title || "",
+      },
+      {
+        key: "kind",
+        label: plugin.t("Kind"),
+        kind: "select",
+        initialValue: prefill.kind || "derived",
+        options: [
+          ["derived", plugin.t("derived")],
+          ["decision", plugin.t("decision")],
+          ["judgment", plugin.t("judgment")],
+        ],
+      },
+      {
+        key: "protocol",
+        label: plugin.t("Protocol"),
+        kind: "select",
+        initialValue: prefill.protocol || "",
+        options: [["", plugin.t("current protocol")], ...plugin.getAvailableProtocols().map((item) => [item, item])],
+      },
+    ],
+    onSubmit: async (values) => {
+      const args = [values.artifact];
+      appendOptionalArg(args, "--title", values.title);
+      appendOptionalArg(args, "--kind", values.kind);
+      appendOptionalArg(args, "--protocol", values.protocol);
+      await plugin.runCliAction(`File Back: ${values.kind}`, "file-back", args);
+    },
+  };
+}
+
+function buildReviewPageModalSpec(plugin, prefill = {}) {
+  return {
+    title: plugin.t("Review Page"),
+    description: plugin.t("Advance a decision or judgment page through the explicit review workflow."),
+    fields: [
+      {
+        key: "page",
+        label: plugin.t("Page path"),
+        required: true,
+        placeholder: plugin.t("wiki/decisions/... or wiki/judgments/..."),
+        initialValue: () => prefill.pagePath || plugin.getActiveCuratedPagePath(),
+      },
+      {
+        key: "status",
+        label: plugin.t("Status"),
+        required: true,
+        placeholder: plugin.t("approved / confirmed / needs-revision ..."),
+        initialValue: prefill.status || "",
+      },
+      {
+        key: "note",
+        label: plugin.t("Note"),
+        kind: "textarea",
+        placeholder: plugin.t("Optional review note"),
+        rows: 4,
+        initialValue: prefill.note || "",
+      },
+      {
+        key: "confidence",
+        label: plugin.t("Confidence"),
+        placeholder: plugin.t("Optional confidence override"),
+        initialValue: prefill.confidence || "",
+      },
+    ],
+    onSubmit: async (values) => {
+      const args = [values.page, "--status", values.status];
+      appendOptionalArg(args, "--note", values.note);
+      appendOptionalArg(args, "--confidence", values.confidence);
+      await plugin.runCliAction(`Review Page: ${values.status}`, "review-page", args);
+    },
+  };
+}
+
+function buildReviewRewriteModalSpec(plugin, prefill = {}) {
+  return {
+    title: plugin.t("Review Rewrite"),
+    description: plugin.t("Advance a concept rewrite proposal through the rewrite workflow."),
+    fields: [
+      { key: "slug", label: plugin.t("Concept slug"), required: true, initialValue: () => prefill.slug || plugin.getActiveConceptSlug() },
+      { key: "status", label: plugin.t("Status"), required: true, placeholder: plugin.t("accepted / rejected / needs-revision ..."), initialValue: prefill.status || "" },
+      { key: "note", label: plugin.t("Note"), kind: "textarea", rows: 4, placeholder: plugin.t("Optional review note"), initialValue: prefill.note || "" },
+    ],
+    onSubmit: async (values) => {
+      const args = [values.slug, "--status", values.status];
+      appendOptionalArg(args, "--note", values.note);
+      await plugin.runCliAction(`Review Rewrite: ${values.slug}`, "review-rewrite", args);
+    },
+  };
+}
+
+function buildApplyRewriteModalSpec(plugin, prefill = {}) {
+  return {
+    title: plugin.t("Apply Rewrite"),
+    description: plugin.t("Apply an accepted concept rewrite proposal."),
+    fields: [
+      { key: "slug", label: plugin.t("Concept slug"), required: true, initialValue: () => prefill.slug || plugin.getActiveConceptSlug() },
+      { key: "note", label: plugin.t("Note"), kind: "textarea", rows: 4, placeholder: plugin.t("Optional apply note"), initialValue: prefill.note || "" },
+    ],
+    onSubmit: async (values) => {
+      const args = [values.slug];
+      appendOptionalArg(args, "--note", values.note);
+      await plugin.runCliAction(`Apply Rewrite: ${values.slug}`, "apply-rewrite", args);
+    },
+  };
+}
+
+function buildRetireConceptModalSpec(plugin, prefill = {}) {
+  return {
+    title: plugin.t("Retire Concept"),
+    description: plugin.t("Apply an explicit retired override for a concept."),
+    fields: [
+      { key: "slug", label: plugin.t("Concept slug"), required: true, initialValue: () => prefill.slug || plugin.getActiveConceptSlug() },
+      { key: "note", label: plugin.t("Note"), kind: "textarea", rows: 4, placeholder: plugin.t("Why retire this concept?"), initialValue: prefill.note || "" },
+    ],
+    onSubmit: async (values) => {
+      const args = [values.slug];
+      appendOptionalArg(args, "--note", values.note);
+      await plugin.runCliAction(`Retire Concept: ${values.slug}`, "retire-concept", args);
+    },
+  };
+}
+
+function buildReactivateConceptModalSpec(plugin, prefill = {}) {
+  return {
+    title: plugin.t("Reactivate Concept"),
+    description: plugin.t("Clear the explicit retired override for a concept."),
+    fields: [
+      { key: "slug", label: plugin.t("Concept slug"), required: true, initialValue: () => prefill.slug || plugin.getActiveConceptSlug() },
+      { key: "note", label: plugin.t("Note"), kind: "textarea", rows: 4, placeholder: plugin.t("Optional reactivate note"), initialValue: prefill.note || "" },
+    ],
+    onSubmit: async (values) => {
+      const args = [values.slug];
+      appendOptionalArg(args, "--note", values.note);
+      await plugin.runCliAction(`Reactivate Concept: ${values.slug}`, "reactivate-concept", args);
+    },
+  };
+}
+
+function buildApplyArchiveModalSpec(plugin, prefill = {}) {
+  return {
+    title: plugin.t("Apply Archive"),
+    description: plugin.t("Apply a ready archive candidate and pin it to archived."),
+    fields: [
+      { key: "entry_id", label: plugin.t("Entry id"), required: true, placeholder: plugin.t("manifest/material entry id"), initialValue: prefill.entryId || "" },
+      { key: "note", label: plugin.t("Note"), kind: "textarea", rows: 4, placeholder: plugin.t("Optional apply note"), initialValue: prefill.note || "" },
+    ],
+    onSubmit: async (values) => {
+      const args = [values.entry_id];
+      appendOptionalArg(args, "--note", values.note);
+      await plugin.runCliAction(`Apply Archive: ${values.entry_id}`, "apply-archive", args);
+    },
+  };
+}
+
+function buildRevertArchiveModalSpec(plugin, prefill = {}) {
+  return {
+    title: plugin.t("Revert Archive"),
+    description: plugin.t("Revert the latest explicit archive transition."),
+    fields: [
+      { key: "entry_id", label: plugin.t("Entry id"), required: true, placeholder: plugin.t("manifest/material entry id"), initialValue: prefill.entryId || "" },
+      { key: "note", label: plugin.t("Note"), kind: "textarea", rows: 4, placeholder: plugin.t("Optional revert note"), initialValue: prefill.note || "" },
+    ],
+    onSubmit: async (values) => {
+      const args = [values.entry_id];
+      appendOptionalArg(args, "--note", values.note);
+      await plugin.runCliAction(`Revert Archive: ${values.entry_id}`, "revert-archive", args);
+    },
+  };
+}
+
+function buildReviewActionModalSpec(plugin, prefill = {}) {
+  return {
+    title: plugin.t("Review Action"),
+    description: plugin.t("Advance a machine-memory repair action through the explicit action workflow."),
+    fields: [
+      { key: "action_id", label: plugin.t("Action id"), required: true, placeholder: plugin.t("machine-memory action id"), initialValue: prefill.actionId || "" },
+      { key: "status", label: plugin.t("Status"), required: true, placeholder: plugin.t("accepted / rejected / ready ..."), initialValue: prefill.status || "" },
+      { key: "note", label: plugin.t("Note"), kind: "textarea", rows: 4, placeholder: plugin.t("Optional action review note"), initialValue: prefill.note || "" },
+    ],
+    onSubmit: async (values) => {
+      const args = [values.action_id, "--status", values.status];
+      appendOptionalArg(args, "--note", values.note);
+      await plugin.runCliAction(`Review Action: ${values.action_id}`, "review-action", args);
+    },
+  };
+}
+
+function buildApplyActionModalSpec(plugin, prefill = {}) {
+  return {
+    title: plugin.t("Apply Action"),
+    description: plugin.t("Apply an accepted low-risk machine-memory repair action."),
+    fields: [
+      { key: "action_id", label: plugin.t("Action id"), required: true, placeholder: plugin.t("machine-memory action id"), initialValue: prefill.actionId || "" },
+      { key: "note", label: plugin.t("Note"), kind: "textarea", rows: 4, placeholder: plugin.t("Optional apply note"), initialValue: prefill.note || "" },
+      { key: "bundle", label: plugin.t("Bundle path"), placeholder: plugin.t("Optional execution bundle path"), initialValue: prefill.bundle || "" },
+      { key: "dry_run", label: plugin.t("Dry run"), kind: "toggle", initialValue: Boolean(prefill.dryRun) },
+    ],
+    onSubmit: async (values) => {
+      const args = [values.action_id];
+      appendOptionalArg(args, "--note", values.note);
+      appendOptionalArg(args, "--bundle", values.bundle);
+      if (values.dry_run) {
+        args.push("--dry-run");
+      }
+      await plugin.runCliAction(`Apply Action: ${values.action_id}`, "apply-action", args);
+    },
+  };
+}
+
+function buildRevertActionModalSpec(plugin, prefill = {}) {
+  return {
+    title: plugin.t("Revert Action"),
+    description: plugin.t("Revert the latest low-risk safe apply for a machine-memory action."),
+    fields: [
+      { key: "action_id", label: plugin.t("Action id"), required: true, placeholder: plugin.t("machine-memory action id"), initialValue: prefill.actionId || "" },
+      { key: "note", label: plugin.t("Note"), kind: "textarea", rows: 4, placeholder: plugin.t("Optional revert note"), initialValue: prefill.note || "" },
+    ],
+    onSubmit: async (values) => {
+      const args = [values.action_id];
+      appendOptionalArg(args, "--note", values.note);
+      await plugin.runCliAction(`Revert Action: ${values.action_id}`, "revert-action", args);
+    },
+  };
+}
+
+function buildReviewPageBatchModalSpec(plugin, prefill = {}) {
+  const pagePaths = Array.isArray(prefill.pagePaths) ? prefill.pagePaths : [];
+  const statusOptions = Array.isArray(prefill.statusOptions) ? prefill.statusOptions : [];
+  const normalizedStatusOptions = statusOptions.map((option) => ({
+    value: option.value,
+    label: option.label || plugin.transitionLabel("page", option.value),
+  }));
+  const statusField = normalizedStatusOptions.length
+    ? {
+        key: "status",
+        label: plugin.t("Status"),
+        required: true,
+        kind: "select",
+        initialValue: prefill.status || normalizedStatusOptions[0].value || "",
+        options: normalizedStatusOptions,
+      }
+    : {
+        key: "status",
+        label: plugin.t("Status"),
+        required: true,
+        placeholder: plugin.t("tracking / needs-revisit / approved ..."),
+        initialValue: prefill.status || "",
+      };
+  return {
+    title: plugin.t("Batch Review Pages"),
+    description: prefill.description || plugin.t("Advance multiple review pages that share a safe common transition."),
+    submitLabel: plugin.t("Run batch"),
+    fields: [
+      {
+        key: "pages",
+        label: plugin.t("Page paths"),
+        required: true,
+        kind: "textarea",
+        rows: 6,
+        placeholder: plugin.t("wiki/judgments/... (one per line)"),
+        initialValue: pagePaths.join("\n"),
+      },
+      statusField,
+      {
+        key: "note",
+        label: plugin.t("Note"),
+        kind: "textarea",
+        rows: 4,
+        placeholder: plugin.t("Optional shared batch note"),
+        initialValue: prefill.note || "",
+      },
+      {
+        key: "confidence",
+        label: plugin.t("Confidence"),
+        placeholder: plugin.t("Optional shared confidence override"),
+        initialValue: prefill.confidence || "",
+      },
+    ],
+    onSubmit: async (values) => {
+      const paths = parseLineList(values.pages);
+      if (!paths.length) {
+        throw new Error(plugin.t("Batch review requires at least one page path."));
+      }
+      await plugin.runReviewPageBatchTransition(paths, values.status, values.note, values.confidence);
+    },
+  };
+}
+
+// --- src/run_state.js ---
+
+// Pure run-record and run-log helpers for Product Shell command execution.
+
+function createProductShellRunRecord({ label, args, llm, protocol }) {
+  const argv = Array.isArray(args) ? args.slice() : [];
+  const runId = `run-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+  const record = {
+    id: runId,
+    label,
+    args: argv.join(" "),
+    argv,
+    command: argv.length ? String(argv[0] || "") : "",
+    status: "running",
+    startedAt: new Date().toISOString(),
+    finishedAt: "",
+    protocol: String(protocol || ""),
+    backend: String(llm && llm.backend || ""),
+    backendRequested: String(llm && llm.backend || ""),
+    backendEffective: String(llm && llm.backend || ""),
+    model: String(llm && llm.model || ""),
+    modelSelected: String(llm && llm.model || ""),
+    modelFinal: String(llm && llm.model || ""),
+    codexReasoningEffort: String(llm && llm.codexReasoningEffort || ""),
+    promptProfile: "",
+    retryPromptProfile: "",
+    fallbackStage: "",
+    fallbackReason: "",
+    contractValidated: false,
+    rewriteProposalObjects: [],
+    rewriteFollowupActions: [],
+    rewriteProposalPaths: [],
+    rewriteProposalSlugs: [],
+    stdoutSummary: "",
+    stderrSummary: "",
+    stdoutRaw: "",
+    stderrRaw: "",
+    resultPath: "",
+    receiptPath: "",
+    logPath: `output/control/plugin-runs/${runId}.md`,
+    exitCode: "",
+    errorSummary: "",
+    fallbackFrom: "",
+    fallbackCommand: "",
+    fallbackUsed: false,
+    deliveryMode: "",
+    timeline: [],
+  };
+  appendRunEvent(record, "Submitted", label || record.args || "command", "running");
+  if (record.protocol || record.backend || record.model) {
+    const context = [record.protocol, record.backend, record.model].filter(Boolean).join(" · ");
+    appendRunEvent(record, "Runtime selected", context, "running");
+  }
+  return record;
+}
+
+function normalizeProductShellRecentRunRecord(record) {
+  if (!record || typeof record !== "object") {
+    return null;
+  }
+  const rewriteProposalObjects = normalizeRewriteProposalObjects(record.rewriteProposalObjects || record.updatedRewriteProposals || []);
+  const rewriteFollowupActions = normalizeRewriteFollowupActions(
+    record.rewriteFollowupActions || record["rewrite" + "RecoveryActions"] || []
+  );
+  const rewriteProposalPaths = normalizeRelativePathList(
+    record.rewriteProposalPaths || rewriteProposalPathsFromObjects(rewriteProposalObjects)
+  );
+  const rewriteProposalSlugs = normalizeRelativePathList(
+    record.rewriteProposalSlugs || rewriteProposalSlugsFromObjects(rewriteProposalObjects)
+  );
+  return {
+    ...record,
+    argv: Array.isArray(record.argv) ? record.argv.map((value) => String(value || "")) : [],
+    command: String(record.command || (Array.isArray(record.argv) && record.argv.length ? record.argv[0] : "")),
+    protocol: String(record.protocol || ""),
+    backend: String(record.backend || ""),
+    backendRequested: String(record.backendRequested || ""),
+    backendEffective: String(record.backendEffective || ""),
+    model: String(record.model || ""),
+    modelSelected: String(record.modelSelected || ""),
+    modelFinal: String(record.modelFinal || ""),
+    codexReasoningEffort: String(record.codexReasoningEffort || ""),
+    promptProfile: String(record.promptProfile || ""),
+    retryPromptProfile: String(record.retryPromptProfile || ""),
+    fallbackStage: String(record.fallbackStage || ""),
+    fallbackReason: String(record.fallbackReason || ""),
+    contractValidated: Boolean(record.contractValidated),
+    rewriteProposalObjects,
+    rewriteFollowupActions,
+    rewriteProposalPaths,
+    rewriteProposalSlugs,
+    fallbackFrom: String(record.fallbackFrom || ""),
+    fallbackCommand: String(record.fallbackCommand || ""),
+    fallbackUsed: Boolean(record.fallbackUsed),
+    deliveryMode: String(record.deliveryMode || ""),
+    logPath: String(record.logPath || ""),
+    stdoutRaw: trimDiagnosticText(record.stdoutRaw || ""),
+    stderrRaw: trimDiagnosticText(record.stderrRaw || ""),
+    exitCode: record.exitCode === 0 || Number.isFinite(Number(record.exitCode || NaN))
+      ? Number(record.exitCode)
+      : "",
+    timeline: Array.isArray(record.timeline)
+      ? record.timeline
+        .filter((event) => event && typeof event === "object")
+        .map((event) => ({
+          stage: String(event.stage || ""),
+          at: String(event.at || ""),
+          summary: String(event.summary || ""),
+          status: String(event.status || ""),
+        }))
+      : [],
+  };
+}
+
+function normalizeProductShellRecentRuns(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((record) => normalizeProductShellRecentRunRecord(record))
+    .filter(Boolean);
+}
+
+function productShellRunPayloadString(payload, key) {
+  return payload && typeof payload[key] === "string" ? payload[key] : "";
+}
+
+function productShellRunPayloadBoolean(payload, key, fallback = false) {
+  if (payload && Object.prototype.hasOwnProperty.call(payload, key)) {
+    return Boolean(payload[key]);
+  }
+  return Boolean(fallback);
+}
+
+function isProductShellAskRun(record) {
+  return record && (record.command === "run-ask" || record.command === "run-ask-resume");
+}
+
+function productShellRunPayloadDeliveryMode(payload) {
+  return productShellRunPayloadString(payload, "delivery_mode");
+}
+
+function productShellRunPayloadFallbackUsed(payload, record) {
+  return productShellRunPayloadBoolean(payload, "fallback_used", record && record.fallbackUsed);
+}
+
+function isProductShellFailureNoticeDeliveryMode(deliveryMode) {
+  return deliveryMode === "deterministic-fallback" || deliveryMode === "llm-failed";
+}
+
+function isProductShellModelRetryDeliveryMode(deliveryMode) {
+  return deliveryMode === "llm-fallback-chain";
+}
+
+function isProductShellDegradedRun(record, payload) {
+  if (!isProductShellAskRun(record)) {
+    return false;
+  }
+  const deliveryMode = productShellRunPayloadDeliveryMode(payload)
+    || String(record && record.deliveryMode || "").trim();
+  if (isProductShellFailureNoticeDeliveryMode(deliveryMode)) {
+    return true;
+  }
+  if (isProductShellModelRetryDeliveryMode(deliveryMode) || deliveryMode === "llm-success") {
+    return false;
+  }
+  // Historical: fallbackUsed without an explicit delivery mode is a failure notice.
+  return productShellRunPayloadFallbackUsed(payload, record);
+}
+
+function buildProductShellRunResultContext(result) {
+  const payload = result && result.payload;
+  const primaryPath = extractPrimaryPath(payload);
+  const receiptPath = payload && typeof payload.receipt_path === "string" ? payload.receipt_path : "";
+  const rewriteProposalObjects = extractRewriteProposalObjects(payload);
+  const rewriteFollowupActions = extractRewriteFollowupActions(payload);
+  const rewriteProposalPaths = extractRewriteProposalPaths(payload);
+  const rewriteProposalSlugs = rewriteProposalObjects.length
+    ? rewriteProposalSlugsFromObjects(rewriteProposalObjects)
+    : extractRewriteProposalSlugs(rewriteProposalPaths);
+  return {
+    primaryPath,
+    receiptPath,
+    rewriteProposalObjects,
+    rewriteFollowupActions,
+    rewriteProposalPaths,
+    rewriteProposalSlugs,
+  };
+}
+
+function buildProductShellBackgroundRunUpdates({ result, primaryPath }) {
+  const payload = result && result.payload && typeof result.payload === "object" ? result.payload : {};
+  return {
+    status: "received",
+    exitCode: 0,
+    jobId: String(payload.job_id || ""),
+    resultPath: primaryPath,
+    runId: String(payload.run_id || ""),
+    runNotesPath: String(payload.run_notes_path || ""),
+    stdoutSummary: truncateText(result && result.stdout),
+    stderrSummary: truncateText(result && result.stderr),
+    stdoutRaw: trimDiagnosticText(result && result.stdout),
+    stderrRaw: trimDiagnosticText(result && result.stderr),
+  };
+}
+
+function buildProductShellCompletedRunUpdates({
+  record,
+  result,
+  llm,
+  primaryPath,
+  receiptPath,
+  rewriteProposalObjects,
+  rewriteFollowupActions,
+  rewriteProposalPaths,
+  rewriteProposalSlugs,
+}) {
+  const payload = result && result.payload && typeof result.payload === "object" ? result.payload : {};
+  const deliveryMode = productShellRunPayloadDeliveryMode(payload);
+  const fallbackUsed = productShellRunPayloadFallbackUsed(payload, record);
+  const degradedRun = isProductShellDegradedRun(record, payload);
+  return {
+    status: degradedRun ? "degraded" : "success",
+    finishedAt: new Date().toISOString(),
+    exitCode: 0,
+    backend: productShellRunPayloadString(payload, "backend_effective") || (llm && llm.backend) || record.backend,
+    backendRequested: productShellRunPayloadString(payload, "backend_requested") || record.backendRequested || (llm && llm.backend) || record.backend,
+    backendEffective: productShellRunPayloadString(payload, "backend_effective") || (llm && llm.backend) || record.backend,
+    model: productShellRunPayloadString(payload, "model_final") || (llm && llm.model) || record.model,
+    modelSelected: productShellRunPayloadString(payload, "model_selected") || record.modelSelected || (llm && llm.model) || record.model,
+    modelFinal: productShellRunPayloadString(payload, "model_final") || (llm && llm.model) || record.model,
+    codexReasoningEffort: (llm && llm.codexReasoningEffort) || record.codexReasoningEffort,
+    promptProfile: productShellRunPayloadString(payload, "prompt_profile") || record.promptProfile,
+    retryPromptProfile: productShellRunPayloadString(payload, "retry_prompt_profile") || record.retryPromptProfile,
+    fallbackStage: productShellRunPayloadString(payload, "fallback_stage") || record.fallbackStage,
+    fallbackReason: productShellRunPayloadString(payload, "fallback_reason") || record.fallbackReason,
+    fallbackFrom: productShellRunPayloadString(payload, "fallback_from") || record.fallbackFrom,
+    fallbackCommand: productShellRunPayloadString(payload, "fallback_command") || record.fallbackCommand || "",
+    fallbackUsed,
+    deliveryMode: deliveryMode || record.deliveryMode || "",
+    contractValidated: productShellRunPayloadBoolean(payload, "contract_validated", record.contractValidated),
+    rewriteProposalObjects,
+    rewriteFollowupActions,
+    rewriteProposalPaths,
+    rewriteProposalSlugs,
+    stdoutSummary: truncateText(result && result.stdout),
+    stderrSummary: truncateText(result && result.stderr),
+    stdoutRaw: trimDiagnosticText(result && result.stdout),
+    stderrRaw: trimDiagnosticText(result && result.stderr),
+    resultPath: primaryPath,
+    receiptPath,
+  };
+}
+
+function buildProductShellCompletionRunEvents({
+  degradedRun,
+  primaryPath,
+  receiptPath,
+  rewriteProposalPaths = [],
+  rewriteProposalSummary = "",
+  fallbackSummary = "",
+  successSummary = "",
+}) {
+  const events = [{
+    stage: degradedRun ? "LLM timeout" : "Completed",
+    summary: degradedRun ? fallbackSummary : successSummary,
+    status: degradedRun ? "degraded" : "success",
+  }];
+  if (primaryPath || receiptPath) {
+    events.push({
+      stage: "Artifacts",
+      summary: [primaryPath, receiptPath].filter(Boolean).join(" · "),
+      status: "success",
+    });
+  }
+  if (Array.isArray(rewriteProposalPaths) && rewriteProposalPaths.length) {
+    events.push({
+      stage: "Rewrite proposals",
+      summary: rewriteProposalSummary,
+      status: "success",
+    });
+  }
+  return events;
+}
+
+function buildProductShellCompletedRunState({
+  record,
+  result,
+  llm,
+  runContext,
+  rewriteProposalSummary = "",
+  fallbackSummary = "",
+  successSummary = "",
+  degradedNotice = "",
+  successNotice = "",
+}) {
+  const context = runContext || buildProductShellRunResultContext(result);
+  const degradedRun = isProductShellDegradedRun(record, result && result.payload);
+  const events = buildProductShellCompletionRunEvents({
+    degradedRun,
+    primaryPath: context.primaryPath,
+    receiptPath: context.receiptPath,
+    rewriteProposalPaths: context.rewriteProposalPaths,
+    rewriteProposalSummary,
+    fallbackSummary,
+    successSummary,
+  });
+  const updates = buildProductShellCompletedRunUpdates({
+    record,
+    result,
+    llm,
+    primaryPath: context.primaryPath,
+    receiptPath: context.receiptPath,
+    rewriteProposalObjects: context.rewriteProposalObjects,
+    rewriteFollowupActions: context.rewriteFollowupActions,
+    rewriteProposalPaths: context.rewriteProposalPaths,
+    rewriteProposalSlugs: context.rewriteProposalSlugs,
+  });
+  const projectedRecord = { ...record, ...updates };
+  return {
+    degradedRun,
+    events,
+    updates,
+    llmHealthOverrides: isProductShellAskRun(record) ? buildProductShellLlmHealthOverrides(projectedRecord) : null,
+    noticeMessage: degradedRun ? degradedNotice : successNotice,
+  };
+}
+
+function buildProductShellFailedRunUpdates(error) {
+  return {
+    status: "failed",
+    finishedAt: new Date().toISOString(),
+    exitCode: Number.isFinite(Number(error && error.code)) ? Number(error.code) : "",
+    stdoutSummary: truncateText(error && error.stdout || ""),
+    stderrSummary: truncateText(error && error.stderr || ""),
+    stdoutRaw: trimDiagnosticText(error && error.stdout || ""),
+    stderrRaw: trimDiagnosticText(error && error.stderr || ""),
+    errorSummary: truncateText(error && error.message || "Command failed"),
+  };
+}
+
+function buildProductShellFailedRunState({
+  record,
+  error,
+  noticeMessage = "",
+}) {
+  const message = error && error.message || "Command failed";
+  const events = [{
+    stage: "Failed",
+    summary: truncateText(message, 180),
+    status: "failed",
+  }];
+  return {
+    events,
+    updates: buildProductShellFailedRunUpdates(error),
+    llmHealthOverrides: isProductShellAskRun(record) && llmBackendUnavailable(error)
+      ? buildProductShellFailedLlmHealthOverrides(record, error)
+      : null,
+    logDetails: {
+      stdoutRaw: error && error.stdout || "",
+      stderrRaw: error && error.stderr || "",
+    },
+    noticeMessage,
+  };
+}
+
+function buildProductShellLlmHealthOverrides(record) {
+  const deliveryMode = String(record && record.deliveryMode || "").trim();
+  const failureNotice = isProductShellFailureNoticeDeliveryMode(deliveryMode)
+    || (!deliveryMode && Boolean(record && record.fallbackUsed));
+  const modelRetry = isProductShellModelRetryDeliveryMode(deliveryMode);
+  return {
+    status: failureNotice ? "degraded" : modelRetry ? "warning" : "healthy",
+    reason: failureNotice
+      ? "Latest run-ask produced an LLM failure notice."
+      : modelRetry
+        ? "LLM completed via model retry."
+        : "Recent run-ask succeeded.",
+    source: "run-ask",
+    fallbackCommand: failureNotice ? (record.fallbackCommand || "ask") : String((record && record.fallbackCommand) || ""),
+    backendRequested: record.backendRequested,
+    backendEffective: record.backendEffective,
+    modelSelected: record.modelSelected,
+    modelFinal: record.modelFinal,
+    fallbackStage: record.fallbackStage,
+    fallbackReason: record.fallbackReason,
+    contractValidated: record.contractValidated,
+  };
+}
+
+function buildProductShellFailedLlmHealthOverrides(record, error) {
+  return {
+    status: "degraded",
+    reason: truncateText(error && (error.message || error.stderr || error.stdout) || "LLM backend unavailable", 240),
+    source: "run-ask",
+    fallbackCommand: "ask",
+    backendRequested: record.backendRequested,
+    backendEffective: record.backendEffective,
+    modelSelected: record.modelSelected,
+    modelFinal: record.modelFinal,
+    fallbackStage: record.fallbackStage,
+    fallbackReason: record.fallbackReason,
+    contractValidated: record.contractValidated,
+    stderrSummary: truncateText(error && error.stderr || ""),
+    stderrRaw: trimDiagnosticText(error && (error.stderr || error.stdout) || ""),
+  };
+}
+
+function renderProductShellRunLog({ record, details = {}, t, repoRoot = "" }) {
+  if (!record || typeof record !== "object") {
+    return null;
+  }
+  const translate = typeof t === "function" ? t : (text, variables = {}) => String(text || "").replace(/\{(\w+)\}/g, (_, key) => String(variables[key] ?? ""));
+  const logPath = String(record.logPath || runLogRelativePath(record)).trim();
+  if (!logPath) {
+    return null;
+  }
+  const stdoutText = String(details.stdoutRaw || record.stdoutRaw || "").trim();
+  const stderrText = String(details.stderrRaw || record.stderrRaw || "").trim();
+  const rewriteProposalObjects = normalizeRewriteProposalObjects(record.rewriteProposalObjects || []);
+  const rewriteProposalCount = rewriteProposalObjects.length || (Array.isArray(record.rewriteProposalPaths) ? record.rewriteProposalPaths.length : 0);
+  const lines = [
+    "# Product Shell Run Log",
+    "",
+    translate("Generated by Product Shell run logging."),
+    "",
+    `- ${translate("Status")}: ${translate(record.status || "unknown")}`,
+    `- ${translate("Protocol")}: ${record.protocol ? translate(record.protocol) : translate("unknown")}`,
+    `- ${translate("LLM Backend")}: ${record.backend || translate("unconfigured")}`,
+    `- backend requested: ${record.backendRequested || "-"}`,
+    `- backend effective: ${record.backendEffective || record.backend || "-"}`,
+    `- ${translate("LLM Model")}: ${record.model || translate("default")}`,
+    `- model selected: ${record.modelSelected || "-"}`,
+    `- model final: ${record.modelFinal || record.model || "-"}`,
+    `- ${translate("Codex effort")}: ${record.codexReasoningEffort || "-"}`,
+    `- ${translate("Prompt profile")}: ${record.promptProfile || "-"}`,
+    `- ${translate("Retry prompt")}: ${record.retryPromptProfile || "-"}`,
+    `- fallback stage: ${record.fallbackStage || "-"}`,
+    `- fallback reason: ${record.fallbackReason || "-"}`,
+    `- contract validated: ${record.contractValidated ? "yes" : "no"}`,
+    `- ${translate("Working directory")}: ${repoRoot || "."}`,
+    `- ${translate("Arguments")}: ${record.args || record.command || ""}`,
+    `- ${translate("Fallback from")}: ${record.fallbackFrom || "-"}`,
+    `- ${translate("Result path")}: ${record.resultPath || "-"}`,
+    `- ${translate("Receipt path")}: ${record.receiptPath || "-"}`,
+    ...(rewriteProposalCount
+      ? [`- ${translate("rewrite proposals: {count}", { count: rewriteProposalCount })}`]
+      : []),
+    `- ${translate("Log path")}: ${logPath}`,
+    `- ${translate("Exit code")}: ${record.exitCode === "" ? "-" : String(record.exitCode)}`,
+    `- started: ${record.startedAt || "-"}`,
+    `- finished: ${record.finishedAt || "-"}`,
+    "",
+    "## Timeline",
+    "",
+  ];
+  const timeline = Array.isArray(record.timeline) ? record.timeline : [];
+  if (!timeline.length) {
+    lines.push(`- ${translate("No stage events recorded.")}`);
+  } else {
+    timeline.forEach((event) => {
+      lines.push(`- ${event.at || "-"} | ${translate(event.stage || "event")} | ${event.summary || "-"}`);
+    });
+  }
+  if (record.resultPath || record.receiptPath || record.errorSummary) {
+    lines.push("", "## Summary", "");
+    if (record.resultPath) {
+      lines.push(`- ${translate("Result path")}: ${record.resultPath}`);
+    }
+    if (record.receiptPath) {
+      lines.push(`- ${translate("Receipt path")}: ${record.receiptPath}`);
+    }
+    if (record.errorSummary) {
+      lines.push(`- error: ${record.errorSummary}`);
+    }
+    if (rewriteProposalObjects.length) {
+      lines.push(`- ${translate("rewrite proposals: {count}", { count: rewriteProposalObjects.length })}`);
+      rewriteProposalObjects.forEach((proposal) => {
+        lines.push(`  - ${proposal.title || proposal.slug}: ${proposal.proposalPath || proposal.targetPath || proposal.slug}`);
+      });
+    } else if (Array.isArray(record.rewriteProposalPaths) && record.rewriteProposalPaths.length) {
+      lines.push(`- ${translate("rewrite proposals: {count}", { count: record.rewriteProposalPaths.length })}`);
+      record.rewriteProposalPaths.forEach((proposalPath) => {
+        lines.push(`  - ${proposalPath}`);
+      });
+    }
+  }
+  if (stdoutText) {
+    lines.push("", "## Standard output", "", "```text", stdoutText, "```");
+  }
+  if (stderrText) {
+    lines.push("", "## Standard error", "", "```text", stderrText, "```");
+  }
+  return { logPath, content: `${lines.join("\n")}\n` };
+}
+
+// --- src/run_log_persistence.js ---
+
+// Product Shell run-log persistence helpers.
+
+function resolveProductShellRunLogPath(repoRoot, relativePath) {
+  const normalized = String(relativePath || "").trim();
+  const root = String(repoRoot || "").trim();
+  if (!normalized || !root) {
+    return "";
+  }
+  return path.join(root, normalized);
+}
+
+function persistProductShellRunLog({ record, details = {}, t, repoRoot = "" }) {
+  const rendered = renderProductShellRunLog({
+    record,
+    details,
+    t,
+    repoRoot: repoRoot || ".",
+  });
+  if (!rendered) {
+    return "";
+  }
+  const absolutePath = resolveProductShellRunLogPath(repoRoot, rendered.logPath);
+  if (!absolutePath) {
+    return "";
+  }
+  record.logPath = rendered.logPath;
+  fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
+  fs.writeFileSync(absolutePath, rendered.content, "utf8");
+  return rendered.logPath;
+}
+
+// --- src/plugin_state.js ---
+
+// Product Shell plugin settings and persisted state helpers.
+
+async function loadProductShellPluginState(plugin) {
+  const data = (await plugin.loadData()) || {};
+  const rawSettings = data.settings && typeof data.settings === "object" ? data.settings : {};
+  plugin.rawPluginData = data;
+  plugin.settings = Object.assign({}, DEFAULT_SETTINGS, rawSettings);
+  if (plugin.settings.defaultAskFormat !== "report") {
+    plugin.settings.defaultAskFormat = "report";
+  }
+  const selectedProfile = llmProviderProfile(plugin.settings.llmBackend);
+  const llmBackendMigrated = plugin.settings.llmBackend !== selectedProfile.value;
+  plugin.settings.llmBackend = selectedProfile.value;
+  const migratedRuntimeClientMode = normalizeRuntimeClientMode(plugin.settings.runtimeClientMode);
+  const runtimeClientModeMigrated = plugin.settings.runtimeClientMode !== migratedRuntimeClientMode;
+  plugin.settings.runtimeClientMode = migratedRuntimeClientMode;
+  const legacyShowHtmlShortcutsMigrated = Object.prototype.hasOwnProperty.call(plugin.settings, "showHtmlShortcuts");
+  delete plugin.settings.showHtmlShortcuts;
+  const legacyDefaultAskModeMigrated = Object.prototype.hasOwnProperty.call(plugin.settings, "defaultAskMode");
+  delete plugin.settings.defaultAskMode;
+  const rawAdvancedSectionsExpanded = plugin.settings.advancedSectionsExpanded && typeof plugin.settings.advancedSectionsExpanded === "object"
+    ? plugin.settings.advancedSectionsExpanded
+    : {};
+  const migratedAdvancedSectionsExpanded = {
+    status: Boolean(rawAdvancedSectionsExpanded.status),
+    history: Boolean(rawAdvancedSectionsExpanded.history),
+  };
+  const advancedSectionsExpandedMigrated = JSON.stringify(plugin.settings.advancedSectionsExpanded || {}) !== JSON.stringify(migratedAdvancedSectionsExpanded);
+  plugin.settings.advancedSectionsExpanded = migratedAdvancedSectionsExpanded;
+  const legacyLlmSettingsMigrated = dropLegacyLlmSettings(plugin.settings);
+  plugin.settings.locale = normalizeLocale(plugin.settings.locale);
+  const migratedFeishuWebhookUrl = String(plugin.settings.feishuWebhookUrl || plugin.settings.feishu_webhook_url || "").trim();
+  const feishuWebhookUrlMigrated = plugin.settings.feishuWebhookUrl !== migratedFeishuWebhookUrl;
+  plugin.settings.feishuWebhookUrl = migratedFeishuWebhookUrl;
+  const migratedWecomWebhookUrl = String(plugin.settings.wecomWebhookUrl || plugin.settings.wecom_webhook_url || "").trim();
+  const wecomWebhookUrlMigrated = plugin.settings.wecomWebhookUrl !== migratedWecomWebhookUrl;
+  plugin.settings.wecomWebhookUrl = migratedWecomWebhookUrl;
+  const rawEnabledChannels = Array.isArray(rawSettings.enabledChannels)
+    ? rawSettings.enabledChannels
+    : rawSettings.enabled_channels;
+  const migratedEnabledChannels = normalizeEnabledChannels(rawEnabledChannels);
+  const enabledChannelsMigrated = JSON.stringify(plugin.settings.enabledChannels || []) !== JSON.stringify(migratedEnabledChannels);
+  plugin.settings.enabledChannels = migratedEnabledChannels;
+  const migratedLastViewedTimestamp = normalizeLastViewedTimestamp(plugin.settings.lastViewedTimestamp);
+  const lastViewedTimestampMigrated = plugin.settings.lastViewedTimestamp !== migratedLastViewedTimestamp;
+  plugin.settings.lastViewedTimestamp = migratedLastViewedTimestamp;
+  plugin.pendingSubmissions = plugin.hydratePendingSubmissions(plugin.settings.persistedPendingSubmissions);
+  const recentRuns = normalizeProductShellRecentRuns(data.recentRuns);
+  const llmHealth = data.llmHealth && typeof data.llmHealth === "object" ? data.llmHealth : null;
+  plugin.pluginState = { recentRuns, llmHealth };
+  plugin.trimRecentRuns();
+  const defaultAskFormatMigrated = rawSettings.defaultAskFormat !== "report";
+  if (
+    feishuWebhookUrlMigrated
+    || wecomWebhookUrlMigrated
+    || enabledChannelsMigrated
+    || lastViewedTimestampMigrated
+    || legacyLlmSettingsMigrated
+    || defaultAskFormatMigrated
+    || llmBackendMigrated
+    || runtimeClientModeMigrated
+    || legacyShowHtmlShortcutsMigrated
+    || legacyDefaultAskModeMigrated
+    || advancedSectionsExpandedMigrated
+  ) {
+    await plugin.savePluginState();
+  }
+}
+
+async function saveProductShellPluginState(plugin) {
+  await plugin.saveData({
+    settings: Object.assign({}, plugin.settings, {
+      persistedPendingSubmissions: plugin.serializePendingSubmissions(),
+    }),
+    recentRuns: plugin.pluginState.recentRuns,
+    llmHealth: plugin.pluginState && plugin.pluginState.llmHealth ? plugin.pluginState.llmHealth : null,
+  });
+}
+
+function getProductShellAdvancedSectionExpanded(plugin, key) {
+  const state = plugin.settings && plugin.settings.advancedSectionsExpanded;
+  if (!state || typeof state !== "object") return false;
+  return Boolean(state[key]);
+}
+
+async function setProductShellAdvancedSectionExpanded(plugin, key, value) {
+  if (key !== "status" && key !== "history") {
+    return;
+  }
+  const current = plugin.settings && plugin.settings.advancedSectionsExpanded;
+  const next = {
+    status: Boolean(current && typeof current === "object" && current.status),
+    history: Boolean(current && typeof current === "object" && current.history),
+  };
+  next[key] = Boolean(value);
+  plugin.settings.advancedSectionsExpanded = next;
+  try {
+    await plugin.savePluginState();
+  } catch (error) {
+    // Persisting drawer state must not break UI interaction.
+  }
+}
+
+// --- src/plugin_lifecycle.js ---
+
+async function handleProductShellVaultChange(plugin, relativePath) {
+  if (!relativePath) {
+    return;
+  }
+  if (relativePath === ".obsidian/graph.json" && typeof plugin.maybeRepairEvidenceGraphFilter === "function") {
+    void plugin.maybeRepairEvidenceGraphFilter().catch(() => {});
+    return;
+  }
+  if (relativePath === SHELL_SUMMARY_PATH) {
+    await plugin.loadShellSummaryFromDisk();
+    return;
+  }
+  if (relativePath.startsWith("output/") || relativePath.startsWith("wiki/indexes/")) {
+    plugin.refreshOpenViews();
+  }
+}
+
+async function syncProductShellEvidenceGraphConfig(plugin, { quiet = true } = {}) {
+  if (!plugin.repoState.valid) {
+    return null;
+  }
+  try {
+    return await plugin.execLauncher(["sync-evidence-graph"]);
+  } catch (error) {
+    if (!quiet) {
+      console.error("[furnace-product-shell] sync-evidence-graph failed", error);
+    }
+    return null;
+  }
+}
+
+async function maybeRepairProductShellEvidenceGraphFilter(plugin) {
+  const adapter = plugin.app.vault.adapter;
+  const graphPath = ".obsidian/graph.json";
+  if (!(await adapter.exists(graphPath))) {
+    return;
+  }
+  try {
+    const raw = await adapter.read(graphPath);
+    const parsed = JSON.parse(raw);
+    const search = String(parsed.search || "").trim();
+    if (!search || search.includes("wiki/concepts")) {
+      await plugin.syncEvidenceGraphConfig({ quiet: true });
+    }
+  } catch {
+    await plugin.syncEvidenceGraphConfig({ quiet: true });
+  }
+}
+
+async function openProductShellEvidenceGraphView(plugin) {
+  await plugin.syncEvidenceGraphConfig({ quiet: false });
+  await plugin.openWorkspacePath("wiki/evidence-graph.md");
+  if (plugin.app.commands?.executeCommandById) {
+    await plugin.app.commands.executeCommandById("graph:open");
+  }
+}
+
+async function copyProductShellText(plugin, value) {
+  const text = String(value || "").trim();
+  if (!text) {
+    new Notice(plugin.t("Nothing to copy."));
+    return false;
+  }
+  if (clipboard && typeof clipboard.writeText === "function") {
+    clipboard.writeText(text);
+    new Notice(plugin.t("Copied to clipboard."));
+    return true;
+  }
+  if (window.navigator && window.navigator.clipboard && typeof window.navigator.clipboard.writeText === "function") {
+    await window.navigator.clipboard.writeText(text);
+    new Notice(plugin.t("Copied to clipboard."));
+    return true;
+  }
+  new Notice(plugin.t("Clipboard is not available in this environment."));
+  return false;
+}
+
+async function revealProductShellWorkspacePath(plugin, relativePath) {
+  const normalized = String(relativePath || "").trim();
+  const absolutePath = plugin.resolveAbsoluteWorkspacePath(normalized);
+  if (!normalized || !absolutePath || !fs.existsSync(absolutePath)) {
+    new Notice(plugin.t("Path not found: {path}", { path: normalized || relativePath || "" }));
+    return;
+  }
+  if (shell && typeof shell.showItemInFolder === "function") {
+    shell.showItemInFolder(absolutePath);
+    return;
+  }
+  if (shell && typeof shell.openPath === "function") {
+    await shell.openPath(path.dirname(absolutePath));
+    return;
+  }
+  new Notice(plugin.t("Unable to reveal {path}", { path: normalized }));
+}
+
+async function openProductShellHomeNote(plugin) {
+  await plugin.openWorkspacePath("HOME.md");
+}
+
+async function openProductShellOutputsHub(plugin) {
+  const links = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary.links || {} : {};
+  const preferredPath = String(links.output_packs_markdown || "docs/Outputs.md").trim();
+  await plugin.openWorkspacePath(preferredPath);
+}
+
+async function openProductShellPendingDoneTarget(plugin, target, reconcilePath) {
+  const normalizedPath = String(reconcilePath || "").trim();
+  const normalizedTarget = String(target || "").trim();
+  if (normalizedPath) {
+    let opened = false;
+    try {
+      opened = await plugin.openWorkspacePath(normalizedPath);
+    } catch (error) {
+      opened = false;
+    }
+    if (opened) return;
+  }
+  try {
+    if (normalizedTarget === "outputs" && typeof plugin.openOutputsHub === "function") {
+      await plugin.openOutputsHub();
+      new Notice(plugin.t("已打开输出汇总（找不到具体报告路径）"));
+      return;
+    }
+    if (normalizedTarget === "receipts" && typeof plugin.openRecentRunsView === "function") {
+      await plugin.openRecentRunsView();
+      new Notice(plugin.t("已打开运行记录（找不到具体回执路径）"));
+      return;
+    }
+    if (typeof plugin.openHomeNote === "function") {
+      await plugin.openHomeNote();
+      return;
+    }
+  } catch (error) {
+    // Last resort is a user-facing notice below.
+  }
+  new Notice(plugin.t("无法打开目标，可能尚未生成"));
+}
+
+async function readProductShellWorkspaceSnippet(plugin, relativePath, length = 420) {
+  const resolvedPath = resolveWorkspaceSnippetPath(plugin.repoState.root, relativePath);
+  if (!resolvedPath) return "";
+  try {
+    const raw = await fs.promises.readFile(resolvedPath, "utf8");
+    return workspaceSnippetFromMarkdown(raw, length);
+  } catch (error) {
+    return "";
+  }
+}
+
+function quoteProductShellFileToComposer(plugin, relativePath) {
+  const normalized = String(relativePath || "").trim();
+  if (!normalized) return false;
+  const textarea = document.querySelector(".furnace-universal-input-textarea");
+  if (!textarea) {
+    new Notice(plugin.t("找不到输入框，无法引用报告"));
+    return false;
+  }
+  const quoteLine = plugin.t("引用报告：{path}", { path: normalized });
+  const update = appendComposerReportQuote(textarea.value, quoteLine);
+  if (update.changed) {
+    textarea.value = update.value;
+  }
+  textarea.dispatchEvent(new Event("input", { bubbles: true }));
+  textarea.focus();
+  try { textarea.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (error) {}
+  return true;
+}
+
+async function openProductShellWorkspacePath(plugin, relativePath) {
+  const requestedPath = String(relativePath || "").trim();
+  const normalized = normalizeWorkspaceRelativePath(requestedPath);
+  if (!requestedPath) {
+    new Notice(plugin.t("No path to open."));
+    return false;
+  }
+  if (!normalized) {
+    new Notice(plugin.t("Unable to open {path}", { path: requestedPath }));
+    return false;
+  }
+  const abstractFile = plugin.app.vault.getAbstractFileByPath(normalized);
+  if (abstractFile && normalized.endsWith(".md")) {
+    const leaf = plugin.app.workspace.getLeaf(true);
+    await leaf.openFile(abstractFile);
+    return true;
+  }
+  if (!plugin.repoState.root) {
+    new Notice(plugin.t("Unable to open {path}", { path: normalized }));
+    return false;
+  }
+  const absolutePath = resolveWorkspaceSnippetPath(plugin.repoState.root, normalized);
+  if (!fs.existsSync(absolutePath)) {
+    new Notice(plugin.t("Path not found: {path}", { path: normalized }));
+    return false;
+  }
+  if (typeof plugin.app.vault.adapter.getResourcePath === "function") {
+    const resourcePath = plugin.app.vault.adapter.getResourcePath(normalized);
+    window.open(resourcePath, "_blank");
+    return true;
+  }
+  new Notice(plugin.t("Unable to open resource: {path}", { path: normalized }));
+  return false;
+}
+
+function updateProductShellStatusBar(plugin) {
+  if (!plugin.statusBarItem) {
+    return;
+  }
+  const runningCount = plugin.pluginState.recentRuns.filter((entry) => entry.status === "running").length;
+  if (!plugin.repoState.valid) {
+    plugin.statusBarItem.setText(plugin.t("Furnace shell unavailable"));
+    plugin.statusBarItem.setAttribute("aria-label", plugin.t("Missing runtime paths: {missing}", { missing: plugin.repoState.missingPaths.join(", ") }));
+    return;
+  }
+  const protocol = plugin.getActiveProtocol();
+  const llmHealth = plugin.currentLlmHealth();
+  const syncState = plugin.currentShellSyncState();
+  const llmSuffix = llmHealth.status === "degraded" ? plugin.t(" | llm degraded") : "";
+  const syncSuffix = syncState.status === "running" ? plugin.t(" | syncing") : "";
+  const suffix = runningCount ? plugin.t(" | running {count}", { count: runningCount }) : "";
+  plugin.statusBarItem.setText(`${plugin.t("Furnace")} ${protocol}${llmSuffix}${syncSuffix}${suffix}`);
+  plugin.statusBarItem.setAttribute("aria-label", plugin.t("Furnace Product Shell active protocol {protocol}", { protocol }));
+}
+
+async function loadProductShellSummaryFromDisk(plugin) {
+  if (!plugin.repoState.valid) {
+    plugin.shellSummary = null;
+    plugin.updateStatusBar();
+    plugin.refreshOpenViews();
+    return null;
+  }
+  let text = null;
+  const summaryFile = plugin.app.vault.getAbstractFileByPath(SHELL_SUMMARY_PATH);
+  if (summaryFile) {
+    try {
+      text = await plugin.app.vault.cachedRead(summaryFile);
+    } catch (error) {
+      console.error("[furnace-product-shell] vault read failed for shell summary, falling back to fs", error);
+      text = null;
+    }
+  }
+  if (text === null && plugin.repoState.root) {
+    const absPath = path.join(plugin.repoState.root, SHELL_SUMMARY_PATH);
+    try {
+      if (fs.existsSync(absPath)) {
+        text = fs.readFileSync(absPath, "utf8");
+      }
+    } catch (error) {
+      console.error("[furnace-product-shell] fs read failed for shell summary", error);
+      text = null;
+    }
+  }
+  if (text === null) {
+    plugin.shellSummary = null;
+    plugin.updateStatusBar();
+    plugin.refreshOpenViews();
+    return null;
+  }
+  try {
+    plugin.shellSummary = readJsonText(text);
+    plugin.processShellSummaryUpdates(plugin.shellSummary);
+  } catch (error) {
+    console.error("[furnace-product-shell] failed to parse shell summary", error);
+    plugin.shellSummary = null;
+  }
+  plugin.updateStatusBar();
+  plugin.refreshOpenViews();
+  return plugin.shellSummary;
+}
+
+// --- src/plugin_actions.js ---
+
+async function runProductShellUniversalInputCommand(plugin, { payload, title }) {
+  const normalizedPayload = String(payload || "").trim();
+  if (!normalizedPayload) {
+    new Notice(plugin.t("Universal input cannot be empty."));
+    return;
+  }
+  const spec = buildUniversalInputCommandSpec({ payload: normalizedPayload, title });
+  return await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
+}
+
+async function runProductShellAskCommand(plugin, { question, format, mode, protocol }) {
+  const spec = buildAskCommandSpec({ question, format, mode, protocol });
+  return await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
+}
+
+async function runProductShellDroppedPayloadsWithAutoAsk(plugin, { payloads, question, protocol }) {
+  const normalizedPayloads = Array.isArray(payloads)
+    ? payloads
+      .map((payload) => {
+        if (payload && typeof payload === "object") {
+          return {
+            path: String(payload.path || payload.source || payload.payload || "").trim(),
+            title: String(payload.title || payload.name || "").trim(),
+          };
+        }
+        return { path: String(payload || "").trim(), title: "" };
+      })
+      .filter((payload) => payload.path)
+    : [];
+  const normalizedQuestion = String(question || "").trim();
+  const materialPaths = [];
+  for (const payloadItem of normalizedPayloads) {
+    const payload = await plugin.runUniversalInputCommand({ payload: payloadItem.path, title: payloadItem.title });
+    collectMaterialPathsFromPayload(payload).forEach((item) => materialPaths.push(item));
+  }
+  const normalizedMaterialPaths = normalizeMaterialPaths(materialPaths);
+  const askQuestion = normalizedQuestion
+    ? buildAutoAskQuestion(normalizedQuestion, normalizedMaterialPaths)
+    : "";
+  let runNotesPath = "";
+  let runId = "";
+  let jobId = "";
+  let askFormat = "";
+  if (normalizedQuestion) {
+    askFormat = inferAutoAskFormat(normalizedQuestion, normalizedMaterialPaths);
+    const askPayload = await plugin.runAskCommand({
+      question: askQuestion,
+      format: askFormat,
+      mode: "run-ask",
+      protocol,
+    });
+    runNotesPath = String(askPayload && askPayload.run_notes_path || "");
+    runId = String(askPayload && askPayload.run_id || "");
+    jobId = String(askPayload && askPayload.job_id || "");
+  }
+  return {
+    materialPaths: normalizedMaterialPaths,
+    askQuestion,
+    askFormat,
+    runNotesPath,
+    runId,
+    jobId,
+  };
+}
+
+function completeProductShellPendingMaterialDrop(plugin, id, materialPaths) {
+  const paths = normalizeMaterialPaths(materialPaths);
+  const rawPath = paths.find((item) => item.startsWith("raw/inbox/")) || paths[0] || "";
+  if (id && rawPath) {
+    plugin.markPendingSubmissionDone(id, "raw", rawPath);
+    return true;
+  }
+  return false;
+}
+
+async function runProductShellDroppedFilesWithAutoAsk(plugin, { files, question, protocol }) {
+  const normalizedFiles = Array.isArray(files)
+    ? files
+      .map((file) => ({
+        path: String(file && (file.path || file.source) || "").trim(),
+        name: String(file && file.name || "").trim(),
+      }))
+      .filter((file) => file.path)
+    : [];
+  return await plugin.runDroppedPayloadsWithAutoAsk({
+    payloads: normalizedFiles.map((file) => ({ path: file.path, title: file.name })),
+    question,
+    protocol,
+  });
+}
+
+async function runProductShellReportSubgraphCommand(plugin, { reportPath }) {
+  const spec = buildReportSubgraphCommandSpec(reportPath);
+  if (!spec.normalized) {
+    new Notice(plugin.t("Report path cannot be empty."));
+    return;
+  }
+  const payload = await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
+  const outputPath = payload && typeof payload.output_path === "string" ? payload.output_path.trim() : "";
+  if (outputPath) {
+    await plugin.openWorkspacePath(outputPath);
+  }
+  return payload;
+}
+
+function collectProductShellReportCandidates(plugin) {
+  const summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : null;
+  if (!summary) return [];
+  const outputs = Array.isArray(summary.recent_outputs) ? summary.recent_outputs : [];
+  const seen = new Set();
+  const candidates = [];
+  for (const item of outputs) {
+    if (!item || typeof item !== "object") continue;
+    const candidatePath = String(item.path || "").trim();
+    if (!candidatePath || !candidatePath.startsWith("output/reports/")) continue;
+    const deliveryMode = String(item.delivery_mode || "").trim();
+    const llmStatus = String(item.llm_status || "").trim();
+    const backgroundStatus = String(item.background_status || "").trim();
+    const artifactQuality = String(item.artifact_quality || "").trim();
+    const containsPlaceholder = String(item.contains_llm_placeholder || "").trim().toLowerCase();
+    const rawTitle = String(item.title || "").trim();
+    if (deliveryMode === "deterministic-fallback" || deliveryMode === "llm-failed") continue;
+    if (["timeout_or_unavailable", "validation_failed", "pending", "failed", "degraded"].includes(llmStatus)) continue;
+    if (["submitted", "running", "degraded"].includes(backgroundStatus)) continue;
+    if (["degraded", "placeholder"].includes(artifactQuality)) continue;
+    if (["1", "true", "yes"].includes(containsPlaceholder)) continue;
+    if (rawTitle.startsWith("LLM 未完成")) continue;
+    if (seen.has(candidatePath)) continue;
+    seen.add(candidatePath);
+    const title = rawTitle || candidatePath;
+    candidates.push({ value: candidatePath, label: `${title} — ${candidatePath}` });
+  }
+  return candidates;
+}
+
+function openProductShellReportSubgraphPicker(plugin) {
+  const candidates = plugin.collectReportCandidates();
+  plugin.openStructuredCommandModal(buildReportSubgraphModalSpec(plugin, candidates));
+}
+
+async function runProductShellDropUrlCommand(plugin, { url, title }) {
+  const spec = buildDropUrlCommandSpec({ url, title });
+  await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
+}
+
+async function runProductShellDropFileCommand(plugin, { mode, source, title, maxFiles }) {
+  const spec = buildDropFileCommandSpec({ mode, source, title, maxFiles });
+  await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
+}
+
+async function runProductShellDropImageCommand(plugin, { source, title, noVision }) {
+  const spec = buildDropImageCommandSpec({ source, title, noVision });
+  await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
+}
+
+async function runProductShellDropNoteCommand(plugin, { text, title, kind }) {
+  const spec = buildDropNoteCommandSpec({ text, title, kind });
+  await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
+}
+
+async function runProductShellCliAction(plugin, label, command, args = []) {
+  await plugin.runPluginCommand(label, [command, ...args], { refreshAfter: true });
+}
+
+async function runProductShellLauncherCommand(plugin, fullCommandStr, label = "Suggested Action") {
+  let trimmed = String(fullCommandStr || "").trim();
+  const prefixPattern = /^(?:PYTHONPATH=\S+\s+)?(?:python3?\s+-m\s+aiwiki\.cli\s+)?(?:--root\s+\S+\s+)?/;
+  trimmed = trimmed.replace(prefixPattern, "").trim();
+  if (!trimmed) {
+    new Notice(plugin.t("Cannot parse command: {command}", { command: truncateText(fullCommandStr, 80) }));
+    return;
+  }
+  const args = [];
+  let current = "";
+  let inQuote = false;
+  for (let i = 0; i < trimmed.length; i++) {
+    const ch = trimmed[i];
+    if (ch === '"') {
+      inQuote = !inQuote;
+    } else if (ch === " " && !inQuote) {
+      if (current) {
+        args.push(current);
+        current = "";
+      }
+    } else {
+      current += ch;
+    }
+  }
+  if (current) {
+    args.push(current);
+  }
+  await plugin.runPluginCommand(label, args, { refreshAfter: true });
+}
+
+// --- src/plugin_run_pipeline.js ---
+
+function createProductShellPluginRunRecord(plugin, label, args) {
+  const record = createProductShellRunRecord({
+    label,
+    args,
+    llm: plugin.currentLlmSelection(),
+    protocol: plugin.getActiveProtocol(),
+  });
+  plugin.pluginState.recentRuns.unshift(record);
+  plugin.trimRecentRuns();
+  plugin.persistRunLog(record);
+  plugin.updateStatusBar();
+  plugin.refreshOpenViews();
+  void plugin.savePluginState();
+  return record;
+}
+
+function updateProductShellPluginRunRecord(plugin, record, updates) {
+  Object.assign(record, updates);
+  plugin.trimRecentRuns();
+  plugin.persistRunLog(record);
+  plugin.updateStatusBar();
+  plugin.refreshOpenViews();
+  void plugin.savePluginState();
+}
+
+function latestProductShellPluginRun(plugin) {
+  return plugin.pluginState.recentRuns.length ? plugin.pluginState.recentRuns[0] : null;
+}
+
+async function rerunProductShellPluginRecord(plugin, record) {
+  const argv = record && Array.isArray(record.argv) ? record.argv.map((value) => String(value || "")) : [];
+  if (!argv.length) {
+    new Notice(plugin.t("Cannot re-run this entry because argv was not recorded."));
+    return null;
+  }
+  return await plugin.runPluginCommand(record.label || record.args || plugin.t("command"), argv, { refreshAfter: true });
+}
+
+async function runProductShellPluginCommand(plugin, label, args, options = {}) {
+  const record = plugin.createRunRecord(label, args);
+  appendRunEvent(record, "Executing", args.join(" "), "running");
+  if (options.longRunning) {
+    appendRunEvent(
+      record,
+      "Long report task",
+      plugin.t("Report generation can take several minutes; keep this card open and refresh status if needed."),
+      "running"
+    );
+  }
+  plugin.updateRunRecord(record, {});
+  try {
+    const result = await plugin.executeRuntimeCommand(args);
+    const runContext = buildProductShellRunResultContext(result);
+    if (result.payload && result.payload.kind === "vault-queue" && result.payload.status === "queued") {
+      const queuePath = String(result.payload.queue_path || "");
+      appendRunEvent(
+        record,
+        "Queued",
+        queuePath || plugin.t("Queued for desktop drain. This is not a completed runtime execution."),
+        "running"
+      );
+      plugin.updateRunRecord(record, {
+        status: "received",
+        exitCode: 0,
+        finishedAt: "",
+        resultPath: queuePath,
+        stdoutSummary: truncateText(result.stdout),
+        stderrSummary: truncateText(result.stderr),
+        stdoutRaw: trimDiagnosticText(result.stdout),
+        stderrRaw: trimDiagnosticText(result.stderr),
+        deliveryMode: "vault-queue",
+      });
+      plugin.persistRunLog(record, { stdoutRaw: result.stdout, stderrRaw: result.stderr });
+      if (options.notice !== false) {
+        new Notice(plugin.t("Queued for desktop drain: {path}", { path: queuePath }));
+      }
+      return result.payload;
+    }
+    if (options.updateSummaryFromPayload && result.payload && result.payload.kind === "product-shell-summary") {
+      plugin.shellSummary = result.payload;
+      plugin.processShellSummaryUpdates(plugin.shellSummary);
+      plugin.updateStatusBar();
+      plugin.refreshOpenViews();
+    } else if (options.refreshAfter !== false) {
+      await plugin.refreshShellSummarySilently();
+    }
+    const llm = plugin.currentLlmSelection();
+    if (options.backgroundSubmit && result.payload && result.payload.kind === "run-ask-background-job") {
+      appendRunEvent(
+        record,
+        "Background job submitted",
+        result.payload.job_id || result.payload.path || plugin.t("Long report job accepted."),
+        "running"
+      );
+      plugin.updateRunRecord(record, buildProductShellBackgroundRunUpdates({ result, primaryPath: runContext.primaryPath }));
+      plugin.persistRunLog(record, { stdoutRaw: result.stdout, stderrRaw: result.stderr });
+      plugin.updateLongRunningPoller();
+      if (options.notice !== false) {
+        new Notice(plugin.t("Long report job accepted. The report card will update after background completion."));
+      }
+      return result.payload;
+    }
+    const completedState = buildProductShellCompletedRunState({
+      record,
+      result,
+      llm,
+      runContext,
+      rewriteProposalSummary: plugin.rewriteProposalSummary({ rewriteProposalPaths: runContext.rewriteProposalPaths }),
+      fallbackSummary: result.payload && (result.payload.primary_error || result.payload.fallback_reason)
+        || plugin.t("LLM timed out; deterministic fallback only."),
+      successSummary: runContext.primaryPath || runContext.receiptPath || plugin.t("Command completed successfully."),
+      degradedNotice: plugin.t("LLM timed out; deterministic fallback only. Open the artifact for local context, then retry or switch model."),
+      successNotice: `${plugin.t(label)} ${plugin.t("completed")}.`,
+    });
+    completedState.events.forEach((event) => appendRunEvent(record, event.stage, event.summary, event.status));
+    plugin.updateRunRecord(record, completedState.updates);
+    if (completedState.llmHealthOverrides) {
+      plugin.recordLlmHealthFromRun(record, completedState.llmHealthOverrides);
+    }
+    plugin.persistRunLog(record, { stdoutRaw: result.stdout, stderrRaw: result.stderr });
+    if (options.notice !== false) {
+      new Notice(completedState.noticeMessage);
+    }
+    return result.payload;
+  } catch (error) {
+    const failedState = buildProductShellFailedRunState({
+      record,
+      error,
+      noticeMessage: `${plugin.t(label)} ${plugin.t("failed: {message}", { message: truncateText(error.message || plugin.t("unknown error"), 120) })}`,
+    });
+    failedState.events.forEach((event) => appendRunEvent(record, event.stage, event.summary, event.status));
+    plugin.updateRunRecord(record, failedState.updates);
+    if (failedState.llmHealthOverrides) {
+      plugin.recordLlmHealthFromRun(record, failedState.llmHealthOverrides);
+    }
+    plugin.persistRunLog(record, failedState.logDetails);
+    new Notice(failedState.noticeMessage);
+    throw error;
+  }
+}
+
+async function refreshProductShellSummarySilently(plugin) {
+  try {
+    const result = await plugin.executeRuntimeCommand(["shell-status"]);
+    if (result.payload && result.payload.kind === "product-shell-summary") {
+      plugin.shellSummary = result.payload;
+      plugin.processShellSummaryUpdates(plugin.shellSummary);
+      plugin.updateStatusBar();
+      plugin.refreshOpenViews();
+      return result.payload;
+    }
+  } catch (error) {
+    console.error("[furnace-product-shell] shell-status refresh failed", error);
+  }
+  return await plugin.loadShellSummaryFromDisk();
+}
+
+function processProductShellSummaryUpdates(plugin, summary) {
+  plugin.reconcilePendingSubmissions(summary);
+  const update = knownReportIdsUpdateFromSummary(summary, plugin.settings.lastKnownReportIds);
+  if (update.shouldSave) {
+    plugin.settings.lastKnownReportIds = update.ids;
+    void plugin.savePluginState();
+  }
+}
+
+async function refreshProductShellSummaryCommand(plugin) {
+  try {
+    await plugin.runPluginCommand(plugin.t("Refresh Furnace Shell"), ["shell-status"], {
+      refreshAfter: false,
+      updateSummaryFromPayload: true,
+      notice: false,
+    });
+  } catch (error) {
+    // Falling back to the disk summary still advances pending reconciliation.
+  }
+  await plugin.loadShellSummaryFromDisk();
+}
+
+// --- src/state/health-state.js ---
+
+// Extracted from plugin.js
+
+const LLM_HEALTH_FAILURE_NOTICE_DELIVERY_MODES = {
+    "deterministic-fallback": true,
+    "llm-failed": true,
+  };
+
+function normalizeLlmHealthState(plugin, value) {
+    if (!value || typeof value !== "object") {
+      return null;
+    }
+    const status = String(value.status || "").trim() || "unknown";
+    const fallbackCommandValue = preferredObjectField(value, "fallbackCommand", "fallback_command");
+    const historicalRerunCommandValue = preferredObjectField(
+      value,
+      "recovery" + "Command",
+      "recovery_" + "command"
+    );
+    const rerunCommandValue =
+      preferredObjectField(value, "rerunCommand", "rerun_command") || historicalRerunCommandValue;
+    return {
+      status,
+      backend: String(value.backend || "").trim(),
+      backendRequested: String(value.backendRequested || value.backend_requested || "").trim(),
+      backendEffective: String(value.backendEffective || value.backend_effective || "").trim(),
+      model: String(value.model || "").trim(),
+      modelSelected: String(value.modelSelected || value.model_selected || "").trim(),
+      modelFinal: String(value.modelFinal || value.model_final || "").trim(),
+      reason: String(value.reason || "").trim(),
+      checkedAt: String(value.checkedAt || value.checked_at || "").trim(),
+      source: String(value.source || "").trim(),
+      fallbackCommand: String(fallbackCommandValue || "").trim(),
+      fallbackStage: String(value.fallbackStage || value.fallback_stage || "").trim(),
+      fallbackReason: String(value.fallbackReason || value.fallback_reason || "").trim(),
+      contractValidated: Object.prototype.hasOwnProperty.call(value, "contractValidated")
+        ? Boolean(value.contractValidated)
+        : Boolean(value.contract_validated),
+      rerunCommand: String(rerunCommandValue || "").trim(),
+      routeDrift: Boolean(value.routeDrift || value.route_drift),
+      routeDriftReason: String(value.routeDriftReason || value.route_drift_reason || "").trim(),
+      logPath: String(value.logPath || value.log_path || "").trim(),
+      resultPath: String(value.resultPath || value.result_path || "").trim(),
+      receiptPath: String(value.receiptPath || value.receipt_path || "").trim(),
+      stderrSummary: String(value.stderrSummary || value.stderr_summary || "").trim(),
+      stderrRaw: trimDiagnosticText(value.stderrRaw || value.stderr_raw || ""),
+    };
+  }
+
+
+function preferredObjectField(value, preferredKey, legacyKey) {
+    return Object.prototype.hasOwnProperty.call(value, preferredKey)
+      ? value[preferredKey]
+      : value[legacyKey];
+  }
+
+
+function llmHealthTimestamp(value) {
+    const timestamp = Date.parse(String(value || "").trim());
+    return Number.isFinite(timestamp) ? timestamp : 0;
+  }
+
+
+function shellSummaryHealthTimestamp(plugin, summaryHealth) {
+    if (!plugin.shellSummary || typeof plugin.shellSummary !== "object") {
+      return 0;
+    }
+    return Math.max(
+      llmHealthTimestamp(summaryHealth && summaryHealth.checkedAt),
+      llmHealthTimestamp(plugin.shellSummary.generated_at)
+    );
+  }
+
+
+function shouldUsePluginLlmHealth(plugin, pluginHealth, summaryHealth) {
+    if (!pluginHealth) {
+      return false;
+    }
+    if (!summaryHealth) {
+      return true;
+    }
+    const pluginTimestamp = llmHealthTimestamp(pluginHealth.checkedAt);
+    const summaryTimestamp = shellSummaryHealthTimestamp(plugin, summaryHealth);
+    return Boolean(pluginTimestamp) && pluginTimestamp > summaryTimestamp;
+  }
+
+
+function fillLlmHealthRoute(plugin, health, selected, llmStatus) {
+    return {
+      ...health,
+      backend: health.backend || selected.backend || String(llmStatus.backend || ""),
+      model: health.model || selected.model || String(llmStatus.effective_model || llmStatus.model || ""),
+    };
+  }
+
+
+function currentLlmHealth(plugin) {
+    const llmStatus = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary.llm_status || {} : {};
+    const summaryHealth = plugin.shellSummary && typeof plugin.shellSummary === "object"
+      ? plugin.normalizeLlmHealthState(plugin.shellSummary.llm_health)
+      : null;
+    const pluginHealth = plugin.pluginState && typeof plugin.pluginState === "object"
+      ? plugin.normalizeLlmHealthState(plugin.pluginState.llmHealth)
+      : null;
+    const selected = plugin.currentLlmSelection();
+    if (shouldUsePluginLlmHealth(plugin, pluginHealth, summaryHealth)) {
+      return fillLlmHealthRoute(plugin, pluginHealth, selected, llmStatus);
+    }
+    if (!summaryHealth) {
+      return {
+        status: "unknown",
+        backend: selected.backend || String(llmStatus.backend || ""),
+        model: selected.model || String(llmStatus.effective_model || llmStatus.model || ""),
+        reason: llmStatus.configured ? "No summary LLM health data available yet." : "LLM is not configured.",
+        checkedAt: "",
+        source: "",
+        fallbackCommand: "",
+        logPath: "",
+        resultPath: "",
+        receiptPath: "",
+        stderrSummary: "",
+        stderrRaw: "",
+      };
+    }
+    return fillLlmHealthRoute(plugin, summaryHealth, selected, llmStatus);
+  }
+
+
+function latestLlmRun(plugin) {
+    if (plugin.shellSummary && typeof plugin.shellSummary === "object" && plugin.shellSummary.latest_llm_run && typeof plugin.shellSummary.latest_llm_run === "object") {
+      const summaryRun = plugin.shellSummary.latest_llm_run;
+      const fallbackFromValue = preferredObjectField(summaryRun, "fallbackFrom", "fallback_from");
+      const fallbackCommandValue = preferredObjectField(summaryRun, "fallbackCommand", "fallback_command");
+      return {
+        ...summaryRun,
+        command: String(summaryRun.command || summaryRun.event || "").trim(),
+        backend: String(summaryRun.backend || summaryRun.backend_effective || summaryRun.backend_requested || "").trim(),
+        model: String(summaryRun.model || summaryRun.model_final || summaryRun.model_selected || "").trim(),
+        resultPath: String(summaryRun.resultPath || summaryRun.result_path || "").trim(),
+        receiptPath: String(summaryRun.receiptPath || summaryRun.receipt_path || "").trim(),
+        logPath: String(summaryRun.logPath || summaryRun.log_path || "").trim(),
+        errorSummary: String(summaryRun.errorSummary || summaryRun.error || summaryRun.fallback_reason || "").trim(),
+        fallbackFrom: String(fallbackFromValue || "").trim(),
+        fallbackCommand: String(fallbackCommandValue || "").trim(),
+        fallbackUsed: Boolean(summaryRun.fallbackUsed || summaryRun.fallback_used),
+        deliveryMode: String(summaryRun.deliveryMode || summaryRun.delivery_mode || "").trim(),
+      };
+    }
+    return null;
+  }
+
+
+function latestLlmRunLocalDegradedArtifact(latestLlmRun) {
+    const deliveryMode = String(latestLlmRun && latestLlmRun.deliveryMode || "").trim();
+    if (Object.prototype.hasOwnProperty.call(LLM_HEALTH_FAILURE_NOTICE_DELIVERY_MODES, deliveryMode)) return true;
+    return !deliveryMode && Boolean(latestLlmRun && latestLlmRun.fallbackUsed);
+  }
+
+  // EP-015: latestShellSyncRun() removed. The sole authoritative source for
+  // the last persisted shell-summary metadata is `shellSummary.latest_shell_sync_run`;
+  // consumers should read it directly rather than going through a plugin
+  // helper that could drift back into merging plugin-local recentRuns.
+
+function currentShellSyncState(plugin) {
+    // EP-015 Path 3: summary-only domain state.
+    // 1. Own in-flight shell-status → running (only state recentRuns can
+    //    legitimately contribute, since CLI snapshot cannot represent
+    //    in-flight work).
+    // 2. CLI snapshot present → healthy, using snapshot.generated_at.
+    // 3. Otherwise → unknown.
+    // We no longer synthesize a "failed" domain state from recentRuns;
+    // recentRuns is plugin-local command history, not authoritative health.
+    const runningRecord = plugin.pluginState.recentRuns.find(
+      (record) => record && record.command === "shell-status" && record.status === "running"
+    );
+    if (runningRecord) {
+      return {
+        status: "running",
+        reason: plugin.t("Refreshing shell summary."),
+        checkedAt: runningRecord.startedAt || "",
+        logPath: runningRecord.logPath || "",
+      };
+    }
+    if (plugin.shellSummary && typeof plugin.shellSummary === "object") {
+      const snapshot = plugin.shellSummary.latest_shell_sync_run;
+      const hasSnapshot = snapshot && typeof snapshot === "object" && Object.keys(snapshot).length;
+      const checkedAt = hasSnapshot
+        ? String(snapshot.generated_at || plugin.shellSummary.generated_at || "")
+        : String(plugin.shellSummary.generated_at || "");
+      return {
+        status: "healthy",
+        reason: plugin.t("Summary ready."),
+        checkedAt,
+        logPath: "",
+      };
+    }
+    return {
+      status: "unknown",
+      reason: plugin.t("数据还没生成。先点刷新，或等首次任务跑完。"),
+      checkedAt: "",
+      logPath: "",
+    };
+  }
+
+  /**
+   * Builds diagnostic items for the Product Shell self-check panel.
+   *
+   * NOTE (EP-012): currently not wired to any UI call site. Kept so that
+   * future self-check surfaces stay semantically correct (summary-only,
+   * no repo-truth inference from recentRuns). See PROGRESS.md §96.
+   */
+
+function selfCheckItems(plugin) {
+    const llmStatus = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary.llm_status || {} : {};
+    const health = plugin.currentLlmHealth();
+    const latestLlmRun = plugin.latestLlmRun();
+    const availableBackends = Array.isArray(llmStatus.available_backends) ? llmStatus.available_backends.filter(Boolean) : [];
+    const requestedBackend = String(llmStatus.backend_requested || plugin.settings.llmBackend || "").trim();
+    const effectiveBackend = String(llmStatus.backend || "").trim();
+    const selected = plugin.currentLlmSelection();
+    const summaryTimestamp = parseTimestampMs(plugin.shellSummary && plugin.shellSummary.generated_at);
+    const summaryAgeMs = Number.isFinite(summaryTimestamp) ? Date.now() - summaryTimestamp : NaN;
+    const items = [];
+
+    items.push({
+      key: "runtime",
+      status: plugin.repoState.valid ? "healthy" : "failed",
+      title: "Runtime contract",
+      detail: plugin.repoState.valid
+        ? plugin.t("launcher {launcher} · root {root}", { launcher: plugin.settings.launcherPath || "", root: plugin.repoState.root || "" })
+        : plugin.t("Missing runtime paths: {missing}", { missing: plugin.repoState.missingPaths.join(", ") }),
+    });
+
+    if (!plugin.shellSummary) {
+      items.push({
+        key: "summary",
+        status: "failed",
+        title: "Shell summary",
+        detail: plugin.t("数据还没生成。先点刷新，或等首次任务跑完。"),
+      });
+    } else {
+      items.push({
+        key: "summary",
+        status: Number.isFinite(summaryAgeMs) && summaryAgeMs > 15 * 60 * 1000 ? "warning" : "healthy",
+        title: "Shell summary",
+        detail: Number.isFinite(summaryAgeMs) && summaryAgeMs > 15 * 60 * 1000
+          ? plugin.t("Summary is stale; refresh before trusting the home surface.")
+          : plugin.t("Generated {time}", { time: String(plugin.shellSummary.generated_at || "") }),
+      });
+    }
+
+    items.push({
+      key: "route",
+      status: requestedBackend && effectiveBackend && (!availableBackends.length || availableBackends.includes(effectiveBackend)) ? "healthy" : "failed",
+      title: "LLM route",
+      detail: plugin.t("requested {requested} · effective {effective} · available {available}", {
+        requested: requestedBackend || plugin.t("unconfigured"),
+        effective: effectiveBackend || plugin.t("unconfigured"),
+        available: availableBackends.length ? availableBackends.join(", ") : plugin.t("none"),
+      }),
+    });
+
+    if (!requestedBackend) {
+      items.push({
+        key: "backend-discovery",
+        status: "warning",
+        title: "Backend discovery",
+        detail: plugin.t("No explicit LLM backend is selected. Choose one in Product Shell settings or set AIWIKI_LLM_BACKEND."),
+      });
+    } else {
+      const backendVisible = availableBackends.includes(requestedBackend);
+      items.push({
+        key: "backend-discovery",
+        status: backendVisible ? "healthy" : "warning",
+        title: "Backend discovery",
+        detail: backendVisible
+          ? plugin.t("Product Shell runtime can see the selected backend {backend}.", { backend: requestedBackend })
+          : plugin.t("Product Shell runtime cannot see the selected backend {backend}.", { backend: requestedBackend }),
+      });
+    }
+
+    if (!latestLlmRun) {
+      items.push({
+        key: "latest-ask",
+        status: "unknown",
+        title: "Latest ask execution",
+        detail: plugin.t("No summary latest LLM run data available."),
+      });
+    } else {
+      const localDegradedArtifact = latestLlmRunLocalDegradedArtifact(latestLlmRun);
+      const latestStatus = localDegradedArtifact
+        ? "warning"
+        : latestLlmRun.status === "success"
+          ? "healthy"
+          : "failed";
+      const latestDetail = latestStatus === "healthy"
+        ? plugin.t("Latest run-ask succeeded.")
+        : latestStatus === "warning"
+          ? plugin.t("Latest run-ask produced an LLM failure notice.")
+          : plugin.t("Latest run-ask failed before producing an LLM result.");
+      items.push({
+        key: "latest-ask",
+        status: latestStatus,
+        title: "Latest ask execution",
+        detail: `${latestDetail} ${latestLlmRun.errorSummary || latestLlmRun.resultPath || ""}`.trim(),
+      });
+    }
+
+    if (latestLlmRun && latestLlmRun.backend && selected.backend && latestLlmRun.backend !== selected.backend) {
+      items.push({
+        key: "route-drift",
+        status: "warning",
+        title: "Route drift",
+        detail: plugin.t("Latest Product Shell ask used {latest}; current route is {current}.", {
+          latest: latestLlmRun.backend,
+          current: selected.backend,
+        }),
+      });
+    } else if (latestLlmRun && latestLlmRun.backend && selected.backend) {
+      // Have data from both sides and they match — healthy.
+      items.push({
+        key: "route-drift",
+        status: "healthy",
+        title: "Route drift",
+        detail: plugin.t("Latest Product Shell ask matches current route."),
+      });
+    } else {
+      // Missing summary.latest_llm_run or its backend — cannot assert health.
+      // Must not claim "healthy" just because we have no data (oracle round 6).
+      items.push({
+        key: "route-drift",
+        status: "unknown",
+        title: "Route drift",
+        detail: plugin.t("No summary latest LLM run data available."),
+      });
+    }
+
+    if (health.status === "degraded" || health.status === "failed") {
+      items.push({
+        key: "health",
+        status: "warning",
+        title: "LLM health",
+        detail: health.reason || plugin.t("Latest run-ask produced an LLM failure notice."),
+      });
+    }
+
+    return items;
+  }
+
+
+function updateLlmHealth(plugin, nextState) {
+    const normalized = plugin.normalizeLlmHealthState(nextState);
+    if (normalized) {
+      if (!plugin.pluginState || typeof plugin.pluginState !== "object") {
+        plugin.pluginState = { recentRuns: [], llmHealth: null };
+      }
+      if (!Array.isArray(plugin.pluginState.recentRuns)) {
+        plugin.pluginState.recentRuns = [];
+      }
+      plugin.pluginState.llmHealth = normalized;
+    }
+    plugin.updateStatusBar();
+    plugin.refreshOpenViews();
+    void plugin.savePluginState();
+  }
+
+
+function recordLlmHealthFromRun(plugin, record, overrides = {}) {
+    if (!record || typeof record !== "object") {
+      return;
+    }
+    const fallbackCommand = Object.prototype.hasOwnProperty.call(overrides, "fallbackCommand")
+      ? overrides.fallbackCommand
+      : record.fallbackCommand || record.fallbackFrom || "";
+    plugin.updateLlmHealth({
+      status: overrides.status || "unknown",
+      backend: overrides.backend || record.backend,
+      backendRequested: overrides.backendRequested || record.backendRequested || "",
+      backendEffective: overrides.backendEffective || record.backendEffective || record.backend || "",
+      model: overrides.model || record.modelFinal || record.model,
+      modelSelected: overrides.modelSelected || record.modelSelected || "",
+      modelFinal: overrides.modelFinal || record.modelFinal || record.model || "",
+      reason: overrides.reason || record.errorSummary || "",
+      checkedAt: overrides.checkedAt || record.finishedAt || record.startedAt || new Date().toISOString(),
+      source: overrides.source || record.command || "",
+      fallbackCommand,
+      fallbackStage: overrides.fallbackStage || record.fallbackStage || "",
+      fallbackReason: overrides.fallbackReason || record.fallbackReason || "",
+      contractValidated: Object.prototype.hasOwnProperty.call(overrides, "contractValidated") ? Boolean(overrides.contractValidated) : Boolean(record.contractValidated),
+      logPath: overrides.logPath || record.logPath || "",
+      resultPath: overrides.resultPath || record.resultPath || "",
+      receiptPath: overrides.receiptPath || record.receiptPath || "",
+      stderrSummary: overrides.stderrSummary || record.stderrSummary || "",
+      stderrRaw: overrides.stderrRaw || record.stderrRaw || "",
+    });
+  }
+
+
+module.exports = { normalizeLlmHealthState, currentLlmHealth, latestLlmRun, currentShellSyncState, selfCheckItems, updateLlmHealth, recordLlmHealthFromRun };
 
 // --- src/plugin.js ---
 
@@ -3255,7 +9514,10 @@ function renderExecutionCenter(plugin, contentEl) {
 module.exports = class FurnaceProductShellPlugin extends Plugin {
   async onload() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS);
-    this.pluginState = { recentRuns: [], llmHealth: null };
+    this.pluginState = { recentRuns: [] };
+    this.pendingSubmissions = []; // R89: 持久化 + runtime; status: running | received | done | failed | degraded; { id, payloadFingerprint, displayText, status, startedAt, finishedAt, error, reconcileTarget }
+    this.longRunningPollTimer = null;
+    this.longRunningPollRefreshInFlight = false;
     this.shellSummary = null;
     this.repoState = { valid: false, root: "", launcherPath: "", missingPaths: ["vault-root"] };
     this.openViews = new Set();
@@ -3263,6 +9525,9 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
     await this.loadPluginState();
     this.refreshRepoState();
+    if (typeof this.syncEvidenceGraphConfig === "function") {
+      void this.syncEvidenceGraphConfig({ quiet: true }).catch(() => {});
+    }
 
     this.registerView(VIEW_TYPE_FURNACE_CENTER, (leaf) => new FurnaceCenterView(leaf, this));
     this.registerView(VIEW_TYPE_RECENT_RUNS, (leaf) => new RecentRunsView(leaf, this));
@@ -3291,10 +9556,13 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     }));
 
     await this.loadShellSummaryFromDisk();
+    this.updateLongRunningPoller();
+
     this.updateStatusBar();
   }
 
   async onunload() {
+    this.stopLongRunningPoller();
     this.openViews.clear();
   }
 
@@ -3306,61 +9574,14 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         this.runUiAction(() => this.openFurnaceCenterView(), this.t("Open Furnace"));
       },
     });
-    this.addCommand({
-      id: "run-compile",
-      name: this.t("Compile"),
-      callback: () => {
-        this.runUiAction(() => this.runCompileCommand(), this.t("Compile"));
-      },
-    });
-    this.addCommand({
-      id: "run-ask",
-      name: this.t("Ask"),
-      callback: () => {
-        new AskCommandModal(this.app, this).open();
-      },
-    });
-    this.addCommand({
-      id: "capture-note",
-      name: this.t("Capture Note"),
-      callback: () => {
-        new CaptureNoteModal(this.app, this).open();
-      },
-    });
-    this.addCommand({
-      id: "drop-url",
-      name: this.t("Drop URL"),
-      callback: () => {
-        new DropUrlModal(this.app, this).open();
-      },
-    });
-    this.addCommand({
-      id: "drop-file",
-      name: this.t("Drop File"),
-      callback: () => {
-        new DropFileModal(this.app, this).open();
-      },
-    });
-    this.addCommand({
-      id: "drop-image",
-      name: this.t("Drop Image"),
-      callback: () => {
-        new DropImageModal(this.app, this).open();
-      },
-    });
-    this.addCommand({
-      id: "search-workspace",
-      name: this.t("Search Workspace"),
-      callback: () => {
-        new SearchCommandModal(this.app, this).open();
-      },
-    });
   }
 
   registerAdvancedCommands() {
     if (!this.settings.showAdvancedCommands) {
       return;
     }
+    // EP-005: kept for backward compatibility — these views can still be opened individually,
+    // but Furnace Center now also surfaces a unified activity timeline.
     this.addCommand({
       id: "open-recent-runs",
       name: this.t("Open Recent Runs"),
@@ -3389,132 +9610,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         this.runUiAction(() => this.refreshShellSummaryCommand(), this.t("Refresh Furnace Shell"));
       },
     });
-    this.addCommand({
-      id: "run-nightly",
-      name: this.t("Nightly"),
-      callback: () => {
-        this.runUiAction(() => this.runNightlyCommand(), this.t("Nightly"));
-      },
-    });
-    this.addCommand({
-      id: "set-protocol",
-      name: this.t("Set Protocol"),
-      callback: () => {
-        new ProtocolCommandModal(this.app, this).open();
-      },
-    });
-    this.addCommand({
-      id: "file-back",
-      name: this.t("File Back"),
-      callback: () => {
-        this.openFileBackModal();
-      },
-    });
-    this.addCommand({
-      id: "review-page",
-      name: this.t("Review Page"),
-      callback: () => {
-        this.openReviewPageContextPicker();
-      },
-    });
-    this.addCommand({
-      id: "review-next-page",
-      name: this.t("Review Next Page"),
-      callback: () => {
-        this.openReviewNextTransitionPicker();
-      },
-    });
-    this.addCommand({
-      id: "batch-review-pages",
-      name: this.t("Batch Review Pages"),
-      callback: () => {
-        this.openReviewBatchSuggestionPicker();
-      },
-    });
-    this.addCommand({
-      id: "review-rewrite",
-      name: this.t("Review Rewrite"),
-      callback: () => {
-        this.openReviewRewriteContextPicker();
-      },
-    });
-    this.addCommand({
-      id: "apply-rewrite",
-      name: this.t("Apply Rewrite"),
-      callback: () => {
-        this.openApplyRewriteModal();
-      },
-    });
-    this.addCommand({
-      id: "retire-concept",
-      name: this.t("Retire Concept"),
-      callback: () => {
-        this.openRetireConceptModal();
-      },
-    });
-    this.addCommand({
-      id: "reactivate-concept",
-      name: this.t("Reactivate Concept"),
-      callback: () => {
-        this.openReactivateConceptModal();
-      },
-    });
-    this.addCommand({
-      id: "apply-archive",
-      name: this.t("Apply archive"),
-      callback: () => {
-        this.openApplyArchiveContextPicker();
-      },
-    });
-    this.addCommand({
-      id: "revert-archive",
-      name: this.t("Revert archive"),
-      callback: () => {
-        this.openRevertArchiveContextPicker();
-      },
-    });
-    this.addCommand({
-      id: "review-action",
-      name: this.t("Review Action"),
-      callback: () => {
-        this.openReviewActionContextPicker();
-      },
-    });
-    this.addCommand({
-      id: "apply-action",
-      name: this.t("Apply Action"),
-      callback: () => {
-        this.openApplyActionContextPicker();
-      },
-    });
-    this.addCommand({
-      id: "revert-action",
-      name: this.t("Revert Action"),
-      callback: () => {
-        this.openRevertActionContextPicker();
-      },
-    });
-    this.addCommand({
-      id: "apply-all-accepted-low-risk",
-      name: this.t("Apply All Accepted Low-Risk Actions"),
-      callback: () => {
-        this.runUiAction(() => this.runApplyAllAcceptedLowRiskCommand(), this.t("Apply All Accepted Low-Risk Actions"));
-      },
-    });
-    this.addCommand({
-      id: "revert-last-action-batch",
-      name: this.t("Revert Last Action Batch"),
-      callback: () => {
-        this.runUiAction(() => this.runRevertLastBatchCommand(), this.t("Revert Last Action Batch"));
-      },
-    });
-    this.addCommand({
-      id: "open-home-note",
-      name: this.t("Open Home Note"),
-      callback: () => {
-        this.runUiAction(() => this.openHomeNote(), this.t("Open Home Note"));
-      },
-    });
   }
 
   registerOpenView(view) {
@@ -3534,54 +9629,30 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async loadPluginState() {
-    const data = (await this.loadData()) || {};
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, data.settings || {});
-    this.settings.locale = normalizeLocale(this.settings.locale);
-    const recentRuns = Array.isArray(data.recentRuns)
-      ? data.recentRuns
-        .filter((record) => record && typeof record === "object")
-        .map((record) => ({
-          ...record,
-          argv: Array.isArray(record.argv) ? record.argv.map((value) => String(value || "")) : [],
-          command: String(record.command || (Array.isArray(record.argv) && record.argv.length ? record.argv[0] : "")),
-          protocol: String(record.protocol || ""),
-          backend: String(record.backend || ""),
-          model: String(record.model || ""),
-          codexReasoningEffort: String(record.codexReasoningEffort || ""),
-          promptProfile: String(record.promptProfile || ""),
-          retryPromptProfile: String(record.retryPromptProfile || ""),
-          rewriteProposalPaths: this.normalizeRelativePathList(record.rewriteProposalPaths),
-          rewriteProposalSlugs: this.normalizeRelativePathList(record.rewriteProposalSlugs),
-          fallbackFrom: String(record.fallbackFrom || ""),
-          logPath: String(record.logPath || ""),
-          stdoutRaw: this.trimDiagnosticText(record.stdoutRaw || ""),
-          stderrRaw: this.trimDiagnosticText(record.stderrRaw || ""),
-          exitCode: record.exitCode === 0 || Number.isFinite(Number(record.exitCode || NaN))
-            ? Number(record.exitCode)
-            : "",
-          timeline: Array.isArray(record.timeline)
-            ? record.timeline
-              .filter((event) => event && typeof event === "object")
-              .map((event) => ({
-                stage: String(event.stage || ""),
-                at: String(event.at || ""),
-                summary: String(event.summary || ""),
-                status: String(event.status || ""),
-              }))
-            : [],
-        }))
-      : [];
-    const llmHealth = this.normalizeLlmHealthState(data.llmHealth) || this.inferLlmHealthFromRecentRuns(recentRuns);
-    this.pluginState = { recentRuns, llmHealth };
-    this.trimRecentRuns();
+    return loadProductShellPluginState(this);
   }
 
   async savePluginState() {
-    await this.saveData({
-      settings: this.settings,
-      recentRuns: this.pluginState.recentRuns,
-      llmHealth: this.pluginState.llmHealth,
-    });
+    return saveProductShellPluginState(this);
+  }
+
+  getAdvancedSectionExpanded(key) {
+    return getProductShellAdvancedSectionExpanded(this, key);
+  }
+
+  async setAdvancedSectionExpanded(key, value) {
+    return setProductShellAdvancedSectionExpanded(this, key, value);
+  }
+
+  // R89: 持久化 pending（运行时不变；只在 save 时序列化）
+  serializePendingSubmissions() {
+    return serializePendingSubmissionList(this.pendingSubmissions);
+  }
+
+  // R89: 启动时从持久化 settings hydrate；超过 TTL 24h 的 running/received → failed
+  // R90: done 状态加 7 天 TTL（避免无限堆积）
+  hydratePendingSubmissions(raw) {
+    return hydratePendingSubmissionList(raw);
   }
 
   trimRecentRuns() {
@@ -3589,477 +9660,75 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     this.pluginState.recentRuns = this.pluginState.recentRuns.slice(0, limit);
   }
 
-  trimDiagnosticText(value, limit = 16000) {
-    const text = String(value || "");
-    if (!text) {
-      return "";
-    }
-    if (text.length <= limit) {
-      return text;
-    }
-    return `${text.slice(0, limit)}\n...[truncated]`;
-  }
-
   normalizeLlmHealthState(value) {
-    if (!value || typeof value !== "object") {
-      return null;
-    }
-    const status = String(value.status || "").trim() || "unknown";
-    return {
-      status,
-      backend: String(value.backend || "").trim(),
-      model: String(value.model || "").trim(),
-      reason: String(value.reason || "").trim(),
-      checkedAt: String(value.checkedAt || "").trim(),
-      source: String(value.source || "").trim(),
-      fallbackCommand: String(value.fallbackCommand || "").trim(),
-      logPath: String(value.logPath || "").trim(),
-      resultPath: String(value.resultPath || "").trim(),
-      receiptPath: String(value.receiptPath || "").trim(),
-      stderrSummary: String(value.stderrSummary || "").trim(),
-      stderrRaw: this.trimDiagnosticText(value.stderrRaw || ""),
-    };
-  }
-
-  isLlmRelevantRecord(record) {
-    if (!record || typeof record !== "object") {
-      return false;
-    }
-    const command = String(record.command || "").trim();
-    return command === "run-ask" || String(record.fallbackFrom || "").trim() === "run-ask";
-  }
-
-  inferLlmHealthFromRecentRuns(records = []) {
-    const recentRuns = Array.isArray(records) ? records : [];
-    for (const record of recentRuns) {
-      if (!this.isLlmRelevantRecord(record)) {
-        continue;
-      }
-      const command = String(record.command || "").trim();
-      if (command === "run-ask" && record.status === "success") {
-        return this.normalizeLlmHealthState({
-          status: "healthy",
-          backend: record.backend,
-          model: record.model,
-          reason: "Recent run-ask succeeded.",
-          checkedAt: record.finishedAt || record.startedAt,
-          source: command,
-          logPath: record.logPath,
-          resultPath: record.resultPath,
-          receiptPath: record.receiptPath,
-        });
-      }
-      if (command === "run-ask" && record.status === "failed" && this.llmBackendUnavailable(record.errorSummary || record.stderrSummary || "")) {
-        return this.normalizeLlmHealthState({
-          status: "degraded",
-          backend: record.backend,
-          model: record.model,
-          reason: record.errorSummary || record.stderrSummary || "Recent run-ask fell back to deterministic ask.",
-          checkedAt: record.finishedAt || record.startedAt,
-          source: command,
-          fallbackCommand: "ask",
-          logPath: record.logPath,
-          stderrSummary: record.stderrSummary,
-          stderrRaw: record.stderrRaw,
-        });
-      }
-      if (command === "ask" && String(record.fallbackFrom || "").trim() === "run-ask") {
-        return this.normalizeLlmHealthState({
-          status: "degraded",
-          backend: record.backend,
-          model: record.model,
-          reason: "Recent run-ask fell back to deterministic ask.",
-          checkedAt: record.finishedAt || record.startedAt,
-          source: "run-ask",
-          fallbackCommand: command,
-          logPath: record.logPath,
-          resultPath: record.resultPath,
-        });
-      }
-    }
-    return null;
+    return normalizeLlmHealthState(this, value);
   }
 
   currentLlmHealth() {
-    const llmStatus = this.shellSummary && typeof this.shellSummary === "object" ? this.shellSummary.llm_status || {} : {};
-    const selected = this.currentLlmSelection();
-    const persisted = this.normalizeLlmHealthState(this.pluginState.llmHealth);
-    const inferred = this.inferLlmHealthFromRecentRuns(this.pluginState.recentRuns);
-    let health = inferred || persisted || {
-      status: "unknown",
-      backend: selected.backend || String(llmStatus.backend || ""),
-      model: selected.model || String(llmStatus.effective_model || llmStatus.model || ""),
-      reason: llmStatus.configured ? "No recent LLM health check yet." : "LLM is not configured.",
-      checkedAt: "",
-      source: "",
-      fallbackCommand: "",
-      logPath: "",
-      resultPath: "",
-      receiptPath: "",
-      stderrSummary: "",
-      stderrRaw: "",
-    };
-    if (health.backend && selected.backend && health.backend !== selected.backend) {
-      health = {
-        ...health,
-        status: "unknown",
-        backend: selected.backend,
-        model: selected.model || health.model,
-        reason: "Current route changed since the last recorded ask.",
-        fallbackCommand: "",
-      };
-    }
-    return {
-      ...health,
-      backend: health.backend || selected.backend || String(llmStatus.backend || ""),
-      model: health.model || selected.model || String(llmStatus.effective_model || llmStatus.model || ""),
-    };
+    return currentLlmHealth(this);
   }
 
   latestLlmRun() {
-    return this.pluginState.recentRuns.find((record) => this.isLlmRelevantRecord(record)) || null;
-  }
-
-  latestShellSyncRun() {
-    return this.pluginState.recentRuns.find((record) => record && record.command === "shell-status") || null;
+    return latestLlmRun(this);
   }
 
   currentShellSyncState() {
-    const runningRecord = this.pluginState.recentRuns.find((record) => record && record.command === "shell-status" && record.status === "running");
-    if (runningRecord) {
-      return {
-        status: "running",
-        reason: this.t("Refreshing shell summary."),
-        checkedAt: runningRecord.startedAt || "",
-        logPath: runningRecord.logPath || "",
-      };
-    }
-    const latestRecord = this.latestShellSyncRun();
-    if (latestRecord && latestRecord.status === "failed") {
-      return {
-        status: "failed",
-        reason: latestRecord.errorSummary || this.t("Latest refresh failed."),
-        checkedAt: latestRecord.finishedAt || latestRecord.startedAt || "",
-        logPath: latestRecord.logPath || "",
-      };
-    }
-    if (!this.shellSummary) {
-      return {
-        status: "unknown",
-        reason: this.t("shell-summary.json has not been generated yet. Run Refresh, Compile, or Nightly first."),
-        checkedAt: "",
-        logPath: latestRecord && latestRecord.logPath ? latestRecord.logPath : "",
-      };
-    }
-    return {
-      status: "healthy",
-      reason: this.t("Summary ready."),
-      checkedAt: String(this.shellSummary.generated_at || (latestRecord && (latestRecord.finishedAt || latestRecord.startedAt)) || ""),
-      logPath: latestRecord && latestRecord.logPath ? latestRecord.logPath : "",
-    };
-  }
-
-  parseTimestampMs(value) {
-    const timestamp = Date.parse(String(value || ""));
-    return Number.isFinite(timestamp) ? timestamp : NaN;
+    return currentShellSyncState(this);
   }
 
   selfCheckItems() {
-    const llmStatus = this.shellSummary && typeof this.shellSummary === "object" ? this.shellSummary.llm_status || {} : {};
-    const health = this.currentLlmHealth();
-    const latestLlmRun = this.latestLlmRun();
-    const availableBackends = Array.isArray(llmStatus.available_backends) ? llmStatus.available_backends.filter(Boolean) : [];
-    const requestedBackend = String(llmStatus.backend_requested || this.settings.llmBackend || "").trim();
-    const effectiveBackend = String(llmStatus.backend || "").trim();
-    const selected = this.currentLlmSelection();
-    const summaryTimestamp = this.parseTimestampMs(this.shellSummary && this.shellSummary.generated_at);
-    const summaryAgeMs = Number.isFinite(summaryTimestamp) ? Date.now() - summaryTimestamp : NaN;
-    const items = [];
-
-    items.push({
-      key: "runtime",
-      status: this.repoState.valid ? "healthy" : "failed",
-      title: "Runtime contract",
-      detail: this.repoState.valid
-        ? this.t("launcher {launcher} · root {root}", { launcher: this.settings.launcherPath || "", root: this.repoState.root || "" })
-        : this.t("Missing runtime paths: {missing}", { missing: this.repoState.missingPaths.join(", ") }),
-    });
-
-    if (!this.shellSummary) {
-      items.push({
-        key: "summary",
-        status: "failed",
-        title: "Shell summary",
-        detail: this.t("shell-summary.json has not been generated yet. Run Refresh, Compile, or Nightly first."),
-      });
-    } else {
-      items.push({
-        key: "summary",
-        status: Number.isFinite(summaryAgeMs) && summaryAgeMs > 15 * 60 * 1000 ? "warning" : "healthy",
-        title: "Shell summary",
-        detail: Number.isFinite(summaryAgeMs) && summaryAgeMs > 15 * 60 * 1000
-          ? this.t("Summary is stale; refresh before trusting the home surface.")
-          : this.t("Generated {time}", { time: String(this.shellSummary.generated_at || "") }),
-      });
-    }
-
-    items.push({
-      key: "route",
-      status: requestedBackend && effectiveBackend && (!availableBackends.length || availableBackends.includes(effectiveBackend)) ? "healthy" : "failed",
-      title: "LLM route",
-      detail: this.t("requested {requested} · effective {effective} · available {available}", {
-        requested: requestedBackend || this.t("unconfigured"),
-        effective: effectiveBackend || this.t("unconfigured"),
-        available: availableBackends.length ? availableBackends.join(", ") : this.t("none"),
-      }),
-    });
-
-    if (!requestedBackend) {
-      items.push({
-        key: "backend-discovery",
-        status: "warning",
-        title: "Backend discovery",
-        detail: this.t("No explicit LLM backend is selected. Choose one in Product Shell settings or set AIWIKI_LLM_BACKEND."),
-      });
-    } else {
-      const backendVisible = availableBackends.includes(requestedBackend);
-      items.push({
-        key: "backend-discovery",
-        status: backendVisible ? "healthy" : "warning",
-        title: "Backend discovery",
-        detail: backendVisible
-          ? this.t("Product Shell runtime can see the selected backend {backend}.", { backend: requestedBackend })
-          : this.t("Product Shell runtime cannot see the selected backend {backend}.", { backend: requestedBackend }),
-      });
-    }
-
-    if (!latestLlmRun) {
-      items.push({
-        key: "latest-ask",
-        status: "unknown",
-        title: "Latest ask execution",
-        detail: this.t("No Product Shell ask has been recorded yet."),
-      });
-    } else {
-      const latestStatus = latestLlmRun.status === "success"
-        ? "healthy"
-        : String(latestLlmRun.fallbackFrom || "").trim() === "run-ask"
-          ? "warning"
-          : "failed";
-      const latestDetail = latestStatus === "healthy"
-        ? this.t("Latest run-ask succeeded.")
-        : latestStatus === "warning"
-          ? this.t("Latest run-ask fell back to deterministic ask.")
-          : this.t("Latest run-ask failed without deterministic fallback.");
-      items.push({
-        key: "latest-ask",
-        status: latestStatus,
-        title: "Latest ask execution",
-        detail: `${latestDetail} ${latestLlmRun.errorSummary || latestLlmRun.resultPath || ""}`.trim(),
-      });
-    }
-
-    if (latestLlmRun && latestLlmRun.backend && selected.backend && latestLlmRun.backend !== selected.backend) {
-      items.push({
-        key: "route-drift",
-        status: "warning",
-        title: "Route drift",
-        detail: this.t("Latest Product Shell ask used {latest}; current route is {current}.", {
-          latest: latestLlmRun.backend,
-          current: selected.backend,
-        }),
-      });
-    } else {
-      items.push({
-        key: "route-drift",
-        status: "healthy",
-        title: "Route drift",
-        detail: this.t("Product Shell ask history matches the current route."),
-      });
-    }
-
-    if (health.status === "degraded" || health.status === "failed") {
-      items.push({
-        key: "health",
-        status: "warning",
-        title: "LLM health",
-        detail: health.reason || this.t("Recent run-ask fell back to deterministic ask."),
-      });
-    }
-
-    return items;
+    return selfCheckItems(this);
   }
 
   updateLlmHealth(nextState) {
-    this.pluginState.llmHealth = this.normalizeLlmHealthState(nextState);
-    this.updateStatusBar();
-    this.refreshOpenViews();
-    void this.savePluginState();
+    return updateLlmHealth(this, nextState);
   }
 
   recordLlmHealthFromRun(record, overrides = {}) {
-    if (!record || typeof record !== "object") {
-      return;
-    }
-    this.updateLlmHealth({
-      status: overrides.status || "unknown",
-      backend: overrides.backend || record.backend,
-      model: overrides.model || record.model,
-      reason: overrides.reason || record.errorSummary || "",
-      checkedAt: overrides.checkedAt || record.finishedAt || record.startedAt || new Date().toISOString(),
-      source: overrides.source || record.command || "",
-      fallbackCommand: overrides.fallbackCommand || record.fallbackFrom || "",
-      logPath: overrides.logPath || record.logPath || "",
-      resultPath: overrides.resultPath || record.resultPath || "",
-      receiptPath: overrides.receiptPath || record.receiptPath || "",
-      stderrSummary: overrides.stderrSummary || record.stderrSummary || "",
-      stderrRaw: overrides.stderrRaw || record.stderrRaw || "",
-    });
+    return recordLlmHealthFromRun(this, record, overrides);
   }
 
-  launcherIsExecutable(launcherPath) {
-    if (!launcherPath || !fs.existsSync(launcherPath)) {
-      return false;
-    }
-    try {
-      fs.accessSync(launcherPath, fs.constants.X_OK);
-      return true;
-    } catch (error) {
-      return false;
-    }
-  }
+  refreshRepoState() { this.repoState = refreshRepoState(this); this.updateStatusBar(); this.refreshOpenViews(); }
 
-  refreshRepoState() {
-    const adapter = this.app.vault && this.app.vault.adapter;
-    const root = adapter && typeof adapter.basePath === "string" ? adapter.basePath : "";
-    const launcherPath = this.resolveLauncherPath(root);
-    const missingPaths = [];
-    if (!root) {
-      missingPaths.push("vault-root");
-    } else {
-      [
-        "raw",
-        "wiki",
-        "schema",
-        "output",
-        ".aiwiki",
-      ].forEach((relativePath) => {
-        if (!fs.existsSync(path.join(root, relativePath))) {
-          missingPaths.push(relativePath);
-        }
-      });
-      if (!this.launcherIsExecutable(launcherPath)) {
-        missingPaths.push(this.settings.launcherPath);
-      }
-    }
-    this.repoState = {
-      valid: missingPaths.length === 0,
-      root,
-      launcherPath,
-      missingPaths,
-    };
-    this.updateStatusBar();
-    this.refreshOpenViews();
-  }
-
-  resolveLauncherPath(root) {
-    const launcherPath = String(this.settings.launcherPath || DEFAULT_SETTINGS.launcherPath).trim();
-    if (!root || !launcherPath) {
-      return "";
-    }
-    if (path.isAbsolute(launcherPath)) {
-      return launcherPath;
-    }
-    return path.join(root, launcherPath);
-  }
 
   getActiveProtocol() {
-    return String(this.shellSummary && this.shellSummary.active_protocol ? this.shellSummary.active_protocol : "general");
+    return getActiveProtocolFromSummary(this.shellSummary);
   }
 
   getAvailableProtocols() {
-    const fromSummary = this.shellSummary && Array.isArray(this.shellSummary.available_protocols)
-      ? this.shellSummary.available_protocols.filter((item) => typeof item === "string" && item)
-      : [];
-    return fromSummary.length ? fromSummary : DEFAULT_PROTOCOLS;
+    return getAvailableProtocolsFromSummary(this.shellSummary);
   }
 
   getActiveFilePath() {
-    const activeFile = this.app.workspace.getActiveFile ? this.app.workspace.getActiveFile() : null;
-    return activeFile && typeof activeFile.path === "string" ? activeFile.path : "";
+    return getActiveFilePathFromApp(this.app);
   }
 
   getActiveConceptSlug() {
-    const activePath = this.getActiveFilePath();
-    if (!activePath.startsWith("wiki/concepts/") || !activePath.endsWith(".md")) {
-      return "";
-    }
-    return path.basename(activePath, ".md");
+    return getConceptSlugForPath(this.getActiveFilePath());
   }
 
   getActiveOutputPath() {
-    const activePath = this.getActiveFilePath();
-    if (activePath.startsWith("output/") && activePath.endsWith(".md")) {
-      return activePath;
-    }
-    return "";
+    return getOutputPathForPath(this.getActiveFilePath());
   }
 
   getActiveCuratedPagePath() {
-    const activePath = this.getActiveFilePath();
-    if (
-      activePath.endsWith(".md")
-      && (activePath.startsWith("wiki/decisions/") || activePath.startsWith("wiki/judgments/"))
-    ) {
-      return activePath;
-    }
-    return "";
+    return getCuratedPagePathForSummary(this.getActiveFilePath(), this.shellSummary);
   }
 
-  appendOptionalArg(args, flag, value) {
-    const normalized = String(value || "").trim();
-    if (!normalized) {
-      return args;
-    }
-    args.push(flag, normalized);
-    return args;
+  normalizeRewriteProposalObjects(value) {
+    return normalizeRewriteProposalObjects(value);
   }
 
-  parseLineList(value) {
-    return Array.from(
-      new Set(
-        String(value || "")
-          .split(/\r?\n/)
-          .map((item) => String(item || "").trim())
-          .filter(Boolean)
-      )
-    );
+  normalizeRewriteFollowupActions(value) {
+    return normalizeRewriteFollowupActions(value);
   }
 
-  normalizeRelativePathList(value) {
-    const items = Array.isArray(value) ? value : [value];
-    return Array.from(
-      new Set(
-        items
-          .map((item) => String(item || "").trim())
-          .filter(Boolean)
-      )
-    );
-  }
-
-  extractRewriteProposalPaths(payload) {
-    if (!payload || typeof payload !== "object") {
-      return [];
-    }
-    return this.normalizeRelativePathList(payload.updated_rewrite_proposal_pages);
-  }
-
-  extractRewriteProposalSlugs(paths) {
-    return this.normalizeRelativePathList(paths).map((proposalPath) => path.basename(proposalPath, ".md"));
+  rewriteProposalPathsFromObjects(objects) {
+    return rewriteProposalPathsFromObjects(objects);
   }
 
   rewriteCandidatesForSlugs(slugs, mode = "review") {
-    const normalized = new Set(this.normalizeRelativePathList(slugs));
+    const normalized = new Set(normalizeRelativePathList(slugs));
     if (!normalized.size) {
       return [];
     }
@@ -4067,29 +9736,11 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   rewriteProposalSummary(record) {
-    const count = Array.isArray(record && record.rewriteProposalPaths) ? record.rewriteProposalPaths.length : 0;
-    if (!count) {
-      return "";
-    }
-    return this.t("rewrite proposals: {count}", { count });
+    return rewriteProposalSummary(this, record);
   }
 
-  openRewriteRecovery(record) {
-    const rewriteControls = this.rewriteCandidatesForSlugs(record && record.rewriteProposalSlugs, "review");
-    if (rewriteControls.length === 1) {
-      this.openReviewRewriteTransitionPicker(rewriteControls[0]);
-      return;
-    }
-    if (rewriteControls.length > 1) {
-      this.openReviewRewriteContextPicker(rewriteControls);
-      return;
-    }
-    const rewriteSlugs = this.normalizeRelativePathList(record && record.rewriteProposalSlugs);
-    if (rewriteSlugs.length === 1) {
-      this.openReviewRewriteModal({ slug: rewriteSlugs[0] });
-      return;
-    }
-    this.runUiAction(() => this.openReviewCenterView(), this.t("Open Review Center"));
+  openRewriteFollowup(record) {
+    return openRewriteFollowupForRecord(this, record);
   }
 
   openStructuredCommandModal(spec) {
@@ -4101,73 +9752,19 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   controlIdSet(key) {
-    const executionControls = this.shellSummary && typeof this.shellSummary === "object"
-      ? this.shellSummary.execution_controls
-      : null;
-    const values = executionControls && Array.isArray(executionControls[key]) ? executionControls[key] : [];
-    return new Set(values.map((item) => String(item || "").trim()).filter(Boolean));
+    return controlIdSet(this, key);
   }
 
   reviewControlList(key) {
-    const reviewControls = this.shellSummary && typeof this.shellSummary === "object"
-      ? this.shellSummary.review_controls
-      : null;
-    return reviewControls && Array.isArray(reviewControls[key]) ? reviewControls[key] : [];
+    return reviewControlList(this, key);
   }
 
   executionControlList(key) {
-    const executionControls = this.shellSummary && typeof this.shellSummary === "object"
-      ? this.shellSummary.execution_controls
-      : null;
-    return executionControls && Array.isArray(executionControls[key]) ? executionControls[key] : [];
-  }
-
-  uniqueContextOptions(options, keyName = "value") {
-    const seen = new Set();
-    return (Array.isArray(options) ? options : []).filter((option) => {
-      if (!option || typeof option !== "object") {
-        return false;
-      }
-      const key = String(option[keyName] || option.value || option.pagePath || option.actionId || option.entryId || "").trim();
-      if (!key || seen.has(key)) {
-        return false;
-      }
-      seen.add(key);
-      return true;
-    });
-  }
-
-  inferActionIdFromReceipt(receipt) {
-    if (!receipt || typeof receipt !== "object") {
-      return "";
-    }
-    return String(receipt.action_id || "").trim();
+    return executionControlList(this, key);
   }
 
   reviewPageControlItems() {
-    const pages = this.reviewControlList("pages");
-    return this.uniqueContextOptions(
-      pages.map((page) => {
-        const kind = String(page.kind || "").trim() || "page";
-        const status = String(page.status || "").trim() || "unknown";
-        const metaText = truncateText(reviewObjectMetaText(page, this.locale()) || "review object", 180);
-        return {
-          value: page.path,
-          label: page.title || page.path || "review-page",
-          description: metaText || `${this.t(kind)} | ${displayCuratedStatus(status, this.locale())} | ${this.t("review object")}`,
-          pageId: String(page.page_id || ""),
-          pagePath: String(page.path || ""),
-          pageKind: kind,
-          currentStatus: status,
-          confidence: String(page.confidence || ""),
-          canRefreshReview: Boolean(page.can_refresh_review),
-          allowedTransitions: Array.isArray(page.allowed_transitions) ? page.allowed_transitions : [],
-          preferredTransitions: Array.isArray(page.preferred_transitions) ? page.preferred_transitions : [],
-          defaultTransition: String(page.default_transition || ""),
-        };
-      }),
-      "pagePath"
-    );
+    return reviewPageControlItems(this);
   }
 
   nextReviewCandidate() {
@@ -4176,313 +9773,55 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   reviewKindLabel(kind, count = 1) {
-    const normalized = String(kind || "").trim();
-    if (normalized === "decision") {
-      return count === 1 ? this.t("decision") : this.t("decisions");
-    }
-    if (normalized === "judgment") {
-      return count === 1 ? this.t("judgment") : this.t("judgments");
-    }
-    return count === 1 ? this.t("page") : this.t("pages");
+    return reviewKindLabel(this, kind, count);
   }
 
   commonReviewTransitionOptions(pages) {
-    const controls = Array.isArray(pages) ? pages.filter((page) => page && typeof page === "object") : [];
-    if (!controls.length) {
-      return [];
-    }
-    const stats = new Map();
-    controls.forEach((page) => {
-      const seen = new Set();
-      this.transitionOptions("page", page).forEach((option) => {
-        if (seen.has(option.value)) {
-          return;
-        }
-        seen.add(option.value);
-        const current = stats.get(option.value) || {
-          value: option.value,
-          label: option.label,
-          sharedCount: 0,
-          preferredCount: 0,
-          defaultCount: 0,
-        };
-        current.label = option.label;
-        current.sharedCount += 1;
-        if (option.isPreferred) {
-          current.preferredCount += 1;
-        }
-        if (option.isDefault) {
-          current.defaultCount += 1;
-        }
-        stats.set(option.value, current);
-      });
-    });
-    return Array.from(stats.values())
-      .filter((option) => option.sharedCount === controls.length)
-      .sort((left, right) => {
-        if (left.defaultCount !== right.defaultCount) {
-          return right.defaultCount - left.defaultCount;
-        }
-        if (left.preferredCount !== right.preferredCount) {
-          return right.preferredCount - left.preferredCount;
-        }
-        return String(left.label || "").localeCompare(String(right.label || ""));
-      });
+    return commonReviewTransitionOptions(this, pages);
   }
 
   reviewBatchSuggestions() {
-    const groups = new Map();
-    this.visibleReviewPageCandidates().forEach((page) => {
-      const prioritized = this.preferredTransitionOptions("page", page);
-      const selectedOptions = prioritized.length
-        ? prioritized
-        : this.transitionOptions("page", page).filter((option) => option.isDefault).slice(0, 1);
-      selectedOptions.forEach((transition) => {
-        const kind = String(page.pageKind || "page").trim() || "page";
-        const key = `${kind}::${transition.value}`;
-        const current = groups.get(key) || {
-          key,
-          kind,
-          status: transition.value,
-          transitionLabel: transition.label,
-          pages: [],
-        };
-        current.pages.push(page);
-        groups.set(key, current);
-      });
-    });
-    return Array.from(groups.values())
-      .filter((group) => group.pages.length >= 2)
-      .map((group) => {
-        const count = group.pages.length;
-        const kindLabel = this.reviewKindLabel(group.kind, count);
-        return {
-          key: group.key,
-          kind: group.kind,
-          status: group.status,
-          label: `${group.transitionLabel} · ${count} ${kindLabel}`,
-          description: `${count} ${kindLabel} ${this.t("share the recommended transition")} ${String(group.transitionLabel || "").toLowerCase()}.`,
-          pagePaths: group.pages.map((page) => page.pagePath).filter(Boolean),
-          pages: group.pages,
-          statusOptions: this.commonReviewTransitionOptions(group.pages),
-        };
-      })
-      .sort((left, right) => {
-        if (right.pagePaths.length !== left.pagePaths.length) {
-          return right.pagePaths.length - left.pagePaths.length;
-        }
-        return String(left.label || "").localeCompare(String(right.label || ""));
-      });
+    return reviewBatchSuggestions(this);
   }
 
   rewriteControlItems(mode = "review") {
-    const proposals = this.reviewControlList("rewrite_proposals");
-    return this.uniqueContextOptions(
-      proposals
-        .filter((proposal) => (mode === "apply" ? Boolean(proposal.can_apply) : Boolean(proposal.can_review)))
-        .map((proposal) => {
-          const status = String(proposal.status || "").trim() || "unknown";
-          const priority = String(proposal.priority || "").trim() || "medium";
-          return {
-            value: proposal.slug,
-            label: proposal.title || proposal.slug || "rewrite-proposal",
-            description: `${displayRewriteStatus(status, this.locale())} | ${this.t("priority")} ${priority} | ${this.t("score")} ${proposal.score || 0}`,
-            slug: String(proposal.slug || ""),
-            status,
-            currentStatus: String(proposal.current_status || status),
-            proposalPath: String(proposal.proposal_path || ""),
-            targetPath: String(proposal.target_path || ""),
-            canApply: Boolean(proposal.can_apply),
-            canRefreshReview: Boolean(proposal.can_refresh_review),
-            allowedTransitions: Array.isArray(proposal.allowed_transitions) ? proposal.allowed_transitions : [],
-            preferredTransitions: Array.isArray(proposal.preferred_transitions) ? proposal.preferred_transitions : [],
-            defaultTransition: String(proposal.default_transition || ""),
-          };
-        }),
-      "slug"
-    );
+    return rewriteControlItems(this, mode);
   }
 
   actionControlItems(mode = "review") {
-    return this.uniqueContextOptions(
-      this.executionControlList("actions")
-        .filter((action) => {
-          if (mode === "apply") {
-            return Boolean(action.can_apply);
-          }
-          if (mode === "revert") {
-            return Boolean(action.can_revert);
-          }
-          return Boolean(action.can_review);
-        })
-        .map((action) => {
-          const status = String(action.status || "").trim() || "unknown";
-          const priority = String(action.priority || "").trim() || "medium";
-          const primaryPath = String(action.primary_path || "").trim();
-          return {
-            value: action.action_id,
-            label: action.title || action.action_id || "action",
-            description: `${displayActionStatus(status, this.locale())} | ${this.t("priority")} ${priority}${primaryPath ? ` | ${primaryPath}` : ""}`,
-            actionId: String(action.action_id || ""),
-            status,
-            currentStatus: String(action.current_status || status),
-            bundlePath: String(action.bundle_path || ""),
-            canRefreshReview: Boolean(action.can_refresh_review),
-            allowedTransitions: Array.isArray(action.allowed_transitions) ? action.allowed_transitions : [],
-            preferredTransitions: Array.isArray(action.preferred_transitions) ? action.preferred_transitions : [],
-            defaultTransition: String(action.default_transition || ""),
-          };
-        }),
-      "actionId"
-    );
+    return actionControlItems(this, mode);
   }
 
   archiveControlItems(mode = "apply") {
-    return this.uniqueContextOptions(
-      this.executionControlList("archives")
-        .filter((entry) => (mode === "revert" ? Boolean(entry.can_revert) : Boolean(entry.can_apply)))
-        .map((entry) => {
-          const candidateStatus = String(entry.candidate_status || "").trim();
-          const currentTemperature = String(entry.current_temperature || "").trim();
-          return {
-            value: entry.entry_id,
-            label: entry.title || entry.entry_id || "archive-entry",
-            description: `${this.t(candidateStatus || currentTemperature || "archive")} | ${entry.source_path || ""}`,
-            entryId: String(entry.entry_id || ""),
-            allowedTransitions: Array.isArray(entry.allowed_transitions) ? entry.allowed_transitions : [],
-            preferredTransitions: Array.isArray(entry.preferred_transitions) ? entry.preferred_transitions : [],
-            defaultTransition: String(entry.default_transition || ""),
-          };
-        }),
-      "entryId"
-    );
+    return archiveControlItems(this, mode);
   }
 
   actionControlsById() {
-    const controls = this.executionControlList("actions");
-    return new Map(
-      controls
-        .filter((action) => action && typeof action === "object" && String(action.action_id || "").trim())
-        .map((action) => [String(action.action_id || "").trim(), action])
-    );
+    return actionControlsById(this);
   }
 
   archiveControlsById() {
-    const controls = this.executionControlList("archives");
-    return new Map(
-      controls
-        .filter((entry) => entry && typeof entry === "object" && String(entry.entry_id || "").trim())
-        .map((entry) => [String(entry.entry_id || "").trim(), entry])
-    );
+    return archiveControlsById(this);
   }
 
   transitionLabel(controlType, transition) {
-    if (controlType === "page") {
-      return displayCuratedStatus(transition, this.locale());
-    }
-    if (controlType === "rewrite") {
-      return displayRewriteStatus(transition, this.locale());
-    }
-    if (controlType === "action") {
-      return displayActionStatus(transition, this.locale());
-    }
-    if (controlType === "archive") {
-      return transition === "revert" ? this.t("Revert archive") : this.t("Apply archive");
-    }
-    return this.t(String(transition || "transition"));
+    return transitionLabel(this, controlType, transition);
   }
 
   transitionOptions(controlType, control) {
-    if (!control || typeof control !== "object") {
-      return [];
-    }
-    const allowed = Array.isArray(control.allowedTransitions || control.allowed_transitions)
-      ? (control.allowedTransitions || control.allowed_transitions)
-      : [];
-    const preferredSet = new Set(
-      (Array.isArray(control.preferredTransitions || control.preferred_transitions)
-        ? (control.preferredTransitions || control.preferred_transitions)
-        : []
-      ).map((item) => String(item || "").trim()).filter(Boolean)
-    );
-    const defaultTransition = String(control.defaultTransition || control.default_transition || "").trim();
-    return allowed
-      .map((value) => String(value || "").trim())
-      .filter(Boolean)
-      .map((value) => ({
-        value,
-        label: this.transitionLabel(controlType, value),
-        description: preferredSet.has(value) ? this.t("preferred transition") : this.t("allowed transition"),
-        isDefault: value === defaultTransition,
-        isPreferred: preferredSet.has(value),
-      }))
-      .sort((left, right) => {
-        if (left.isDefault !== right.isDefault) {
-          return left.isDefault ? -1 : 1;
-        }
-        if (left.isPreferred !== right.isPreferred) {
-          return left.isPreferred ? -1 : 1;
-        }
-        return String(left.label || "").localeCompare(String(right.label || ""));
-      });
+    return transitionOptions(this, controlType, control);
   }
 
   preferredTransitionOptions(controlType, control) {
-    return this.transitionOptions(controlType, control).filter((option) => option.isPreferred).slice(0, 2);
+    return preferredTransitionOptions(this, controlType, control);
   }
 
   manualReviewOption(controlType) {
-    const labelMap = {
-      page: this.t("Manual review..."),
-      rewrite: this.t("Manual rewrite review..."),
-      action: this.t("Manual action review..."),
-    };
-    return {
-      value: "__manual__",
-      label: labelMap[controlType] || this.t("Manual review..."),
-      description: this.t("keep current status and capture note / confidence in the full form"),
-      isManual: true,
-      isPreferred: false,
-      isDefault: false,
-    };
+    return manualReviewOption(this, controlType);
   }
 
   openTransitionPicker({ title, description, controlType, control, onSubmit, onFallback, onManual, emptyNotice }) {
-    const transitionOptions = this.transitionOptions(controlType, control);
-    if (!transitionOptions.length && typeof onManual !== "function") {
-      if (emptyNotice) {
-        new Notice(emptyNotice);
-      }
-      if (typeof onFallback === "function") {
-        onFallback();
-      }
-      return;
-    }
-    if (!transitionOptions.length && typeof onManual === "function") {
-      onManual();
-      return;
-    }
-    if (transitionOptions.length === 1 && typeof onManual !== "function") {
-      onSubmit(transitionOptions[0].value);
-      return;
-    }
-    const options = transitionOptions.slice();
-    if (typeof onManual === "function") {
-      options.push(this.manualReviewOption(controlType));
-    }
-    this.openContextPicker({
-      title,
-      description,
-      submitLabel: this.t("Use"),
-      options,
-      onSubmit: (option) => {
-        if (option && option.isManual && typeof onManual === "function") {
-          onManual();
-          return;
-        }
-        onSubmit(option.value);
-      },
-    });
+    return openTransitionPickerForControl(this, { title, description, controlType, control, onSubmit, onFallback, onManual, emptyNotice });
   }
 
   async runReviewPageTransition(pagePath, status) {
@@ -4497,8 +9836,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       throw new Error(this.t("Batch review requires at least one page path."));
     }
     const args = ["--batch", ...normalizedPaths, "--status", status];
-    this.appendOptionalArg(args, "--note", note);
-    this.appendOptionalArg(args, "--confidence", confidence);
+    appendOptionalArg(args, "--note", note);
+    appendOptionalArg(args, "--confidence", confidence);
     await this.runCliAction(`Batch Review: ${status}`, "review-page", args);
   }
 
@@ -4527,145 +9866,38 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   openContextAwareAction(spec) {
-    const options = this.uniqueContextOptions(spec.options || [], spec.keyName || "value");
-    if (!options.length) {
-      new Notice(spec.emptyNotice || this.t("No context is currently available; fell back to the manual form."));
-      spec.onFallback();
-      return;
-    }
-    if (options.length === 1) {
-      spec.onSubmit(options[0]);
-      return;
-    }
-    this.openContextPicker({
-      title: spec.title,
-      description: spec.description,
-      submitLabel: spec.submitLabel || "Use",
-      options,
-      onSubmit: spec.onSubmit,
-    });
+    return openContextAwareActionForSpec(this, spec);
   }
 
   async handleVaultChange(relativePath) {
-    if (!relativePath) {
-      return;
-    }
-    if (relativePath === SHELL_SUMMARY_PATH) {
-      await this.loadShellSummaryFromDisk();
-      return;
-    }
-    if (relativePath.startsWith("output/") || relativePath.startsWith("wiki/indexes/")) {
-      this.refreshOpenViews();
-    }
+    return handleProductShellVaultChange(this, relativePath);
+  }
+
+  async syncEvidenceGraphConfig({ quiet = true } = {}) {
+    return syncProductShellEvidenceGraphConfig(this, { quiet });
+  }
+
+  async maybeRepairEvidenceGraphFilter() {
+    return maybeRepairProductShellEvidenceGraphFilter(this);
+  }
+
+  async openEvidenceGraphView() {
+    return openProductShellEvidenceGraphView(this);
   }
 
   updateStatusBar() {
-    if (!this.statusBarItem) {
-      return;
-    }
-    const runningCount = this.pluginState.recentRuns.filter((entry) => entry.status === "running").length;
-    if (!this.repoState.valid) {
-      this.statusBarItem.setText(this.t("Furnace shell unavailable"));
-      this.statusBarItem.setAttribute("aria-label", this.t("Missing runtime paths: {missing}", { missing: this.repoState.missingPaths.join(", ") }));
-      return;
-    }
-    const protocol = this.getActiveProtocol();
-    const llmHealth = this.currentLlmHealth();
-    const syncState = this.currentShellSyncState();
-    const llmSuffix = llmHealth.status === "degraded" ? this.t(" | llm degraded") : "";
-    const syncSuffix = syncState.status === "running" ? this.t(" | syncing") : "";
-    const suffix = runningCount ? this.t(" | running {count}", { count: runningCount }) : "";
-    this.statusBarItem.setText(`${this.t("Furnace")} ${protocol}${llmSuffix}${syncSuffix}${suffix}`);
-    this.statusBarItem.setAttribute("aria-label", this.t("Furnace Product Shell active protocol {protocol}", { protocol }));
+    return updateProductShellStatusBar(this);
   }
 
   async loadShellSummaryFromDisk() {
-    if (!this.repoState.valid) {
-      this.shellSummary = null;
-      this.updateStatusBar();
-      this.refreshOpenViews();
-      return null;
-    }
-    const summaryFile = this.app.vault.getAbstractFileByPath(SHELL_SUMMARY_PATH);
-    if (!summaryFile) {
-      this.shellSummary = null;
-      this.updateStatusBar();
-      this.refreshOpenViews();
-      return null;
-    }
-    try {
-      const text = await this.app.vault.cachedRead(summaryFile);
-      this.shellSummary = readJsonText(text);
-    } catch (error) {
-      console.error("[furnace-product-shell] failed to read shell summary", error);
-      this.shellSummary = null;
-    }
-    this.updateStatusBar();
-    this.refreshOpenViews();
-    return this.shellSummary;
+    return loadProductShellSummaryFromDisk(this);
   }
 
-  async execLauncher(args) {
-    if (!this.repoState.valid) {
-      throw new Error(this.t("Missing runtime paths: {missing}", { missing: this.repoState.missingPaths.join(", ") }));
-    }
-    return await new Promise((resolve, reject) => {
-      const env = Object.assign({}, process.env);
-      if (this.settings.llmBackend) {
-        env.AIWIKI_LLM_BACKEND = this.settings.llmBackend;
-      }
-      if (this.settings.llmModel) {
-        env.AIWIKI_LLM_MODEL = this.settings.llmModel;
-      }
-      if (this.settings.llmNvidiaNimApiKey) {
-        env.AIWIKI_NVIDIA_NIM_API_KEY = this.settings.llmNvidiaNimApiKey;
-      }
-      if (this.settings.llmNvidiaNimBaseUrl) {
-        env.AIWIKI_NVIDIA_NIM_BASE_URL = this.settings.llmNvidiaNimBaseUrl;
-      }
-      const child = spawn(this.repoState.launcherPath, args, {
-        cwd: this.repoState.root,
-        env,
-      });
-      let stdout = "";
-      let stderr = "";
-      child.stdout.on("data", (chunk) => {
-        stdout += String(chunk);
-      });
-      child.stderr.on("data", (chunk) => {
-        stderr += String(chunk);
-      });
-      child.on("error", (error) => {
-        reject(error);
-      });
-      child.on("close", (code) => {
-        let payload = null;
-        try {
-          payload = readJsonText(stdout);
-        } catch (error) {
-          payload = null;
-        }
-        if (code === 0) {
-          resolve({ stdout, stderr, payload, code });
-          return;
-        }
-        const error = new Error(stderr.trim() || stdout.trim() || this.t("Command failed with exit code {code}", { code }));
-        error.code = code;
-        error.stdout = stdout;
-        error.stderr = stderr;
-        error.payload = payload;
-        reject(error);
-      });
-    });
-  }
+  async execLauncher(args) { return execLauncher(this, args); }
+  createRuntimeClient() { return createRuntimeClient(this); }
+  async executeRuntimeCommand(args) { return this.createRuntimeClient().exec(args); }
 
-  runUiAction(action, label = "ui-action") {
-    Promise.resolve()
-      .then(() => action())
-      .catch((error) => {
-        console.error(`[furnace-product-shell] ${label} failed`, error);
-      });
-  }
+  runUiAction(action, label = "ui-action") { runUiAction(this, action, label); }
 
   currentLlmSelection() {
     const llmStatus = this.shellSummary && typeof this.shellSummary === "object" ? this.shellSummary.llm_status || {} : {};
@@ -4677,339 +9909,72 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   resolveAbsoluteWorkspacePath(relativePath) {
-    const normalized = String(relativePath || "").trim();
-    if (!normalized || !this.repoState.root) {
-      return "";
-    }
-    return path.join(this.repoState.root, normalized);
-  }
-
-  runLogRelativePath(record) {
-    return `output/control/plugin-runs/${String(record && record.id ? record.id : "").trim()}.md`;
+    return resolveProductShellRunLogPath(this.repoState.root, relativePath);
   }
 
   persistRunLog(record, details = {}) {
-    if (!record || typeof record !== "object") {
-      return;
-    }
-    const logPath = String(record.logPath || this.runLogRelativePath(record)).trim();
-    const absolutePath = this.resolveAbsoluteWorkspacePath(logPath);
-    if (!logPath || !absolutePath) {
-      return;
-    }
-    record.logPath = logPath;
-    const stdoutText = String(details.stdoutRaw || record.stdoutRaw || "").trim();
-    const stderrText = String(details.stderrRaw || record.stderrRaw || "").trim();
-    const rewriteProposalCount = Array.isArray(record.rewriteProposalPaths) ? record.rewriteProposalPaths.length : 0;
-    const lines = [
-      "# Product Shell Run Log",
-      "",
-      this.t("Generated by Product Shell run logging."),
-      "",
-      `- ${this.t("Status")}: ${this.t(record.status || "unknown")}`,
-      `- ${this.t("Protocol")}: ${record.protocol ? this.t(record.protocol) : this.t("unknown")}`,
-      `- ${this.t("LLM Backend")}: ${record.backend || this.t("unconfigured")}`,
-      `- ${this.t("LLM Model")}: ${record.model || this.t("default")}`,
-      `- ${this.t("Codex effort")}: ${record.codexReasoningEffort || "-"}`,
-      `- ${this.t("Prompt profile")}: ${record.promptProfile || "-"}`,
-      `- ${this.t("Retry prompt")}: ${record.retryPromptProfile || "-"}`,
-      `- ${this.t("Working directory")}: ${this.repoState.root || "."}`,
-      `- ${this.t("Arguments")}: ${record.args || record.command || ""}`,
-      `- ${this.t("Fallback from")}: ${record.fallbackFrom || "-"}`,
-      `- ${this.t("Result path")}: ${record.resultPath || "-"}`,
-      `- ${this.t("Receipt path")}: ${record.receiptPath || "-"}`,
-      ...(rewriteProposalCount
-        ? [`- ${this.t("rewrite proposals: {count}", { count: rewriteProposalCount })}`]
-        : []),
-      `- ${this.t("Log path")}: ${logPath}`,
-      `- ${this.t("Exit code")}: ${record.exitCode === "" ? "-" : String(record.exitCode)}`,
-      `- started: ${record.startedAt || "-"}`,
-      `- finished: ${record.finishedAt || "-"}`,
-      "",
-      "## Timeline",
-      "",
-    ];
-    const timeline = Array.isArray(record.timeline) ? record.timeline : [];
-    if (!timeline.length) {
-      lines.push(`- ${this.t("No stage events recorded.")}`);
-    } else {
-      timeline.forEach((event) => {
-        lines.push(`- ${event.at || "-"} | ${this.t(event.stage || "event")} | ${event.summary || "-"}`);
-      });
-    }
-    if (record.resultPath || record.receiptPath || record.errorSummary) {
-      lines.push("", "## Summary", "");
-      if (record.resultPath) {
-        lines.push(`- ${this.t("Result path")}: ${record.resultPath}`);
-      }
-      if (record.receiptPath) {
-        lines.push(`- ${this.t("Receipt path")}: ${record.receiptPath}`);
-      }
-      if (record.errorSummary) {
-        lines.push(`- error: ${record.errorSummary}`);
-      }
-      if (Array.isArray(record.rewriteProposalPaths) && record.rewriteProposalPaths.length) {
-        lines.push(`- ${this.t("rewrite proposals: {count}", { count: record.rewriteProposalPaths.length })}`);
-        record.rewriteProposalPaths.forEach((proposalPath) => {
-          lines.push(`  - ${proposalPath}`);
-        });
-      }
-    }
-    if (stdoutText) {
-      lines.push("", "## Standard output", "", "```text", stdoutText, "```");
-    }
-    if (stderrText) {
-      lines.push("", "## Standard error", "", "```text", stderrText, "```");
-    }
-    fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
-    fs.writeFileSync(absolutePath, `${lines.join("\n")}\n`, "utf8");
+    persistProductShellRunLog({
+      record,
+      details,
+      t: this.t.bind(this),
+      repoRoot: this.repoState.root || ".",
+    });
   }
 
   async copyText(value) {
-    const text = String(value || "").trim();
-    if (!text) {
-      new Notice(this.t("Nothing to copy."));
-      return false;
-    }
-    if (clipboard && typeof clipboard.writeText === "function") {
-      clipboard.writeText(text);
-      new Notice(this.t("Copied to clipboard."));
-      return true;
-    }
-    if (window.navigator && window.navigator.clipboard && typeof window.navigator.clipboard.writeText === "function") {
-      await window.navigator.clipboard.writeText(text);
-      new Notice(this.t("Copied to clipboard."));
-      return true;
-    }
-    new Notice(this.t("Clipboard is not available in this environment."));
-    return false;
+    return copyProductShellText(this, value);
   }
 
   async revealWorkspacePath(relativePath) {
-    const normalized = String(relativePath || "").trim();
-    const absolutePath = this.resolveAbsoluteWorkspacePath(normalized);
-    if (!normalized || !absolutePath || !fs.existsSync(absolutePath)) {
-      new Notice(this.t("Path not found: {path}", { path: normalized || relativePath || "" }));
-      return;
-    }
-    if (shell && typeof shell.showItemInFolder === "function") {
-      shell.showItemInFolder(absolutePath);
-      return;
-    }
-    if (shell && typeof shell.openPath === "function") {
-      await shell.openPath(path.dirname(absolutePath));
-      return;
-    }
-    new Notice(this.t("Unable to reveal {path}", { path: normalized }));
-  }
-
-  appendRunEvent(record, stage, summary = "", status = "") {
-    if (!record || typeof record !== "object") {
-      return;
-    }
-    if (!Array.isArray(record.timeline)) {
-      record.timeline = [];
-    }
-    record.timeline.push({
-      stage: String(stage || "").trim(),
-      at: new Date().toISOString(),
-      summary: String(summary || "").trim(),
-      status: String(status || "").trim(),
-    });
+    return revealProductShellWorkspacePath(this, relativePath);
   }
 
   createRunRecord(label, args) {
-    const llm = this.currentLlmSelection();
-    const protocol = this.getActiveProtocol();
-    const runId = `run-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
-    const record = {
-      id: runId,
-      label,
-      args: args.join(" "),
-      argv: Array.isArray(args) ? args.slice() : [],
-      command: Array.isArray(args) && args.length ? String(args[0] || "") : "",
-      status: "running",
-      startedAt: new Date().toISOString(),
-      finishedAt: "",
-      protocol,
-      backend: llm.backend,
-      model: llm.model,
-      codexReasoningEffort: llm.codexReasoningEffort || "",
-      promptProfile: "",
-      retryPromptProfile: "",
-      rewriteProposalPaths: [],
-      rewriteProposalSlugs: [],
-      stdoutSummary: "",
-      stderrSummary: "",
-      stdoutRaw: "",
-      stderrRaw: "",
-      resultPath: "",
-      receiptPath: "",
-      logPath: `output/control/plugin-runs/${runId}.md`,
-      exitCode: "",
-      errorSummary: "",
-      fallbackFrom: "",
-      timeline: [],
-    };
-    this.appendRunEvent(record, "Submitted", label || record.args || "command", "running");
-    if (record.protocol || record.backend || record.model) {
-      const context = [record.protocol, record.backend, record.model].filter(Boolean).join(" · ");
-      this.appendRunEvent(record, "Runtime selected", context, "running");
-    }
-    this.pluginState.recentRuns.unshift(record);
-    this.trimRecentRuns();
-    this.persistRunLog(record);
-    this.updateStatusBar();
-    this.refreshOpenViews();
-    void this.savePluginState();
-    return record;
+    return createProductShellPluginRunRecord(this, label, args);
   }
 
   updateRunRecord(record, updates) {
-    Object.assign(record, updates);
-    this.trimRecentRuns();
-    this.persistRunLog(record);
-    this.updateStatusBar();
-    this.refreshOpenViews();
-    void this.savePluginState();
-  }
-
-  extractPrimaryPath(payload) {
-    if (!payload || typeof payload !== "object") {
-      return "";
-    }
-    const candidateKeys = ["path", "output_path", "receipt_path", "state_path", "index_path", "report_path"];
-    for (const key of candidateKeys) {
-      const value = payload[key];
-      if (typeof value === "string" && value.trim()) {
-        return value.trim();
-      }
-    }
-    return "";
+    return updateProductShellPluginRunRecord(this, record, updates);
   }
 
   latestPluginRun() {
-    return this.pluginState.recentRuns.length ? this.pluginState.recentRuns[0] : null;
+    return latestProductShellPluginRun(this);
   }
 
   async rerunRecord(record) {
-    const argv = record && Array.isArray(record.argv) ? record.argv.map((value) => String(value || "")) : [];
-    if (!argv.length) {
-      new Notice(this.t("Cannot re-run this entry because argv was not recorded."));
-      return null;
-    }
-    return await this.runPluginCommand(record.label || record.args || this.t("command"), argv, { refreshAfter: true });
+    return rerunProductShellPluginRecord(this, record);
   }
 
   async runPluginCommand(label, args, options = {}) {
-    const record = this.createRunRecord(label, args);
-    this.appendRunEvent(record, "Executing", args.join(" "), "running");
-    this.updateRunRecord(record, {});
-    try {
-      const result = await this.execLauncher(args);
-      const primaryPath = this.extractPrimaryPath(result.payload);
-      const receiptPath = result.payload && typeof result.payload.receipt_path === "string" ? result.payload.receipt_path : "";
-      const rewriteProposalPaths = this.extractRewriteProposalPaths(result.payload);
-      const rewriteProposalSlugs = this.extractRewriteProposalSlugs(rewriteProposalPaths);
-      if (options.updateSummaryFromPayload && result.payload && result.payload.kind === "product-shell-summary") {
-        this.shellSummary = result.payload;
-        this.updateStatusBar();
-        this.refreshOpenViews();
-      } else if (options.refreshAfter !== false) {
-        await this.refreshShellSummarySilently();
-      }
-      const llm = this.currentLlmSelection();
-      this.appendRunEvent(record, "Completed", primaryPath || receiptPath || this.t("Command completed successfully."), "success");
-      if (primaryPath || receiptPath) {
-        this.appendRunEvent(record, "Artifacts", [primaryPath, receiptPath].filter(Boolean).join(" · "), "success");
-      }
-      if (rewriteProposalPaths.length) {
-        this.appendRunEvent(record, "Rewrite proposals", this.rewriteProposalSummary({ rewriteProposalPaths }), "success");
-      }
-      this.updateRunRecord(record, {
-        status: "success",
-        finishedAt: new Date().toISOString(),
-        exitCode: 0,
-        backend: llm.backend || record.backend,
-        model: llm.model || record.model,
-        codexReasoningEffort: llm.codexReasoningEffort || record.codexReasoningEffort,
-        promptProfile: result.payload && typeof result.payload.prompt_profile === "string" ? result.payload.prompt_profile : record.promptProfile,
-        retryPromptProfile:
-          result.payload && typeof result.payload.retry_prompt_profile === "string" ? result.payload.retry_prompt_profile : record.retryPromptProfile,
-        rewriteProposalPaths,
-        rewriteProposalSlugs,
-        stdoutSummary: truncateText(result.stdout),
-        stderrSummary: truncateText(result.stderr),
-        stdoutRaw: this.trimDiagnosticText(result.stdout),
-        stderrRaw: this.trimDiagnosticText(result.stderr),
-        resultPath: primaryPath,
-        receiptPath,
-      });
-      if (record.command === "run-ask") {
-        this.recordLlmHealthFromRun(record, {
-          status: "healthy",
-          reason: "Recent run-ask succeeded.",
-          source: "run-ask",
-        });
-      }
-      this.persistRunLog(record, { stdoutRaw: result.stdout, stderrRaw: result.stderr });
-      if (options.notice !== false) {
-        new Notice(`${this.t(label)} ${this.t("completed")}.`);
-      }
-      return result.payload;
-    } catch (error) {
-      this.appendRunEvent(record, "Failed", truncateText(error.message || "Command failed", 180), "failed");
-      this.updateRunRecord(record, {
-        status: "failed",
-        finishedAt: new Date().toISOString(),
-        exitCode: Number.isFinite(Number(error.code)) ? Number(error.code) : "",
-        stdoutSummary: truncateText(error.stdout || ""),
-        stderrSummary: truncateText(error.stderr || ""),
-        stdoutRaw: this.trimDiagnosticText(error.stdout || ""),
-        stderrRaw: this.trimDiagnosticText(error.stderr || ""),
-        errorSummary: truncateText(error.message || "Command failed"),
-      });
-      if (record.command === "run-ask" && this.llmBackendUnavailable(error)) {
-        this.recordLlmHealthFromRun(record, {
-          status: "degraded",
-          reason: truncateText(error.message || error.stderr || error.stdout || "LLM backend unavailable", 240),
-          source: "run-ask",
-          fallbackCommand: "ask",
-          stderrSummary: truncateText(error.stderr || ""),
-          stderrRaw: this.trimDiagnosticText(error.stderr || error.stdout || ""),
-        });
-      }
-      this.persistRunLog(record, {
-        stdoutRaw: error.stdout || "",
-        stderrRaw: error.stderr || "",
-      });
-      new Notice(`${this.t(label)} ${this.t("failed: {message}", { message: truncateText(error.message || this.t("unknown error"), 120) })}`);
-      throw error;
-    }
+    return runProductShellPluginCommand(this, label, args, options);
   }
 
   async refreshShellSummarySilently() {
-    try {
-      const result = await this.execLauncher(["shell-status"]);
-      if (result.payload && result.payload.kind === "product-shell-summary") {
-        this.shellSummary = result.payload;
-        this.updateStatusBar();
-        this.refreshOpenViews();
-        return result.payload;
-      }
-    } catch (error) {
-      console.error("[furnace-product-shell] shell-status refresh failed", error);
-    }
-    return await this.loadShellSummaryFromDisk();
+    return refreshProductShellSummarySilently(this);
+  }
+
+  
+  processShellSummaryUpdates(summary) {
+    return processProductShellSummaryUpdates(this, summary);
   }
 
   async refreshShellSummaryCommand() {
-    await this.runPluginCommand(this.t("Refresh Furnace Shell"), ["shell-status"], {
-      refreshAfter: false,
-      updateSummaryFromPayload: true,
-      notice: false,
-    });
+    return refreshProductShellSummaryCommand(this);
   }
+
+  // R90: done 卡"打开报告/查看回执"统一入口；处理 path 缺失 + open 失败 + 用户反馈
+  async openPendingDoneTarget(target, reconcilePath) {
+    return openProductShellPendingDoneTarget(this, target, reconcilePath);
+  }
+
+  async readWorkspaceSnippet(relativePath, length = 420) {
+    return readProductShellWorkspaceSnippet(this, relativePath, length);
+  }
+
+  quoteFileToComposer(relativePath) {
+    return quoteProductShellFileToComposer(this, relativePath);
+  }
+
 
   async runCompileCommand() {
     await this.runPluginCommand(this.t("Compile"), ["compile"], { refreshAfter: true });
@@ -5017,6 +9982,18 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   async runNightlyCommand() {
     await this.runPluginCommand(this.t("Nightly"), ["nightly"], { refreshAfter: true });
+  }
+
+  async runTodaySnoozeCommand(target, days = 1) {
+    const normalizedTarget = String(target || "").trim();
+    if (!normalizedTarget) {
+      return;
+    }
+    await this.runPluginCommand(
+      `${this.t("Snooze")}: ${truncateText(normalizedTarget, 48)}`,
+      ["today-snooze", normalizedTarget, "--days", String(days)],
+      { refreshAfter: true }
+    );
   }
 
   async runShellSearchCommand(query, limit = 8) {
@@ -5044,385 +10021,187 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async openHomeNote() {
-    await this.openWorkspacePath("HOME.md");
+    return openProductShellHomeNote(this);
   }
 
   async openOutputsHub() {
-    const links = this.shellSummary && typeof this.shellSummary === "object" ? this.shellSummary.links || {} : {};
-    const preferredPath = String(links.output_packs_markdown || "wiki/indexes/Outputs.md").trim();
-    await this.openWorkspacePath(preferredPath);
+    return openProductShellOutputsHub(this);
   }
 
   async runProtocolSetCommand(protocol) {
     await this.runPluginCommand(`${this.t("Set Protocol")}: ${protocol}`, ["protocol-set", protocol], { refreshAfter: true });
   }
 
-  llmBackendUnavailable(error) {
-    const text = String(error && error.message ? error.message : error || "").toLowerCase();
-    return [
-      "usage limit",
-      "no quota",
-      "upgrade to pro",
-      "purchase more credits",
-      "organization does not have access",
-      "login again",
-      "timed out",
-      "timeout",
-      "authentication",
-      "auth",
-    ].some((pattern) => text.includes(pattern));
+  pushPendingSubmission(displayText, opts = {}) {
+    return pushPendingSubmissionRuntime(this, displayText, opts);
+  }
+
+  resetPendingSubmissionForRetry(id) {
+    return resetPendingSubmissionRuntimeForRetry(this, id);
+  }
+
+  markPendingSubmissionReceived(id) {
+    return markPendingSubmissionRuntimeReceived(this, id);
+  }
+
+  markPendingSubmissionDone(id, reconcileTarget, reconcilePath) {
+    return markPendingSubmissionRuntimeDone(this, id, reconcileTarget, reconcilePath);
+  }
+
+  isPendingSubmissionDegraded(entry) {
+    return isPendingSubmissionDegradedEntry(entry);
+  }
+
+  markPendingSubmissionFailed(id, error) {
+    return markPendingSubmissionRuntimeFailed(this, id, error);
+  }
+
+  removePendingSubmission(id) {
+    if (removePendingSubmissionRuntimeEntry(this, id)) commitPendingSubmissionRuntimeChange(this);
+  }
+
+  _findPending(id) {
+    return findPendingSubmissionRuntimeEntry(this, id);
+  }
+
+  updatePendingSubmissionRetryArgs(id, retryArgs) {
+    return updatePendingSubmissionRuntimeRetryArgs(this, id, retryArgs);
+  }
+
+  updatePendingSubmissionRunNotes(id, runNotesPath, runId, opts = {}) {
+    return updatePendingSubmissionRuntimeRunNotes(this, id, runNotesPath, runId, opts);
+  }
+
+  updatePendingSubmissionArtifactMeta(id, meta, opts = {}) {
+    return updatePendingSubmissionRuntimeArtifactMeta(this, id, meta, opts);
+  }
+
+  hasActiveLongRunningPending() {
+    return pendingHasActiveLongRunning(this.pendingSubmissions);
+  }
+
+  updateLongRunningPoller() {
+    return updateProductShellLongRunningPoller(this);
+  }
+
+  startLongRunningPoller() {
+    return startProductShellLongRunningPoller(this);
+  }
+
+  stopLongRunningPoller() {
+    return stopProductShellLongRunningPoller(this);
+  }
+
+  getLastSummaryRefreshLabel() {
+    return productShellLastSummaryRefreshLabel(this);
+  }
+
+  reconcilePendingSubmissions(summary) {
+    return reconcilePendingSubmissionsRuntime(this, summary);
+  }
+
+  async runUniversalInputCommand({ payload, title }) {
+    return runProductShellUniversalInputCommand(this, { payload, title });
   }
 
   async runAskCommand({ question, format, mode, protocol }) {
-    const args = [mode, question, "--format", format];
-    if (protocol) {
-      args.push("--protocol", protocol);
-    }
-    try {
-      await this.runPluginCommand(`${this.t("Ask")}: ${truncateText(question, 48)}`, args, { refreshAfter: true });
-    } catch (error) {
-      if (mode === "run-ask" && this.llmBackendUnavailable(error)) {
-        new Notice(this.t("LLM backend unavailable; retried with deterministic ask."));
-        const fallbackArgs = ["ask", question, "--format", format];
-        if (protocol) {
-          fallbackArgs.push("--protocol", protocol);
-        }
-        await this.runPluginCommand(`${this.t("Ask")}: ${truncateText(question, 48)} · ${this.t("Deterministic fallback")}`, fallbackArgs, { refreshAfter: true });
-        const fallbackRecord = this.latestPluginRun();
-        if (fallbackRecord) {
-          this.appendRunEvent(fallbackRecord, "Fallback", this.t("Recent run-ask fell back to deterministic ask."), "success");
-          this.updateRunRecord(fallbackRecord, { fallbackFrom: "run-ask" });
-          this.recordLlmHealthFromRun(fallbackRecord, {
-            status: "degraded",
-            source: "run-ask",
-            fallbackCommand: "ask",
-            reason: "Recent run-ask fell back to deterministic ask.",
-          });
-        }
-        return;
-      }
-      throw error;
-    }
+    return runProductShellAskCommand(this, { question, format, mode, protocol });
+  }
+
+  async runDroppedPayloadsWithAutoAsk({ payloads, question, protocol }) {
+    return runProductShellDroppedPayloadsWithAutoAsk(this, { payloads, question, protocol });
+  }
+
+  completePendingMaterialDrop(id, materialPaths) {
+    return completeProductShellPendingMaterialDrop(this, id, materialPaths);
+  }
+
+  async runDroppedFilesWithAutoAsk({ files, question, protocol }) {
+    return runProductShellDroppedFilesWithAutoAsk(this, { files, question, protocol });
+  }
+
+  async runReportSubgraphCommand({ reportPath }) {
+    return runProductShellReportSubgraphCommand(this, { reportPath });
+  }
+
+  collectReportCandidates() {
+    return collectProductShellReportCandidates(this);
+  }
+
+  openReportSubgraphPicker() {
+    return openProductShellReportSubgraphPicker(this);
   }
 
   async runDropUrlCommand({ url, title }) {
-    const args = ["drop-url", url];
-    if (title) {
-      args.push("--title", title);
-    }
-    await this.runPluginCommand(`${this.t("Drop URL")}: ${truncateText(title || url, 48)}`, args, { refreshAfter: true });
+    return runProductShellDropUrlCommand(this, { url, title });
+  }
+
+  openDropUrlModal(initialUrl = "") {
+    new DropUrlModal(this.app, this).setInitialUrl(initialUrl).open();
   }
 
   async runDropFileCommand({ mode, source, title, maxFiles }) {
-    const normalizedMode = String(mode || "pdf").trim() === "repo" ? "repo" : "pdf";
-    const args = [normalizedMode === "repo" ? "drop-repo" : "drop-pdf", source];
-    if (title) {
-      args.push("--title", title);
-    }
-    if (normalizedMode === "repo") {
-      args.push("--max-files", String(Number.isFinite(Number(maxFiles)) && Number(maxFiles) > 0 ? Number(maxFiles) : 200));
-    }
-    await this.runPluginCommand(`${this.t("Drop File")}: ${truncateText(title || path.basename(source) || source, 48)}`, args, { refreshAfter: true });
+    return runProductShellDropFileCommand(this, { mode, source, title, maxFiles });
   }
 
   async runDropImageCommand({ source, title, noVision }) {
-    const args = ["drop-image", source];
-    if (title) {
-      args.push("--title", title);
-    }
-    if (noVision) {
-      args.push("--no-vision");
-    }
-    await this.runPluginCommand(`${this.t("Drop Image")}: ${truncateText(title || path.basename(source) || source, 48)}`, args, { refreshAfter: true });
+    return runProductShellDropImageCommand(this, { source, title, noVision });
   }
 
   async runDropNoteCommand({ text, title, kind }) {
-    const args = ["drop-note", "--text", text];
-    if (title) {
-      args.push("--title", title);
-    }
-    args.push("--kind", kind || "note");
-    await this.runPluginCommand(`${this.t("Capture Note")}: ${truncateText(title || text, 48)}`, args, { refreshAfter: true });
+    return runProductShellDropNoteCommand(this, { text, title, kind });
   }
 
   async runCliAction(label, command, args = []) {
-    await this.runPluginCommand(label, [command, ...args], { refreshAfter: true });
+    return runProductShellCliAction(this, label, command, args);
   }
 
   async runLauncherCommand(fullCommandStr, label = "Suggested Action") {
-    // Extract CLI subcommand+args from a full command string like:
-    //   "PYTHONPATH=src python3 -m aiwiki.cli --root . review-action foo --status accepted"
-    // The launcher already sets PYTHONPATH and --root, so we strip the prefix.
-    let trimmed = String(fullCommandStr || "").trim();
-    const prefixPattern = /^(?:PYTHONPATH=\S+\s+)?(?:python3?\s+-m\s+aiwiki\.cli\s+)?(?:--root\s+\S+\s+)?/;
-    trimmed = trimmed.replace(prefixPattern, "").trim();
-    if (!trimmed) {
-      new Notice(this.t("Cannot parse command: {command}", { command: truncateText(fullCommandStr, 80) }));
-      return;
-    }
-    // Simple shell-like split respecting double quotes
-    const args = [];
-    let current = "";
-    let inQuote = false;
-    for (let i = 0; i < trimmed.length; i++) {
-      const ch = trimmed[i];
-      if (ch === '"') {
-        inQuote = !inQuote;
-      } else if (ch === " " && !inQuote) {
-        if (current) {
-          args.push(current);
-          current = "";
-        }
-      } else {
-        current += ch;
-      }
-    }
-    if (current) {
-      args.push(current);
-    }
-    await this.runPluginCommand(label, args, { refreshAfter: true });
+    return runProductShellLauncherCommand(this, fullCommandStr, label);
   }
 
   openFileBackModal(prefill = {}) {
-    this.openStructuredCommandModal({
-      title: this.t("File Back"),
-      description: this.t("File an output artifact back into wiki/derived, wiki/decisions, or wiki/judgments."),
-      fields: [
-        {
-          key: "artifact",
-          label: this.t("Artifact path"),
-          required: true,
-          placeholder: this.t("output/reports/....md"),
-          initialValue: () => prefill.artifact || this.getActiveOutputPath(),
-        },
-        {
-          key: "title",
-          label: this.t("Title"),
-          placeholder: this.t("Optional filed-back title"),
-          initialValue: prefill.title || "",
-        },
-        {
-          key: "kind",
-          label: this.t("Kind"),
-          kind: "select",
-          initialValue: prefill.kind || "derived",
-          options: [
-            ["derived", this.t("derived")],
-            ["decision", this.t("decision")],
-            ["judgment", this.t("judgment")],
-          ],
-        },
-        {
-          key: "protocol",
-          label: this.t("Protocol"),
-          kind: "select",
-          initialValue: prefill.protocol || "",
-          options: [["", this.t("current protocol")], ...this.getAvailableProtocols().map((item) => [item, item])],
-        },
-      ],
-      onSubmit: async (values) => {
-        const args = [values.artifact];
-        this.appendOptionalArg(args, "--title", values.title);
-        this.appendOptionalArg(args, "--kind", values.kind);
-        this.appendOptionalArg(args, "--protocol", values.protocol);
-        await this.runCliAction(`File Back: ${values.kind}`, "file-back", args);
-      },
-    });
+    this.openStructuredCommandModal(buildFileBackModalSpec(this, prefill));
   }
 
   openReviewPageModal(prefill = {}) {
-    this.openStructuredCommandModal({
-      title: this.t("Review Page"),
-      description: this.t("Advance a decision or judgment page through the explicit review workflow."),
-      fields: [
-        {
-          key: "page",
-          label: this.t("Page path"),
-          required: true,
-          placeholder: this.t("wiki/decisions/... or wiki/judgments/..."),
-          initialValue: () => prefill.pagePath || this.getActiveCuratedPagePath(),
-        },
-        {
-          key: "status",
-          label: this.t("Status"),
-          required: true,
-          placeholder: this.t("approved / confirmed / needs-revision ..."),
-          initialValue: prefill.status || "",
-        },
-        {
-          key: "note",
-          label: this.t("Note"),
-          kind: "textarea",
-          placeholder: this.t("Optional review note"),
-          rows: 4,
-          initialValue: prefill.note || "",
-        },
-        {
-          key: "confidence",
-          label: this.t("Confidence"),
-          placeholder: this.t("Optional confidence override"),
-          initialValue: prefill.confidence || "",
-        },
-      ],
-      onSubmit: async (values) => {
-        const args = [values.page, "--status", values.status];
-        this.appendOptionalArg(args, "--note", values.note);
-        this.appendOptionalArg(args, "--confidence", values.confidence);
-        await this.runCliAction(`Review Page: ${values.status}`, "review-page", args);
-      },
-    });
+    this.openStructuredCommandModal(buildReviewPageModalSpec(this, prefill));
   }
 
   openReviewRewriteModal(prefill = {}) {
-    this.openStructuredCommandModal({
-      title: this.t("Review Rewrite"),
-      description: this.t("Advance a concept rewrite proposal through the rewrite workflow."),
-      fields: [
-        { key: "slug", label: this.t("Concept slug"), required: true, initialValue: () => prefill.slug || this.getActiveConceptSlug() },
-        { key: "status", label: this.t("Status"), required: true, placeholder: this.t("accepted / rejected / needs-revision ..."), initialValue: prefill.status || "" },
-        { key: "note", label: this.t("Note"), kind: "textarea", rows: 4, placeholder: this.t("Optional review note"), initialValue: prefill.note || "" },
-      ],
-      onSubmit: async (values) => {
-        const args = [values.slug, "--status", values.status];
-        this.appendOptionalArg(args, "--note", values.note);
-        await this.runCliAction(`Review Rewrite: ${values.slug}`, "review-rewrite", args);
-      },
-    });
+    this.openStructuredCommandModal(buildReviewRewriteModalSpec(this, prefill));
   }
 
   openApplyRewriteModal(prefill = {}) {
-    this.openStructuredCommandModal({
-      title: this.t("Apply Rewrite"),
-      description: this.t("Apply an accepted concept rewrite proposal."),
-      fields: [
-        { key: "slug", label: this.t("Concept slug"), required: true, initialValue: () => prefill.slug || this.getActiveConceptSlug() },
-        { key: "note", label: this.t("Note"), kind: "textarea", rows: 4, placeholder: this.t("Optional apply note"), initialValue: prefill.note || "" },
-      ],
-      onSubmit: async (values) => {
-        const args = [values.slug];
-        this.appendOptionalArg(args, "--note", values.note);
-        await this.runCliAction(`Apply Rewrite: ${values.slug}`, "apply-rewrite", args);
-      },
-    });
+    this.openStructuredCommandModal(buildApplyRewriteModalSpec(this, prefill));
   }
 
   openRetireConceptModal(prefill = {}) {
-    this.openStructuredCommandModal({
-      title: this.t("Retire Concept"),
-      description: this.t("Apply an explicit retired override for a concept."),
-      fields: [
-        { key: "slug", label: this.t("Concept slug"), required: true, initialValue: () => prefill.slug || this.getActiveConceptSlug() },
-        { key: "note", label: this.t("Note"), kind: "textarea", rows: 4, placeholder: this.t("Why retire this concept?"), initialValue: prefill.note || "" },
-      ],
-      onSubmit: async (values) => {
-        const args = [values.slug];
-        this.appendOptionalArg(args, "--note", values.note);
-        await this.runCliAction(`Retire Concept: ${values.slug}`, "retire-concept", args);
-      },
-    });
+    this.openStructuredCommandModal(buildRetireConceptModalSpec(this, prefill));
   }
 
   openReactivateConceptModal(prefill = {}) {
-    this.openStructuredCommandModal({
-      title: this.t("Reactivate Concept"),
-      description: this.t("Clear the explicit retired override for a concept."),
-      fields: [
-        { key: "slug", label: this.t("Concept slug"), required: true, initialValue: () => prefill.slug || this.getActiveConceptSlug() },
-        { key: "note", label: this.t("Note"), kind: "textarea", rows: 4, placeholder: this.t("Optional reactivate note"), initialValue: prefill.note || "" },
-      ],
-      onSubmit: async (values) => {
-        const args = [values.slug];
-        this.appendOptionalArg(args, "--note", values.note);
-        await this.runCliAction(`Reactivate Concept: ${values.slug}`, "reactivate-concept", args);
-      },
-    });
+    this.openStructuredCommandModal(buildReactivateConceptModalSpec(this, prefill));
   }
 
   openApplyArchiveModal(prefill = {}) {
-    this.openStructuredCommandModal({
-      title: this.t("Apply Archive"),
-      description: this.t("Apply a ready archive candidate and pin it to archived."),
-      fields: [
-        { key: "entry_id", label: this.t("Entry id"), required: true, placeholder: this.t("manifest/material entry id"), initialValue: prefill.entryId || "" },
-        { key: "note", label: this.t("Note"), kind: "textarea", rows: 4, placeholder: this.t("Optional apply note"), initialValue: prefill.note || "" },
-      ],
-      onSubmit: async (values) => {
-        const args = [values.entry_id];
-        this.appendOptionalArg(args, "--note", values.note);
-        await this.runCliAction(`Apply Archive: ${values.entry_id}`, "apply-archive", args);
-      },
-    });
+    this.openStructuredCommandModal(buildApplyArchiveModalSpec(this, prefill));
   }
 
   openRevertArchiveModal(prefill = {}) {
-    this.openStructuredCommandModal({
-      title: this.t("Revert Archive"),
-      description: this.t("Revert the latest explicit archive transition."),
-      fields: [
-        { key: "entry_id", label: this.t("Entry id"), required: true, placeholder: this.t("manifest/material entry id"), initialValue: prefill.entryId || "" },
-        { key: "note", label: this.t("Note"), kind: "textarea", rows: 4, placeholder: this.t("Optional revert note"), initialValue: prefill.note || "" },
-      ],
-      onSubmit: async (values) => {
-        const args = [values.entry_id];
-        this.appendOptionalArg(args, "--note", values.note);
-        await this.runCliAction(`Revert Archive: ${values.entry_id}`, "revert-archive", args);
-      },
-    });
+    this.openStructuredCommandModal(buildRevertArchiveModalSpec(this, prefill));
   }
 
   openReviewActionModal(prefill = {}) {
-    this.openStructuredCommandModal({
-      title: this.t("Review Action"),
-      description: this.t("Advance a machine-memory repair action through the explicit action workflow."),
-      fields: [
-        { key: "action_id", label: this.t("Action id"), required: true, placeholder: this.t("machine-memory action id"), initialValue: prefill.actionId || "" },
-        { key: "status", label: this.t("Status"), required: true, placeholder: this.t("accepted / rejected / ready ..."), initialValue: prefill.status || "" },
-        { key: "note", label: this.t("Note"), kind: "textarea", rows: 4, placeholder: this.t("Optional action review note"), initialValue: prefill.note || "" },
-      ],
-      onSubmit: async (values) => {
-        const args = [values.action_id, "--status", values.status];
-        this.appendOptionalArg(args, "--note", values.note);
-        await this.runCliAction(`Review Action: ${values.action_id}`, "review-action", args);
-      },
-    });
+    this.openStructuredCommandModal(buildReviewActionModalSpec(this, prefill));
   }
 
   openApplyActionModal(prefill = {}) {
-    this.openStructuredCommandModal({
-      title: this.t("Apply Action"),
-      description: this.t("Apply an accepted low-risk machine-memory repair action."),
-      fields: [
-        { key: "action_id", label: this.t("Action id"), required: true, placeholder: this.t("machine-memory action id"), initialValue: prefill.actionId || "" },
-        { key: "note", label: this.t("Note"), kind: "textarea", rows: 4, placeholder: this.t("Optional apply note"), initialValue: prefill.note || "" },
-        { key: "bundle", label: this.t("Bundle path"), placeholder: this.t("Optional execution bundle path"), initialValue: prefill.bundle || "" },
-        { key: "dry_run", label: this.t("Dry run"), kind: "toggle", initialValue: Boolean(prefill.dryRun) },
-      ],
-      onSubmit: async (values) => {
-        const args = [values.action_id];
-        this.appendOptionalArg(args, "--note", values.note);
-        this.appendOptionalArg(args, "--bundle", values.bundle);
-        if (values.dry_run) {
-          args.push("--dry-run");
-        }
-        await this.runCliAction(`Apply Action: ${values.action_id}`, "apply-action", args);
-      },
-    });
+    this.openStructuredCommandModal(buildApplyActionModalSpec(this, prefill));
   }
 
   openRevertActionModal(prefill = {}) {
-    this.openStructuredCommandModal({
-      title: this.t("Revert Action"),
-      description: this.t("Revert the latest low-risk safe apply for a machine-memory action."),
-      fields: [
-        { key: "action_id", label: this.t("Action id"), required: true, placeholder: this.t("machine-memory action id"), initialValue: prefill.actionId || "" },
-        { key: "note", label: this.t("Note"), kind: "textarea", rows: 4, placeholder: this.t("Optional revert note"), initialValue: prefill.note || "" },
-      ],
-      onSubmit: async (values) => {
-        const args = [values.action_id];
-        this.appendOptionalArg(args, "--note", values.note);
-        await this.runCliAction(`Revert Action: ${values.action_id}`, "revert-action", args);
-      },
-    });
+    this.openStructuredCommandModal(buildRevertActionModalSpec(this, prefill));
   }
 
   openReviewPageContextPicker(options = this.visibleReviewPageCandidates()) {
@@ -5447,66 +10226,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   openReviewPageBatchModal(prefill = {}) {
-    const pagePaths = Array.isArray(prefill.pagePaths) ? prefill.pagePaths : [];
-    const statusOptions = Array.isArray(prefill.statusOptions) ? prefill.statusOptions : [];
-    const normalizedStatusOptions = statusOptions.map((option) => ({
-      value: option.value,
-      label: option.label || this.transitionLabel("page", option.value),
-    }));
-    const statusField = normalizedStatusOptions.length
-      ? {
-          key: "status",
-          label: this.t("Status"),
-          required: true,
-          kind: "select",
-          initialValue: prefill.status || normalizedStatusOptions[0].value || "",
-          options: normalizedStatusOptions,
-        }
-      : {
-          key: "status",
-          label: this.t("Status"),
-          required: true,
-          placeholder: this.t("tracking / needs-revisit / approved ..."),
-          initialValue: prefill.status || "",
-        };
-    this.openStructuredCommandModal({
-      title: this.t("Batch Review Pages"),
-      description: prefill.description || this.t("Advance multiple review pages that share a safe common transition."),
-      submitLabel: this.t("Run batch"),
-      fields: [
-        {
-          key: "pages",
-          label: this.t("Page paths"),
-          required: true,
-          kind: "textarea",
-          rows: 6,
-          placeholder: this.t("wiki/judgments/... (one per line)"),
-          initialValue: pagePaths.join("\n"),
-        },
-        statusField,
-        {
-          key: "note",
-          label: this.t("Note"),
-          kind: "textarea",
-          rows: 4,
-          placeholder: this.t("Optional shared batch note"),
-          initialValue: prefill.note || "",
-        },
-        {
-          key: "confidence",
-          label: this.t("Confidence"),
-          placeholder: this.t("Optional shared confidence override"),
-          initialValue: prefill.confidence || "",
-        },
-      ],
-      onSubmit: async (values) => {
-        const paths = this.parseLineList(values.pages);
-        if (!paths.length) {
-          throw new Error(this.t("Batch review requires at least one page path."));
-        }
-        await this.runReviewPageBatchTransition(paths, values.status, values.note, values.confidence);
-      },
-    });
+    this.openStructuredCommandModal(buildReviewPageBatchModalSpec(this, prefill));
   }
 
   openReviewBatchSuggestionPicker() {
@@ -5666,17 +10386,19 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     });
   }
 
-  async openView(viewType) {
+  async openView(viewType, options = {}) {
     let leaf = this.app.workspace.getLeavesOfType(viewType)[0];
     if (!leaf) {
-      leaf = this.app.workspace.getRightLeaf(false) || this.app.workspace.getLeaf(true);
+      leaf = options.preferMain
+        ? this.app.workspace.getLeaf(true)
+        : (this.app.workspace.getRightLeaf(false) || this.app.workspace.getLeaf(true));
     }
     await leaf.setViewState({ type: viewType, active: true });
     this.app.workspace.revealLeaf(leaf);
   }
 
   async openFurnaceCenterView() {
-    await this.openView(VIEW_TYPE_FURNACE_CENTER);
+    await this.openView(VIEW_TYPE_FURNACE_CENTER, { preferMain: true });
   }
 
   async openRecentRunsView() {
@@ -5692,32 +10414,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async openWorkspacePath(relativePath) {
-    const normalized = String(relativePath || "").trim();
-    if (!normalized) {
-      new Notice(this.t("No path to open."));
-      return;
-    }
-    const abstractFile = this.app.vault.getAbstractFileByPath(normalized);
-    if (abstractFile && normalized.endsWith(".md")) {
-      const leaf = this.app.workspace.getLeaf(true);
-      await leaf.openFile(abstractFile);
-      return;
-    }
-    if (!this.repoState.root) {
-      new Notice(this.t("Unable to open {path}", { path: normalized }));
-      return;
-    }
-    const absolutePath = path.join(this.repoState.root, normalized);
-    if (!fs.existsSync(absolutePath)) {
-      new Notice(this.t("Path not found: {path}", { path: normalized }));
-      return;
-    }
-    if (typeof this.app.vault.adapter.getResourcePath === "function") {
-      const resourcePath = this.app.vault.adapter.getResourcePath(normalized);
-      window.open(resourcePath, "_blank");
-      return;
-    }
-    new Notice(this.t("Unable to open resource: {path}", { path: normalized }));
+    return openProductShellWorkspacePath(this, relativePath);
   }
 
 
@@ -5729,10 +10426,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   renderActionButtons(container, buttons) {
     renderActionButtons(this, container, buttons);
-  }
-
-  renderGettingStartedSection(container) {
-    renderGettingStartedSection(this, container);
   }
 
   renderPanel(container, title, description = "", options = {}) {
@@ -5747,16 +10440,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return renderPill(this, container, text, extraClass);
   }
 
-  latestInteractionEntry() {
-    return latestInteractionEntry(this);
-  }
-
   renderMainHeader(container) {
     renderMainHeader(this, container);
-  }
-
-  renderInteractionPanel(container) {
-    renderInteractionPanel(this, container);
   }
 
   renderMaterialPanel(container) {
@@ -5783,8 +10468,15 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     renderDigestPanel(this, container);
   }
 
-  renderAdvancedPanel(container) {
-    renderAdvancedPanel(this, container);
+  
+  renderReportsPanel(container, reports) {
+    renderReportsPanel(this, container, reports);
+  }
+  renderReportsGroup(container, reports, emptyText) {
+    renderReportsGroup(this, container, reports, emptyText);
+  }
+  renderAdvancedDrawer(container) {
+    renderAdvancedDrawer(this, container);
   }
 
   renderFurnaceCenter(contentEl) {
@@ -5811,4 +10503,3 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     });
   }
 };
-

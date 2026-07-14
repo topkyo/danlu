@@ -10,7 +10,10 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     const t = this.plugin.t.bind(this.plugin);
     containerEl.empty();
-    containerEl.createEl("h2", { text: t("Furnace Product Shell") });
+    containerEl.createEl("h2", { text: t("炼丹炉 Product Shell") });
+
+    // ── Language & Appearance ────────────────────────
+    containerEl.createEl("h3", { cls: "furnace-settings-section", text: t("Language & Appearance") });
 
     new Setting(containerEl)
       .setName(t("UI language"))
@@ -31,6 +34,24 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName(t("Show advanced commands"))
+      .setDesc(t("Register diagnostics, history, Review Center, and Execution Center commands in the command palette. Reload Obsidian after changing this toggle."))
+      .addToggle((toggle) =>
+        toggle.setValue(Boolean(this.plugin.settings.showAdvancedCommands)).onChange(async (value) => {
+          this.plugin.settings.showAdvancedCommands = Boolean(value);
+          await this.plugin.savePluginState();
+          new Notice(this.plugin.t("Advanced command visibility refreshes after reloading Obsidian."));
+        })
+      );
+
+    // ── Furnace Connection ──────────────────────────
+    containerEl.createEl("h3", { cls: "furnace-settings-section", text: t("Furnace Connection") });
+    containerEl.createEl("p", {
+      text: t("Full runtime is Desktop-only. iPad/iOS Obsidian can only be a future companion; it cannot run the local launcher, Python CLI, or full ingest/review flow."),
+      cls: "setting-item-description",
+    });
+
+    new Setting(containerEl)
       .setName(t("Aiwiki launcher"))
       .setDesc(t("Vault-local or absolute launcher path. This vault may point at an external runtime root."))
       .addText((text) =>
@@ -45,31 +66,17 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName(t("Default ask mode"))
-      .setDesc(t("Choose whether Ask defaults to deterministic `ask` or LLM-backed `run-ask`."))
+      .setName(t("Runtime client mode"))
+      .setDesc(t("Desktop launcher runs the local aiwiki runtime. Vault queue only writes .aiwiki/queue requests for desktop drain; it does not execute commands."))
       .addDropdown((dropdown) =>
         dropdown
-          .addOption("ask", "ask")
-          .addOption("run-ask", "run-ask")
-          .setValue(this.plugin.settings.defaultAskMode)
+          .addOption("desktop-launcher", t("Desktop launcher"))
+          .addOption("vault-queue", t("Vault queue companion"))
+          .setValue(normalizeRuntimeClientMode(this.plugin.settings.runtimeClientMode))
           .onChange(async (value) => {
-            this.plugin.settings.defaultAskMode = value;
+            this.plugin.settings.runtimeClientMode = normalizeRuntimeClientMode(value);
             await this.plugin.savePluginState();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName(t("Default ask format"))
-      .setDesc(t("Default output format for the Ask modal."))
-      .addDropdown((dropdown) =>
-        dropdown
-          .addOption("report", "report")
-          .addOption("slides", "slides")
-          .addOption("figure", "figure")
-          .setValue(this.plugin.settings.defaultAskFormat)
-          .onChange(async (value) => {
-            this.plugin.settings.defaultAskFormat = value;
-            await this.plugin.savePluginState();
+            this.plugin.refreshOpenViews();
           })
       );
 
@@ -86,92 +93,148 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
         })
       );
 
-    new Setting(containerEl)
-      .setName(t("Show advanced commands"))
-      .setDesc(t("Register review, execution, protocol, and legacy panel commands in the command palette. Reload Obsidian after changing this toggle."))
-      .addToggle((toggle) =>
-        toggle.setValue(Boolean(this.plugin.settings.showAdvancedCommands)).onChange(async (value) => {
-          this.plugin.settings.showAdvancedCommands = Boolean(value);
-          await this.plugin.savePluginState();
-          new Notice(this.plugin.t("Advanced command visibility refreshes after reloading Obsidian."));
-        })
-      );
-
-    new Setting(containerEl)
-      .setName(t("Show HTML shortcuts"))
-      .setDesc(t("Whether advanced panels should show HTML shortcuts when the summary exposes them."))
-      .addToggle((toggle) =>
-        toggle.setValue(this.plugin.settings.showHtmlShortcuts).onChange(async (value) => {
-          this.plugin.settings.showHtmlShortcuts = Boolean(value);
-          await this.plugin.savePluginState();
-          this.plugin.refreshOpenViews();
-        })
-      );
-
-    // ── LLM configuration ──────────────────────────────────
-    containerEl.createEl("h3", { text: t("LLM backend") });
-    const selectedBackend = String(this.plugin.settings.llmBackend || "").trim();
+    // ── LLM Configuration ──────────────────────────
+    containerEl.createEl("h3", { cls: "furnace-settings-section", text: t("LLM Configuration") });
+    const selectedProfile = llmProviderProfile(this.plugin.settings.llmBackend);
 
     new Setting(containerEl)
       .setName(t("LLM backend"))
-      .setDesc(t("Select the explicit LLM backend used by run-compile / run-ask / run-nightly. Empty = unconfigured."))
-      .addDropdown((dropdown) =>
-        dropdown
-          .addOption("", t("unconfigured"))
-          .addOption("codex-cli", "codex-cli")
-          .addOption("nvidia-nim-api", "nvidia-nim-api")
-          .addOption("copilot-cli", "copilot-cli")
-          .addOption("claude-cli", "claude-cli")
-          .setValue(this.plugin.settings.llmBackend || "")
+      .setDesc(t("Select the LLM provider used by run-compile / run-ask / run-nightly. Common providers are listed first; advanced entries are for local CLI sessions or custom OpenAI-compatible endpoints."))
+      .addDropdown((dropdown) => {
+        for (const profile of LLM_PROVIDER_PROFILES) {
+          const prefix = profile.tier === "advanced" ? "Advanced · " : "";
+          dropdown.addOption(profile.value, `${prefix}${profile.label}`);
+        }
+        return dropdown
+          .setValue(selectedProfile.value)
           .onChange(async (value) => {
-            this.plugin.settings.llmBackend = value;
+            const nextProfile = llmProviderProfile(value);
+            this.plugin.settings.llmBackend = nextProfile.value;
+            this.plugin.settings.llmModel = nextProfile.defaultModel || "";
             await this.plugin.savePluginState();
             this.display();
             new Notice(t("LLM settings saved. New runs will use the updated configuration."));
-          })
-      );
+          });
+      });
 
-    new Setting(containerEl)
-      .setName(t("LLM model"))
-      .setDesc(t("Override the model name (e.g. gpt-5.4, claude-sonnet-4.5). Empty = selected backend default strategy (`codex-cli`: `gpt-5.4`; `nvidia-nim-api`: `z-ai/glm-5.1 -> moonshotai/kimi-k2.5 -> minimaxai/minimax-m2.7`)."))
-      .addText((text) =>
-        text
-          .setPlaceholder("gpt-5.4 / z-ai/glm-5.1 / claude-sonnet-4.5")
-          .setValue(this.plugin.settings.llmModel || "")
-          .onChange(async (value) => {
-            this.plugin.settings.llmModel = String(value || "").trim();
-            await this.plugin.savePluginState();
-          })
-      );
-
-    if (selectedBackend === "nvidia-nim-api") {
+    if (llmProviderNeedsModel(selectedProfile)) {
       new Setting(containerEl)
-        .setName(t("NVIDIA NIM API key"))
-        .setDesc(t("Optional key for nvidia-nim-api. Stored locally in plugin data. Empty = use AIWIKI_NVIDIA_NIM_API_KEY / NVIDIA_NIM_API_KEY."))
+        .setName(t("LLM model"))
+        .setDesc(t("Model for the selected API provider. Empty uses that provider profile default when one exists."))
+        .addText((text) =>
+          text
+            .setPlaceholder(selectedProfile.defaultModel || "provider/model")
+            .setValue(this.plugin.settings.llmModel || "")
+            .onChange(async (value) => {
+              this.plugin.settings.llmModel = String(value || "").trim();
+              await this.plugin.savePluginState();
+            })
+        );
+    }
+
+    if (selectedProfile.apiKeySetting) {
+      new Setting(containerEl)
+        .setName(t("API key"))
+        .setDesc(t("Stored only in local Obsidian plugin data. New runs use the key saved here and ignore stale LLM environment variables."))
         .addText((text) => {
           text
-            .setPlaceholder("nvapi-...")
-            .setValue(this.plugin.settings.llmNvidiaNimApiKey || "")
+            .setPlaceholder(selectedProfile.keyPlaceholder || "sk-...")
+            .setValue(this.plugin.settings[selectedProfile.apiKeySetting] || "")
             .onChange(async (value) => {
-              this.plugin.settings.llmNvidiaNimApiKey = String(value || "").trim();
+              this.plugin.settings[selectedProfile.apiKeySetting] = String(value || "").trim();
               await this.plugin.savePluginState();
             });
           text.inputEl.type = "password";
           text.inputEl.autocomplete = "off";
         });
+    }
 
+    if (selectedProfile.baseUrlSetting) {
       new Setting(containerEl)
-        .setName(t("NVIDIA NIM base URL"))
-        .setDesc(t("Override the NVIDIA NIM endpoint. Empty = https://integrate.api.nvidia.com/v1."))
+        .setName(t("Base URL"))
+        .setDesc(t("Override the provider endpoint. Leave empty to use the provider profile default."))
         .addText((text) =>
           text
-            .setPlaceholder("https://integrate.api.nvidia.com/v1")
-            .setValue(this.plugin.settings.llmNvidiaNimBaseUrl || "")
+            .setPlaceholder(selectedProfile.defaultBaseUrl || "")
+            .setValue(this.plugin.settings[selectedProfile.baseUrlSetting] || "")
             .onChange(async (value) => {
-              this.plugin.settings.llmNvidiaNimBaseUrl = String(value || "").trim();
+              this.plugin.settings[selectedProfile.baseUrlSetting] = String(value || "").trim();
               await this.plugin.savePluginState();
             })
         );
     }
+
+    if (selectedProfile.cliHint) {
+      new Setting(containerEl)
+        .setName(t("CLI session"))
+        .setDesc(t("This backend uses a local CLI login/session. API key fields are not used."));
+      containerEl.createEl("p", {
+        text: selectedProfile.cliHint,
+        cls: "setting-item-description",
+      });
+    }
+
+    // ── 通知（webhook） ──────────────────────────────
+    // ── Notifications ────────────────────────────────
+    containerEl.createEl("h3", { cls: "furnace-settings-section", text: t("Notifications") });
+    containerEl.createEl("p", {
+      text: t("Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports."),
+      cls: "setting-item-description",
+    });
+
+    new Setting(containerEl)
+      .setName(t("Feishu webhook URL"))
+      .setDesc(t("Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports."))
+      .addText((text) => {
+        text
+          .setPlaceholder("https://open.feishu.cn/open-apis/bot/v2/hook/...")
+          .setValue(this.plugin.settings.feishuWebhookUrl || "")
+          .onChange(async (value) => {
+            this.plugin.settings.feishuWebhookUrl = String(value || "").trim();
+            await this.plugin.savePluginState();
+          });
+        text.inputEl.autocomplete = "off";
+      });
+
+    new Setting(containerEl)
+      .setName(t("WeCom webhook URL"))
+      .setDesc(t("Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports."))
+      .addText((text) => {
+        text
+          .setPlaceholder("https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...")
+          .setValue(this.plugin.settings.wecomWebhookUrl || "")
+          .onChange(async (value) => {
+            this.plugin.settings.wecomWebhookUrl = String(value || "").trim();
+            await this.plugin.savePluginState();
+          });
+        text.inputEl.autocomplete = "off";
+      });
+
+    const updateEnabledChannel = async (channel, enabled) => {
+      const channels = new Set(normalizeEnabledChannels(this.plugin.settings.enabledChannels));
+      if (enabled) {
+        channels.add(channel);
+      } else {
+        channels.delete(channel);
+      }
+      this.plugin.settings.enabledChannels = normalizeEnabledChannels(Array.from(channels));
+      await this.plugin.savePluginState();
+    };
+
+    new Setting(containerEl)
+      .setName(t("Enable Feishu"))
+      .addToggle((toggle) =>
+        toggle.setValue(normalizeEnabledChannels(this.plugin.settings.enabledChannels).includes("feishu")).onChange(async (value) => {
+          await updateEnabledChannel("feishu", Boolean(value));
+        })
+      );
+
+    new Setting(containerEl)
+      .setName(t("Enable WeCom"))
+      .addToggle((toggle) =>
+        toggle.setValue(normalizeEnabledChannels(this.plugin.settings.enabledChannels).includes("wecom")).onChange(async (value) => {
+          await updateEnabledChannel("wecom", Boolean(value));
+        })
+      );
   }
 }

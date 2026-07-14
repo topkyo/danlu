@@ -1,15 +1,19 @@
 # 机器记忆
 
-- 最近编译时间：`2026-04-07T09:50:15+00:00`
+- 最近编译时间：`2026-05-20T02:11:33+00:00`
 - 运行时状态文件：`.aiwiki/state/machine-memory.json`
 - 图谱导出文件：`.aiwiki/cache/machine-memory-graph.json`
 - 漂移报告：`wiki/indexes/drift-report.md`
 - 来源节点：`0`
+- 判断节点：`0`
 - 概念节点：`0`
+- 来源到判断的边：`0`
+- Judgment 到 Judgment 的边：`0`
+- Judgment 到 Decision 的边：`0`
 - 来源到概念的边：`0`
 - 概念到概念的边：`0`
 - 索引词数量：`0`
-- 机器摘要：`93afc12caa746000fbf7659e7fddef3c61e3666e45e1124367379e1d2d7f5fad`
+- 机器摘要：`5ca31c8ea69e89f4167e6b9ae5a0985d32ebb5382b82ee33b1641a2176bf8383`
 - 图谱摘要：`f5f601586348141cb59f4afc4fab6c1a56cf15d36b9b45c2bfbfcc92b9154bcc`
 
 ## 图谱健康
@@ -19,8 +23,23 @@
 - 桥接概念：`0`
 - 过载概念：`0`
 - 已索引分量：`0`
+- Hub 概念：`0`
+- Hub 来源：`0`
+- 修复候选：`0`
+- 修复动作：`0`
+- 动作已到期：`0`
+- 动作需升级：`0`
+- 执行批次：`0`
+- 执行提案：`0`
+- 页级 patch step：`0`
+- 概念冲突信号：`0`
+- 概念重写候选：`0`
+- Rewrite 提案：`0`
+- 可应用 Rewrite：`0`
 
 ## 判断层
+- Judgment asset 节点：`0`
+- Judgment review actions：`0`
 - 决策索引：`wiki/indexes/decisions.md`
 - 判断索引：`wiki/indexes/judgments.md`
 - 审阅队列：`wiki/indexes/review-queue.md`
@@ -33,8 +52,19 @@
 
 ## 相关链接
 - [图谱健康](./graph-health.md)
+- [拓扑视图](./machine-memory-topology.md)
+- [动作队列](./machine-memory-actions.md)
+- [修复计划](./machine-memory-repair-plan.md)
 - [漂移报告](./drift-report.md)
 - [修复待办](./repair-backlog.md)
+- [概念质量](./concept-quality.md)
+- [Rewrite Proposals](./rewrite-proposals.md)
+
+## Action Workflow
+- 状态文件：`.aiwiki/state/machine-memory-actions.json`
+- 通过 `review-action` 推进 action status。
+- nightly 会继续追踪 action 的 occurrences、aging 和 escalation。
+- repair 计划页：`wiki/indexes/machine-memory-repair-plan.md`
 
 ## 查询加速
 - `ask` 和 `run-ask` 先用机器记忆 term index 做第一轮查询规划。

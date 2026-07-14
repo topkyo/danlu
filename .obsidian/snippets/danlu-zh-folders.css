@@ -1,0 +1,1244 @@
+/*
+ * 炼丹炉 vault — 文件浏览器用户视图
+ * 保留运行时英文路径不变；普通用户默认只看投料收件箱和报告，其余运行时分层从文件树隐藏。
+ * 同时兼容旧结构（data-path 在父级）和新结构（data-path 在 title/self）两种 DOM。
+ */
+
+/* 默认隐藏 runtime / operator folders；Product Shell 和更多工具仍可打开对应页面。 */
+/* hide raw/normalized from the daily file tree */
+.nav-folder[data-path="raw/normalized"],
+.tree-item[data-path="raw/normalized"],
+.nav-folder-title[data-path="raw/normalized"],
+.tree-item-self[data-path="raw/normalized"] {
+  display: none !important;
+}
+
+/* hide docs from the daily file tree */
+.nav-folder[data-path="docs"],
+.tree-item[data-path="docs"],
+.nav-folder-title[data-path="docs"],
+.tree-item-self[data-path="docs"] {
+  display: none !important;
+}
+
+/* hide wiki from the daily file tree */
+.nav-folder[data-path="wiki"],
+.tree-item[data-path="wiki"],
+.nav-folder-title[data-path="wiki"],
+.tree-item-self[data-path="wiki"] {
+  display: none !important;
+}
+
+/* hide schema from the daily file tree */
+.nav-folder[data-path="schema"],
+.tree-item[data-path="schema"],
+.nav-folder-title[data-path="schema"],
+.tree-item-self[data-path="schema"] {
+  display: none !important;
+}
+
+/* hide scripts from the daily file tree */
+.nav-folder[data-path="scripts"],
+.tree-item[data-path="scripts"],
+.nav-folder-title[data-path="scripts"],
+.tree-item-self[data-path="scripts"] {
+  display: none !important;
+}
+
+/* hide prompts from the daily file tree */
+.nav-folder[data-path="prompts"],
+.tree-item[data-path="prompts"],
+.nav-folder-title[data-path="prompts"],
+.tree-item-self[data-path="prompts"] {
+  display: none !important;
+}
+
+/* hide output/_candidates from the daily file tree */
+.nav-folder[data-path="output/_candidates"],
+.tree-item[data-path="output/_candidates"],
+.nav-folder-title[data-path="output/_candidates"],
+.tree-item-self[data-path="output/_candidates"] {
+  display: none !important;
+}
+
+/* hide output/_proposals from the daily file tree */
+.nav-folder[data-path="output/_proposals"],
+.tree-item[data-path="output/_proposals"],
+.nav-folder-title[data-path="output/_proposals"],
+.tree-item-self[data-path="output/_proposals"] {
+  display: none !important;
+}
+
+/* hide output/agents from the daily file tree */
+.nav-folder[data-path="output/agents"],
+.tree-item[data-path="output/agents"],
+.nav-folder-title[data-path="output/agents"],
+.tree-item-self[data-path="output/agents"] {
+  display: none !important;
+}
+
+/* hide output/control from the daily file tree */
+.nav-folder[data-path="output/control"],
+.tree-item[data-path="output/control"],
+.nav-folder-title[data-path="output/control"],
+.tree-item-self[data-path="output/control"] {
+  display: none !important;
+}
+
+/* hide output/figures from the daily file tree */
+.nav-folder[data-path="output/figures"],
+.tree-item[data-path="output/figures"],
+.nav-folder-title[data-path="output/figures"],
+.tree-item-self[data-path="output/figures"] {
+  display: none !important;
+}
+
+/* hide output/graph from the daily file tree */
+.nav-folder[data-path="output/graph"],
+.tree-item[data-path="output/graph"],
+.nav-folder-title[data-path="output/graph"],
+.tree-item-self[data-path="output/graph"] {
+  display: none !important;
+}
+
+/* hide output/lint from the daily file tree */
+.nav-folder[data-path="output/lint"],
+.tree-item[data-path="output/lint"],
+.nav-folder-title[data-path="output/lint"],
+.tree-item-self[data-path="output/lint"] {
+  display: none !important;
+}
+
+/* hide output/packs from the daily file tree */
+.nav-folder[data-path="output/packs"],
+.tree-item[data-path="output/packs"],
+.nav-folder-title[data-path="output/packs"],
+.tree-item-self[data-path="output/packs"] {
+  display: none !important;
+}
+
+/* hide output/pilots from the daily file tree */
+.nav-folder[data-path="output/pilots"],
+.tree-item[data-path="output/pilots"],
+.nav-folder-title[data-path="output/pilots"],
+.tree-item-self[data-path="output/pilots"] {
+  display: none !important;
+}
+
+/* hide output/review from the daily file tree */
+.nav-folder[data-path="output/review"],
+.tree-item[data-path="output/review"],
+.nav-folder-title[data-path="output/review"],
+.tree-item-self[data-path="output/review"] {
+  display: none !important;
+}
+
+/* hide output/slides from the daily file tree */
+.nav-folder[data-path="output/slides"],
+.tree-item[data-path="output/slides"],
+.nav-folder-title[data-path="output/slides"],
+.tree-item-self[data-path="output/slides"] {
+  display: none !important;
+}
+
+/* output/reports -> 报告 */
+.nav-folder[data-path="output/reports"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="output/reports"] .nav-folder-title-content,
+.nav-folder-title[data-path="output/reports"] > .nav-folder-title-content,
+.tree-item[data-path="output/reports"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="output/reports"] .tree-item-inner,
+.tree-item-self[data-path="output/reports"] > .tree-item-inner,
+.tree-item[data-path="output/reports"] .tree-item-title,
+.tree-item-self[data-path="output/reports"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="output/reports"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="output/reports"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="output/reports"] > .nav-folder-title-content::after,
+.tree-item[data-path="output/reports"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="output/reports"] .tree-item-inner::after,
+.tree-item-self[data-path="output/reports"] > .tree-item-inner::after,
+.tree-item[data-path="output/reports"] .tree-item-title::after,
+.tree-item-self[data-path="output/reports"] .tree-item-title::after {
+  content: "报告";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* raw -> 原料 */
+.nav-folder[data-path="raw"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="raw"] .nav-folder-title-content,
+.nav-folder-title[data-path="raw"] > .nav-folder-title-content,
+.tree-item[data-path="raw"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="raw"] .tree-item-inner,
+.tree-item-self[data-path="raw"] > .tree-item-inner,
+.tree-item[data-path="raw"] .tree-item-title,
+.tree-item-self[data-path="raw"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="raw"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="raw"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="raw"] > .nav-folder-title-content::after,
+.tree-item[data-path="raw"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="raw"] .tree-item-inner::after,
+.tree-item-self[data-path="raw"] > .tree-item-inner::after,
+.tree-item[data-path="raw"] .tree-item-title::after,
+.tree-item-self[data-path="raw"] .tree-item-title::after {
+  content: "原料";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* output -> 产出 */
+.nav-folder[data-path="output"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="output"] .nav-folder-title-content,
+.nav-folder-title[data-path="output"] > .nav-folder-title-content,
+.tree-item[data-path="output"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="output"] .tree-item-inner,
+.tree-item-self[data-path="output"] > .tree-item-inner,
+.tree-item[data-path="output"] .tree-item-title,
+.tree-item-self[data-path="output"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="output"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="output"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="output"] > .nav-folder-title-content::after,
+.tree-item[data-path="output"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="output"] .tree-item-inner::after,
+.tree-item-self[data-path="output"] > .tree-item-inner::after,
+.tree-item[data-path="output"] .tree-item-title::after,
+.tree-item-self[data-path="output"] .tree-item-title::after {
+  content: "产出";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* schema -> 规则 schema */
+.nav-folder[data-path="schema"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="schema"] .nav-folder-title-content,
+.nav-folder-title[data-path="schema"] > .nav-folder-title-content,
+.tree-item[data-path="schema"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="schema"] .tree-item-inner,
+.tree-item-self[data-path="schema"] > .tree-item-inner,
+.tree-item[data-path="schema"] .tree-item-title,
+.tree-item-self[data-path="schema"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="schema"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="schema"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="schema"] > .nav-folder-title-content::after,
+.tree-item[data-path="schema"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="schema"] .tree-item-inner::after,
+.tree-item-self[data-path="schema"] > .tree-item-inner::after,
+.tree-item[data-path="schema"] .tree-item-title::after,
+.tree-item-self[data-path="schema"] .tree-item-title::after {
+  content: "规则 schema";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* scripts -> 脚本 scripts */
+.nav-folder[data-path="scripts"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="scripts"] .nav-folder-title-content,
+.nav-folder-title[data-path="scripts"] > .nav-folder-title-content,
+.tree-item[data-path="scripts"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="scripts"] .tree-item-inner,
+.tree-item-self[data-path="scripts"] > .tree-item-inner,
+.tree-item[data-path="scripts"] .tree-item-title,
+.tree-item-self[data-path="scripts"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="scripts"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="scripts"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="scripts"] > .nav-folder-title-content::after,
+.tree-item[data-path="scripts"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="scripts"] .tree-item-inner::after,
+.tree-item-self[data-path="scripts"] > .tree-item-inner::after,
+.tree-item[data-path="scripts"] .tree-item-title::after,
+.tree-item-self[data-path="scripts"] .tree-item-title::after {
+  content: "脚本 scripts";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* prompts -> 提示词 prompts */
+.nav-folder[data-path="prompts"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="prompts"] .nav-folder-title-content,
+.nav-folder-title[data-path="prompts"] > .nav-folder-title-content,
+.tree-item[data-path="prompts"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="prompts"] .tree-item-inner,
+.tree-item-self[data-path="prompts"] > .tree-item-inner,
+.tree-item[data-path="prompts"] .tree-item-title,
+.tree-item-self[data-path="prompts"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="prompts"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="prompts"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="prompts"] > .nav-folder-title-content::after,
+.tree-item[data-path="prompts"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="prompts"] .tree-item-inner::after,
+.tree-item-self[data-path="prompts"] > .tree-item-inner::after,
+.tree-item[data-path="prompts"] .tree-item-title::after,
+.tree-item-self[data-path="prompts"] .tree-item-title::after {
+  content: "提示词 prompts";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* raw/inbox -> 收件箱 */
+.nav-folder[data-path="raw/inbox"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="raw/inbox"] .nav-folder-title-content,
+.nav-folder-title[data-path="raw/inbox"] > .nav-folder-title-content,
+.tree-item[data-path="raw/inbox"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="raw/inbox"] .tree-item-inner,
+.tree-item-self[data-path="raw/inbox"] > .tree-item-inner,
+.tree-item[data-path="raw/inbox"] .tree-item-title,
+.tree-item-self[data-path="raw/inbox"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="raw/inbox"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="raw/inbox"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="raw/inbox"] > .nav-folder-title-content::after,
+.tree-item[data-path="raw/inbox"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="raw/inbox"] .tree-item-inner::after,
+.tree-item-self[data-path="raw/inbox"] > .tree-item-inner::after,
+.tree-item[data-path="raw/inbox"] .tree-item-title::after,
+.tree-item-self[data-path="raw/inbox"] .tree-item-title::after {
+  content: "收件箱";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* raw/assets -> 附件 */
+.nav-folder[data-path="raw/assets"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="raw/assets"] .nav-folder-title-content,
+.nav-folder-title[data-path="raw/assets"] > .nav-folder-title-content,
+.tree-item[data-path="raw/assets"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="raw/assets"] .tree-item-inner,
+.tree-item-self[data-path="raw/assets"] > .tree-item-inner,
+.tree-item[data-path="raw/assets"] .tree-item-title,
+.tree-item-self[data-path="raw/assets"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="raw/assets"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="raw/assets"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="raw/assets"] > .nav-folder-title-content::after,
+.tree-item[data-path="raw/assets"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="raw/assets"] .tree-item-inner::after,
+.tree-item-self[data-path="raw/assets"] > .tree-item-inner::after,
+.tree-item[data-path="raw/assets"] .tree-item-title::after,
+.tree-item-self[data-path="raw/assets"] .tree-item-title::after {
+  content: "附件";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* raw/normalized -> 标准化 normalized */
+.nav-folder[data-path="raw/normalized"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="raw/normalized"] .nav-folder-title-content,
+.nav-folder-title[data-path="raw/normalized"] > .nav-folder-title-content,
+.tree-item[data-path="raw/normalized"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="raw/normalized"] .tree-item-inner,
+.tree-item-self[data-path="raw/normalized"] > .tree-item-inner,
+.tree-item[data-path="raw/normalized"] .tree-item-title,
+.tree-item-self[data-path="raw/normalized"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="raw/normalized"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="raw/normalized"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="raw/normalized"] > .nav-folder-title-content::after,
+.tree-item[data-path="raw/normalized"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="raw/normalized"] .tree-item-inner::after,
+.tree-item-self[data-path="raw/normalized"] > .tree-item-inner::after,
+.tree-item[data-path="raw/normalized"] .tree-item-title::after,
+.tree-item-self[data-path="raw/normalized"] .tree-item-title::after {
+  content: "标准化 normalized";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* wiki/sources -> 来源 sources */
+.nav-folder[data-path="wiki/sources"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="wiki/sources"] .nav-folder-title-content,
+.nav-folder-title[data-path="wiki/sources"] > .nav-folder-title-content,
+.tree-item[data-path="wiki/sources"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="wiki/sources"] .tree-item-inner,
+.tree-item-self[data-path="wiki/sources"] > .tree-item-inner,
+.tree-item[data-path="wiki/sources"] .tree-item-title,
+.tree-item-self[data-path="wiki/sources"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="wiki/sources"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="wiki/sources"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="wiki/sources"] > .nav-folder-title-content::after,
+.tree-item[data-path="wiki/sources"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="wiki/sources"] .tree-item-inner::after,
+.tree-item-self[data-path="wiki/sources"] > .tree-item-inner::after,
+.tree-item[data-path="wiki/sources"] .tree-item-title::after,
+.tree-item-self[data-path="wiki/sources"] .tree-item-title::after {
+  content: "来源 sources";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* wiki/concepts -> 概念 concepts */
+.nav-folder[data-path="wiki/concepts"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="wiki/concepts"] .nav-folder-title-content,
+.nav-folder-title[data-path="wiki/concepts"] > .nav-folder-title-content,
+.tree-item[data-path="wiki/concepts"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="wiki/concepts"] .tree-item-inner,
+.tree-item-self[data-path="wiki/concepts"] > .tree-item-inner,
+.tree-item[data-path="wiki/concepts"] .tree-item-title,
+.tree-item-self[data-path="wiki/concepts"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="wiki/concepts"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="wiki/concepts"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="wiki/concepts"] > .nav-folder-title-content::after,
+.tree-item[data-path="wiki/concepts"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="wiki/concepts"] .tree-item-inner::after,
+.tree-item-self[data-path="wiki/concepts"] > .tree-item-inner::after,
+.tree-item[data-path="wiki/concepts"] .tree-item-title::after,
+.tree-item-self[data-path="wiki/concepts"] .tree-item-title::after {
+  content: "概念 concepts";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* wiki/derived -> 派生 derived */
+.nav-folder[data-path="wiki/derived"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="wiki/derived"] .nav-folder-title-content,
+.nav-folder-title[data-path="wiki/derived"] > .nav-folder-title-content,
+.tree-item[data-path="wiki/derived"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="wiki/derived"] .tree-item-inner,
+.tree-item-self[data-path="wiki/derived"] > .tree-item-inner,
+.tree-item[data-path="wiki/derived"] .tree-item-title,
+.tree-item-self[data-path="wiki/derived"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="wiki/derived"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="wiki/derived"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="wiki/derived"] > .nav-folder-title-content::after,
+.tree-item[data-path="wiki/derived"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="wiki/derived"] .tree-item-inner::after,
+.tree-item-self[data-path="wiki/derived"] > .tree-item-inner::after,
+.tree-item[data-path="wiki/derived"] .tree-item-title::after,
+.tree-item-self[data-path="wiki/derived"] .tree-item-title::after {
+  content: "派生 derived";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* wiki/decisions -> 决策 decisions */
+.nav-folder[data-path="wiki/decisions"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="wiki/decisions"] .nav-folder-title-content,
+.nav-folder-title[data-path="wiki/decisions"] > .nav-folder-title-content,
+.tree-item[data-path="wiki/decisions"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="wiki/decisions"] .tree-item-inner,
+.tree-item-self[data-path="wiki/decisions"] > .tree-item-inner,
+.tree-item[data-path="wiki/decisions"] .tree-item-title,
+.tree-item-self[data-path="wiki/decisions"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="wiki/decisions"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="wiki/decisions"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="wiki/decisions"] > .nav-folder-title-content::after,
+.tree-item[data-path="wiki/decisions"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="wiki/decisions"] .tree-item-inner::after,
+.tree-item-self[data-path="wiki/decisions"] > .tree-item-inner::after,
+.tree-item[data-path="wiki/decisions"] .tree-item-title::after,
+.tree-item-self[data-path="wiki/decisions"] .tree-item-title::after {
+  content: "决策 decisions";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* wiki/judgments -> 判断 judgments */
+.nav-folder[data-path="wiki/judgments"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="wiki/judgments"] .nav-folder-title-content,
+.nav-folder-title[data-path="wiki/judgments"] > .nav-folder-title-content,
+.tree-item[data-path="wiki/judgments"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="wiki/judgments"] .tree-item-inner,
+.tree-item-self[data-path="wiki/judgments"] > .tree-item-inner,
+.tree-item[data-path="wiki/judgments"] .tree-item-title,
+.tree-item-self[data-path="wiki/judgments"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="wiki/judgments"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="wiki/judgments"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="wiki/judgments"] > .nav-folder-title-content::after,
+.tree-item[data-path="wiki/judgments"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="wiki/judgments"] .tree-item-inner::after,
+.tree-item-self[data-path="wiki/judgments"] > .tree-item-inner::after,
+.tree-item[data-path="wiki/judgments"] .tree-item-title::after,
+.tree-item-self[data-path="wiki/judgments"] .tree-item-title::after {
+  content: "判断 judgments";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* wiki/indexes -> 索引 indexes */
+.nav-folder[data-path="wiki/indexes"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="wiki/indexes"] .nav-folder-title-content,
+.nav-folder-title[data-path="wiki/indexes"] > .nav-folder-title-content,
+.tree-item[data-path="wiki/indexes"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="wiki/indexes"] .tree-item-inner,
+.tree-item-self[data-path="wiki/indexes"] > .tree-item-inner,
+.tree-item[data-path="wiki/indexes"] .tree-item-title,
+.tree-item-self[data-path="wiki/indexes"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="wiki/indexes"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="wiki/indexes"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="wiki/indexes"] > .nav-folder-title-content::after,
+.tree-item[data-path="wiki/indexes"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="wiki/indexes"] .tree-item-inner::after,
+.tree-item-self[data-path="wiki/indexes"] > .tree-item-inner::after,
+.tree-item[data-path="wiki/indexes"] .tree-item-title::after,
+.tree-item-self[data-path="wiki/indexes"] .tree-item-title::after {
+  content: "索引 indexes";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* wiki/execution-proposals -> 执行提案 execution-proposals */
+.nav-folder[data-path="wiki/execution-proposals"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="wiki/execution-proposals"] .nav-folder-title-content,
+.nav-folder-title[data-path="wiki/execution-proposals"] > .nav-folder-title-content,
+.tree-item[data-path="wiki/execution-proposals"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="wiki/execution-proposals"] .tree-item-inner,
+.tree-item-self[data-path="wiki/execution-proposals"] > .tree-item-inner,
+.tree-item[data-path="wiki/execution-proposals"] .tree-item-title,
+.tree-item-self[data-path="wiki/execution-proposals"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="wiki/execution-proposals"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="wiki/execution-proposals"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="wiki/execution-proposals"] > .nav-folder-title-content::after,
+.tree-item[data-path="wiki/execution-proposals"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="wiki/execution-proposals"] .tree-item-inner::after,
+.tree-item-self[data-path="wiki/execution-proposals"] > .tree-item-inner::after,
+.tree-item[data-path="wiki/execution-proposals"] .tree-item-title::after,
+.tree-item-self[data-path="wiki/execution-proposals"] .tree-item-title::after {
+  content: "执行提案 execution-proposals";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* wiki/rewrite-proposals -> 改写提案 rewrite-proposals */
+.nav-folder[data-path="wiki/rewrite-proposals"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="wiki/rewrite-proposals"] .nav-folder-title-content,
+.nav-folder-title[data-path="wiki/rewrite-proposals"] > .nav-folder-title-content,
+.tree-item[data-path="wiki/rewrite-proposals"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="wiki/rewrite-proposals"] .tree-item-inner,
+.tree-item-self[data-path="wiki/rewrite-proposals"] > .tree-item-inner,
+.tree-item[data-path="wiki/rewrite-proposals"] .tree-item-title,
+.tree-item-self[data-path="wiki/rewrite-proposals"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="wiki/rewrite-proposals"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="wiki/rewrite-proposals"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="wiki/rewrite-proposals"] > .nav-folder-title-content::after,
+.tree-item[data-path="wiki/rewrite-proposals"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="wiki/rewrite-proposals"] .tree-item-inner::after,
+.tree-item-self[data-path="wiki/rewrite-proposals"] > .tree-item-inner::after,
+.tree-item[data-path="wiki/rewrite-proposals"] .tree-item-title::after,
+.tree-item-self[data-path="wiki/rewrite-proposals"] .tree-item-title::after {
+  content: "改写提案 rewrite-proposals";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* output/agents -> 智能体 agents */
+.nav-folder[data-path="output/agents"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="output/agents"] .nav-folder-title-content,
+.nav-folder-title[data-path="output/agents"] > .nav-folder-title-content,
+.tree-item[data-path="output/agents"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="output/agents"] .tree-item-inner,
+.tree-item-self[data-path="output/agents"] > .tree-item-inner,
+.tree-item[data-path="output/agents"] .tree-item-title,
+.tree-item-self[data-path="output/agents"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="output/agents"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="output/agents"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="output/agents"] > .nav-folder-title-content::after,
+.tree-item[data-path="output/agents"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="output/agents"] .tree-item-inner::after,
+.tree-item-self[data-path="output/agents"] > .tree-item-inner::after,
+.tree-item[data-path="output/agents"] .tree-item-title::after,
+.tree-item-self[data-path="output/agents"] .tree-item-title::after {
+  content: "智能体 agents";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* output/control -> 控制面板 control */
+.nav-folder[data-path="output/control"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="output/control"] .nav-folder-title-content,
+.nav-folder-title[data-path="output/control"] > .nav-folder-title-content,
+.tree-item[data-path="output/control"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="output/control"] .tree-item-inner,
+.tree-item-self[data-path="output/control"] > .tree-item-inner,
+.tree-item[data-path="output/control"] .tree-item-title,
+.tree-item-self[data-path="output/control"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="output/control"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="output/control"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="output/control"] > .nav-folder-title-content::after,
+.tree-item[data-path="output/control"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="output/control"] .tree-item-inner::after,
+.tree-item-self[data-path="output/control"] > .tree-item-inner::after,
+.tree-item[data-path="output/control"] .tree-item-title::after,
+.tree-item-self[data-path="output/control"] .tree-item-title::after {
+  content: "控制面板 control";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* output/control/execution-bundles -> 执行包 execution-bundles */
+.nav-folder[data-path="output/control/execution-bundles"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="output/control/execution-bundles"] .nav-folder-title-content,
+.nav-folder-title[data-path="output/control/execution-bundles"] > .nav-folder-title-content,
+.tree-item[data-path="output/control/execution-bundles"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="output/control/execution-bundles"] .tree-item-inner,
+.tree-item-self[data-path="output/control/execution-bundles"] > .tree-item-inner,
+.tree-item[data-path="output/control/execution-bundles"] .tree-item-title,
+.tree-item-self[data-path="output/control/execution-bundles"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="output/control/execution-bundles"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="output/control/execution-bundles"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="output/control/execution-bundles"] > .nav-folder-title-content::after,
+.tree-item[data-path="output/control/execution-bundles"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="output/control/execution-bundles"] .tree-item-inner::after,
+.tree-item-self[data-path="output/control/execution-bundles"] > .tree-item-inner::after,
+.tree-item[data-path="output/control/execution-bundles"] .tree-item-title::after,
+.tree-item-self[data-path="output/control/execution-bundles"] .tree-item-title::after {
+  content: "执行包 execution-bundles";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* output/control/execution-receipts -> 执行回执 execution-receipts */
+.nav-folder[data-path="output/control/execution-receipts"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="output/control/execution-receipts"] .nav-folder-title-content,
+.nav-folder-title[data-path="output/control/execution-receipts"] > .nav-folder-title-content,
+.tree-item[data-path="output/control/execution-receipts"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="output/control/execution-receipts"] .tree-item-inner,
+.tree-item-self[data-path="output/control/execution-receipts"] > .tree-item-inner,
+.tree-item[data-path="output/control/execution-receipts"] .tree-item-title,
+.tree-item-self[data-path="output/control/execution-receipts"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="output/control/execution-receipts"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="output/control/execution-receipts"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="output/control/execution-receipts"] > .nav-folder-title-content::after,
+.tree-item[data-path="output/control/execution-receipts"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="output/control/execution-receipts"] .tree-item-inner::after,
+.tree-item-self[data-path="output/control/execution-receipts"] > .tree-item-inner::after,
+.tree-item[data-path="output/control/execution-receipts"] .tree-item-title::after,
+.tree-item-self[data-path="output/control/execution-receipts"] .tree-item-title::after {
+  content: "执行回执 execution-receipts";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* output/graph -> 图谱 graph */
+.nav-folder[data-path="output/graph"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="output/graph"] .nav-folder-title-content,
+.nav-folder-title[data-path="output/graph"] > .nav-folder-title-content,
+.tree-item[data-path="output/graph"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="output/graph"] .tree-item-inner,
+.tree-item-self[data-path="output/graph"] > .tree-item-inner,
+.tree-item[data-path="output/graph"] .tree-item-title,
+.tree-item-self[data-path="output/graph"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="output/graph"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="output/graph"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="output/graph"] > .nav-folder-title-content::after,
+.tree-item[data-path="output/graph"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="output/graph"] .tree-item-inner::after,
+.tree-item-self[data-path="output/graph"] > .tree-item-inner::after,
+.tree-item[data-path="output/graph"] .tree-item-title::after,
+.tree-item-self[data-path="output/graph"] .tree-item-title::after {
+  content: "图谱 graph";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* output/lint -> 检查 lint */
+.nav-folder[data-path="output/lint"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="output/lint"] .nav-folder-title-content,
+.nav-folder-title[data-path="output/lint"] > .nav-folder-title-content,
+.tree-item[data-path="output/lint"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="output/lint"] .tree-item-inner,
+.tree-item-self[data-path="output/lint"] > .tree-item-inner,
+.tree-item[data-path="output/lint"] .tree-item-title,
+.tree-item-self[data-path="output/lint"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="output/lint"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="output/lint"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="output/lint"] > .nav-folder-title-content::after,
+.tree-item[data-path="output/lint"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="output/lint"] .tree-item-inner::after,
+.tree-item-self[data-path="output/lint"] > .tree-item-inner::after,
+.tree-item[data-path="output/lint"] .tree-item-title::after,
+.tree-item-self[data-path="output/lint"] .tree-item-title::after {
+  content: "检查 lint";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* output/packs -> 输出包 packs */
+.nav-folder[data-path="output/packs"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="output/packs"] .nav-folder-title-content,
+.nav-folder-title[data-path="output/packs"] > .nav-folder-title-content,
+.tree-item[data-path="output/packs"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="output/packs"] .tree-item-inner,
+.tree-item-self[data-path="output/packs"] > .tree-item-inner,
+.tree-item[data-path="output/packs"] .tree-item-title,
+.tree-item-self[data-path="output/packs"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="output/packs"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="output/packs"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="output/packs"] > .nav-folder-title-content::after,
+.tree-item[data-path="output/packs"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="output/packs"] .tree-item-inner::after,
+.tree-item-self[data-path="output/packs"] > .tree-item-inner::after,
+.tree-item[data-path="output/packs"] .tree-item-title::after,
+.tree-item-self[data-path="output/packs"] .tree-item-title::after {
+  content: "输出包 packs";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* output/packs/review -> 审阅包 review */
+.nav-folder[data-path="output/packs/review"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="output/packs/review"] .nav-folder-title-content,
+.nav-folder-title[data-path="output/packs/review"] > .nav-folder-title-content,
+.tree-item[data-path="output/packs/review"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="output/packs/review"] .tree-item-inner,
+.tree-item-self[data-path="output/packs/review"] > .tree-item-inner,
+.tree-item[data-path="output/packs/review"] .tree-item-title,
+.tree-item-self[data-path="output/packs/review"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="output/packs/review"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="output/packs/review"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="output/packs/review"] > .nav-folder-title-content::after,
+.tree-item[data-path="output/packs/review"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="output/packs/review"] .tree-item-inner::after,
+.tree-item-self[data-path="output/packs/review"] > .tree-item-inner::after,
+.tree-item[data-path="output/packs/review"] .tree-item-title::after,
+.tree-item-self[data-path="output/packs/review"] .tree-item-title::after {
+  content: "审阅包 review";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* output/packs/decision-memos -> 决策备忘 decision-memos */
+.nav-folder[data-path="output/packs/decision-memos"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="output/packs/decision-memos"] .nav-folder-title-content,
+.nav-folder-title[data-path="output/packs/decision-memos"] > .nav-folder-title-content,
+.tree-item[data-path="output/packs/decision-memos"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="output/packs/decision-memos"] .tree-item-inner,
+.tree-item-self[data-path="output/packs/decision-memos"] > .tree-item-inner,
+.tree-item[data-path="output/packs/decision-memos"] .tree-item-title,
+.tree-item-self[data-path="output/packs/decision-memos"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="output/packs/decision-memos"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="output/packs/decision-memos"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="output/packs/decision-memos"] > .nav-folder-title-content::after,
+.tree-item[data-path="output/packs/decision-memos"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="output/packs/decision-memos"] .tree-item-inner::after,
+.tree-item-self[data-path="output/packs/decision-memos"] > .tree-item-inner::after,
+.tree-item[data-path="output/packs/decision-memos"] .tree-item-title::after,
+.tree-item-self[data-path="output/packs/decision-memos"] .tree-item-title::after {
+  content: "决策备忘 decision-memos";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* output/packs/sop-drafts -> SOP 草稿 sop-drafts */
+.nav-folder[data-path="output/packs/sop-drafts"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="output/packs/sop-drafts"] .nav-folder-title-content,
+.nav-folder-title[data-path="output/packs/sop-drafts"] > .nav-folder-title-content,
+.tree-item[data-path="output/packs/sop-drafts"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="output/packs/sop-drafts"] .tree-item-inner,
+.tree-item-self[data-path="output/packs/sop-drafts"] > .tree-item-inner,
+.tree-item[data-path="output/packs/sop-drafts"] .tree-item-title,
+.tree-item-self[data-path="output/packs/sop-drafts"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="output/packs/sop-drafts"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="output/packs/sop-drafts"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="output/packs/sop-drafts"] > .nav-folder-title-content::after,
+.tree-item[data-path="output/packs/sop-drafts"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="output/packs/sop-drafts"] .tree-item-inner::after,
+.tree-item-self[data-path="output/packs/sop-drafts"] > .tree-item-inner::after,
+.tree-item[data-path="output/packs/sop-drafts"] .tree-item-title::after,
+.tree-item-self[data-path="output/packs/sop-drafts"] .tree-item-title::after {
+  content: "SOP 草稿 sop-drafts";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* output/pilots -> 协议评分 pilots */
+.nav-folder[data-path="output/pilots"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="output/pilots"] .nav-folder-title-content,
+.nav-folder-title[data-path="output/pilots"] > .nav-folder-title-content,
+.tree-item[data-path="output/pilots"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="output/pilots"] .tree-item-inner,
+.tree-item-self[data-path="output/pilots"] > .tree-item-inner,
+.tree-item[data-path="output/pilots"] .tree-item-title,
+.tree-item-self[data-path="output/pilots"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="output/pilots"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="output/pilots"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="output/pilots"] > .nav-folder-title-content::after,
+.tree-item[data-path="output/pilots"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="output/pilots"] .tree-item-inner::after,
+.tree-item-self[data-path="output/pilots"] > .tree-item-inner::after,
+.tree-item[data-path="output/pilots"] .tree-item-title::after,
+.tree-item-self[data-path="output/pilots"] .tree-item-title::after {
+  content: "协议评分 pilots";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* output/review -> 审阅 review */
+.nav-folder[data-path="output/review"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="output/review"] .nav-folder-title-content,
+.nav-folder-title[data-path="output/review"] > .nav-folder-title-content,
+.tree-item[data-path="output/review"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="output/review"] .tree-item-inner,
+.tree-item-self[data-path="output/review"] > .tree-item-inner,
+.tree-item[data-path="output/review"] .tree-item-title,
+.tree-item-self[data-path="output/review"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="output/review"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="output/review"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="output/review"] > .nav-folder-title-content::after,
+.tree-item[data-path="output/review"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="output/review"] .tree-item-inner::after,
+.tree-item-self[data-path="output/review"] > .tree-item-inner::after,
+.tree-item[data-path="output/review"] .tree-item-title::after,
+.tree-item-self[data-path="output/review"] .tree-item-title::after {
+  content: "审阅 review";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* output/figures -> 图表 figures */
+.nav-folder[data-path="output/figures"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="output/figures"] .nav-folder-title-content,
+.nav-folder-title[data-path="output/figures"] > .nav-folder-title-content,
+.tree-item[data-path="output/figures"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="output/figures"] .tree-item-inner,
+.tree-item-self[data-path="output/figures"] > .tree-item-inner,
+.tree-item[data-path="output/figures"] .tree-item-title,
+.tree-item-self[data-path="output/figures"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="output/figures"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="output/figures"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="output/figures"] > .nav-folder-title-content::after,
+.tree-item[data-path="output/figures"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="output/figures"] .tree-item-inner::after,
+.tree-item-self[data-path="output/figures"] > .tree-item-inner::after,
+.tree-item[data-path="output/figures"] .tree-item-title::after,
+.tree-item-self[data-path="output/figures"] .tree-item-title::after {
+  content: "图表 figures";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* output/slides -> 幻灯片 slides */
+.nav-folder[data-path="output/slides"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="output/slides"] .nav-folder-title-content,
+.nav-folder-title[data-path="output/slides"] > .nav-folder-title-content,
+.tree-item[data-path="output/slides"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="output/slides"] .tree-item-inner,
+.tree-item-self[data-path="output/slides"] > .tree-item-inner,
+.tree-item[data-path="output/slides"] .tree-item-title,
+.tree-item-self[data-path="output/slides"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="output/slides"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="output/slides"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="output/slides"] > .nav-folder-title-content::after,
+.tree-item[data-path="output/slides"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="output/slides"] .tree-item-inner::after,
+.tree-item-self[data-path="output/slides"] > .tree-item-inner::after,
+.tree-item[data-path="output/slides"] .tree-item-title::after,
+.tree-item-self[data-path="output/slides"] .tree-item-title::after {
+  content: "幻灯片 slides";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* schema/protocols -> 协议 protocols */
+.nav-folder[data-path="schema/protocols"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="schema/protocols"] .nav-folder-title-content,
+.nav-folder-title[data-path="schema/protocols"] > .nav-folder-title-content,
+.tree-item[data-path="schema/protocols"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="schema/protocols"] .tree-item-inner,
+.tree-item-self[data-path="schema/protocols"] > .tree-item-inner,
+.tree-item[data-path="schema/protocols"] .tree-item-title,
+.tree-item-self[data-path="schema/protocols"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="schema/protocols"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="schema/protocols"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="schema/protocols"] > .nav-folder-title-content::after,
+.tree-item[data-path="schema/protocols"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="schema/protocols"] .tree-item-inner::after,
+.tree-item-self[data-path="schema/protocols"] > .tree-item-inner::after,
+.tree-item[data-path="schema/protocols"] .tree-item-title::after,
+.tree-item-self[data-path="schema/protocols"] .tree-item-title::after {
+  content: "协议 protocols";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* schema/policies -> 策略 policies */
+.nav-folder[data-path="schema/policies"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="schema/policies"] .nav-folder-title-content,
+.nav-folder-title[data-path="schema/policies"] > .nav-folder-title-content,
+.tree-item[data-path="schema/policies"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="schema/policies"] .tree-item-inner,
+.tree-item-self[data-path="schema/policies"] > .tree-item-inner,
+.tree-item[data-path="schema/policies"] .tree-item-title,
+.tree-item-self[data-path="schema/policies"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="schema/policies"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="schema/policies"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="schema/policies"] > .nav-folder-title-content::after,
+.tree-item[data-path="schema/policies"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="schema/policies"] .tree-item-inner::after,
+.tree-item-self[data-path="schema/policies"] > .tree-item-inner::after,
+.tree-item[data-path="schema/policies"] .tree-item-title::after,
+.tree-item-self[data-path="schema/policies"] .tree-item-title::after {
+  content: "策略 policies";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* schema/protocols/research -> 研发协议 research */
+.nav-folder[data-path="schema/protocols/research"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="schema/protocols/research"] .nav-folder-title-content,
+.nav-folder-title[data-path="schema/protocols/research"] > .nav-folder-title-content,
+.tree-item[data-path="schema/protocols/research"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="schema/protocols/research"] .tree-item-inner,
+.tree-item-self[data-path="schema/protocols/research"] > .tree-item-inner,
+.tree-item[data-path="schema/protocols/research"] .tree-item-title,
+.tree-item-self[data-path="schema/protocols/research"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="schema/protocols/research"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="schema/protocols/research"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="schema/protocols/research"] > .nav-folder-title-content::after,
+.tree-item[data-path="schema/protocols/research"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="schema/protocols/research"] .tree-item-inner::after,
+.tree-item-self[data-path="schema/protocols/research"] > .tree-item-inner::after,
+.tree-item[data-path="schema/protocols/research"] .tree-item-title::after,
+.tree-item-self[data-path="schema/protocols/research"] .tree-item-title::after {
+  content: "研发协议 research";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* schema/protocols/general -> 通用协议 general */
+.nav-folder[data-path="schema/protocols/general"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="schema/protocols/general"] .nav-folder-title-content,
+.nav-folder-title[data-path="schema/protocols/general"] > .nav-folder-title-content,
+.tree-item[data-path="schema/protocols/general"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="schema/protocols/general"] .tree-item-inner,
+.tree-item-self[data-path="schema/protocols/general"] > .tree-item-inner,
+.tree-item[data-path="schema/protocols/general"] .tree-item-title,
+.tree-item-self[data-path="schema/protocols/general"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="schema/protocols/general"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="schema/protocols/general"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="schema/protocols/general"] > .nav-folder-title-content::after,
+.tree-item[data-path="schema/protocols/general"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="schema/protocols/general"] .tree-item-inner::after,
+.tree-item-self[data-path="schema/protocols/general"] > .tree-item-inner::after,
+.tree-item[data-path="schema/protocols/general"] .tree-item-title::after,
+.tree-item-self[data-path="schema/protocols/general"] .tree-item-title::after {
+  content: "通用协议 general";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* schema/protocols/investing -> 投资协议 investing */
+.nav-folder[data-path="schema/protocols/investing"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="schema/protocols/investing"] .nav-folder-title-content,
+.nav-folder-title[data-path="schema/protocols/investing"] > .nav-folder-title-content,
+.tree-item[data-path="schema/protocols/investing"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="schema/protocols/investing"] .tree-item-inner,
+.tree-item-self[data-path="schema/protocols/investing"] > .tree-item-inner,
+.tree-item[data-path="schema/protocols/investing"] .tree-item-title,
+.tree-item-self[data-path="schema/protocols/investing"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="schema/protocols/investing"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="schema/protocols/investing"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="schema/protocols/investing"] > .nav-folder-title-content::after,
+.tree-item[data-path="schema/protocols/investing"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="schema/protocols/investing"] .tree-item-inner::after,
+.tree-item-self[data-path="schema/protocols/investing"] > .tree-item-inner::after,
+.tree-item[data-path="schema/protocols/investing"] .tree-item-title::after,
+.tree-item-self[data-path="schema/protocols/investing"] .tree-item-title::after {
+  content: "投资协议 investing";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* schema/protocols/product -> 产品协议 product */
+.nav-folder[data-path="schema/protocols/product"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="schema/protocols/product"] .nav-folder-title-content,
+.nav-folder-title[data-path="schema/protocols/product"] > .nav-folder-title-content,
+.tree-item[data-path="schema/protocols/product"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="schema/protocols/product"] .tree-item-inner,
+.tree-item-self[data-path="schema/protocols/product"] > .tree-item-inner,
+.tree-item[data-path="schema/protocols/product"] .tree-item-title,
+.tree-item-self[data-path="schema/protocols/product"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="schema/protocols/product"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="schema/protocols/product"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="schema/protocols/product"] > .nav-folder-title-content::after,
+.tree-item[data-path="schema/protocols/product"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="schema/protocols/product"] .tree-item-inner::after,
+.tree-item-self[data-path="schema/protocols/product"] > .tree-item-inner::after,
+.tree-item[data-path="schema/protocols/product"] .tree-item-title::after,
+.tree-item-self[data-path="schema/protocols/product"] .tree-item-title::after {
+  content: "产品协议 product";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}
+
+/* schema/protocols/ops -> 运维协议 ops */
+.nav-folder[data-path="schema/protocols/ops"] > .nav-folder-title > .nav-folder-title-content,
+.nav-folder[data-path="schema/protocols/ops"] .nav-folder-title-content,
+.nav-folder-title[data-path="schema/protocols/ops"] > .nav-folder-title-content,
+.tree-item[data-path="schema/protocols/ops"] > .tree-item-self > .tree-item-inner,
+.tree-item[data-path="schema/protocols/ops"] .tree-item-inner,
+.tree-item-self[data-path="schema/protocols/ops"] > .tree-item-inner,
+.tree-item[data-path="schema/protocols/ops"] .tree-item-title,
+.tree-item-self[data-path="schema/protocols/ops"] .tree-item-title {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  color: transparent !important;
+}
+.nav-folder[data-path="schema/protocols/ops"] > .nav-folder-title > .nav-folder-title-content::after,
+.nav-folder[data-path="schema/protocols/ops"] .nav-folder-title-content::after,
+.nav-folder-title[data-path="schema/protocols/ops"] > .nav-folder-title-content::after,
+.tree-item[data-path="schema/protocols/ops"] > .tree-item-self > .tree-item-inner::after,
+.tree-item[data-path="schema/protocols/ops"] .tree-item-inner::after,
+.tree-item-self[data-path="schema/protocols/ops"] > .tree-item-inner::after,
+.tree-item[data-path="schema/protocols/ops"] .tree-item-title::after,
+.tree-item-self[data-path="schema/protocols/ops"] .tree-item-title::after {
+  content: "运维协议 ops";
+  display: inline-block !important;
+  font-size: var(--nav-item-size, 13px) !important;
+  line-height: var(--line-height-normal, 1.4) !important;
+  color: var(--nav-item-color, var(--text-normal)) !important;
+  vertical-align: middle;
+}

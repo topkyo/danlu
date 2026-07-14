@@ -13,7 +13,7 @@ set -euo pipefail
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 SRC="$DIR/src"
-OUT="$DIR/main.js"
+OUT="${OUT:-$DIR/main.js}"
 
 {
   cat <<'HEADER'
@@ -37,12 +37,21 @@ const shell = electron && electron.shell ? electron.shell : null;
 
 HEADER
 
-  for module in constants helpers modals views settings render plugin; do
+  first_module=1
+  for module in llm_settings constants helpers command_specs pending_state pending_runtime context_state today_feed modals views state/repo-state bridge/launcher bridge/runtime_client render/cards settings render_primitives render_input render_today render_advanced render_runs render_home render_review render_execution plugin_helpers rewrite_state control_items modal_specs run_state run_log_persistence plugin_state plugin_lifecycle plugin_actions plugin_run_pipeline state/health-state plugin; do
+    if [[ "$first_module" -eq 0 ]]; then
+      echo ""
+    fi
+    first_module=0
     echo "// --- src/${module}.js ---"
     echo ""
     cat "$SRC/${module}.js"
-    echo ""
   done
 } > "$OUT"
+
+if grep -q 'void this.syncEvidenceGraphConfig' "$OUT" && ! grep -q 'async syncEvidenceGraphConfig' "$OUT"; then
+  echo "error: $OUT calls syncEvidenceGraphConfig but is missing the method — src/plugin.js not fully included" >&2
+  exit 1
+fi
 
 echo "Built $OUT ($(wc -l < "$OUT") lines)"

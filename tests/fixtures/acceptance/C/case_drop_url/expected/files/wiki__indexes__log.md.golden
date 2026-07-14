@@ -1,0 +1,8 @@
+# 知识库日志
+
+## [2026-04-27T00:00:00+00:00] ingest | Agent Architecture Survey
+
+- source_type: `url-drop`
+- original_url: `https://example.com/agents`
+- stored_note: `raw/inbox/agent-architecture-survey.md`
+- asset_files: `0`

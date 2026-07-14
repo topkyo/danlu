@@ -1,4 +1,9 @@
-"""Query/report/slides/memo rendering helpers extracted from app_compile."""
+"""Query/report/slides/memo rendering helpers extracted from app_compile.
+
+OWNER STATUS: legacy owner. New large logic blocks should be extracted to a
+dedicated subpackage (e.g. `aiwiki.queries.*` or `aiwiki.render.*`) rather
+than added here. See AGENTS.md migration policy.
+"""
 
 from __future__ import annotations
 
@@ -18,100 +23,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from .app_compile import (
-    build_ranking_source_record,
-    ranking_source_record_is_reusable,
-    ranking_source_summary_or_preview,
-)
-from .app_content import (
-    _validate_rewrite_candidate_markdown,
-    action_needs_review,
-    action_supports_low_risk_apply,
-    active_manual_source_concept_links,
-    annotate_recurring_promotion,
-    append_execution_policy_decisions,
-    append_review_history_entry,
-    append_wiki_log,
-    build_concept_quality,
-    build_concept_records,
-    build_domain_pilots,
-    build_domain_pilots_incremental,
-    build_knowledge_lifecycle_document,
-    build_machine_memory_repair_plan,
-    build_output_packs,
-    build_output_packs_incremental,
-    build_page_patch_plan,
-    classify_recurring_output_kind,
-    collect_aging_signals,
-    collect_curated_pages,
-    collect_output_artifacts,
-    collect_output_density_artifacts,
-    collect_recent_output_artifacts,
-    concept_render_signature,
-    concept_source_pages,
-    concept_summary_is_placeholder,
-    curated_asset_section_snapshot,
-    curated_page_template,
-    curated_page_transition_profile,
-    decision_memos_dir,
-    default_curated_status,
-    display_action_status,
-    display_curated_status,
-    display_knowledge_lifecycle_state,
-    display_rewrite_proposal_status,
-    domain_pilots_index_path,
-    ensure_wiki_log,
-    entry_concept_terms,
-    entry_ids_from_paths,
-    entry_lookup_maps,
-    evaluate_page_aging,
-    execution_bundle_path,
-    execution_policy_decision_record,
-    execution_proposal_path,
-    execution_receipt_path,
-    find_promoted_curated_page,
-    frontmatter_string_list,
-    judgment_lifecycle_profile,
-    knowledge_lifecycle_governance_summary,
-    load_execution_receipt_history,
-    manifest_change_summary,
-    pilot_scorecards_dir,
-    placeholder_concept_slugs,
-    preserved_section,
-    recurring_promotion_needs_refresh,
-    refresh_knowledge_lifecycle_state,
-    remove_stale_generated_concept_pages,
-    remove_stale_generated_execution_bundle_files,
-    remove_stale_generated_execution_proposal_pages,
-    remove_stale_generated_markdown_files,
-    render_agent_pack,
-    render_agent_workbench,
-    render_aging_report,
-    render_concept_page,
-    render_concepts_index,
-    render_curated_index,
-    render_domain_pilots_index,
-    render_knowledge_lifecycle_entry_summary,
-    render_master_index,
-    render_output_packs_index,
-    render_review_queue,
-    render_source_page_with_state,
-    render_sources_index,
-    repair_execution_proposals,
-    review_history_entries,
-    review_packs_dir,
-    review_queue,
-    rewrite_proposal_candidate_is_current,
-    rewrite_proposal_is_apply_ready,
-    rewrite_proposal_needs_review,
-    routing_snapshot_for_protocol,
-    safe_apply_preview,
-    sop_drafts_dir,
-    source_summary_or_preview,
-    sync_manifest_with_raw,
-    valid_curated_statuses,
-    validate_low_risk_action_targets,
-)
 from .app_execution import (
     append_execution_receipt_history,
     build_execution_bundle,
@@ -119,6 +30,28 @@ from .app_execution import (
     build_material_archive_receipt,
     execution_bundle_digest,
     load_execution_bundle,
+)
+from .app_lifecycle import (
+    action_needs_review,
+    build_knowledge_lifecycle_document,
+    collect_aging_signals,
+    collect_curated_pages,
+    curated_page_template,
+    curated_page_transition_profile,
+    default_curated_status,
+    display_action_status,
+    display_curated_status,
+    display_knowledge_lifecycle_state,
+    display_rewrite_proposal_status,
+    evaluate_page_aging,
+    frontmatter_string_list,
+    judgment_lifecycle_profile,
+    knowledge_lifecycle_governance_summary,
+    refresh_knowledge_lifecycle_state,
+    render_knowledge_lifecycle_entry_summary,
+    review_queue,
+    rewrite_proposal_needs_review,
+    valid_curated_statuses,
 )
 from .app_memory import (
     active_corpus_bridge_evidence_ids,
@@ -158,7 +91,7 @@ from .app_memory import (
     summarize_machine_memory_transition,
     upsert_active_corpus,
 )
-from .app_memory_surfaces import (
+from .app_memory_query import (
     build_machine_memory_query_routes,
     ranked_machine_memory_anchor_nodes,
     shortest_machine_memory_path,
@@ -187,7 +120,6 @@ from .app_protocol import (
     resolve_protocol,
     schedule_review_windows,
 )
-from .app_render import protocol_output_pack_rows
 from .app_shell import build_shell_summary, write_shell_summary
 from .app_state import (
     DEFAULT_PROTOCOL,
@@ -268,19 +200,6 @@ from .app_state import (
     save_material_archive_state,
     shell_summary_path,
 )
-from .app_surfaces import (
-    render_cognitive_history,
-    render_compile_status,
-    render_execution_audit,
-    render_execution_audit_html,
-    render_execution_center,
-    render_execution_center_html,
-    render_furnace_center,
-    render_furnace_center_html,
-    render_judgment_assets,
-    render_machine_memory_graph_html,
-    render_review_center_html,
-)
 from .app_utils import (
     analyze_citation_snapshots,
     build_citation_snapshots,
@@ -304,6 +223,152 @@ from .app_utils import (
     write_json_document_if_changed_ignoring_generated_timestamps,
 )
 from .config import LLMConfig
+from .content.concepts import (
+    build_concept_quality,
+    build_concept_records,
+    concept_render_signature,
+    concept_source_pages,
+    entry_concept_terms,
+    render_concept_page,
+    render_concepts_index,
+    render_sources_index,
+)
+from .content.io import (
+    active_manual_source_concept_links,
+    annotate_recurring_promotion,
+    append_review_history_entry,
+    collect_output_artifacts,
+    collect_output_density_artifacts,
+    collect_recent_output_artifacts,
+    curated_asset_section_snapshot,
+    entry_ids_from_paths,
+    entry_lookup_maps,
+    find_promoted_curated_page,
+    manifest_change_summary,
+    preserved_section,
+    recurring_promotion_needs_refresh,
+    render_source_page_with_state,
+    review_history_entries,
+    routing_snapshot_for_protocol,
+    source_summary_or_preview,
+    sync_manifest_with_raw,
+)
+from .content.memory import (
+    _validate_rewrite_candidate_markdown,
+    action_supports_low_risk_apply,
+    append_execution_policy_decisions,
+    build_machine_memory_repair_plan,
+    build_page_patch_plan,
+    concept_summary_is_placeholder,
+    execution_policy_decision_record,
+    load_execution_receipt_history,
+    placeholder_concept_slugs,
+    remove_stale_generated_execution_bundle_files,
+    remove_stale_generated_execution_proposal_pages,
+    remove_stale_generated_markdown_files,
+    repair_execution_proposals,
+    rewrite_proposal_candidate_is_current,
+    rewrite_proposal_is_apply_ready,
+    safe_apply_preview,
+    validate_low_risk_action_targets,
+)
+from .content.outputs import classify_recurring_output_kind
+from .memory.execution_surfaces import (
+    render_execution_audit,
+    render_execution_audit_html,
+    render_execution_center,
+    render_execution_center_html,
+)
+from .memory.graph import render_machine_memory_graph_html
+from .render.cognitive_history import render_cognitive_history
+from .render.compile_status import render_compile_status
+from .render.furnace_center import (
+    render_furnace_center,
+    render_furnace_center_html,
+)
+from .render.judgment_assets import render_judgment_assets
+from .render.packs import (
+    build_output_packs,
+    build_output_packs_incremental,
+    protocol_output_pack_rows,
+    render_output_packs_index,
+)
+from .render.paths import (
+    append_wiki_log,
+    decision_memos_dir,
+    ensure_wiki_log,
+    execution_bundle_path,
+    execution_proposal_path,
+    execution_receipt_path,
+    remove_stale_generated_concept_pages,
+    review_packs_dir,
+    sop_drafts_dir,
+)
+from .render.pilots import (
+    build_domain_pilots,
+    build_domain_pilots_incremental,
+    domain_pilots_index_path,
+    pilot_scorecards_dir,
+)
+from .render.review_center import render_review_center_html
+from .render.views import (
+    render_agent_pack,
+    render_agent_workbench,
+    render_aging_report,
+    render_curated_index,
+    render_domain_pilots_index,
+    render_master_index,
+    render_review_queue,
+)
+
+AUTO_ASK_PATH_MARKER = "本次投喂材料路径："
+AUTO_ASK_QUESTION_MARKER = "用户问题："
+AUTO_ASK_INLINE_PATH_MARKER = "材料路径供系统路由使用："
+AUTO_ASK_INLINE_HINT_PREFIX = "请优先使用本次投喂材料回答"
+
+
+def human_query_title(question: str) -> str:
+    """Return the user-facing title for an ask artifact.
+
+    Product Shell auto-ask prompts include repo paths as routing hints.  Those
+    hints are useful to the runtime but should not leak into report headings,
+    Obsidian titles, or output filenames.
+    """
+
+    text = str(question or "").strip()
+    if not text:
+        return "未命名问题"
+    marker_index = text.rfind(AUTO_ASK_QUESTION_MARKER)
+    if marker_index >= 0:
+        candidate = text[marker_index + len(AUTO_ASK_QUESTION_MARKER) :].strip()
+        if candidate:
+            text = candidate
+    visible_lines: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if AUTO_ASK_INLINE_PATH_MARKER in stripped:
+            before_marker = stripped.split(AUTO_ASK_INLINE_PATH_MARKER, 1)[0].strip()
+            before_marker = before_marker.removesuffix("；").removesuffix(";").strip()
+            if before_marker and before_marker != AUTO_ASK_INLINE_HINT_PREFIX:
+                visible_lines.append(before_marker)
+            continue
+        if stripped == AUTO_ASK_INLINE_HINT_PREFIX or stripped.startswith(f"{AUTO_ASK_INLINE_HINT_PREFIX}；"):
+            continue
+        visible_lines.append(line)
+    text = "\n".join(visible_lines).strip()
+    text = re.sub(r"(?m)^\s*-\s*(?:raw|wiki|output|\.aiwiki)/\S+\s*$", "", text).strip()
+    text = re.sub(r"\s+", " ", text).strip()
+    return text or "未命名问题"
+
+
+def _ranking_helpers() -> tuple[Any, Any, Any]:
+    from . import app_compile as compile_facade
+
+    return (
+        compile_facade.build_ranking_source_record,
+        compile_facade.ranking_source_record_is_reusable,
+        compile_facade.ranking_source_summary_or_preview,
+    )
 
 
 def source_page_is_stale(root: Path, entry: dict[str, Any]) -> bool:
@@ -321,6 +386,8 @@ def source_page_requires_compile(root: Path, entry: dict[str, Any], concepts: li
     if compiled_source_sha(content) != entry["sha256"]:
         return True
     frontmatter = parse_frontmatter(content)
+    if str(frontmatter.get("source_updated_at") or "") != str(entry.get("updated_at") or entry.get("imported_at") or ""):
+        return True
     existing_concepts = frontmatter.get("concepts", [])
     if not isinstance(existing_concepts, list):
         existing_concepts = []
@@ -369,6 +436,9 @@ def rank_sources(
     *,
     protocol: str = DEFAULT_PROTOCOL,
 ) -> list[dict[str, Any]]:
+    build_ranking_source_record, ranking_source_record_is_reusable, ranking_source_summary_or_preview = (
+        _ranking_helpers()
+    )
     question_tokens = tokenize(question)
     scored: list[tuple[float, int, float, dict[str, Any]]] = []
     boost_source_ids = boost_source_ids or set()
@@ -583,34 +653,55 @@ def render_report(
     artifact_id: str,
 ) -> str:
     active_protocol = protocol_state["active_protocol"]
+    title = human_query_title(question)
     output_guidance = protocol_output_guidance(root, active_protocol, "report")
     focus_lines = compact_machine_memory_focus_lines(machine_query)
     frontmatter = render_frontmatter(
         {
-            "id": artifact_id,
             "kind": "output",
             "format": "report",
-            "query": question,
+            "cssclasses": ["aiwiki-output"],
             "protocol": active_protocol,
-            "generated_by": "aiwiki-ask",
+            "query": question,
             "created_at": created_at,
+            "generated_by": "aiwiki-ask",
+            "_id": artifact_id,
         }
     )
     lines = [
         frontmatter,
         "",
-        f"# {question}",
+        f"# {title}",
         "",
-        "## 当前线索",
-        f"- 当前协议：`{active_protocol}` ({protocol_title(active_protocol)})。",
-        "- 先直接回答问题本身，再补背景和延伸。",
-        "- 所有重要结论都要落回 `wiki/sources/*.md`。",
+        "## 结论",
+        "_LLM: 请在此填入一句话直接回答问题（最多 3 行）。保持判断明确，不要避而不答。_",
+        "",
+        "## 关键证据",
+        "_LLM: 请在此填入至少 3 条 bullet，每条带至少 1 个 `wiki/sources/*.md` 引用。_",
     ]
-    lines.extend(focus_lines)
+    if focus_lines and focus_lines != ["- 当前没有明显的机器记忆命中，先从优先来源开始。"]:
+        lines.append("")
+        lines.append("_机器记忆提示：_")
+        lines.extend(focus_lines)
     lines.extend(
         [
-        "",
-        "## 协议输出偏置",
+            "",
+            "## 反证与不确定性",
+            "_LLM: 请在此填入至少 1 条反证、缺口或不确定性。若证据集合确实充分，显式写明（例：未发现明显反证；证据覆盖 N 份来源 …）。_",
+            "",
+            "## 行动建议",
+            "_LLM: 请在此填入至少 1 条可执行的 next step。_",
+            "",
+            "## 下次观察信号",
+            "_LLM: 请在此填入至少 1 条触发复审的条件（当 X 出现 / Y 指标变化时复审本结论）。_",
+            "",
+            "## 引用",
+            "_LLM: 请在此列出本报告引用到的全部 `wiki/sources/*.md` 路径，去重，按出现顺序。_",
+            "",
+            "## 参考",
+            f"- 当前协议：`{active_protocol}` ({protocol_title(active_protocol)})。",
+            "",
+            "_协议输出偏置：_",
         ]
     )
     lines.extend(
@@ -620,26 +711,17 @@ def render_report(
     lines.extend(
         [
             "",
-            "## 优先来源",
+            "_优先来源：_",
         ]
     )
     lines.extend(compact_source_link_lines(entries))
     lines.extend(
         [
             "",
-            "## 优先概念",
+            "_优先概念：_",
         ]
     )
     lines.extend(compact_concept_link_lines(concepts))
-    lines.extend(
-        [
-            "",
-            "## 下一步",
-            "1. 用最强来源先写 2 到 4 句直接回答。",
-            "2. 明确列出反证、缺口和不确定性。",
-            "3. 在正文里保留 source-page 内联引用。",
-        ]
-    )
     return "\n".join(lines) + "\n"
 
 
@@ -654,6 +736,7 @@ def render_slides(
     artifact_id: str,
 ) -> str:
     active_protocol = protocol_state["active_protocol"]
+    title = human_query_title(question)
     output_guidance = protocol_output_guidance(root, active_protocol, "slides")
     lines = [
         "---",
@@ -664,11 +747,11 @@ def render_slides(
         f'protocol: "{active_protocol}"',
         'generated_by: "aiwiki-ask"',
         f'created_at: "{created_at}"',
-        f"title: {render_scalar(question)}",
+        f"title: {render_scalar(title)}",
         f"description: {render_scalar(f'Generated at {created_at}')}",
         "---",
         "",
-        f"# {question}",
+        f"# {title}",
         "",
         "## 本稿用途",
         f"- 当前协议：`{active_protocol}` ({protocol_title(active_protocol)})。",
@@ -727,6 +810,7 @@ def render_figure_brief(
     artifact_id: str,
 ) -> str:
     active_protocol = protocol_state["active_protocol"]
+    title = human_query_title(question)
     output_guidance = protocol_output_guidance(root, active_protocol, "figure")
     focus_lines = compact_machine_memory_focus_lines(machine_query)
     frontmatter = render_frontmatter(
@@ -743,7 +827,7 @@ def render_figure_brief(
     lines = [
         frontmatter,
         "",
-        f"# 图表简报：{question}",
+        f"# 图表简报：{title}",
         "",
         "## 这张图先回答什么",
         f"- 当前协议：`{active_protocol}` ({protocol_title(active_protocol)})。",
@@ -875,6 +959,7 @@ def render_decision_memo_query(
     artifact_id: str,
 ) -> str:
     active_protocol = protocol_state["active_protocol"]
+    title = human_query_title(question)
     output_guidance = protocol_output_guidance(root, active_protocol, "decision-memo")
     focus_lines = compact_machine_memory_focus_lines(machine_query)
     seed_ref, seed_frontmatter, seed_content = _select_output_seed_pack(
@@ -903,7 +988,7 @@ def render_decision_memo_query(
     lines = [
         frontmatter,
         "",
-        f"# Decision Memo Request · {question}",
+        f"# Decision Memo Request · {title}",
         "",
         "## 任务",
         "- 把这次问题压成一页可执行的 decision memo。",
@@ -955,6 +1040,52 @@ def render_decision_memo_query(
     return "\n".join(lines) + "\n"
 
 
+def render_note_answer(
+    root: Path,
+    question: str,
+    entries: list[dict[str, Any]],
+    concepts: list[dict[str, Any]],
+    machine_query: dict[str, Any],
+    protocol_state: dict[str, Any],
+    created_at: str,
+    artifact_id: str,
+) -> str:
+    """Lightweight ask output. Q+A 段落式答复，无 R97-98.3 decision-grade 骨架；
+    保留 frontmatter + citation 底线以便 candidate/corpus/shell summary 正常工作。"""
+    active_protocol = protocol_state["active_protocol"]
+    focus_lines = compact_machine_memory_focus_lines(machine_query)
+    frontmatter = render_frontmatter(
+        {
+            "id": artifact_id,
+            "kind": "output",
+            "format": "note",
+            "cssclasses": ["aiwiki-output"],
+            "query": question,
+            "protocol": active_protocol,
+            "generated_by": "aiwiki-ask",
+            "created_at": created_at,
+        }
+    )
+    lines = [
+        frontmatter,
+        "",
+        f"# {human_query_title(question)}",
+        "",
+        "## 回答",
+        "_LLM: 请用 2–5 段自然语言直接回答上面的问题，保持判断明确；不要求六段骨架，但每段涉及事实时附 `wiki/sources/*.md` 引用。_",
+        "",
+        f"- 当前协议：`{active_protocol}` ({protocol_title(active_protocol)})。",
+    ]
+    if focus_lines and focus_lines != ["- 当前没有明显的机器记忆命中，先从优先来源开始。"]:
+        lines.extend(["", "_机器记忆提示：_"])
+        lines.extend(focus_lines)
+    lines.extend(["", "## 优先来源"])
+    lines.extend(compact_source_link_lines(entries))
+    lines.extend(["", "## 优先概念"])
+    lines.extend(compact_concept_link_lines(concepts))
+    return "\n".join(lines) + "\n"
+
+
 def render_sop_query(
     root: Path,
     question: str,
@@ -966,6 +1097,7 @@ def render_sop_query(
     artifact_id: str,
 ) -> str:
     active_protocol = protocol_state["active_protocol"]
+    title = human_query_title(question)
     output_guidance = protocol_output_guidance(root, active_protocol, "sop")
     focus_lines = compact_machine_memory_focus_lines(machine_query)
     seed_ref, seed_frontmatter, seed_content = _select_output_seed_pack(
@@ -994,7 +1126,7 @@ def render_sop_query(
     lines = [
         frontmatter,
         "",
-        f"# SOP Request · {question}",
+        f"# SOP Request · {title}",
         "",
         "## 任务",
         "- 把这次问题压成可执行的 SOP 草案。",

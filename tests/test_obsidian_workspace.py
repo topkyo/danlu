@@ -25,52 +25,36 @@ class ObsidianWorkspaceTests(unittest.TestCase):
     def test_workspace_defaults_open_home_and_furnace_center(self) -> None:
         workspace = json.loads((self.root / ".obsidian" / "workspace.json").read_text(encoding="utf-8"))
         main_children = workspace["main"]["children"][0]["children"]
-        self.assertEqual(main_children[0]["state"]["state"]["file"], "HOME.md")
+        self.assertEqual(workspace["active"], "main-furnace-center")
+        self.assertEqual(main_children[0]["state"]["type"], "furnace-product-shell-furnace-center")
+        self.assertEqual(main_children[1]["state"]["state"]["file"], "HOME.md")
+        self.assertTrue(workspace["left"].get("collapsed"))
+        self.assertTrue(workspace["right"].get("collapsed"))
         left_children = workspace["left"]["children"][0]["children"]
-        left_titles = [child["state"]["title"] for child in left_children]
-        self.assertEqual(
-            left_titles,
-            ["文件列表", "原料 raw", "wiki 知识", "输出 output", "规则 schema", "书签"],
-        )
+        left_titles = [child["state"].get("title") for child in left_children]
+        self.assertEqual(left_titles, ["文件列表", "书签"])
         right_children = workspace["right"]["children"][0]["children"]
         view_types = [child["state"]["type"] for child in right_children]
-        self.assertIn("furnace-product-shell-furnace-center", view_types)
-        self.assertIn("furnace-product-shell-review-center", view_types)
-        self.assertIn("furnace-product-shell-execution-center", view_types)
-        self.assertIn("furnace-product-shell-recent-runs", view_types)
+        self.assertEqual(view_types, ["outline", "backlink"])
 
     def test_home_dashboard_links_key_index_notes(self) -> None:
         home = (self.root / "HOME.md").read_text(encoding="utf-8")
-        self.assertIn("[[wiki/indexes/Raw Inbox|", home)
-        self.assertIn("[[wiki/indexes/Wiki Hub|", home)
-        self.assertIn("[[wiki/indexes/Alchemy Furnace|", home)
-        self.assertIn("[[wiki/indexes/Furnace Ultimate Architecture|", home)
-        self.assertIn("[[wiki/indexes/Furnace Material Scaling|", home)
+        self.assertIn("Product Shell", home)
+        self.assertIn("输入端", home)
+        self.assertIn("输出端", home)
+        self.assertIn("更多工具", home)
+        self.assertNotIn("[[docs/", home)
         self.assertIn("[[wiki/indexes/furnace-center|", home)
-        self.assertIn("[[wiki/indexes/protocols|", home)
-        self.assertIn("[[wiki/indexes/Furnace Protocols|", (self.root / "wiki" / "indexes" / "Wiki Hub.md").read_text(encoding="utf-8"))
-        self.assertIn("[[wiki/indexes/Furnace Material State Model|", (self.root / "wiki" / "indexes" / "Wiki Hub.md").read_text(encoding="utf-8"))
-        self.assertIn("[[wiki/indexes/review-center|", home)
-        self.assertIn("[[wiki/indexes/graph-view|", home)
-        self.assertIn("[[wiki/indexes/machine-memory|", home)
-        self.assertIn("[[wiki/indexes/graph-health|", home)
-        self.assertIn("[[wiki/indexes/drift-report|", home)
-        self.assertIn("[[wiki/indexes/repair-backlog|", home)
-        self.assertIn("[[wiki/indexes/review-queue|", home)
-        self.assertIn("[[schema/index|", home)
-        self.assertIn("[[schema/protocols/index|", home)
+        wiki_hub = (self.root / "wiki" / "indexes" / "Wiki Hub.md").read_text(encoding="utf-8")
+        self.assertNotIn("[[docs/", wiki_hub)
         self.assertIn("[[wiki/indexes/Outputs|", home)
-        self.assertIn("[[wiki/indexes/Search Presets|", home)
+        self.assertIn("[[wiki/indexes/judgment-assets|", home)
+        self.assertNotIn("## 今日信号", home)
 
     def test_index_notes_exist(self) -> None:
         for relative in (
             "wiki/indexes/Raw Inbox.md",
             "wiki/indexes/Wiki Hub.md",
-            "wiki/indexes/Alchemy Furnace.md",
-            "wiki/indexes/Furnace Ultimate Architecture.md",
-            "wiki/indexes/Furnace Material Scaling.md",
-            "wiki/indexes/Furnace Material State Model.md",
-            "wiki/indexes/Furnace Protocols.md",
             "wiki/indexes/furnace-center.md",
             "wiki/indexes/protocols.md",
             "wiki/indexes/review-center.md",
@@ -83,26 +67,12 @@ class ObsidianWorkspaceTests(unittest.TestCase):
         ):
             self.assertTrue((self.root / relative).exists(), relative)
 
-    def test_ultimate_architecture_keeps_core_layers_visible(self) -> None:
-        text = (self.root / "wiki" / "indexes" / "Furnace Ultimate Architecture.md").read_text(
-            encoding="utf-8"
-        )
-        self.assertIn("Schema / Protocol Layer", text)
-        self.assertIn("Outputs Layer", text)
-        self.assertIn("execution-center", text)
+    def test_folder_label_snippet_hides_docs_from_file_tree(self) -> None:
+        from aiwiki.app_vault import _render_folder_label_snippet
 
-    def test_material_scaling_docs_keep_runtime_state_guards(self) -> None:
-        state_model = (
-            self.root / "wiki" / "indexes" / "Furnace Material State Model.md"
-        ).read_text(encoding="utf-8")
-        scaling = (
-            self.root / "wiki" / "indexes" / "Furnace Material Scaling.md"
-        ).read_text(encoding="utf-8")
-        self.assertIn("manifest `entries[*].id`", state_model)
-        self.assertIn("runtime-history.jsonl", state_model)
-        self.assertIn("active_corpus_ids", state_model)
-        self.assertIn("空/缺省", state_model)
-        self.assertIn("统一落在 machine-readable 的 runtime history 文件里", scaling)
+        snippet = _render_folder_label_snippet()
+        self.assertIn("hide docs from the daily file tree", snippet)
+        self.assertIn('.nav-folder[data-path="docs"]', snippet)
 
 
 if __name__ == "__main__":

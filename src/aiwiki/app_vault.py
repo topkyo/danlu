@@ -1,15 +1,22 @@
-"""Vault bootstrap helpers for new 炼丹炉 workspaces."""
+"""Vault bootstrap helpers for new 炼丹炉 workspaces.
+
+OWNER STATUS: legacy owner. New large logic blocks should be extracted to a
+dedicated subpackage (e.g. `aiwiki.vault.*`) rather than added here.
+See AGENTS.md migration policy.
+"""
 
 from __future__ import annotations
 
+import hashlib
 import os
 import shlex
 from pathlib import Path
 from typing import Any
 
-from .app_compile import shell_status
 from .app_protocol import ensure_layout
 from .app_utils import render_json_document, write_if_changed
+from .execution.runtime_surfaces import shell_status
+from .vault_obsidian_graph import DEFAULT_OBSIDIAN_GRAPH
 
 PLUGIN_ID = "furnace-product-shell"
 
@@ -22,7 +29,30 @@ DEFAULT_OBSIDIAN_APP = {
     "promptDelete": False,
     "showInlineTitle": True,
     "showUnsupportedFiles": True,
-    "useMarkdownLinks": True,
+    "useMarkdownLinks": False,
+    "userIgnoreFilters": [
+        "docs/",
+        "raw/normalized/",
+        "wiki/derived/",
+        "wiki/decisions/",
+        "wiki/judgments/",
+        "wiki/elixirs/",
+        "wiki/sources/",
+        "wiki/concepts/",
+        "wiki/indexes/",
+        "schema/",
+        "output/_candidates/",
+        "output/control/",
+        "output/graph/",
+        "output/lint/",
+        "output/packs/",
+        "output/pilots/",
+        "output/review/",
+        "output/slides/",
+        "output/figures/",
+        "output/_proposals/",
+        ".aiwiki/",
+    ],
 }
 
 DEFAULT_OBSIDIAN_CORE_PLUGINS = {
@@ -62,11 +92,11 @@ DEFAULT_OBSIDIAN_CORE_PLUGINS = {
 DEFAULT_PLUGIN_DATA = {
     "settings": {
         "defaultAskFormat": "report",
-        "defaultAskMode": "ask",
         "launcherPath": "scripts/aiwiki-launcher.sh",
         "locale": "zh",
+        "llmBackend": "opencode-api",
+        "llmModel": "deepseek-v4-pro",
         "recentRunsLimit": 8,
-        "showHtmlShortcuts": True,
     },
     "recentRuns": [],
 }
@@ -78,13 +108,13 @@ DEFAULT_OBSIDIAN_APPEARANCE = {
 }
 
 FOLDER_LABEL_OVERRIDES: tuple[tuple[str, str], ...] = (
-    ("raw", "原料 raw"),
-    ("output", "输出 output"),
+    ("raw", "原料"),
+    ("output", "产出"),
     ("schema", "规则 schema"),
     ("scripts", "脚本 scripts"),
     ("prompts", "提示词 prompts"),
-    ("raw/inbox", "收件箱 inbox"),
-    ("raw/assets", "附件 assets"),
+    ("raw/inbox", "收件箱"),
+    ("raw/assets", "附件"),
     ("raw/normalized", "标准化 normalized"),
     ("wiki/sources", "来源 sources"),
     ("wiki/concepts", "概念 concepts"),
@@ -105,11 +135,12 @@ FOLDER_LABEL_OVERRIDES: tuple[tuple[str, str], ...] = (
     ("output/packs/decision-memos", "决策备忘 decision-memos"),
     ("output/packs/sop-drafts", "SOP 草稿 sop-drafts"),
     ("output/pilots", "协议评分 pilots"),
-    ("output/reports", "报告 reports"),
+    ("output/reports", "报告"),
     ("output/review", "审阅 review"),
     ("output/figures", "图表 figures"),
     ("output/slides", "幻灯片 slides"),
     ("schema/protocols", "协议 protocols"),
+    ("schema/policies", "策略 policies"),
     ("schema/protocols/research", "研发协议 research"),
     ("schema/protocols/general", "通用协议 general"),
     ("schema/protocols/investing", "投资协议 investing"),
@@ -117,25 +148,72 @@ FOLDER_LABEL_OVERRIDES: tuple[tuple[str, str], ...] = (
     ("schema/protocols/ops", "运维协议 ops"),
 )
 
+USER_HIDDEN_FOLDER_PATHS: tuple[str, ...] = (
+    "raw/normalized",
+    "docs",
+    "wiki",
+    "schema",
+    "scripts",
+    "prompts",
+    "output/_candidates",
+    "output/_proposals",
+    "output/agents",
+    "output/control",
+    "output/figures",
+    "output/graph",
+    "output/lint",
+    "output/packs",
+    "output/pilots",
+    "output/review",
+    "output/slides",
+)
 
 def _folder_label_selectors(path: str) -> tuple[str, ...]:
     return (
         f'.nav-folder[data-path="{path}"] > .nav-folder-title > .nav-folder-title-content',
+        f'.nav-folder[data-path="{path}"] .nav-folder-title-content',
         f'.nav-folder-title[data-path="{path}"] > .nav-folder-title-content',
         f'.tree-item[data-path="{path}"] > .tree-item-self > .tree-item-inner',
+        f'.tree-item[data-path="{path}"] .tree-item-inner',
         f'.tree-item-self[data-path="{path}"] > .tree-item-inner',
+        f'.tree-item[data-path="{path}"] .tree-item-title',
+        f'.tree-item-self[data-path="{path}"] .tree-item-title',
+    )
+
+
+def _folder_container_selectors(path: str) -> tuple[str, ...]:
+    return (
+        f'.nav-folder[data-path="{path}"]',
+        f'.tree-item[data-path="{path}"]',
+        f'.nav-folder-title[data-path="{path}"]',
+        f'.tree-item-self[data-path="{path}"]',
     )
 
 
 def _render_folder_label_snippet() -> str:
     lines = [
         "/*",
-        " * 炼丹炉 vault — 文件浏览器中文化",
-        " * 保留运行时英文路径不变，只覆盖 Obsidian 左侧文件树显示文本。",
+        " * 炼丹炉 vault — 文件浏览器用户视图",
+        " * 保留运行时英文路径不变；普通用户默认只看投料收件箱和报告，其余运行时分层从文件树隐藏。",
         " * 同时兼容旧结构（data-path 在父级）和新结构（data-path 在 title/self）两种 DOM。",
         " */",
         "",
     ]
+    lines.extend(
+        [
+            "/* 默认隐藏 runtime / operator folders；Product Shell 和更多工具仍可打开对应页面。 */",
+        ]
+    )
+    for path in USER_HIDDEN_FOLDER_PATHS:
+        lines.extend(
+            [
+                f"/* hide {path} from the daily file tree */",
+                ",\n".join(_folder_container_selectors(path)) + " {",
+                "  display: none !important;",
+                "}",
+                "",
+            ]
+        )
     for path, label in FOLDER_LABEL_OVERRIDES:
         selectors = _folder_label_selectors(path)
         pseudo_selectors = tuple(f"{selector}::after" for selector in selectors)
@@ -144,10 +222,16 @@ def _render_folder_label_snippet() -> str:
                 f"/* {path} -> {label} */",
                 ",\n".join(selectors) + " {",
                 "  font-size: 0 !important;",
+                "  line-height: 0 !important;",
+                "  color: transparent !important;",
                 "}",
                 ",\n".join(pseudo_selectors) + " {",
                 f'  content: "{label}";',
+                "  display: inline-block !important;",
                 "  font-size: var(--nav-item-size, 13px) !important;",
+                "  line-height: var(--line-height-normal, 1.4) !important;",
+                "  color: var(--nav-item-color, var(--text-normal)) !important;",
+                "  vertical-align: middle;",
                 "}",
                 "",
             ]
@@ -157,19 +241,19 @@ def _render_folder_label_snippet() -> str:
 
 def _default_workspace_document() -> dict[str, Any]:
     return {
-        "active": "right-furnace-center",
+        "active": "main-furnace-center",
         "lastOpenFiles": [
+            "wiki/indexes/furnace-center.md",
             "HOME.md",
             "README.md",
-            "wiki/indexes/furnace-center.md",
+            "wiki/indexes/Outputs.md",
+            "wiki/indexes/judgment-assets.md",
             "wiki/indexes/review-center.md",
             "wiki/indexes/execution-center.md",
-            "wiki/indexes/graph-view.md",
-            "wiki/indexes/protocols.md",
-            "schema/index.md",
             "output/control/shell-summary.json",
         ],
         "left": {
+            "collapsed": True,
             "children": [
                 {
                     "children": [
@@ -184,70 +268,12 @@ def _default_workspace_document() -> dict[str, Any]:
                             "type": "leaf",
                         },
                         {
-                            "id": "left-search-raw",
+                            "id": "left-bookmarks",
                             "state": {
-                                "icon": "lucide-search",
-                                "state": {
-                                    "collapseAll": False,
-                                    "explainSearch": False,
-                                    "extraContext": False,
-                                    "matchingCase": False,
-                                    "query": 'path:"raw"',
-                                    "sortOrder": "alphabetical",
-                                },
-                                "title": "原料 raw",
-                                "type": "search",
-                            },
-                            "type": "leaf",
-                        },
-                        {
-                            "id": "left-search-wiki",
-                            "state": {
-                                "icon": "lucide-search",
-                                "state": {
-                                    "collapseAll": False,
-                                    "explainSearch": False,
-                                    "extraContext": False,
-                                    "matchingCase": False,
-                                    "query": 'path:"wiki"',
-                                    "sortOrder": "alphabetical",
-                                },
-                                "title": "wiki 知识",
-                                "type": "search",
-                            },
-                            "type": "leaf",
-                        },
-                        {
-                            "id": "left-search-output",
-                            "state": {
-                                "icon": "lucide-search",
-                                "state": {
-                                    "collapseAll": False,
-                                    "explainSearch": False,
-                                    "extraContext": False,
-                                    "matchingCase": False,
-                                    "query": 'path:"output"',
-                                    "sortOrder": "alphabetical",
-                                },
-                                "title": "输出 output",
-                                "type": "search",
-                            },
-                            "type": "leaf",
-                        },
-                        {
-                            "id": "left-search-schema",
-                            "state": {
-                                "icon": "lucide-search",
-                                "state": {
-                                    "collapseAll": False,
-                                    "explainSearch": False,
-                                    "extraContext": False,
-                                    "matchingCase": False,
-                                    "query": 'path:"schema"',
-                                    "sortOrder": "alphabetical",
-                                },
-                                "title": "规则 schema",
-                                "type": "search",
+                                "icon": "lucide-bookmark",
+                                "state": {},
+                                "title": "书签",
+                                "type": "bookmarks",
                             },
                             "type": "leaf",
                         },
@@ -259,7 +285,7 @@ def _default_workspace_document() -> dict[str, Any]:
             "direction": "horizontal",
             "id": "left-root",
             "type": "split",
-            "width": 320,
+            "width": 260,
         },
         "left-ribbon": {
             "hiddenItems": {
@@ -280,6 +306,16 @@ def _default_workspace_document() -> dict[str, Any]:
                 {
                     "children": [
                         {
+                            "id": "main-furnace-center",
+                            "state": {
+                                "icon": "flask-conical",
+                                "state": {},
+                                "title": "炼丹炉",
+                                "type": "furnace-product-shell-furnace-center",
+                            },
+                            "type": "leaf",
+                        },
+                        {
                             "id": "home-leaf",
                             "state": {
                                 "icon": "lucide-file",
@@ -290,6 +326,7 @@ def _default_workspace_document() -> dict[str, Any]:
                             "type": "leaf",
                         }
                     ],
+                    "currentTab": 0,
                     "id": "main-tabs",
                     "type": "tabs",
                 }
@@ -299,6 +336,7 @@ def _default_workspace_document() -> dict[str, Any]:
             "type": "split",
         },
         "right": {
+            "collapsed": True,
             "children": [
                 {
                     "children": [
@@ -335,48 +373,8 @@ def _default_workspace_document() -> dict[str, Any]:
                             },
                             "type": "leaf",
                         },
-                        {
-                            "id": "right-furnace-center",
-                            "state": {
-                                "icon": "flask-conical",
-                                "state": {},
-                                "title": "炉心面板",
-                                "type": "furnace-product-shell-furnace-center",
-                            },
-                            "type": "leaf",
-                        },
-                        {
-                            "id": "right-review-center",
-                            "state": {
-                                "icon": "clipboard-check",
-                                "state": {},
-                                "title": "审阅中心",
-                                "type": "furnace-product-shell-review-center",
-                            },
-                            "type": "leaf",
-                        },
-                        {
-                            "id": "right-execution-center",
-                            "state": {
-                                "icon": "play-circle",
-                                "state": {},
-                                "title": "执行中心",
-                                "type": "furnace-product-shell-execution-center",
-                            },
-                            "type": "leaf",
-                        },
-                        {
-                            "id": "right-recent-runs",
-                            "state": {
-                                "icon": "history",
-                                "state": {},
-                                "title": "最近运行",
-                                "type": "furnace-product-shell-recent-runs",
-                            },
-                            "type": "leaf",
-                        },
                     ],
-                    "currentTab": 2,
+                    "currentTab": 0,
                     "id": "right-tabs",
                     "type": "tabs",
                 }
@@ -384,7 +382,7 @@ def _default_workspace_document() -> dict[str, Any]:
             "direction": "horizontal",
             "id": "right-root",
             "type": "split",
-            "width": 300,
+            "width": 280,
         },
     }
 
@@ -400,38 +398,40 @@ def _render_vault_readme(runtime_root: Path) -> str:
                 "",
                 f"- 当前绑定的 runtime root：`{runtime}`",
                 "- 当前 vault root：本目录",
-                "- 日常入口：打开 Obsidian -> `HOME.md` -> Product Shell（CLI 作为备用/脚本入口）",
+                "- 日常入口：打开 Obsidian -> 主区 Product Shell（`HOME.md` 只保留说明和关键链接；CLI 作为备用/脚本入口）",
+                "- 左侧文件树是用户视图：默认只保留投料收件箱和报告入口；`raw/wiki/schema/output` 的完整分层仍由 runtime 管理。",
                 "- Obsidian 与 CLI 共用同一个 runtime / state，遵守 `single writer, many readers`。",
                 "- Product Shell 默认界面语言为中文，可在插件设置里切到 English。",
-                "- LLM 现在不再做 `auto` 解析；请在 Product Shell 设置或环境变量里显式设置 `AIWIKI_LLM_BACKEND`。",
-                "- 当前 Product Shell 暴露的可选 backend 是 `codex-cli / nvidia-nim-api / copilot-cli / claude-cli`。",
-                "- 若选择 `codex-cli` 且未显式设 model，effective model 默认 `gpt-5.4`。",
-                "- 若选择 `nvidia-nim-api` 且模型留空，会按 `Kimi K2.5 -> GLM-5.1 -> MiniMax` 依次尝试；key 默认走 `AIWIKI_NVIDIA_NIM_API_KEY`。",
+                "- Product Shell 默认 LLM route 是 `opencode-api/deepseek-v4-pro`；可以在设置里显式切换已配置 backend，但不会自动跨 backend fallback。",
+                "- 当前 dogfood 主路由以 OpenCode API 为准；旧 CLI、NVIDIA NIM 和 OpenRouter 后端不再作为 Shell/runtime 自动 fallback 后端。",
+                "- API key 只应放在本机未跟踪的 Product Shell `data.json` 或 repo 外 secret env 文件；不要写入 README、测试 fixture 或 git-tracked 文件。",
                 "",
                 "## 备用 CLI / 脚本入口",
                 "",
                 "```bash",
                 "./scripts/aiwiki-launcher.sh shell-status",
                 "./scripts/aiwiki-launcher.sh compile",
-                "./scripts/aiwiki-launcher.sh drop-note --title \"晨间观察\" --text \"记录今天的新线索\"",
-                "./scripts/aiwiki-launcher.sh ask \"今天最重要的变化是什么？\" --format report",
+                "./scripts/aiwiki-launcher.sh drop markdown --title \"晨间观察\" --text \"记录今天的新线索\"",
+                "./scripts/aiwiki-launcher.sh run-ask-submit \"今天最重要的变化是什么？\" --format report",
                 "./scripts/aiwiki-launcher.sh nightly",
                 "```",
                 "",
                 "## 工作流",
                 "",
-                "1. 默认在 Obsidian 中工作：先打开 `HOME.md` 或 Product Shell 的 `炉心面板`。",
-                "2. 投料可以走两条路：在 Obsidian 里直接整理 `raw/inbox/`，或在 CLI / agent 中使用 `drop-url / drop-pdf / drop-image / drop-repo / drop-note`。",
-                "3. 提问也有两个入口：Obsidian Product Shell 的 `Ask`，以及 `./scripts/aiwiki-launcher.sh ask ...`。",
+                "1. 默认在 Obsidian 中工作：主区 Product Shell 是日常入口，`HOME.md` 只做说明和关键链接。",
+                "2. 投料从 Product Shell 输入框或 CLI / agent 的 `drop url / drop pdf / drop image / drop repo / drop markdown` 开始；Markdown / 文本材料可直接投，不要从文件树理解 runtime 分层。",
+                "3. 提问也有两个入口：Obsidian Product Shell 的 `Ask`，以及 `./scripts/aiwiki-launcher.sh run-ask-submit ... --format report`；默认生成 `output/reports/*.md` 报告。",
                 "4. `compile / nightly / apply / revert` 这类写操作不要双开；同一时刻只保留一个写入口。",
                 "",
-                "## 目录职责",
+                "## Runtime 目录职责",
                 "",
                 "- `raw/`：原料",
                 "- `wiki/`：来源、概念、判断、决策、索引",
                 "- `output/`：报告、图表、HTML 控制面、审计产物",
                 "- `schema/`：运行时规则和协议",
                 "- `.aiwiki/`：状态、缓存、日志",
+                "- 普通用户文件树默认只露出 `raw/inbox` 投料收件箱和 `output/` 报告入口，具体报告文件直接集中在报告入口下；其余运行时分层由 Product Shell、更多工具和 CLI 间接打开。",
+                "- `output/lint/` 是 nightly / operator 质量检查产物，不是用户报告证据；默认从 Obsidian 搜索和关系图谱中排除。",
                 "- `raw / wiki / output / schema` 这些英文目录名是 runtime contract；中文化通过工作台导航和说明完成，不建议直接重命名路径。",
                 "",
                 "## 备注",
@@ -455,43 +455,43 @@ def _render_vault_home() -> str:
                 'kind: "dashboard"',
                 "---",
                 "",
-                "# 炼丹炉工作台",
+                "# 炼丹炉",
                 "",
-                "这是一个新建的炼丹炉 vault。Obsidian Product Shell 与 `scripts/aiwiki-launcher.sh` 是同一 runtime 的两个入口，但默认工作入口是 Obsidian。",
+                "这是炼丹炉在 Obsidian 里的产品入口。默认从主区的 Product Shell 开始：投料、提问、看 Today、打开报告；其他治理和调试入口收在更多工具。",
+                "",
+                "## 日常路径",
+                "",
+                "1. 在 Product Shell 输入框里投 URL / 文件 / 图片，或直接问一个问题。",
+                "2. 看 Today：报告点 `Open`，审阅点 `Open Review`，命令先 `Copy command`。",
+                "3. 把有价值的报告回流为判断、决策或金丹。",
+                "4. 需要排障时再展开更多工具；不要先从目录结构开始工作。",
+                "",
+                "左侧文件树是用户视图：日常只需要投料收件箱和报告。`raw/wiki/schema` 和 `output/` 的其他产物仍存在，但默认不作为用户入口。",
+                "`output/lint/` 属于 operator 质量检查和排障产物，不是用户报告证据，默认不会进入 Obsidian 关系图谱。",
+                "",
+                "## 首屏模型",
+                "",
+                "- 输入端：Ask / Drop / 投文字材料",
+                "- 输出端：Today / Today's Reports / Previous Reports",
+                "- 更多工具：审阅、执行、运行记录、指标、LLM 状态",
+                "",
+                "## 关键入口",
                 "",
                 "- [[README|使用说明]]",
-                "- [[wiki/indexes/furnace-center|炉心面板]]",
-                "- [[wiki/indexes/review-center|审阅中心]]",
-                "- [[wiki/indexes/execution-center|执行中心]]",
-                "- [[wiki/indexes/graph-view|图谱视图]]",
-                "- [[wiki/indexes/protocols|协议总览]]",
-                "",
-                "## 第一步",
-                "",
-                "1. 先打开 Product Shell；默认界面语言是中文，可在插件设置里切到 English。",
-                "2. 先点 `Refresh`，必要时再运行 `./scripts/aiwiki-launcher.sh shell-status` 确认 runtime 正常。",
-                "3. 投料可以走 Obsidian 或 CLI：直接把材料放进 `raw/inbox/`，或使用 `drop-note / drop-url / drop-pdf / drop-image / drop-repo`。",
-                "4. 提问可以走 Product Shell 的 `Ask`，也可以走 `./scripts/aiwiki-launcher.sh ask ...`。",
-                "5. LLM 现在不再做 `auto` 解析；先在 Product Shell 设置里显式选择 `codex-cli / nvidia-nim-api / copilot-cli / claude-cli` 之一。",
-                "6. 若选择 `codex-cli` 且不填模型，默认走 `gpt-5.4`；若选择 `nvidia-nim-api` 且不填模型，会按 `Kimi K2.5 -> GLM-5.1 -> MiniMax` 依次尝试。",
-                "7. 运行 `compile`，再从 `Ask / Review / Execution` 开始当天工作。",
-                "8. 写操作遵守单写约束：不要同时在 Obsidian 和终端里各跑一个写命令。",
-                "",
-                "## 路径职责",
-                "",
-                "- `raw/inbox/`：输入材料",
-                "- `wiki/sources/`：来源页",
-                "- `wiki/concepts/`：概念页",
-                "- `wiki/judgments/` / `wiki/decisions/`：判断与决策",
-                "- `output/`：报告、图表、HTML 面板与执行回执",
+                "- [[wiki/indexes/furnace-center|炉心面板索引]]",
+                "- [[wiki/indexes/Outputs|输出面板]]",
+                "- [[wiki/indexes/judgment-assets|判断资产]]",
                 "",
                 "## 备用命令",
                 "",
                 "```bash",
+                "./scripts/aiwiki-launcher.sh shell-status",
                 "./scripts/aiwiki-launcher.sh compile",
-                "./scripts/aiwiki-launcher.sh ask \"总结今天的关键变化\" --format report",
+                "./scripts/aiwiki-launcher.sh run-ask-submit \"总结今天的关键变化\" --format report",
                 "./scripts/aiwiki-launcher.sh nightly",
                 "```",
+                "",
+                "写操作遵守单写约束：不要同时在 Obsidian 和终端里各跑一个 `compile / nightly / apply / revert`。",
                 "",
             ]
         )
@@ -510,7 +510,7 @@ def _render_launcher_script(runtime_root: Path) -> str:
             'VAULT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"',
             f"RUNTIME_ROOT={quoted_runtime}",
             "",
-            'if [ ! -f "$RUNTIME_ROOT/src/aiwiki/cli.py" ]; then',
+            'if [ ! -f "$RUNTIME_ROOT/src/aiwiki/cli/__main__.py" ]; then',
             '  echo "error: runtime root does not look like an aiwiki repo: $RUNTIME_ROOT" >&2',
             "  exit 1",
             "fi",
@@ -527,13 +527,23 @@ def _render_launcher_script(runtime_root: Path) -> str:
             "export PATH",
             'PLUGIN_DATA="$VAULT_ROOT/.obsidian/plugins/furnace-product-shell/data.json"',
             'if [ -f "$PLUGIN_DATA" ]; then',
+            "  for env_name in \\",
+            "    AIWIKI_LLM_BACKEND AIWIKI_LLM_MODEL AIWIKI_MODEL_FALLBACK \\",
+            "    AIWIKI_DEEPSEEK_API_KEY AIWIKI_DEEPSEEK_BASE_URL \\",
+            "    AIWIKI_OPENCODE_API_KEY AIWIKI_OPENCODE_BASE_URL \\",
+            "    AIWIKI_ANTHROPIC_API_KEY AIWIKI_ANTHROPIC_BASE_URL \\",
+            "    AIWIKI_LLM_API_KEY AIWIKI_LLM_BASE_URL \\",
+            "    DEEPSEEK_API_KEY DEEPSEEK_BASE_URL \\",
+            "    OPENAI_API_KEY OPENAI_BASE_URL OPENAI_MODEL \\",
+            "    ANTHROPIC_API_KEY ANTHROPIC_BASE_URL; do",
+            '    unset "$env_name"',
+            "  done",
             "  while IFS= read -r line; do",
             '    [ -n "$line" ] || continue',
             '    export "$line"',
             "  done < <(",
             '    python3 - "$PLUGIN_DATA" <<\'PY\'',
             "import json",
-            "import os",
             "import sys",
             "from pathlib import Path",
             "",
@@ -545,17 +555,40 @@ def _render_launcher_script(runtime_root: Path) -> str:
             'settings = payload.get("settings", {}) if isinstance(payload, dict) else {}',
             "if not isinstance(settings, dict):",
             "    raise SystemExit(0)",
-            "mapping = {",
-            '    "AIWIKI_LLM_BACKEND": settings.get("llmBackend", ""),',
-            '    "AIWIKI_LLM_MODEL": settings.get("llmModel", ""),',
-            '    "AIWIKI_NVIDIA_NIM_API_KEY": settings.get("llmNvidiaNimApiKey", ""),',
-            '    "AIWIKI_NVIDIA_NIM_BASE_URL": settings.get("llmNvidiaNimBaseUrl", ""),',
-            "}",
-            "for env_name, value in mapping.items():",
-            "    if os.environ.get(env_name):",
-            "        continue",
+            'backend = str(settings.get("llmBackend") or "opencode-api").strip() or "opencode-api"',
+            "profiles = [",
+            '    ("deepseek-api", "deepseek-v4-pro", "llmDeepseekApiKey", "AIWIKI_DEEPSEEK_API_KEY", "llmDeepseekBaseUrl", "AIWIKI_DEEPSEEK_BASE_URL"),',
+            '    ("opencode-api", "deepseek-v4-pro", "llmOpencodeApiKey", "AIWIKI_OPENCODE_API_KEY", "llmOpencodeBaseUrl", "AIWIKI_OPENCODE_BASE_URL"),',
+            '    ("anthropic-api", "claude-sonnet-4-20250514", "llmAnthropicApiKey", "AIWIKI_ANTHROPIC_API_KEY", "llmAnthropicBaseUrl", "AIWIKI_ANTHROPIC_BASE_URL"),',
+            '    ("openai-api", "gpt-4.1-mini", "llmCustomOpenaiApiKey", "AIWIKI_LLM_API_KEY", "llmCustomOpenaiBaseUrl", "AIWIKI_LLM_BASE_URL"),',
+            "]",
+            "profile_model = \"\"",
+            "key_setting = \"\"",
+            "key_env = \"\"",
+            "base_setting = \"\"",
+            "base_env = \"\"",
+            "default_models = []",
+            "for item in profiles:",
+            "    item_backend, item_model, item_key_setting, item_key_env, item_base_setting, item_base_env = item",
+            "    if item_model:",
+            "        default_models.append(item_model)",
+            "    if item_backend == backend:",
+            "        profile_model = item_model",
+            "        key_setting = item_key_setting",
+            "        key_env = item_key_env",
+            "        base_setting = item_base_setting",
+            "        base_env = item_base_env",
+            'configured_model = str(settings.get("llmModel") or "").strip()',
+            "if profile_model and configured_model and configured_model != profile_model and configured_model in default_models:",
+            "    configured_model = profile_model",
+            'exports = [("AIWIKI_LLM_BACKEND", backend), ("AIWIKI_LLM_MODEL", configured_model or profile_model)]',
+            "if key_setting and key_env:",
+            "    exports.append((key_env, settings.get(key_setting, \"\")))",
+            "if base_setting and base_env:",
+            "    exports.append((base_env, settings.get(base_setting, \"\")))",
+            "for env_name, value in exports:",
             "    if isinstance(value, str) and value.strip():",
-            '        print(f"{env_name}={value.strip()}")',
+            '        print(env_name + "=" + value.strip())',
             "PY",
             "  )",
             "fi",
@@ -577,7 +610,8 @@ def _plugin_template_paths(runtime_root: Path) -> dict[str, Path]:
 
 def _validate_runtime_root(runtime_root: Path) -> None:
     required = [
-        runtime_root / "src" / "aiwiki" / "cli.py",
+        runtime_root / "src" / "aiwiki" / "cli" / "__init__.py",
+        runtime_root / "src" / "aiwiki" / "cli" / "__main__.py",
         runtime_root / ".obsidian" / "plugins" / PLUGIN_ID / "main.js",
         runtime_root / ".obsidian" / "plugins" / PLUGIN_ID / "manifest.json",
         runtime_root / ".obsidian" / "plugins" / PLUGIN_ID / "styles.css",
@@ -586,6 +620,58 @@ def _validate_runtime_root(runtime_root: Path) -> None:
     if missing:
         joined = ", ".join(missing)
         raise FileNotFoundError(f"runtime root is missing required vault template assets: {joined}")
+
+
+def _plugin_release_targets(target_root: Path) -> dict[str, Path]:
+    return {
+        "manifest": target_root / ".obsidian" / "plugins" / PLUGIN_ID / "manifest.json",
+        "main": target_root / ".obsidian" / "plugins" / PLUGIN_ID / "main.js",
+        "styles": target_root / ".obsidian" / "plugins" / PLUGIN_ID / "styles.css",
+    }
+
+
+def _sha256_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def sync_product_shell_plugin(runtime_root: Path, target_root: Path) -> dict[str, Any]:
+    """Sync the generated Obsidian plugin release files into an existing vault.
+
+    Only release files are managed here. The local plugin ``data.json`` is
+    deliberately preserved because it may contain user-specific API keys.
+    """
+
+    runtime_root = runtime_root.resolve()
+    target_root = target_root.resolve()
+    _validate_runtime_root(runtime_root)
+    if not target_root.exists() or not target_root.is_dir():
+        raise FileNotFoundError(f"target vault does not exist or is not a directory: {target_root}")
+
+    source_paths = _plugin_template_paths(runtime_root)
+    target_paths = _plugin_release_targets(target_root)
+    changed_files: list[str] = []
+    source_hashes: dict[str, str] = {}
+
+    for label, source in source_paths.items():
+        relative = {
+            "manifest": f".obsidian/plugins/{PLUGIN_ID}/manifest.json",
+            "main": f".obsidian/plugins/{PLUGIN_ID}/main.js",
+            "styles": f".obsidian/plugins/{PLUGIN_ID}/styles.css",
+        }[label]
+        content = source.read_text(encoding="utf-8")
+        source_hashes[relative] = _sha256_text(content)
+        if write_if_changed(target_paths[label], content):
+            changed_files.append(relative)
+
+    return {
+        "status": "ok",
+        "vault_root": str(target_root),
+        "runtime_root": str(runtime_root),
+        "plugin_id": PLUGIN_ID,
+        "changed_files": sorted(changed_files),
+        "preserved_files": [f".obsidian/plugins/{PLUGIN_ID}/data.json"],
+        "source_hashes": source_hashes,
+    }
 
 
 def _ensure_target_is_safe(target_root: Path, *, force: bool) -> None:
@@ -633,6 +719,7 @@ def bootstrap_new_vault(runtime_root: Path, target_root: Path, *, force: bool = 
         ".obsidian/appearance.json": DEFAULT_OBSIDIAN_APPEARANCE,
         ".obsidian/app.json": DEFAULT_OBSIDIAN_APP,
         ".obsidian/core-plugins.json": DEFAULT_OBSIDIAN_CORE_PLUGINS,
+        ".obsidian/graph.json": DEFAULT_OBSIDIAN_GRAPH,
         ".obsidian/workspace.json": _default_workspace_document(),
         f".obsidian/plugins/{PLUGIN_ID}/data.json": DEFAULT_PLUGIN_DATA,
     }
@@ -646,15 +733,8 @@ def bootstrap_new_vault(runtime_root: Path, target_root: Path, *, force: bool = 
     if write_if_changed(community_plugins_path, community_plugins_text):
         written_files.append(".obsidian/community-plugins.json")
 
-    for label, source in _plugin_template_paths(runtime_root).items():
-        relative = {
-            "manifest": f".obsidian/plugins/{PLUGIN_ID}/manifest.json",
-            "main": f".obsidian/plugins/{PLUGIN_ID}/main.js",
-            "styles": f".obsidian/plugins/{PLUGIN_ID}/styles.css",
-        }[label]
-        destination = target_root / relative
-        if write_if_changed(destination, source.read_text(encoding="utf-8")):
-            written_files.append(relative)
+    plugin_sync = sync_product_shell_plugin(runtime_root, target_root)
+    written_files.extend(plugin_sync["changed_files"])
 
     summary = shell_status(target_root)
     return {

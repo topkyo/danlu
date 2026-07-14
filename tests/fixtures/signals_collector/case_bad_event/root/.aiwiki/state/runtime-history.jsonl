@@ -1,0 +1,3 @@
+{"event_type":"review","occurred_at":"2026-04-24T08:00:00Z"
+{"event_type":"review","occurred_at":"2026-04-24T08:01:00Z","protocol":"product","page_path":"wiki/judgments/latency.md","source_ids":["src-latency"]}
+{"event_type":"query","occurred_at":"2026-04-24T08:02:00Z","protocol":"research","question_hash":"sha256:q2"}

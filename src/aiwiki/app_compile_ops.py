@@ -1,4 +1,8 @@
-"""Protocol, promotion, and agent-pack helpers extracted from app_compile."""
+"""Protocol, promotion, and agent-pack helpers extracted from app_compile.
+
+OWNER STATUS: legacy owner. New large logic blocks should be extracted to
+`aiwiki.compile.*` rather than added here. See AGENTS.md migration policy.
+"""
 
 from __future__ import annotations
 
@@ -18,96 +22,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from .app_compile import file_back
-from .app_content import (
-    _validate_rewrite_candidate_markdown,
-    action_needs_review,
-    action_supports_low_risk_apply,
-    active_manual_source_concept_links,
-    annotate_recurring_promotion,
-    append_execution_policy_decisions,
-    append_review_history_entry,
-    append_wiki_log,
-    build_concept_quality,
-    build_concept_records,
-    build_domain_pilots,
-    build_domain_pilots_incremental,
-    build_knowledge_lifecycle_document,
-    build_machine_memory_repair_plan,
-    build_output_packs,
-    build_output_packs_incremental,
-    build_page_patch_plan,
-    classify_recurring_output_kind,
-    collect_aging_signals,
-    collect_curated_pages,
-    collect_output_artifacts,
-    collect_output_density_artifacts,
-    collect_recent_output_artifacts,
-    concept_render_signature,
-    concept_source_pages,
-    concept_summary_is_placeholder,
-    curated_asset_section_snapshot,
-    curated_page_template,
-    curated_page_transition_profile,
-    decision_memos_dir,
-    default_curated_status,
-    display_action_status,
-    display_curated_status,
-    display_knowledge_lifecycle_state,
-    display_rewrite_proposal_status,
-    domain_pilots_index_path,
-    ensure_wiki_log,
-    entry_concept_terms,
-    entry_ids_from_paths,
-    entry_lookup_maps,
-    evaluate_page_aging,
-    execution_bundle_path,
-    execution_policy_decision_record,
-    execution_proposal_path,
-    execution_receipt_path,
-    find_promoted_curated_page,
-    frontmatter_string_list,
-    judgment_lifecycle_profile,
-    knowledge_lifecycle_governance_summary,
-    load_execution_receipt_history,
-    manifest_change_summary,
-    pilot_scorecards_dir,
-    placeholder_concept_slugs,
-    preserved_section,
-    recurring_promotion_needs_refresh,
-    refresh_knowledge_lifecycle_state,
-    remove_stale_generated_concept_pages,
-    remove_stale_generated_execution_bundle_files,
-    remove_stale_generated_execution_proposal_pages,
-    remove_stale_generated_markdown_files,
-    render_agent_pack,
-    render_agent_workbench,
-    render_aging_report,
-    render_concept_page,
-    render_concepts_index,
-    render_curated_index,
-    render_domain_pilots_index,
-    render_knowledge_lifecycle_entry_summary,
-    render_master_index,
-    render_output_packs_index,
-    render_review_queue,
-    render_source_page_with_state,
-    render_sources_index,
-    repair_execution_proposals,
-    review_history_entries,
-    review_packs_dir,
-    review_queue,
-    rewrite_proposal_candidate_is_current,
-    rewrite_proposal_is_apply_ready,
-    rewrite_proposal_needs_review,
-    routing_snapshot_for_protocol,
-    safe_apply_preview,
-    sop_drafts_dir,
-    source_summary_or_preview,
-    sync_manifest_with_raw,
-    valid_curated_statuses,
-    validate_low_risk_action_targets,
-)
 from .app_execution import (
     append_execution_receipt_history,
     build_execution_bundle,
@@ -116,7 +30,28 @@ from .app_execution import (
     execution_bundle_digest,
     load_execution_bundle,
 )
-from .app_lifecycle import knowledge_lifecycle_governance_summary, render_knowledge_lifecycle_entry_summary
+from .app_lifecycle import (
+    action_needs_review,
+    build_knowledge_lifecycle_document,
+    collect_aging_signals,
+    collect_curated_pages,
+    curated_page_template,
+    curated_page_transition_profile,
+    default_curated_status,
+    display_action_status,
+    display_curated_status,
+    display_knowledge_lifecycle_state,
+    display_rewrite_proposal_status,
+    evaluate_page_aging,
+    frontmatter_string_list,
+    judgment_lifecycle_profile,
+    knowledge_lifecycle_governance_summary,
+    refresh_knowledge_lifecycle_state,
+    render_knowledge_lifecycle_entry_summary,
+    review_queue,
+    rewrite_proposal_needs_review,
+    valid_curated_statuses,
+)
 from .app_linting import pending_source_summary_ids
 from .app_memory import (
     active_corpus_bridge_evidence_ids,
@@ -180,7 +115,6 @@ from .app_protocol import (
     resolve_protocol,
     schedule_review_windows,
 )
-from .app_render import render_agent_pack, render_agent_workbench, render_aging_report, render_review_queue
 from .app_shell import build_shell_summary, write_shell_summary
 from .app_state import (
     DEFAULT_PROTOCOL,
@@ -230,6 +164,7 @@ from .app_state import (
     load_material_archive_state,
     load_material_routing_state,
     load_material_state,
+    load_output_candidates_state,
     load_ranking_build_state,
     machine_memory_action_state_path,
     machine_memory_actions_path,
@@ -259,23 +194,13 @@ from .app_state import (
     save_machine_memory_action_state,
     save_manual_link_state,
     save_material_archive_state,
+    save_output_candidates_state,
     shell_summary_path,
-)
-from .app_surfaces import (
-    render_cognitive_history,
-    render_compile_status,
-    render_execution_audit,
-    render_execution_audit_html,
-    render_execution_center,
-    render_execution_center_html,
-    render_furnace_center,
-    render_furnace_center_html,
-    render_judgment_assets,
-    render_machine_memory_graph_html,
-    render_review_center_html,
+    upsert_output_candidate,
 )
 from .app_utils import (
     analyze_citation_snapshots,
+    atomic_write_text,
     build_citation_snapshots,
     compiled_source_sha,
     extract_provenance_paths,
@@ -297,12 +222,109 @@ from .app_utils import (
     write_json_document_if_changed_ignoring_generated_timestamps,
 )
 from .config import LLMConfig
+from .content.concepts import (
+    build_concept_quality,
+    build_concept_records,
+    concept_render_signature,
+    concept_source_pages,
+    entry_concept_terms,
+    render_concept_page,
+    render_concepts_index,
+    render_sources_index,
+)
+from .content.io import (
+    active_manual_source_concept_links,
+    annotate_recurring_promotion,
+    append_review_history_entry,
+    collect_output_artifacts,
+    collect_output_density_artifacts,
+    collect_recent_output_artifacts,
+    curated_asset_section_snapshot,
+    entry_ids_from_paths,
+    entry_lookup_maps,
+    find_promoted_curated_page,
+    manifest_change_summary,
+    preserved_section,
+    recurring_promotion_needs_refresh,
+    render_source_page_with_state,
+    review_history_entries,
+    routing_snapshot_for_protocol,
+    source_summary_or_preview,
+    sync_manifest_with_raw,
+)
+from .content.memory import (
+    _validate_rewrite_candidate_markdown,
+    action_supports_low_risk_apply,
+    append_execution_policy_decisions,
+    build_machine_memory_repair_plan,
+    build_page_patch_plan,
+    concept_summary_is_placeholder,
+    execution_policy_decision_record,
+    load_execution_receipt_history,
+    placeholder_concept_slugs,
+    remove_stale_generated_execution_bundle_files,
+    remove_stale_generated_execution_proposal_pages,
+    remove_stale_generated_markdown_files,
+    repair_execution_proposals,
+    rewrite_proposal_candidate_is_current,
+    rewrite_proposal_is_apply_ready,
+    safe_apply_preview,
+    validate_low_risk_action_targets,
+)
+from .content.outputs import classify_recurring_output_kind
+from .memory.execution_surfaces import (
+    render_execution_audit,
+    render_execution_audit_html,
+    render_execution_center,
+    render_execution_center_html,
+)
+from .memory.graph import render_machine_memory_graph_html
+from .render.cognitive_history import render_cognitive_history
+from .render.compile_status import render_compile_status
+from .render.furnace_center import (
+    render_furnace_center,
+    render_furnace_center_html,
+)
+from .render.judgment_assets import render_judgment_assets
+from .render.packs import (
+    build_output_packs,
+    build_output_packs_incremental,
+    render_output_packs_index,
+)
+from .render.paths import (
+    append_wiki_log,
+    decision_memos_dir,
+    ensure_wiki_log,
+    execution_bundle_path,
+    execution_proposal_path,
+    execution_receipt_path,
+    remove_stale_generated_concept_pages,
+    review_packs_dir,
+    sop_drafts_dir,
+)
+from .render.pilots import (
+    build_domain_pilots,
+    build_domain_pilots_incremental,
+    domain_pilots_index_path,
+    pilot_scorecards_dir,
+)
+from .render.review_center import render_review_center_html
+from .render.views import (
+    render_agent_pack,
+    render_agent_workbench,
+    render_aging_report,
+    render_curated_index,
+    render_domain_pilots_index,
+    render_master_index,
+    render_review_queue,
+)
 
 
+@runtime_write_operation
 def set_active_protocol(root: Path, protocol: str) -> dict[str, Any]:
     active = resolve_protocol(root, protocol)
     path = protocol_state_path(root)
-    path.write_text(json.dumps({"version": 1, "active_protocol": active}, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    atomic_write_text(path, json.dumps({"version": 1, "active_protocol": active}, indent=2, sort_keys=True) + "\n")
     state = load_protocol_state(root)
     write_if_changed(
         root / "wiki" / "indexes" / "protocols.md",
@@ -409,8 +431,7 @@ def promote_recurring_outputs(root: Path) -> dict[str, Any]:
         groups.setdefault((artifact["protocol"], artifact["query_signature"]), []).append(artifact)
 
     generated_at = utc_now()
-    created = 0
-    updated = 0
+    enqueued = 0
     promotions: list[dict[str, str]] = []
     for (protocol, query_signature), artifacts in sorted(groups.items()):
         if len(artifacts) < AUTO_PROMOTION_MIN_OCCURRENCES:
@@ -419,39 +440,32 @@ def promote_recurring_outputs(root: Path) -> dict[str, Any]:
         kind = classify_recurring_output_kind(query, protocol)
         if kind not in {"decision", "judgment"}:
             continue
-        existing = find_promoted_curated_page(root, kind, query_signature, protocol)
-        if existing is None:
-            result = file_back(
-                root,
-                artifacts[-1]["path"],
-                title=f"{kind}-{query_signature}",
-                kind=kind,
-                protocol=protocol,
-            )
-            page_path = root / result["path"]
-            action = "created"
-            created += 1
-        else:
-            if not recurring_promotion_needs_refresh(existing, artifacts):
-                continue
-            page_path = existing
-            action = "updated"
-            updated += 1
-        annotate_recurring_promotion(
+        candidate = upsert_output_candidate(
             root,
-            page_path,
-            kind=kind,
+            artifact_ref=artifacts[-1]["path"],
+            candidate_state="pending",
+            created_at=generated_at,
+            updated_at=generated_at,
+            format=artifacts[-1].get("format", ""),
             protocol=protocol,
-            query=query,
-            query_signature=query_signature,
-            artifacts=artifacts,
-            generated_at=generated_at,
+            corpus_id=artifacts[-1].get("corpus_id", ""),
+            question=query,
+            promotion_origin="nightly-recurring",
         )
+        candidate["recurring_kind"] = kind
+        state = load_output_candidates_state(root)
+        for item in state.get("candidates", []):
+            if str(item.get("artifact_ref") or "") == artifacts[-1]["path"]:
+                item["recurring_kind"] = kind
+                break
+        save_output_candidates_state(root, state)
+        enqueued += 1
         promotions.append(
             {
                 "kind": kind,
-                "action": action,
-                "path": relative_path(root, page_path),
+                "action": "enqueued",
+                "path": candidate["artifact_ref"],
+                "candidate_ref": candidate["artifact_ref"],
                 "protocol": protocol,
                 "query": query,
                 "query_signature": query_signature,
@@ -461,22 +475,22 @@ def promote_recurring_outputs(root: Path) -> dict[str, Any]:
         )
         append_wiki_log(
             root,
-            "promote",
+            "enqueue",
             query,
             [
                 f"kind: `{kind}`",
                 f"protocol: `{protocol}`",
-                f"action: `{action}`",
+                "action: `enqueued`",
                 f"occurrences: `{len(artifacts)}`",
-                f"page: `{relative_path(root, page_path)}`",
+                f"candidate_ref: `{candidate['artifact_ref']}`",
                 f"latest_artifact: `{artifacts[-1]['path']}`",
             ],
         )
 
     return {
-        "count": len(promotions),
-        "created": created,
-        "updated": updated,
+        "count": enqueued,
+        "created": 0,
+        "updated": 0,
         "pages": promotions,
     }
 

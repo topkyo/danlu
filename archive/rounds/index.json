@@ -1,0 +1,577 @@
+{
+  "schema_version": 1,
+  "rounds": [
+    {
+      "round_id": "progress-2026-05-snapshot",
+      "title": "PROGRESS May 2026 dynamic snapshot (2026-05-24 and earlier)",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/progress-2026-05-snapshot.md",
+      "tags": ["snapshot", "progress-slim", "wave-a"]
+    },
+    {
+      "round_id": "73-to-92-7-snapshot",
+      "title": "Rounds 73 → 92.7 Snapshot (PROGRESS slim D-2)",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-73-to-92-7-snapshot.md",
+      "tags": ["snapshot", "progress-slim"]
+    },
+    {
+      "round_id": "milestone-quick-index-detail",
+      "title": "Milestone Quick Index Full Detail (R64~R98.3, archived from PROGRESS.md L28-101)",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/milestone-quick-index-detail.md",
+      "tags": ["snapshot", "progress-slim", "quick-index"]
+    },
+    {
+      "round_id": "structural-consolidation-sweep",
+      "title": "Structural Consolidation Sweep (SC-001..SC-010)",
+      "status": "done",
+      "commit": "ae6fd59",
+      "archived_path": "archive/rounds/structural-consolidation-sweep.md",
+      "tags": ["sweep", "structural"]
+    },
+    {
+      "round_id": "ep-001-ep007-product-ux-sweep",
+      "title": "Product UX Rectification Sweep (R97~R108 EP-001..EP-007)",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/ep-001-ep007-product-ux-sweep.md",
+      "tags": ["sweep", "product-ux"]
+    },
+    {
+      "round_id": "68",
+      "title": "PROGRESS three-layer slimming + stop_line_audit lint",
+      "status": "done",
+      "commit": "2c408f9",
+      "archived_path": "archive/rounds/round-68.md",
+      "tags": []
+    },
+    {
+      "round_id": "67-5",
+      "title": "Acceptance fixture prompt_hash refresh",
+      "status": "done",
+      "commit": "284f8af",
+      "archived_path": "archive/rounds/round-67-5.md",
+      "tags": []
+    },
+    {
+      "round_id": "67",
+      "title": "Auto-adopt hardening (judgment review + L3 audit + nightly aggregation)",
+      "status": "done",
+      "commit": "6711efd",
+      "archived_path": "archive/rounds/round-67.md",
+      "tags": []
+    },
+    {
+      "round_id": "64-66",
+      "title": "UX Earnest 收口",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-64-66.md",
+      "tags": []
+    },
+    {
+      "round_id": "63",
+      "title": "Cross-Surface UI & HTML Theme Polish",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-63.md",
+      "tags": []
+    },
+    {
+      "round_id": "62",
+      "title": "Product Shell UI Polish (Phase 1~3)",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-62.md",
+      "tags": []
+    },
+    {
+      "round_id": "61",
+      "title": "Nightly NV NIM Auto Fallback + Docs Archive Sweep",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-61.md",
+      "tags": []
+    },
+    {
+      "round_id": "60",
+      "title": "Documentation Sync + Runtime Operations Manual + NV NIM Default Update",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-60.md",
+      "tags": []
+    },
+    {
+      "round_id": "59",
+      "title": "P4-INV-1/3/4 闭环 + NV backend 配置 + PDF dogfood + 市场调研留档",
+      "status": "done",
+      "commit": "8bd33f5",
+      "archived_path": "archive/rounds/round-59.md",
+      "tags": []
+    },
+    {
+      "round_id": "58",
+      "title": "R1 Stage 3 复利 real run + R3 counter-evidence 出口修复 + 市场对标调研",
+      "status": "done",
+      "commit": "8bd33f5",
+      "archived_path": "archive/rounds/round-58.md",
+      "tags": []
+    },
+    {
+      "round_id": "57-r4",
+      "title": "P4-INV-2 filter quarter tokens",
+      "status": "done",
+      "commit": "8bd33f5",
+      "archived_path": "archive/rounds/round-57-r4.md",
+      "tags": []
+    },
+    {
+      "round_id": "56",
+      "title": "D-4 Investing Protocol End-to-End Dogfood (实跑) + Model Default Drift Fix",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-56.md",
+      "tags": []
+    },
+    {
+      "round_id": "55",
+      "title": "D-4 Investing Dogfood Plan (Contract-Only)",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-55.md",
+      "tags": []
+    },
+    {
+      "round_id": "54",
+      "title": "D-3 Elixir Stage-3 Compounding End-to-End",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-54.md",
+      "tags": []
+    },
+    {
+      "round_id": "53",
+      "title": "D-1/D-2 Direction SoT + Archive Sweep",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-53.md",
+      "tags": []
+    },
+    {
+      "round_id": "52",
+      "title": "Relationship Graph UI Polish",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-52.md",
+      "tags": []
+    },
+    {
+      "round_id": "51",
+      "title": "Dashboard Template Ownership",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-51.md",
+      "tags": []
+    },
+    {
+      "round_id": "50",
+      "title": "Confirmation Card Snooze",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-50.md",
+      "tags": []
+    },
+    {
+      "round_id": "49",
+      "title": "Report ↔ Graph Anchor",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-49.md",
+      "tags": []
+    },
+    {
+      "round_id": "48",
+      "title": "Graph Polish Sweep",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-48.md",
+      "tags": []
+    },
+    {
+      "round_id": "47",
+      "title": "Chinese Relationship Graph Cleanup",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-47.md",
+      "tags": []
+    },
+    {
+      "round_id": "46",
+      "title": "Suggested Actions De-noise",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-46.md",
+      "tags": []
+    },
+    {
+      "round_id": "45",
+      "title": "Final-shape User Surface V1",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-45.md",
+      "tags": []
+    },
+    {
+      "round_id": "44",
+      "title": "Monitoring Runtime Dogfood Assessment",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-44.md",
+      "tags": []
+    },
+    {
+      "round_id": "43",
+      "title": "Batch Adoption Surface UX (B + C + D)",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-43.md",
+      "tags": []
+    },
+    {
+      "round_id": "42",
+      "title": "Batch Review Hint Surface",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-42.md",
+      "tags": []
+    },
+    {
+      "round_id": "41",
+      "title": "Dogfood Batch Adoption Run",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-41.md",
+      "tags": []
+    },
+    {
+      "round_id": "40",
+      "title": "Monitoring Runtime Dogfood Assessment",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-40.md",
+      "tags": []
+    },
+    {
+      "round_id": "39",
+      "title": "Semantic Candidate Entry Repair + Dogfood State Assessment",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-39.md",
+      "tags": []
+    },
+    {
+      "round_id": "38",
+      "title": "Unattended Light-Lane Automation + Governance Debt Policy",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-38.md",
+      "tags": []
+    },
+    {
+      "round_id": "37",
+      "title": "Remaining Gap Repair + Dogfood Runtime Assessment",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-37.md",
+      "tags": []
+    },
+    {
+      "round_id": "36",
+      "title": "Dogfood Governance Repair + Safe Light-Lane Apply Test",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-36.md",
+      "tags": []
+    },
+    {
+      "round_id": "35",
+      "title": "Monitoring Restart + Agent Loop Dogfood Assessment",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-35.md",
+      "tags": []
+    },
+    {
+      "round_id": "34",
+      "title": "Nightly Agent Loop Preview",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-34.md",
+      "tags": []
+    },
+    {
+      "round_id": "33",
+      "title": "Human-readable Output Filenames",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-33.md",
+      "tags": []
+    },
+    {
+      "round_id": "32",
+      "title": "Sensitive Note Guard + Batch E Semantic Navigation Dogfood",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-32.md",
+      "tags": []
+    },
+    {
+      "round_id": "31",
+      "title": "Dogfood Monitoring + Batch D Runtime Evidence + Final-shape Assessment",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-31.md",
+      "tags": []
+    },
+    {
+      "round_id": "30",
+      "title": "Eva Robot Batch C Dogfood + LLM Worker Assessment",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-30.md",
+      "tags": []
+    },
+    {
+      "round_id": "29",
+      "title": "LLM Worker Boundary + Dogfood Noise Fix",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-29.md",
+      "tags": []
+    },
+    {
+      "round_id": "28",
+      "title": "Dogfood Eva Robot Batch B + Monitoring Closed Loop",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-28.md",
+      "tags": []
+    },
+    {
+      "round_id": "27",
+      "title": "M-UX.6 Today Target Labels + Docs Sync",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-27.md",
+      "tags": []
+    },
+    {
+      "round_id": "26",
+      "title": "M-UX.5 Vault User View + Chinese Graph",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-26.md",
+      "tags": []
+    },
+    {
+      "round_id": "25",
+      "title": "M-UX.4 Advanced 与运行状态文案收敛",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-25.md",
+      "tags": []
+    },
+    {
+      "round_id": "24",
+      "title": "M-UX.3 真机 Product Shell 继续收敛",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-24.md",
+      "tags": []
+    },
+    {
+      "round_id": "23",
+      "title": "M-UX.2 Dogfood Vault Shell-first Migration",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-23.md",
+      "tags": []
+    },
+    {
+      "round_id": "22",
+      "title": "M-UX.1 Product Shell New-user UX Refactor",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-22.md",
+      "tags": []
+    },
+    {
+      "round_id": "21",
+      "title": "Today Action Backlog Count Alignment",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-21.md",
+      "tags": []
+    },
+    {
+      "round_id": "20",
+      "title": "Elixir Reuse From Structured Derived References",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-20.md",
+      "tags": []
+    },
+    {
+      "round_id": "19",
+      "title": "Proposal Acceptance From Reverted Accepted L3 Proposals",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-19.md",
+      "tags": []
+    },
+    {
+      "round_id": "18",
+      "title": "Judgment Revisit From Page Review History",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-18.md",
+      "tags": []
+    },
+    {
+      "round_id": "17",
+      "title": "Output File-back Candidate Denominator",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-17.md",
+      "tags": []
+    },
+    {
+      "round_id": "16",
+      "title": "Output File-back Metrics Source Files Fallback",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-16.md",
+      "tags": []
+    },
+    {
+      "round_id": "15",
+      "title": "Provenance Completeness Metrics Schema Alignment",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-15.md",
+      "tags": []
+    },
+    {
+      "round_id": "14",
+      "title": "Clear Final Ready Action",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-14.md",
+      "tags": []
+    },
+    {
+      "round_id": "13",
+      "title": "Dogfood Batch Apply Execution",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-13.md",
+      "tags": []
+    },
+    {
+      "round_id": "12",
+      "title": "Ready Actions Batch Helper Dogfood",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-12.md",
+      "tags": []
+    },
+    {
+      "round_id": "11",
+      "title": "Metrics Review Activity From Page Reviews",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-11.md",
+      "tags": []
+    },
+    {
+      "round_id": "10",
+      "title": "Dogfood Queue Execution + Recovery Friction Fixes",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-10.md",
+      "tags": []
+    },
+    {
+      "round_id": "9",
+      "title": "Review Queue Drilldown Console",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/round-9.md",
+      "tags": []
+    },
+    {
+      "round_id": "p4-1",
+      "title": "Backend Compatibility Observability",
+      "status": "done",
+      "commit": "17f01ac",
+      "archived_path": "archive/rounds/p4-1.md",
+      "tags": [
+        "P4"
+      ]
+    },
+    {
+      "round_id": "p4-3",
+      "title": "Trace Concept Layer Support",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/p4-3.md",
+      "tags": [
+        "P4"
+      ]
+    },
+    {
+      "round_id": "p4-4",
+      "title": "Review Workflow Boundary Clarification",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/p4-4.md",
+      "tags": [
+        "P4"
+      ]
+    },
+    {
+      "round_id": "p4-5",
+      "title": "Review Status Self-Discovery",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/p4-5.md",
+      "tags": [
+        "P4"
+      ]
+    },
+    {
+      "round_id": "p4-9",
+      "title": "Concept Noise Floor Reduction",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/p4-9.md",
+      "tags": [
+        "P4"
+      ]
+    },
+    {
+      "round_id": "p4-11",
+      "title": "Dogfood Vault Path Explicitness",
+      "status": "done",
+      "commit": null,
+      "archived_path": "archive/rounds/p4-11.md",
+      "tags": [
+        "P4"
+      ]
+    }
+  ]
+}

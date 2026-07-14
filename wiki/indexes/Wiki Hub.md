@@ -7,6 +7,8 @@ kind: "dashboard"
 
 这里是编译后的知识层。
 
+> `wiki/indexes/` 是 compile 生成的派生索引区；策略见 [[wiki/indexes/README|wiki/indexes policy]]。破链应通过 compile 重生或移出仓库处理，不把这里当事实 SoT 手写维护。
+
 ## 主要区域
 
 - `wiki/sources/`：摘要、溯源和来源级反向链接
@@ -20,14 +22,7 @@ kind: "dashboard"
 
 ## 架构入口
 
-- [[wiki/indexes/Alchemy Furnace|炼丹炉架构]]：炼丹炉的基线架构，建立在 `aiwiki` runtime 之上
-- [[wiki/indexes/Furnace Ultimate Architecture|最终极形态]]：这套系统最终想长成的认知操作系统形态
-- [[wiki/indexes/Furnace Capability Map|能力地图]]：当前已经做到了什么，以及下一轮 Product Shell contract 的建议
-- [[wiki/indexes/Furnace Incremental Compile Plan|增量编译计划]]：把 compile 从黑箱大刷新推进到可观察的最小分段 baseline
-- [[wiki/indexes/Furnace Product Shell Plugin|Product Shell 插件]]：把当前 markdown/html 控制面升级成 Obsidian 内的桌面工作台
-- [[wiki/indexes/Furnace Material Scaling|大规模原料处理]]：原料越来越多时的冷热分层、活动工作集和归档设计
-- [[wiki/indexes/Furnace Material State Model|原料状态模型]]：把 `temperature / active corpus / archive` 压成实现级 schema
-- [[wiki/indexes/Furnace Protocols|统一炼丹协议]]：一个炉子，多种领域协议
+- [[README|使用说明]]：当前产品和 runtime 入口
 - [[wiki/indexes/protocols|协议总览]]：当前 active protocol 和可用协议库
 - [[wiki/indexes/furnace-center|炉心面板]]：统一入口，先看今天该处理什么
 - [[schema/index|运行时规则]]：compile、ask、lint 共同遵循的规则层

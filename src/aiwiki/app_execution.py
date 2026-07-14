@@ -1,23 +1,45 @@
-"""Execution bundle and receipt assembly for apply/archive workflows."""
+"""Execution bundle and receipt assembly for apply/archive workflows.
+
+OWNER STATUS: legacy owner. New large logic blocks should be extracted to
+`aiwiki.execution.*` rather than added here. See AGENTS.md migration policy.
+"""
 
 from __future__ import annotations
 
+import hashlib
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .app_content import execution_bundle_path, execution_receipt_path
 from .app_state import (
     DEFAULT_PROTOCOL,
     execution_batch_receipt_path,
     execution_receipt_history_path,
-    load_json_document,
+    load_json_document_strict,
     material_archive_action_id,
     material_archive_state_path,
     material_state_path,
 )
 from .app_types import ExecutionBundle, ExecutionReceipt
-from .app_utils import relative_path, sha256_bytes
+from .app_utils import (
+    AuditMirrorError as ReceiptHistoryAuditError,
+)
+from .app_utils import (
+    AuditMirrorRollbackError as ReceiptHistoryRollbackError,
+)
+from .app_utils import (
+    _durable_truncate,
+    atomic_append_jsonl,
+    atomic_write_text,
+    relative_path,
+    runtime_write_operation,
+    sha256_bytes,
+    slugify,
+)
+from .autonomy_domains import classify_machine_memory_action
+from .autonomy_policy import load_policy
+from .render.paths import execution_bundle_path, execution_receipt_path
 
 
 def build_execution_bundle(
@@ -103,8 +125,22 @@ def execution_bundle_digest(bundle: dict[str, Any]) -> str:
     return sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
 
 
+def compute_file_sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _unique_elixir_action_id(root: Path, base: str, applied_at: datetime) -> str:
+    epoch_ms = int(applied_at.timestamp() * 1000)
+    candidate = f"{base}-{epoch_ms}"
+    n = 2
+    while execution_receipt_path(root, candidate).exists():
+        candidate = f"{base}-{epoch_ms}-{n}"
+        n += 1
+    return candidate
+
+
 def load_execution_bundle(path: Path) -> ExecutionBundle:
-    document = load_json_document(path)
+    document = load_json_document_strict(path)
     if not isinstance(document, dict) or str(document.get("kind") or "") != "execution-bundle":
         raise RuntimeError(f"Invalid execution bundle: {path}")
     return document
@@ -112,12 +148,12 @@ def load_execution_bundle(path: Path) -> ExecutionBundle:
 
 def write_execution_bundle_document(path: Path, bundle: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(bundle, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    atomic_write_text(path, json.dumps(bundle, ensure_ascii=False, indent=2, sort_keys=True) + "\n", fsync=True)
 
 
 def write_execution_dry_run_document(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    atomic_write_text(path, json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", fsync=True)
 
 
 def build_execution_batch_receipt(
@@ -142,6 +178,7 @@ def build_execution_batch_receipt(
         if isinstance(item, dict) and item.get("path")
     ]
     receipt_path = execution_batch_receipt_path(root, batch_id)
+    autonomy_domain = "maintenance" if operation.endswith("dry-run-batch") else "governance"
     return {
         "version": 1,
         "kind": "execution-batch-receipt",
@@ -149,6 +186,12 @@ def build_execution_batch_receipt(
         "generated_at": generated_at,
         "batch_id": batch_id,
         "operation": operation,
+        "autonomy_domain": autonomy_domain,
+        "llm_governed": False,
+        "decision_confidence": "",
+        "evidence_refs": [],
+        "counter_evidence_refs": [],
+        "validator_status": "not-run",
         "note": note or "",
         "count": len(items),
         "action_ids": action_ids,
@@ -162,7 +205,7 @@ def build_execution_batch_receipt(
 
 def write_execution_batch_receipt_document(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    atomic_write_text(path, json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", fsync=True)
 
 
 def build_execution_receipt(
@@ -178,12 +221,23 @@ def build_execution_receipt(
     bundle = build_execution_bundle(root, proposal, compiled_at=applied_at)
     preview = proposal.get("safe_apply_preview")
     preview_apply_mode = str(preview.get("apply_mode") or "") if isinstance(preview, dict) else ""
+    revert_supported = operation == "apply"
+    classification = classify_machine_memory_action(
+        action,
+        autonomy_profile=str(action.get("autonomy_profile") or load_policy(root).autonomy_profile),
+        revert_supported=revert_supported,
+        root=root,
+    )
     return {
         "version": 1,
         "kind": "execution-receipt",
         "generated_by": "aiwiki-apply-action",
         "applied_at": applied_at,
         "operation": operation,
+        **classification.as_receipt_fields(
+            validator_status="passed",
+            revert_supported=revert_supported,
+        ),
         "action_id": str(action.get("id") or ""),
         "title": str(action.get("title") or ""),
         "status": resulting_status,
@@ -327,8 +381,204 @@ def build_material_archive_receipt(
     }
 
 
+def build_elixir_promotion_receipt(
+    root: Path,
+    *,
+    elixir_id: str,
+    slug: str,
+    settled_path: Path,
+    candidate_path: Path,
+    protocol: str,
+    applied_at: datetime | None = None,
+    note: str | None,
+    primary_path_sha256: str,
+    secondary_path_sha256: str,
+    counter_evidence: list[str],
+    confidence_level: str,
+    counter_evidence_provenance: str,
+) -> ExecutionReceipt:
+    applied_at_value = applied_at or datetime.now(timezone.utc)
+    applied_at_iso = applied_at_value.isoformat()
+    action_id = _unique_elixir_action_id(root, f"elixir-promote-{slug}", applied_at_value)
+    receipt_path = execution_receipt_path(root, action_id)
+    return {
+        "version": 1,
+        "kind": "execution-receipt",
+        "generated_by": "aiwiki-elixir-promote",
+        "applied_at": applied_at_iso,
+        "operation": "promote",
+        "action_id": action_id,
+        "title": f"Promote elixir {elixir_id}",
+        "status": "resolved",
+        "protocol": protocol,
+        "subject_kind": "elixir_promotion",
+        "subject_id": elixir_id,
+        "apply_mode": "elixir-promote",
+        "note": note or "",
+        "primary_path": relative_path(root, settled_path),
+        "secondary_path": relative_path(root, candidate_path),
+        "receipt_path": relative_path(root, receipt_path),
+        "bundle": {
+            "primary_path_sha256": primary_path_sha256,
+            "secondary_path_sha256": secondary_path_sha256,
+            "counter_evidence": list(counter_evidence),
+            "confidence_level": confidence_level,
+            "counter_evidence_provenance": counter_evidence_provenance,
+        },
+        "safe_apply_preview": None,
+    }
+
+
+def build_elixir_revert_receipt(
+    root: Path,
+    *,
+    elixir_id: str,
+    slug: str,
+    wiki_path: Path,
+    candidate_path: Path,
+    protocol: str,
+    applied_at: datetime | None = None,
+    note: str | None,
+    source_receipt_applied_at: str,
+    source_receipt_action_id: str,
+    dependency_breaks: list[dict[str, Any]] | None = None,
+) -> ExecutionReceipt:
+    applied_at_value = applied_at or datetime.now(timezone.utc)
+    applied_at_iso = applied_at_value.isoformat()
+    action_id = _unique_elixir_action_id(root, f"elixir-revert-{slug}", applied_at_value)
+    receipt_path = execution_receipt_path(root, action_id)
+    bundle: dict[str, Any] = {
+        "from_state": "settled",
+        "tombstone_from_state": "superseded",
+        "to_state": "candidate",
+        "candidate_path": relative_path(root, candidate_path),
+        "wiki_path": relative_path(root, wiki_path),
+        "source_receipt_applied_at": source_receipt_applied_at,
+        "source_receipt_action_id": source_receipt_action_id,
+    }
+    if dependency_breaks is not None:
+        bundle["dependency_breaks"] = list(dependency_breaks)
+
+    return {
+        "version": 1,
+        "kind": "execution-receipt",
+        "generated_by": "aiwiki-elixir-revert",
+        "applied_at": applied_at_iso,
+        "operation": "revert",
+        "action_id": action_id,
+        "title": f"Revert elixir {elixir_id}",
+        "status": "resolved",
+        "protocol": protocol,
+        "subject_kind": "elixir_revert",
+        "subject_id": elixir_id,
+        "apply_mode": "elixir-revert",
+        "note": note or "",
+        "primary_path": relative_path(root, candidate_path),
+        "secondary_path": relative_path(root, wiki_path),
+        "receipt_path": relative_path(root, receipt_path),
+        "bundle": bundle,
+        "safe_apply_preview": None,
+    }
+
+
+def build_elixir_demotion_receipt(
+    root: Path,
+    *,
+    elixir_id: str,
+    slug: str,
+    wiki_path: Path,
+    candidate_path: Path,
+    protocol: str,
+    applied_at: datetime | None = None,
+    note: str | None,
+    dependency_breaks: list[dict[str, Any]] | None = None,
+) -> ExecutionReceipt:
+    applied_at_value = applied_at or datetime.now(timezone.utc)
+    applied_at_iso = applied_at_value.isoformat()
+    action_id = _unique_elixir_action_id(root, f"elixir-demote-{slug}", applied_at_value)
+    receipt_path = execution_receipt_path(root, action_id)
+    bundle: dict[str, Any] = {
+        "from_state": "settled",
+        "to_state": "candidate",
+        "candidate_path": relative_path(root, candidate_path),
+        "wiki_path": relative_path(root, wiki_path),
+    }
+    if dependency_breaks is not None:
+        bundle["dependency_breaks"] = list(dependency_breaks)
+
+    return {
+        "version": 1,
+        "kind": "execution-receipt",
+        "generated_by": "aiwiki-elixir-demote",
+        "applied_at": applied_at_iso,
+        "operation": "demote",
+        "action_id": action_id,
+        "title": f"Demote elixir {elixir_id}",
+        "status": "resolved",
+        "protocol": protocol,
+        "subject_kind": "elixir_demotion",
+        "subject_id": elixir_id,
+        "apply_mode": "elixir-demote",
+        "note": note or "",
+        "primary_path": relative_path(root, candidate_path),
+        "secondary_path": relative_path(root, wiki_path),
+        "receipt_path": relative_path(root, receipt_path),
+        "bundle": bundle,
+        "safe_apply_preview": None,
+    }
+
+
+def find_latest_elixir_promotion_receipt(root: Path, *, elixir_id: str) -> dict[str, Any] | None:
+    """Authoritative reader for elixir promotion receipts (used by revert hash-gate).
+
+    Fail-closed semantics: corrupt JSONL lines raise ``CorruptStateError`` rather than being
+    silently skipped. A corrupt receipt history can otherwise cause revert to select a stale
+    receipt or report missing, both of which are silent fact-layer corruption.
+    """
+    from .app_state import load_jsonl_documents_strict
+
+    path = execution_receipt_history_path(root)
+    latest: dict[str, Any] | None = None
+    for entry in load_jsonl_documents_strict(path):
+        if entry.get("subject_kind") == "elixir_promotion" and entry.get("subject_id") == elixir_id:
+            latest = entry
+    return latest
+
+
+@runtime_write_operation
 def append_execution_receipt_history(root: Path, receipt: dict[str, Any]) -> None:
     path = execution_receipt_history_path(root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(receipt, ensure_ascii=False, sort_keys=True) + "\n")
+    size_before = path.stat().st_size if path.exists() else 0
+    line_number = _next_jsonl_line_number(path)
+    atomic_append_jsonl(path, receipt)
+    from .execution.audit_preview import append_universal_audit_record
+
+    try:
+        append_universal_audit_record(
+            root,
+            source_stream="execution_receipts",
+            source_ref=f"{relative_path(root, path)}#L{line_number}",
+            document=receipt,
+        )
+    except Exception as audit_exc:
+        try:
+            _durable_truncate(path, size_before)
+        except Exception as truncate_exc:
+            raise ReceiptHistoryRollbackError(
+                "audit append failed and primary truncate also failed: "
+                f"audit={audit_exc!r}; truncate={truncate_exc!r}"
+            ) from audit_exc
+        raise ReceiptHistoryAuditError(
+            f"universal audit append failed; primary truncated: {audit_exc!r}"
+        ) from audit_exc
+
+
+def _next_jsonl_line_number(path: Path) -> int:
+    if not path.exists():
+        return 1
+    count = 0
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            if line.strip():
+                count += 1
+    return count + 1

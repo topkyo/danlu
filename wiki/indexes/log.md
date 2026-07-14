@@ -1,148 +1,51 @@
-# Wiki Log
+# 知识库日志
 
-## [2026-04-07T07:03:16+00:00] compile | wiki refresh
+## [2026-05-20T02:11:33+00:00] compile | wiki refresh
 
-- compiled_at: `2026-04-07T07:03:16+00:00`
+- compiled_at: `2026-05-20T02:11:33+00:00`
+- compile_state: `.aiwiki/state/compile-state.json`
+- compile_dirty_sources: `0`
+- compile_clean_sources: `0`
+- compile_dirty_concept_sources: `0`
+- compile_clean_concept_sources: `0`
+- compile_dirty_concepts: `0`
+- compile_clean_concepts: `0`
+- compile_dirty_machine_memory_sources: `0`
+- compile_clean_machine_memory_sources: `0`
+- compile_dirty_machine_memory_concepts: `0`
+- compile_clean_machine_memory_concepts: `0`
+- machine_memory_core_reused: `False`
+- compile_dirty_ranking_sources: `0`
+- compile_clean_ranking_sources: `0`
+- compile_dirty_ranking_concepts: `0`
+- compile_clean_ranking_concepts: `0`
+- compile_dirty_output_pack_groups: `4`
+- compile_clean_output_pack_groups: `0`
+- compile_dirty_domain_pilot_protocols: `5`
+- compile_clean_domain_pilot_protocols: `0`
+- compile_dirty_index_artifacts: `38`
+- compile_clean_index_artifacts: `0`
+- compile_dirty_maintenance_artifacts: `1`
+- compile_clean_maintenance_artifacts: `5`
+- compile_drift_warnings: `0`
+- source_pages_updated: `0`
 - source_pages: `0`
 - concept_pages: `0`
+- active_protocol: `general`
 - machine_memory_terms: `0`
-- changed_pages: `6`
-- removed_concept_pages: `0`
-## [2026-04-07T07:56:28+00:00] compile | wiki refresh
-
-- compiled_at: `2026-04-07T07:56:28+00:00`
-- source_pages: `0`
-- concept_pages: `0`
-- machine_memory_terms: `0`
+- graph_components: `0`
+- output_packs: `0/0/0`
+- domain_pilots: `5`
+- material_state_entries: `0`
+- material_routing_entries: `0`
+- archive_candidates: `0`
+- active_corpora: `3`
+- knowledge_lifecycle_entries: `0`
 - machine_memory_changed: `True`
-- changed_pages: `8`
+- changed_pages: `51`
 - removed_concept_pages: `0`
-## [2026-04-07T08:01:07+00:00] compile | wiki refresh
+## [2026-05-21T08:02:25+00:00] ingest | README
 
-- compiled_at: `2026-04-07T08:01:07+00:00`
-- source_pages: `0`
-- concept_pages: `0`
-- machine_memory_terms: `0`
-- machine_memory_changed: `False`
-- changed_pages: `8`
-- removed_concept_pages: `0`
-## [2026-04-07T08:13:20+00:00] compile | wiki refresh
-
-- compiled_at: `2026-04-07T08:13:20+00:00`
-- source_pages: `0`
-- concept_pages: `0`
-- machine_memory_terms: `0`
-- machine_memory_changed: `False`
-- changed_pages: `8`
-- removed_concept_pages: `0`
-## [2026-04-07T08:13:20+00:00] lint | wiki health check
-
-- errors: `0`
-- warnings: `0`
-- report: `output/lint/lint-20260407-081320.md`
-## [2026-04-07T08:13:20+00:00] nightly | health and repair pass
-
-- llm_used: `False`
-- lint_errors: `0`
-- lint_warnings: `0`
-- pending_source_summaries: `0`
-- placeholder_concepts: `0`
-- repair_backlog: `wiki/indexes/repair-backlog.md`
-## [2026-04-07T08:24:50+00:00] compile | wiki refresh
-
-- compiled_at: `2026-04-07T08:24:50+00:00`
-- source_pages: `0`
-- concept_pages: `0`
-- machine_memory_terms: `0`
-- graph_components: `0`
-- machine_memory_changed: `False`
-- changed_pages: `9`
-- removed_concept_pages: `0`
-## [2026-04-07T08:24:50+00:00] compile | wiki refresh
-
-- compiled_at: `2026-04-07T08:24:50+00:00`
-- source_pages: `0`
-- concept_pages: `0`
-- machine_memory_terms: `0`
-- graph_components: `0`
-- machine_memory_changed: `False`
-- changed_pages: `0`
-- removed_concept_pages: `0`
-## [2026-04-07T08:24:50+00:00] lint | wiki health check
-
-- errors: `0`
-- warnings: `0`
-- report: `output/lint/lint-20260407-082450.md`
-## [2026-04-07T08:24:50+00:00] nightly | health and repair pass
-
-- llm_used: `False`
-- lint_errors: `0`
-- lint_warnings: `0`
-- pending_source_summaries: `0`
-- placeholder_concepts: `0`
-- repair_backlog: `wiki/indexes/repair-backlog.md`
-## [2026-04-07T09:05:02+00:00] compile | wiki refresh
-
-- compiled_at: `2026-04-07T09:05:02+00:00`
-- source_pages: `0`
-- concept_pages: `0`
-- machine_memory_terms: `0`
-- graph_components: `0`
-- machine_memory_changed: `False`
-- changed_pages: `11`
-- removed_concept_pages: `0`
-## [2026-04-07T09:15:32+00:00] compile | wiki refresh
-
-- compiled_at: `2026-04-07T09:15:32+00:00`
-- source_pages: `0`
-- concept_pages: `0`
-- machine_memory_terms: `0`
-- graph_components: `0`
-- machine_memory_changed: `False`
-- changed_pages: `12`
-- removed_concept_pages: `0`
-## [2026-04-07T09:16:58+00:00] compile | wiki refresh
-
-- compiled_at: `2026-04-07T09:16:58+00:00`
-- source_pages: `0`
-- concept_pages: `0`
-- machine_memory_terms: `0`
-- graph_components: `0`
-- machine_memory_changed: `False`
-- changed_pages: `12`
-- removed_concept_pages: `0`
-## [2026-04-07T09:49:57+00:00] compile | wiki refresh
-
-- compiled_at: `2026-04-07T09:49:57+00:00`
-- source_pages: `0`
-- concept_pages: `0`
-- machine_memory_terms: `0`
-- graph_components: `0`
-- machine_memory_changed: `False`
-- changed_pages: `12`
-- removed_concept_pages: `0`
-## [2026-04-07T09:50:15+00:00] compile | wiki refresh
-
-- compiled_at: `2026-04-07T09:50:15+00:00`
-- source_pages: `0`
-- concept_pages: `0`
-- machine_memory_terms: `0`
-- graph_components: `0`
-- machine_memory_changed: `False`
-- changed_pages: `12`
-- removed_concept_pages: `0`
-## [2026-04-07T09:50:15+00:00] lint | wiki health check
-
-- errors: `0`
-- warnings: `0`
-- report: `output/lint/lint-20260407-095015.md`
-## [2026-04-07T09:50:15+00:00] nightly | health and repair pass
-
-- llm_used: `False`
-- lint_errors: `0`
-- lint_warnings: `0`
-- pending_source_summaries: `0`
-- placeholder_concepts: `0`
-- pending_decision_reviews: `0`
-- pending_judgment_reviews: `0`
-- repair_backlog: `wiki/indexes/repair-backlog.md`
+- source_type: `note-drop`
+- note_kind: `note`
+- stored_note: `raw/inbox/readme.md`

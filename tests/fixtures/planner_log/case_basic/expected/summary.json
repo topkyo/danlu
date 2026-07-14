@@ -1,0 +1,17 @@
+{
+  "status": "ok",
+  "signals_path": ".aiwiki/state/signals.jsonl",
+  "log_path": ".aiwiki/state/planner-log.jsonl",
+  "scanned_count": 3,
+  "new_count": 3,
+  "duplicate_count": 0,
+  "invalid_count": 0,
+  "emitted_by_decision": {
+    "enqueue-heavy": 0,
+    "enqueue-light": 1,
+    "escalate-human": 0,
+    "generate-proposal": 1,
+    "ignore": 1
+  },
+  "skip_examples": []
+}

@@ -1,6 +1,42 @@
 // Modal subclasses (AskCommand, CaptureNote, Protocol, Search, DropUrl,
 // DropFile, DropImage, StructuredCommand, ContextPicker).
 
+// Shared modal helpers
+function modalSubmitRow(containerEl, submitLabel, cancelLabel, onSubmit, onCancel) {
+  var row = containerEl.createDiv({ cls: "furnace-modal-submit-row" });
+  if (onCancel) {
+    var cancelBtn = row.createEl("button", { text: cancelLabel || "Cancel" });
+    cancelBtn.addClass("furnace-shell-ghost-button");
+    cancelBtn.addEventListener("click", function () { onCancel(); });
+  }
+  var submitBtn = row.createEl("button", { text: submitLabel || "Submit" });
+  submitBtn.addClass("mod-cta");
+  submitBtn.addEventListener("click", function () { onSubmit(submitBtn); });
+  return { row: row, submitBtn: submitBtn };
+}
+
+function setSubmitLoading(button, loadingText) {
+  button.disabled = true;
+  button.setText(loadingText || "处理中…");
+}
+
+function setSubmitReady(button, text) {
+  button.disabled = false;
+  button.setText(text);
+}
+
+function showInlineError(el, text) {
+  if (!el) return;
+  el.setText(text);
+  el.addClass("is-visible");
+}
+
+function clearInlineError(el) {
+  if (!el) return;
+  el.setText("");
+  el.removeClass("is-visible");
+}
+
 class AskCommandModal extends Modal {
   constructor(app, plugin) {
     super(app);
@@ -13,69 +49,39 @@ class AskCommandModal extends Modal {
     contentEl.empty();
     contentEl.addClass("furnace-shell-view");
     contentEl.createEl("h2", { text: t("Ask 炼丹炉") });
+    contentEl.createDiv({ cls: "furnace-modal-help", text: t("输入一个问题，炉子会用 LLM 深度分析并生成报告。") });
 
-    const questionSetting = new Setting(contentEl).setName(t("Question"));
+    const questionSetting = new Setting(contentEl).setName(t("问题"));
+    questionSetting.nameEl.addClass("furnace-modal-field-required");
     const questionInput = questionSetting.controlEl.createEl("textarea");
-    questionInput.rows = 5;
-    questionInput.placeholder = t("Enter the research question...");
+    questionInput.rows = 4;
+    questionInput.placeholder = t("输入研究问题……");
     questionInput.addClass("furnace-shell-code");
+    const questionError = questionSetting.controlEl.createDiv({ cls: "furnace-modal-error" });
 
-    const formatSetting = new Setting(contentEl).setName(t("Format"));
-    const formatSelect = formatSetting.controlEl.createEl("select");
-    ["report", "slides", "figure"].forEach((item) => {
-      const option = formatSelect.createEl("option", { text: item, value: item });
-      option.value = item;
-    });
-    formatSelect.value = this.plugin.settings.defaultAskFormat;
-
-    const modeSetting = new Setting(contentEl).setName(t("Mode"));
-    const modeSelect = modeSetting.controlEl.createEl("select");
-    [
-      ["ask", t("route only (no LLM)")],
-      ["run-ask", t("LLM answer (recommended)")],
-    ].forEach(([value, label]) => {
-      const option = modeSelect.createEl("option", { text: label, value });
-      option.value = value;
-    });
-    modeSelect.value = this.plugin.settings.defaultAskMode;
-
-    const protocolSetting = new Setting(contentEl).setName(t("Protocol"));
+    const protocolSetting = new Setting(contentEl).setName(t("协议"));
     const protocolSelect = protocolSetting.controlEl.createEl("select");
-    protocolSelect.createEl("option", { text: t("current protocol"), value: "" });
+    protocolSelect.createEl("option", { text: t("当前协议"), value: "" });
     this.plugin.getAvailableProtocols().forEach((protocol) => {
       const option = protocolSelect.createEl("option", { text: protocol, value: protocol });
       option.value = protocol;
     });
 
-    const actionSetting = new Setting(contentEl);
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Run")).setCta().onClick(async () => {
-        const question = String(questionInput.value || "").trim();
-        if (!question) {
-          new Notice(t("Question cannot be empty."));
-          return;
-        }
-        const format = String(formatSelect.value || "report");
-        const mode = String(modeSelect.value || "ask");
-        const protocol = String(protocolSelect.value || "").trim();
-        this.close();
-        this.plugin.runUiAction(
-          () =>
-            this.plugin.runAskCommand({
-              question,
-              format,
-              mode,
-              protocol,
-            }),
-          t("Ask modal")
-        );
-      })
-    );
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Cancel")).onClick(() => {
-        this.close();
-      })
-    );
+    const { submitBtn } = modalSubmitRow(contentEl, t("运行"), t("取消"), function (btn) {
+      const question = String(questionInput.value || "").trim();
+      if (!question) {
+        showInlineError(questionError, t("问题不能为空。"));
+        return;
+      }
+      clearInlineError(questionError);
+      setSubmitLoading(btn, t("分析中…"));
+      const self = this;
+      const protocol = String(protocolSelect.value || "").trim();
+      self.close();
+      self.plugin.runUiAction(function () {
+        return self.plugin.runAskCommand({ question, format: "report", mode: "run-ask", protocol });
+      }, t("Ask modal"));
+    }.bind(this), function () { this.close(); }.bind(this));
 
     questionInput.focus();
   }
@@ -92,60 +98,50 @@ class CaptureNoteModal extends Modal {
     const t = this.plugin.t.bind(this.plugin);
     contentEl.empty();
     contentEl.addClass("furnace-shell-view");
-    contentEl.createEl("h2", { text: t("Capture Note") });
+    contentEl.createEl("h2", { text: t("投 Markdown 材料") });
+    contentEl.createDiv({ cls: "furnace-modal-help", text: t("快速投入一段 Markdown、会议纪要或观察，作为原料进入炉子的收件箱。") });
 
-    const titleSetting = new Setting(contentEl).setName(t("Title"));
+    const titleSetting = new Setting(contentEl).setName(t("标题"));
+    titleSetting.nameEl.addClass("furnace-modal-field-optional");
     const titleInput = titleSetting.controlEl.createEl("input", { type: "text" });
-    titleInput.placeholder = t("Optional note title...");
+    titleInput.placeholder = t("可选材料标题……");
     titleInput.addClass("furnace-shell-code");
 
-    const kindSetting = new Setting(contentEl).setName(t("Kind"));
+    const kindSetting = new Setting(contentEl).setName(t("类型"));
     const kindSelect = kindSetting.controlEl.createEl("select");
     [
-      ["note", "note"],
+      ["markdown", "markdown"],
       ["transcript", "transcript"],
     ].forEach(([value, label]) => {
       const option = kindSelect.createEl("option", { text: label, value });
       option.value = value;
     });
-    kindSelect.value = "note";
+    kindSelect.value = "markdown";
 
-    const textSetting = new Setting(contentEl).setName(t("Text"));
+    const textSetting = new Setting(contentEl).setName(t("正文"));
+    textSetting.nameEl.addClass("furnace-modal-field-required");
     const textInput = textSetting.controlEl.createEl("textarea");
-    textInput.rows = 10;
-    textInput.placeholder = t("Capture a note, meeting log, or quick observation...");
+    textInput.rows = 8;
+    textInput.placeholder = t("输入 Markdown、会议纪要或快速观察……");
     textInput.addClass("furnace-shell-code");
+    const textError = textSetting.controlEl.createDiv({ cls: "furnace-modal-error" });
 
-    const hint = contentEl.createDiv({ cls: "furnace-shell-meta" });
-    hint.setText(t("This writes into raw/inbox through the same launcher/runtime used by CLI commands."));
-
-    const actionSetting = new Setting(contentEl);
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Capture")).setCta().onClick(async () => {
-        const text = String(textInput.value || "").trim();
-        if (!text) {
-          new Notice(t("Text cannot be empty."));
-          return;
-        }
-        const title = String(titleInput.value || "").trim();
-        const kind = String(kindSelect.value || "note");
-        this.close();
-        this.plugin.runUiAction(
-          () =>
-            this.plugin.runDropNoteCommand({
-              text,
-              title,
-              kind,
-            }),
-          t("Capture note modal")
-        );
-      })
-    );
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Cancel")).onClick(() => {
-        this.close();
-      })
-    );
+    const self = this;
+    modalSubmitRow(contentEl, t("记录"), t("取消"), function (btn) {
+      const text = String(textInput.value || "").trim();
+      if (!text) {
+        showInlineError(textError, t("正文不能为空。"));
+        return;
+      }
+      clearInlineError(textError);
+      setSubmitLoading(btn, t("记录中…"));
+      const title = String(titleInput.value || "").trim();
+      const kind = String(kindSelect.value || "markdown");
+      self.close();
+      self.plugin.runUiAction(function () {
+        return self.plugin.runDropNoteCommand({ text, title, kind });
+      }, t("投 Markdown 材料"));
+    }, function () { self.close(); });
 
     textInput.focus();
   }
@@ -205,40 +201,47 @@ class SearchCommandModal extends Modal {
     const t = this.plugin.t.bind(this.plugin);
     contentEl.empty();
     contentEl.addClass("furnace-shell-view");
-    contentEl.createEl("h2", { text: t("Search 炼丹炉") });
+    contentEl.createEl("h2", { text: t("搜索知识库") });
+    contentEl.createDiv({ cls: "furnace-modal-help", text: t("搜索 wiki、概念、判断、决策和派生页面。") });
 
-    const querySetting = new Setting(contentEl).setName(t("Query"));
+    const querySetting = new Setting(contentEl).setName(t("关键词"));
+    querySetting.nameEl.addClass("furnace-modal-field-required");
     const queryInput = querySetting.controlEl.createEl("textarea");
-    queryInput.rows = 4;
-    queryInput.placeholder = t("Search wiki/sources, concepts, judgments, decisions, and derived pages...");
+    queryInput.rows = 3;
+    queryInput.placeholder = t("输入关键词搜索……");
     queryInput.addClass("furnace-shell-code");
+    const queryError = querySetting.controlEl.createDiv({ cls: "furnace-modal-error" });
 
-    const limitSetting = new Setting(contentEl).setName(t("Limit"));
+    var tagsRow = contentEl.createDiv({ cls: "furnace-modal-tags" });
+    ["来源", "概念", "判断", "决策", "报告"].forEach(function (tag) {
+      var tagEl = tagsRow.createDiv({ cls: "furnace-modal-tag", text: tag });
+      tagEl.addEventListener("click", function () {
+        var current = String(queryInput.value || "").trim();
+        queryInput.value = current ? current + " " + tag : tag;
+        queryInput.focus();
+      });
+    });
+
+    const limitSetting = new Setting(contentEl).setName(t("结果数量"));
     const limitInput = limitSetting.controlEl.createEl("input", { type: "text" });
     limitInput.value = "8";
     limitInput.addClass("furnace-shell-code");
 
-    const actionSetting = new Setting(contentEl);
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Search")).setCta().onClick(async () => {
-        const query = String(queryInput.value || "").trim();
-        if (!query) {
-          new Notice(t("Search query cannot be empty."));
-          return;
-        }
-        const parsedLimit = Number.parseInt(String(limitInput.value || "8"), 10);
-        this.close();
-        this.plugin.runUiAction(
-          () => this.plugin.runShellSearchCommand(query, Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 8),
-          t("Search modal")
-        );
-      })
-    );
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Cancel")).onClick(() => {
-        this.close();
-      })
-    );
+    const self = this;
+    modalSubmitRow(contentEl, t("搜索"), t("取消"), function (btn) {
+      const query = String(queryInput.value || "").trim();
+      if (!query) {
+        showInlineError(queryError, t("搜索关键词不能为空。"));
+        return;
+      }
+      clearInlineError(queryError);
+      setSubmitLoading(btn, t("搜索中…"));
+      const parsedLimit = Number.parseInt(String(limitInput.value || "8"), 10);
+      self.close();
+      self.plugin.runUiAction(function () {
+        return self.plugin.runShellSearchCommand(query, Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 8);
+      }, t("搜索"));
+    }, function () { self.close(); });
 
     queryInput.focus();
   }
@@ -248,6 +251,12 @@ class DropUrlModal extends Modal {
   constructor(app, plugin) {
     super(app);
     this.plugin = plugin;
+    this.initialUrl = "";
+  }
+
+  setInitialUrl(value) {
+    this.initialUrl = String(value || "").trim();
+    return this;
   }
 
   onOpen() {
@@ -255,42 +264,38 @@ class DropUrlModal extends Modal {
     const t = this.plugin.t.bind(this.plugin);
     contentEl.empty();
     contentEl.addClass("furnace-shell-view");
-    contentEl.createEl("h2", { text: t("Drop URL") });
+    contentEl.createEl("h2", { text: t("投网址") });
+    contentEl.createDiv({ cls: "furnace-modal-help", text: t("投一个网页地址，炉子会自动抓取内容并编译成知识。") });
 
-    const description = contentEl.createDiv({ cls: "furnace-shell-meta" });
-    description.setText(t("Drop this web page into raw/inbox."));
-
-    const sourceSetting = new Setting(contentEl).setName(t("Web URL"));
+    const sourceSetting = new Setting(contentEl).setName(t("网址"));
+    sourceSetting.nameEl.addClass("furnace-modal-field-required");
     const sourceInput = sourceSetting.controlEl.createEl("input", { type: "text" });
     sourceInput.placeholder = "https://example.com/article";
     sourceInput.addClass("furnace-shell-code");
+    sourceInput.value = this.initialUrl;
+    const sourceError = sourceSetting.controlEl.createDiv({ cls: "furnace-modal-error" });
 
-    const titleSetting = new Setting(contentEl).setName(t("Title"));
+    const titleSetting = new Setting(contentEl).setName(t("标题"));
+    titleSetting.nameEl.addClass("furnace-modal-field-optional");
     const titleInput = titleSetting.controlEl.createEl("input", { type: "text" });
-    titleInput.placeholder = t("Optional note title...");
+    titleInput.placeholder = t("可选材料标题……");
     titleInput.addClass("furnace-shell-code");
 
-    const actionSetting = new Setting(contentEl);
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Drop URL")).setCta().onClick(async () => {
-        const url = String(sourceInput.value || "").trim();
-        if (!url) {
-          new Notice(t("URL cannot be empty."));
-          return;
-        }
-        const title = String(titleInput.value || "").trim();
-        this.close();
-        this.plugin.runUiAction(
-          () => this.plugin.runDropUrlCommand({ url, title }),
-          t("Drop URL modal")
-        );
-      })
-    );
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Cancel")).onClick(() => {
-        this.close();
-      })
-    );
+    const self = this;
+    modalSubmitRow(contentEl, t("投网址"), t("取消"), function (btn) {
+      const url = String(sourceInput.value || "").trim();
+      if (!url) {
+        showInlineError(sourceError, t("网址不能为空。"));
+        return;
+      }
+      clearInlineError(sourceError);
+      setSubmitLoading(btn, t("抓取中…"));
+      const title = String(titleInput.value || "").trim();
+      self.close();
+      self.plugin.runUiAction(function () {
+        return self.plugin.runDropUrlCommand({ url, title });
+      }, t("投网址"));
+    }, function () { self.close(); });
 
     sourceInput.focus();
   }
@@ -300,6 +305,25 @@ class DropFileModal extends Modal {
   constructor(app, plugin) {
     super(app);
     this.plugin = plugin;
+    this.initialMode = "pdf";
+    this.initialSource = "";
+    this.initialTitle = "";
+  }
+
+  setInitialMode(value) {
+    const mode = String(value || "pdf").trim();
+    this.initialMode = mode === "repo" || mode === "markdown" ? mode : "pdf";
+    return this;
+  }
+
+  setInitialSource(value) {
+    this.initialSource = String(value || "");
+    return this;
+  }
+
+  setInitialTitle(value) {
+    this.initialTitle = String(value || "").trim();
+    return this;
   }
 
   onOpen() {
@@ -307,94 +331,95 @@ class DropFileModal extends Modal {
     const t = this.plugin.t.bind(this.plugin);
     contentEl.empty();
     contentEl.addClass("furnace-shell-view");
-    contentEl.createEl("h2", { text: t("Drop File") });
+    contentEl.createEl("h2", { text: t("投文件") });
+    contentEl.createDiv({ cls: "furnace-modal-help", text: t("投一个本地文件或远程地址：PDF 原件会进入 raw/assets，Repo 会抓取代码快照。") });
 
-    const description = contentEl.createDiv({ cls: "furnace-shell-meta" });
-    description.setText(t("Import a PDF or repo snapshot into raw/inbox."));
-
-    const kindSetting = new Setting(contentEl).setName(t("PDF or Repo"));
+    const kindSetting = new Setting(contentEl).setName(t("PDF、Markdown 或 Repo"));
     const kindSelect = kindSetting.controlEl.createEl("select");
     [
       ["pdf", t("PDF")],
+      ["markdown", t("Markdown")],
       ["repo", t("Repo")],
     ].forEach(([value, label]) => {
       const option = kindSelect.createEl("option", { text: label, value });
       option.value = value;
     });
-    kindSelect.value = "pdf";
+    kindSelect.value = this.initialMode;
 
-    const sourceSetting = new Setting(contentEl).setName(t("Source"));
+    const sourceSetting = new Setting(contentEl).setName(t("来源"));
+    sourceSetting.nameEl.addClass("furnace-modal-field-required");
     const sourceInput = sourceSetting.controlEl.createEl("input", { type: "text" });
     sourceInput.addClass("furnace-shell-code");
+    sourceInput.value = this.initialSource;
     const pickerInput = sourceSetting.controlEl.createEl("input", { type: "file" });
     pickerInput.style.display = "none";
     let pickLocalButton = null;
-    sourceSetting.addButton((button) => {
+    const self = this;
+    sourceSetting.addButton(function (button) {
       pickLocalButton = button;
-      button.setButtonText(t("Select local file")).onClick(() => {
+      button.setButtonText(t("选择本地文件")).onClick(function () {
         pickerInput.click();
       });
     });
+    const sourceError = sourceSetting.controlEl.createDiv({ cls: "furnace-modal-error" });
 
-    pickerInput.addEventListener("change", () => {
+    pickerInput.addEventListener("change", async function () {
       const file = pickerInput.files && pickerInput.files[0];
-      const nextPath = file ? String(file.path || file.name || "") : "";
-      if (nextPath) {
-        sourceInput.value = nextPath;
+      if (!file) { return; }
+      try {
+        const nextPath = await resolvePluginFileSource(self.plugin, file);
+        if (nextPath) { sourceInput.value = nextPath; }
+        if (!String(titleInput.value || "").trim()) { titleInput.value = String(file.name || "").trim(); }
+      } catch (error) {
+        showInlineError(sourceError, self.plugin.t("提交失败：{message}（输入已保留，可重试）", { message: error && error.message ? error.message : String(error) }));
       }
     });
 
-    const titleSetting = new Setting(contentEl).setName(t("Title"));
+    const titleSetting = new Setting(contentEl).setName(t("标题"));
+    titleSetting.nameEl.addClass("furnace-modal-field-optional");
     const titleInput = titleSetting.controlEl.createEl("input", { type: "text" });
-    titleInput.placeholder = t("Optional note title...");
+    titleInput.placeholder = t("可选材料标题……");
     titleInput.addClass("furnace-shell-code");
+    titleInput.value = this.initialTitle;
 
-    const maxFilesSetting = new Setting(contentEl).setName(t("Repo max files"));
+    const maxFilesSetting = new Setting(contentEl).setName(t("Repo 最大文件数"));
     const maxFilesInput = maxFilesSetting.controlEl.createEl("input", { type: "text" });
     maxFilesInput.value = "200";
     maxFilesInput.addClass("furnace-shell-code");
 
-    const syncModeState = () => {
+    const syncModeState = function () {
       const mode = String(kindSelect.value || "pdf");
-      sourceInput.placeholder = mode === "repo" ? t("Local repo path or remote git URL.") : t("Local PDF path or PDF URL.");
-      pickerInput.accept = mode === "pdf" ? ".pdf,application/pdf" : "";
-      if (pickLocalButton) {
-        pickLocalButton.buttonEl.style.display = mode === "pdf" ? "" : "none";
-      }
+      sourceInput.placeholder = mode === "repo"
+        ? t("本地 repo 路径或远程 git URL。")
+        : mode === "markdown"
+          ? t("本地 Markdown / txt 文件路径。")
+          : t("本地 PDF 路径或 PDF URL。");
+      pickerInput.accept = mode === "markdown" ? ".md,.markdown,.txt,text/markdown,text/plain" : mode === "pdf" ? ".pdf,application/pdf" : "";
+      if (pickLocalButton) { pickLocalButton.buttonEl.style.display = mode === "repo" ? "none" : ""; }
       maxFilesSetting.settingEl.style.display = mode === "repo" ? "" : "none";
     };
     kindSelect.addEventListener("change", syncModeState);
     syncModeState();
 
-    const actionSetting = new Setting(contentEl);
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Drop File")).setCta().onClick(async () => {
-        const source = String(sourceInput.value || "").trim();
-        if (!source) {
-          new Notice(t("Source cannot be empty."));
-          return;
-        }
-        const mode = String(kindSelect.value || "pdf");
-        const title = String(titleInput.value || "").trim();
-        const maxFiles = Number.parseInt(String(maxFilesInput.value || "200"), 10);
-        this.close();
-        this.plugin.runUiAction(
-          () =>
-            this.plugin.runDropFileCommand({
-              mode,
-              source,
-              title,
-              maxFiles: Number.isFinite(maxFiles) && maxFiles > 0 ? maxFiles : 200,
-            }),
-          t("Drop File modal")
-        );
-      })
-    );
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Cancel")).onClick(() => {
-        this.close();
-      })
-    );
+    modalSubmitRow(contentEl, t("投文件"), t("取消"), function (btn) {
+      const source = String(sourceInput.value || "").trim();
+      if (!source) {
+        showInlineError(sourceError, t("来源不能为空。"));
+        return;
+      }
+      clearInlineError(sourceError);
+      setSubmitLoading(btn, t("投料中…"));
+      const mode = String(kindSelect.value || "pdf");
+      const title = String(titleInput.value || "").trim();
+      const maxFiles = Number.parseInt(String(maxFilesInput.value || "200"), 10);
+      self.close();
+      self.plugin.runUiAction(function () {
+        return self.plugin.runDropFileCommand({
+          mode, source, title,
+          maxFiles: Number.isFinite(maxFiles) && maxFiles > 0 ? maxFiles : 200,
+        });
+      }, t("投文件"));
+    }, function () { self.close(); });
 
     sourceInput.focus();
   }
@@ -404,6 +429,18 @@ class DropImageModal extends Modal {
   constructor(app, plugin) {
     super(app);
     this.plugin = plugin;
+    this.initialSource = "";
+    this.initialTitle = "";
+  }
+
+  setInitialSource(value) {
+    this.initialSource = String(value || "");
+    return this;
+  }
+
+  setInitialTitle(value) {
+    this.initialTitle = String(value || "").trim();
+    return this;
   }
 
   onOpen() {
@@ -411,71 +448,65 @@ class DropImageModal extends Modal {
     const t = this.plugin.t.bind(this.plugin);
     contentEl.empty();
     contentEl.addClass("furnace-shell-view");
-    contentEl.createEl("h2", { text: t("Drop Image") });
+    contentEl.createEl("h2", { text: t("投图片") });
+    contentEl.createDiv({ cls: "furnace-modal-help", text: t("投一张图片，原件会进入 raw/assets；视觉信息只作为运行层分析，不改写原料。") });
 
-    const description = contentEl.createDiv({ cls: "furnace-shell-meta" });
-    description.setText(t("Import an image into raw/inbox."));
-
-    const sourceSetting = new Setting(contentEl).setName(t("Source"));
+    const sourceSetting = new Setting(contentEl).setName(t("来源"));
+    sourceSetting.nameEl.addClass("furnace-modal-field-required");
     const sourceInput = sourceSetting.controlEl.createEl("input", { type: "text" });
-    sourceInput.placeholder = t("Local image path or image URL.");
+    sourceInput.placeholder = t("本地图片路径或图片 URL。");
     sourceInput.addClass("furnace-shell-code");
+    sourceInput.value = this.initialSource;
     const pickerInput = sourceSetting.controlEl.createEl("input", { type: "file" });
     pickerInput.style.display = "none";
     pickerInput.accept = "image/*";
-    sourceSetting.addButton((button) =>
-      button.setButtonText(t("Select local file")).onClick(() => {
+    sourceSetting.addButton(function (button) {
+      button.setButtonText(t("选择本地文件")).onClick(function () {
         pickerInput.click();
-      })
-    );
-    pickerInput.addEventListener("change", () => {
+      });
+    });
+    const sourceError = sourceSetting.controlEl.createDiv({ cls: "furnace-modal-error" });
+    const self = this;
+    pickerInput.addEventListener("change", async function () {
       const file = pickerInput.files && pickerInput.files[0];
-      const nextPath = file ? String(file.path || file.name || "") : "";
-      if (nextPath) {
-        sourceInput.value = nextPath;
+      if (!file) { return; }
+      try {
+        const nextPath = await resolvePluginFileSource(self.plugin, file);
+        if (nextPath) { sourceInput.value = nextPath; }
+        if (!String(titleInput.value || "").trim()) { titleInput.value = String(file.name || "").trim(); }
+      } catch (error) {
+        showInlineError(sourceError, self.plugin.t("提交失败：{message}（输入已保留，可重试）", { message: error && error.message ? error.message : String(error) }));
       }
     });
 
-    const titleSetting = new Setting(contentEl).setName(t("Title"));
+    const titleSetting = new Setting(contentEl).setName(t("标题"));
+    titleSetting.nameEl.addClass("furnace-modal-field-optional");
     const titleInput = titleSetting.controlEl.createEl("input", { type: "text" });
-    titleInput.placeholder = t("Optional note title...");
+    titleInput.placeholder = t("可选材料标题……");
     titleInput.addClass("furnace-shell-code");
+    titleInput.value = this.initialTitle;
 
     let skipVision = false;
     new Setting(contentEl)
-      .setName(t("Skip vision analysis"))
-      .addToggle((toggle) =>
-        toggle.setValue(false).onChange((value) => {
-          skipVision = Boolean(value);
-        })
-      );
+      .setName(t("跳过视觉分析"))
+      .addToggle(function (toggle) {
+        toggle.setValue(false).onChange(function (value) { skipVision = Boolean(value); });
+      });
 
-    const actionSetting = new Setting(contentEl);
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Drop Image")).setCta().onClick(async () => {
-        const source = String(sourceInput.value || "").trim();
-        if (!source) {
-          new Notice(t("Source cannot be empty."));
-          return;
-        }
-        const title = String(titleInput.value || "").trim();
-        this.close();
-        this.plugin.runUiAction(
-          () =>
-            this.plugin.runDropImageCommand({
-              source,
-              title,
-              noVision: skipVision,
-            }),
-          t("Drop Image modal")
-        );
-      })
-    );
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Cancel")).onClick(() => {
-        this.close();
-      })
-    );
+    modalSubmitRow(contentEl, t("投图片"), t("取消"), function (btn) {
+      const source = String(sourceInput.value || "").trim();
+      if (!source) {
+        showInlineError(sourceError, t("来源不能为空。"));
+        return;
+      }
+      clearInlineError(sourceError);
+      setSubmitLoading(btn, t("投料中…"));
+      const title = String(titleInput.value || "").trim();
+      self.close();
+      self.plugin.runUiAction(function () {
+        return self.plugin.runDropImageCommand({ source, title, noVision: skipVision });
+      }, t("投图片"));
+    }, function () { self.close(); });
 
     sourceInput.focus();
   }

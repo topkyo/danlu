@@ -6,26 +6,37 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from aiwiki.app_compile import (
-    apply_concept_rewrite,
-    apply_machine_memory_action,
+from aiwiki.app_compile import compile_wiki, lint_wiki
+from aiwiki.app_protocol import ensure_layout
+from aiwiki.app_state import (
+    load_concept_rewrite_state,
+    load_machine_memory,
+    load_machine_memory_action_state,
+    load_runtime_history,
+)
+from aiwiki.app_utils import parse_frontmatter
+from aiwiki.content.io import (
+    ingest_source,
+    sync_manifest_with_raw,
+)
+from aiwiki.drop import drop_url
+from aiwiki.execution.ask import (
     ask_question,
-    compile_wiki,
     file_back,
-    lint_wiki,
-    nightly_health,
+)
+from aiwiki.execution.concept_rewrite import (
+    apply_concept_rewrite,
     revert_concept_rewrite,
-    revert_machine_memory_action,
     review_concept_rewrite,
-    review_machine_memory_action,
-    review_page,
     verify_concept_rewrite,
 )
-from aiwiki.app_content import ingest_source, sync_manifest_with_raw
-from aiwiki.app_protocol import ensure_layout
-from aiwiki.app_state import load_concept_rewrite_state, load_machine_memory, load_machine_memory_action_state
-from aiwiki.app_utils import parse_frontmatter
-from aiwiki.drop import drop_url
+from aiwiki.execution.machine_memory_actions import (
+    apply_machine_memory_action,
+    revert_machine_memory_action,
+    review_machine_memory_action,
+)
+from aiwiki.execution.review import review_page
+from aiwiki.execution.runtime_surfaces import nightly_health
 from aiwiki.llm import CompletionResult
 from aiwiki.runner import run_compile
 
@@ -227,6 +238,7 @@ class PipelineTests(unittest.TestCase):
         entry = ingest_source(self.root, str(self.sample), title="Agent Governance Runtime")
         compile_wiki(self.root)
         judgment_path = self.root / "wiki" / "judgments" / "judgment-runtime-governance.md"
+        judgment_path.parent.mkdir(parents=True, exist_ok=True)
         judgment_path.write_text(
             "\n".join(
                 [
@@ -269,6 +281,15 @@ class PipelineTests(unittest.TestCase):
         compile_wiki(self.root)
         first_scan = load_machine_memory(self.root)["health"]["counter_evidence_scan"]
         self.assertGreater(first_scan["candidate_count"], 0)
+        counter_events = [
+            event
+            for event in load_runtime_history(self.root)
+            if event.get("event_type") == "counter-evidence"
+        ]
+        self.assertTrue(counter_events)
+        self.assertEqual(counter_events[0]["candidate_id"], first_scan["candidates"][0]["candidate_id"])
+        self.assertEqual(counter_events[0]["source_ids"], [first_scan["candidates"][0]["source_id"]])
+        self.assertEqual(counter_events[0]["page_path"], first_scan["candidates"][0]["page_path"])
 
         compile_wiki(self.root)
         second_scan = load_machine_memory(self.root)["health"]["counter_evidence_scan"]

@@ -7,5 +7,22 @@
   "promptDelete": false,
   "showInlineTitle": true,
   "showUnsupportedFiles": true,
-  "useMarkdownLinks": true
+  "useMarkdownLinks": true,
+  "userIgnoreFilters": [
+    "docs/",
+    "wiki/derived/",
+    "wiki/decisions/",
+    "wiki/judgments/",
+    "wiki/elixirs/",
+    "wiki/sources/",
+    "wiki/concepts/",
+    "schema/",
+    "output/control/",
+    "output/graph/",
+    "output/review/",
+    "output/slides/",
+    "output/figures/",
+    "output/_proposals/",
+    ".aiwiki/"
+  ]
 }

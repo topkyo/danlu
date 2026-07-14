@@ -3,14 +3,13 @@
 set -euo pipefail
 
 DEFAULT_ROOT="/home/tim/danlu/炼丹炉"
-WITH_DROP_NOTE=0
+WITH_NOTE_WRITE=0
 ROOT=""
-SMOKE_DEGRADED=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --with-drop-note)
-      WITH_DROP_NOTE=1
+    --with-note-write)
+      WITH_NOTE_WRITE=1
       shift
       ;;
     -*)
@@ -63,11 +62,10 @@ run_json() {
   if [[ "$status" -ne 0 ]]; then
     payload="$(cat "$temp_stdout")"
     if [[ "$label" == "run-ask" ]] && llm_backend_unavailable "$(cat "$temp_stderr")"$'\n'"$payload"; then
-      SMOKE_DEGRADED=1
-      echo "  run-ask backend unavailable; verified deterministic ask fallback instead"
+      echo "  run-ask backend unavailable; smoke failed without deterministic fallback" >&2
+      cat "$temp_stderr" >&2
       rm -f "$temp_stdout" "$temp_stderr"
-      run_json "ask-fallback" ask "$RUN_ASK_QUERY" --format report
-      return 0
+      return "$status"
     fi
     cat "$temp_stderr" >&2
     rm -f "$temp_stdout" "$temp_stderr"
@@ -90,7 +88,16 @@ if label == "shell-status":
 elif label == "llm-check":
     print(f"  backend={payload.get('backend', '')} model={payload.get('effective_model', payload.get('model', ''))}")
 else:
-    path = payload.get("path") or payload.get("output_path") or payload.get("receipt_path") or ""
+    path = (
+        payload.get("path")
+        or payload.get("output_path")
+        or payload.get("report_path")
+        or payload.get("note_path")
+        or payload.get("stored_path")
+        or payload.get("asset_path")
+        or payload.get("receipt_path")
+        or ""
+    )
     print(f"  path={path}")
 PY
   rm -f "$temp_json"
@@ -106,22 +113,19 @@ llm_backend_unavailable() {
     || [[ "$normalized" == *"login again"* ]] \
     || [[ "$normalized" == *"not have access to claude"* ]] \
     || [[ "$normalized" == *"authentication"* ]] \
-    || [[ "$normalized" == *"upgrade to pro"* ]]
+    || [[ "$normalized" == *"upgrade to pro"* ]] \
+    || [[ "$normalized" == *"llm backend resolution failed"* ]]
 }
 
-run_json "shell-status" shell-status
-run_json "llm-check" llm-check
-run_json "ask" ask "$ASK_QUERY" --format report
-run_json "run-ask" run-ask "$RUN_ASK_QUERY" --format report
+run_json "shell-status" advanced shell-status
+run_json "llm-check" advanced llm-check
+run_json "ask" advanced ask "$ASK_QUERY" --format report
+run_json "run-ask" advanced run-ask "$RUN_ASK_QUERY" --format report
 
-if [[ "$WITH_DROP_NOTE" == "1" ]]; then
-  run_json "drop-note" drop-note --title "$DROP_TITLE" --text "$DROP_TEXT" --kind note
+if [[ "$WITH_NOTE_WRITE" == "1" ]]; then
+  run_json "drop markdown" drop markdown --title "$DROP_TITLE" --text "$DROP_TEXT" --kind note
 else
-  echo "[smoke] drop-note skipped (pass --with-drop-note to include write-path validation)"
+  echo "[smoke] drop markdown skipped (pass --with-note-write to include write-path validation)"
 fi
 
-if [[ "$SMOKE_DEGRADED" == "1" ]]; then
-  echo "[smoke] Product Shell smoke passed for $ROOT (degraded: deterministic ask fallback verified)"
-else
-  echo "[smoke] Product Shell smoke passed for $ROOT"
-fi
+echo "[smoke] Product Shell smoke passed for $ROOT"

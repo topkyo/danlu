@@ -1,0 +1,16 @@
+[Unit]
+Description=aiwiki dogfood maturity receipt runner
+After=default.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=__PROJECT_ROOT__
+EnvironmentFile=__ENV_FILE__
+Environment=PYTHONPATH=__PROJECT_ROOT__/src
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=__PROJECT_ROOT__/scripts/run_dogfood_maturity.sh
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=__DOGFOOD_VAULT__
+RestrictSUIDSGID=true

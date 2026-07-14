@@ -1,0 +1,402 @@
+{
+  "applied_count": 0,
+  "decision_mode": "execute",
+  "dry_run": true,
+  "lane_results": [
+    {
+      "lane": "heavy",
+      "plan": {
+        "budget": {
+          "exceeded": false,
+          "limits": {
+            "max_pages": 500,
+            "max_signals": 50,
+            "max_tokens": 50000
+          },
+          "reason_codes": [],
+          "used": {
+            "max_pages": 0,
+            "max_tokens": 0,
+            "signals": 1
+          }
+        },
+        "decision_mode": "execute",
+        "deferred_primitives": [
+          {
+            "apply_contract": {
+              "audit_event_schema": "execution_receipt_history_append plus runtime_history direct append",
+              "backend_policy": "no LLM required for deterministic refresh marker; semantic judgment generation must be explicit",
+              "idempotency_key": "primitive + scope + candidate_ids + trace_ids",
+              "primitive": "judge",
+              "receipt_schema": "execution-receipt v1; subject_kind=alchemy_judgment_page; operation=alchemy-judge-refresh",
+              "revert_policy": "non_revertible_refresh_marker: managed marker can be replaced by a newer judge apply; semantic judgment edits remain human/model explicit",
+              "status": "executable",
+              "write_surfaces": [
+                "wiki/judgments/",
+                "wiki/decisions/",
+                "output/control/execution-receipts/",
+                ".aiwiki/state/execution-receipts.jsonl",
+                ".aiwiki/state/runtime-history.jsonl",
+                ".aiwiki/state/audit.jsonl"
+              ]
+            },
+            "apply_supported": false,
+            "description": "Refresh dirty-scope judgment and decision assets.",
+            "primitive": "judge",
+            "reason_code": "missing_receipted_scoped_contract",
+            "unlock_condition": "Define a scoped judgment refresh primitive with dry-run, receipt, audit, and revert semantics."
+          }
+        ],
+        "dry_run": true,
+        "lane": "heavy",
+        "lock": {
+          "path": ".aiwiki/state/runtime.lock",
+          "status": "available",
+          "would_acquire": true
+        },
+        "planner_log_path": ".aiwiki/state/planner-log.jsonl",
+        "primitive_plan": [
+          {
+            "apply_blocker": "route_is_dry_run_scope_planning",
+            "apply_supported": false,
+            "description": "Compute dirty scope from selected planner decisions.",
+            "dry_run_only": true,
+            "order": 1,
+            "primitive": "route",
+            "protocols": [
+              "research"
+            ],
+            "signal_ids": [
+              "sig-20260427-heavy0001"
+            ]
+          },
+          {
+            "apply_blocker": "",
+            "apply_supported": true,
+            "description": "Preview targeted compile for dirty sources and concepts.",
+            "dry_run_only": true,
+            "order": 2,
+            "primitive": "compile",
+            "protocols": [
+              "research"
+            ],
+            "signal_ids": [
+              "sig-20260427-heavy0001"
+            ]
+          },
+          {
+            "apply_blocker": "missing_receipted_scoped_contract",
+            "apply_supported": false,
+            "description": "Preview judgment refresh for dirty scope.",
+            "dry_run_only": true,
+            "order": 3,
+            "primitive": "judge",
+            "protocols": [
+              "research"
+            ],
+            "signal_ids": [
+              "sig-20260427-heavy0001"
+            ]
+          },
+          {
+            "apply_blocker": "",
+            "apply_supported": true,
+            "description": "Preview optional candidate elixir refresh.",
+            "dry_run_only": true,
+            "order": 4,
+            "primitive": "distill",
+            "protocols": [
+              "research"
+            ],
+            "signal_ids": [
+              "sig-20260427-heavy0001"
+            ]
+          },
+          {
+            "apply_blocker": "",
+            "apply_supported": true,
+            "description": "Preview scoped drift and contract checks.",
+            "dry_run_only": true,
+            "order": 5,
+            "primitive": "lint",
+            "protocols": [
+              "research"
+            ],
+            "signal_ids": [
+              "sig-20260427-heavy0001"
+            ]
+          },
+          {
+            "apply_blocker": "",
+            "apply_supported": true,
+            "description": "Preview review queue entries for high-severity outputs.",
+            "dry_run_only": true,
+            "order": 6,
+            "primitive": "review",
+            "protocols": [
+              "research"
+            ],
+            "signal_ids": [
+              "sig-20260427-heavy0001"
+            ]
+          },
+          {
+            "apply_blocker": "",
+            "apply_supported": true,
+            "description": "Preview L3 proposal candidates for recurring failures and feedback.",
+            "dry_run_only": true,
+            "order": 7,
+            "primitive": "propose",
+            "protocols": [
+              "research"
+            ],
+            "signal_ids": [
+              "sig-20260427-heavy0001"
+            ]
+          }
+        ],
+        "scope": "all",
+        "scope_preview": {
+          "concept_slugs": [
+            "heavy-loop"
+          ],
+          "elixir_refs": [
+            "elixir-b3"
+          ],
+          "judgment_refs": [
+            "wiki/judgments/thesis.md"
+          ],
+          "protocols": [
+            "research"
+          ],
+          "severities": [
+            "high"
+          ],
+          "signal_ids": [
+            "sig-20260427-heavy0001"
+          ],
+          "source_ids": [
+            "src-b3"
+          ],
+          "trace_ids": [
+            "550e8400-e29b-41d4-a716-446655440000"
+          ]
+        },
+        "selected_count": 1,
+        "side_effects_allowed": false,
+        "signals_path": ".aiwiki/state/signals.jsonl",
+        "skip_examples": [],
+        "skipped_count": 0,
+        "status": "ok"
+      },
+      "scope": "all",
+      "selected_primitives": [
+        "compile",
+        "lint"
+      ],
+      "status": "ready"
+    },
+    {
+      "lane": "light",
+      "plan": {
+        "budget": {
+          "exceeded": false,
+          "limits": {
+            "max_pages": 200,
+            "max_signals": 200,
+            "max_tokens": 10000
+          },
+          "reason_codes": [],
+          "used": {
+            "max_pages": 0,
+            "max_tokens": 0,
+            "signals": 0
+          }
+        },
+        "decision_mode": "execute",
+        "deferred_primitives": [
+          {
+            "apply_contract": {
+              "audit_event_schema": "execution_receipt_history_append plus runtime_history direct append",
+              "backend_policy": "no LLM required for deterministic refresh marker; semantic judgment generation must be explicit",
+              "idempotency_key": "primitive + scope + candidate_ids + trace_ids",
+              "primitive": "judge",
+              "receipt_schema": "execution-receipt v1; subject_kind=alchemy_judgment_page; operation=alchemy-judge-refresh",
+              "revert_policy": "non_revertible_refresh_marker: managed marker can be replaced by a newer judge apply; semantic judgment edits remain human/model explicit",
+              "status": "executable",
+              "write_surfaces": [
+                "wiki/judgments/",
+                "wiki/decisions/",
+                "output/control/execution-receipts/",
+                ".aiwiki/state/execution-receipts.jsonl",
+                ".aiwiki/state/runtime-history.jsonl",
+                ".aiwiki/state/audit.jsonl"
+              ]
+            },
+            "apply_supported": false,
+            "description": "Refresh judgment and decision assets.",
+            "primitive": "judge",
+            "reason_code": "not_allowed_for_light_lane",
+            "unlock_condition": "Route meaning-changing judgment work through heavy lane after a receipted scoped contract exists."
+          },
+          {
+            "apply_contract": {
+              "audit_event_schema": "execution_receipt_history_append plus runtime_history direct append",
+              "backend_policy": "no LLM required for deterministic scoped refresh question; any future model-generated question must be explicit",
+              "idempotency_key": "primitive + scope + candidate_ids + deterministic_question + trace_ids",
+              "primitive": "distill",
+              "receipt_schema": "execution-receipt v1; subject_kind=alchemy_elixir_candidate; operation=alchemy-distill-refresh",
+              "revert_policy": "non_revertible_candidate_iteration: re-run distill/finalize/promote lifecycle with receipt evidence; before/after hashes document each refreshed candidate",
+              "status": "executable",
+              "write_surfaces": [
+                "output/_candidates/elixirs/",
+                "output/control/execution-receipts/",
+                ".aiwiki/state/execution-receipts.jsonl",
+                ".aiwiki/state/runtime-history.jsonl",
+                ".aiwiki/state/audit.jsonl"
+              ]
+            },
+            "apply_supported": false,
+            "description": "Refresh candidate elixir iterations.",
+            "primitive": "distill",
+            "reason_code": "not_allowed_for_light_lane",
+            "unlock_condition": "Route elixir distillation through explicit elixir lifecycle commands or heavy lane contracts."
+          },
+          {
+            "apply_contract": {
+              "audit_event_schema": "execution_receipt_history_append plus runtime_history direct append",
+              "backend_policy": "no LLM required for enqueue; any optional model use must be explicit",
+              "idempotency_key": "primitive + scope + candidate_ids + trace_ids",
+              "primitive": "review",
+              "receipt_schema": "execution-receipt v1; subject_kind=alchemy_review_queue; operation=alchemy-review-enqueue",
+              "revert_policy": "non_revertible_derived_index: rerun compile or apply a newer review preview to replace managed queue section",
+              "status": "executable",
+              "write_surfaces": [
+                "wiki/indexes/review-queue.md",
+                "output/control/execution-receipts/",
+                ".aiwiki/state/execution-receipts.jsonl",
+                ".aiwiki/state/runtime-history.jsonl",
+                ".aiwiki/state/audit.jsonl"
+              ]
+            },
+            "apply_supported": false,
+            "description": "Generate or update review queue entries.",
+            "primitive": "review",
+            "reason_code": "not_allowed_for_light_lane",
+            "unlock_condition": "Keep light lane to low-risk hygiene; scoped review apply stays explicit and heavy-only."
+          },
+          {
+            "apply_contract": {
+              "audit_event_schema": "execution_receipt_history_append plus runtime_history direct append",
+              "backend_policy": "no LLM required for deterministic scoped proposal candidate generation; L3 target writes still require human accept",
+              "idempotency_key": "primitive + scope + candidate_ids + trace_ids",
+              "primitive": "propose",
+              "receipt_schema": "execution-receipt v1; subject_kind=alchemy_proposal_plane; operation=alchemy-propose-generate",
+              "revert_policy": "non_revertible_proposal_generation: reject generated L3 proposal candidates through the existing review proposal workflow; target-file apply remains receipt-gated",
+              "status": "executable",
+              "write_surfaces": [
+                "output/_proposals/prompt/",
+                "output/_proposals/policy/",
+                ".aiwiki/state/l3-proposals.json",
+                "output/control/execution-receipts/",
+                ".aiwiki/state/execution-receipts.jsonl",
+                ".aiwiki/state/runtime-history.jsonl",
+                ".aiwiki/state/audit.jsonl"
+              ]
+            },
+            "apply_supported": false,
+            "description": "Generate prompt or policy proposals.",
+            "primitive": "propose",
+            "reason_code": "not_allowed_for_light_lane",
+            "unlock_condition": "Keep L3 proposal generation out of light lane until proposal review/apply/revert is implemented."
+          }
+        ],
+        "dry_run": true,
+        "lane": "light",
+        "lock": {
+          "path": ".aiwiki/state/runtime.lock",
+          "status": "available",
+          "would_acquire": true
+        },
+        "planner_log_path": ".aiwiki/state/planner-log.jsonl",
+        "primitive_plan": [
+          {
+            "apply_blocker": "route_is_dry_run_scope_planning",
+            "apply_supported": false,
+            "description": "Preview active corpus cooling and maintenance scope.",
+            "dry_run_only": true,
+            "order": 1,
+            "primitive": "route",
+            "protocols": [],
+            "signal_ids": []
+          },
+          {
+            "apply_blocker": "",
+            "apply_supported": true,
+            "description": "Preview metadata and index refresh only.",
+            "dry_run_only": true,
+            "order": 2,
+            "primitive": "compile",
+            "protocols": [],
+            "signal_ids": []
+          },
+          {
+            "apply_blocker": "",
+            "apply_supported": true,
+            "description": "Preview read-only drift and aging checks.",
+            "dry_run_only": true,
+            "order": 3,
+            "primitive": "lint",
+            "protocols": [],
+            "signal_ids": []
+          },
+          {
+            "apply_blocker": "",
+            "apply_supported": true,
+            "description": "Preview deterministic nightly health refresh.",
+            "dry_run_only": true,
+            "order": 4,
+            "primitive": "nightly",
+            "protocols": [],
+            "signal_ids": []
+          }
+        ],
+        "scope": "all",
+        "scope_preview": {
+          "concept_slugs": [],
+          "elixir_refs": [],
+          "judgment_refs": [],
+          "protocols": [],
+          "severities": [],
+          "signal_ids": [],
+          "source_ids": [],
+          "trace_ids": []
+        },
+        "selected_count": 0,
+        "side_effects_allowed": false,
+        "signals_path": ".aiwiki/state/signals.jsonl",
+        "skip_examples": [],
+        "skipped_count": 1,
+        "status": "ok"
+      },
+      "reason": "empty_execute_plan",
+      "scope": "all",
+      "selected_primitives": [
+        "compile",
+        "lint",
+        "nightly"
+      ],
+      "status": "skipped"
+    }
+  ],
+  "lanes": [
+    "heavy",
+    "light"
+  ],
+  "mode": "dry_run",
+  "requested_primitives": [],
+  "scope": "all",
+  "side_effects_allowed": false,
+  "skipped_count": 1,
+  "status": "preview"
+}

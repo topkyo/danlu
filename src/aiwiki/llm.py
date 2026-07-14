@@ -3,32 +3,50 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import mimetypes
-import subprocess
-import tempfile
+import os
+import socket
 import time
 from dataclasses import dataclass, replace
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib import error, request
+from urllib import error
+
+from aiwiki.app_utils import FetchPolicyError, atomic_write_text, safe_fetch
 
 from .config import (
     BACKEND_ANTHROPIC_API,
-    BACKEND_CLAUDE_CLI,
-    BACKEND_CODEX_CLI,
-    BACKEND_COPILOT_CLI,
-    BACKEND_NVIDIA_NIM_API,
+    BACKEND_DEEPSEEK_API,
     BACKEND_OPENAI_API,
-    DEFAULT_CODEX_MODEL,
-    DEFAULT_NVIDIA_NIM_MODEL,
+    BACKEND_OPENCODE_API,
+    DEFAULT_DEEPSEEK_MODEL,
+    DEFAULT_OPENCODE_MODEL,
     LLMConfig,
-    _default_model_chain,
 )
 
 
 class LLMError(RuntimeError):
     """Raised when the configured LLM backend fails or returns invalid output."""
+
+    def __init__(self, message: str, *, raw_response_path: str | None = None) -> None:
+        super().__init__(message)
+        self.raw_response_path = raw_response_path
+
+
+class AutonomyDisabled(LLMError):
+    """Raised when an autonomy-policy kill switch blocks an external LLM call.
+
+    Subclass of LLMError so that all existing callers (which already handle
+    LLMError) get clean structured failure without bespoke wiring. Distinguish
+    via ``isinstance(exc, AutonomyDisabled)`` when reason matters.
+    """
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(f"external LLM disabled by autonomy policy: {reason}")
+        self.reason = reason
 
 
 @dataclass
@@ -36,17 +54,47 @@ class CompletionResult:
     text: str
     response_id: str
     usage: dict[str, Any]
+    raw_response_path: str | None = None
 
 
 PROBE_SYSTEM_PROMPT = "You are a backend health probe. Reply with exactly OK."
 PROBE_USER_PROMPT = "Reply with exactly OK."
+FRONTMATTER_PROBE_SYSTEM_PROMPT = (
+    "You are a backend compatibility probe. Respond with the exact markdown frontmatter block the user requests."
+)
+FRONTMATTER_PROBE_USER_PROMPT = """Respond with exactly the following text, nothing else, no decoration, no commentary:
+---
+title: probe
+---
+ok"""
+_LLM_MAX_BYTES = 10 * 1024 * 1024
+_RETRYABLE_HTTP_STATUS_CODES = {429, 500, 502, 503, 504}
+
+
+def _llm_retry_attempts() -> int:
+    raw = os.environ.get("AIWIKI_LLM_RETRY_ATTEMPTS", "2").strip()
+    try:
+        return max(0, min(5, int(raw)))
+    except ValueError:
+        return 2
+
+
+def _http_retry_delay_seconds(exc: error.HTTPError, attempt_index: int) -> float:
+    retry_after = exc.headers.get("Retry-After") if exc.headers else None
+    if retry_after:
+        try:
+            return max(0.0, min(30.0, float(retry_after)))
+        except ValueError:
+            pass
+    return min(12.0, 2.0 * (attempt_index + 1))
 
 
 class OpenAICompatClient:
     """Call an OpenAI-compatible `/chat/completions` endpoint without extra dependencies."""
 
-    def __init__(self, config: LLMConfig) -> None:
+    def __init__(self, config: LLMConfig, workdir: Path | None = None) -> None:
         self.config = config
+        self.workdir = workdir or Path.cwd()
 
     def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
         payload = {
@@ -59,37 +107,59 @@ class OpenAICompatClient:
         }
         endpoint = f"{self.config.base_url}/chat/completions"
         body = json.dumps(payload).encode("utf-8")
-        http_request = request.Request(
-            endpoint,
-            data=body,
-            headers={
-                "Authorization": f"Bearer {self.config.api_key}",
-                "Content-Type": "application/json",
-            },
-            method="POST",
-        )
+        headers = {
+            "Authorization": f"Bearer {self.config.api_key}",
+            "Content-Type": "application/json",
+        }
 
-        try:
-            with request.urlopen(http_request, timeout=self.config.timeout_seconds) as response:
-                raw = response.read().decode("utf-8")
-        except error.HTTPError as exc:  # pragma: no cover - exercised via CLI/network usage
-            details = exc.read().decode("utf-8", errors="replace")
-            raise LLMError(f"HTTP {exc.code} from LLM endpoint: {details}") from exc
-        except error.URLError as exc:  # pragma: no cover - exercised via CLI/network usage
-            raise LLMError(f"Unable to reach LLM endpoint: {exc.reason}") from exc
+        retry_attempts = _llm_retry_attempts()
+        for attempt_index in range(retry_attempts + 1):
+            try:
+                response_body, _ = safe_fetch(
+                    endpoint,
+                    method="POST",
+                    data=body,
+                    headers=headers,
+                    max_bytes=_LLM_MAX_BYTES,
+                    timeout=self.config.timeout_seconds,
+                )
+                raw = response_body.decode("utf-8")
+                break
+            except FetchPolicyError as exc:
+                raise LLMError(f"unsafe LLM endpoint: {exc}") from exc
+            except (TimeoutError, socket.timeout) as exc:
+                raise LLMError(f"LLM endpoint timed out after {self.config.timeout_seconds} seconds.") from exc
+            except error.HTTPError as exc:  # pragma: no cover - exercised via CLI/network usage
+                details = exc.read().decode("utf-8", errors="replace")
+                if exc.code in _RETRYABLE_HTTP_STATUS_CODES and attempt_index < retry_attempts:
+                    time.sleep(_http_retry_delay_seconds(exc, attempt_index))
+                    continue
+                raise LLMError(f"HTTP {exc.code} from LLM endpoint: {details}") from exc
+            except error.URLError as exc:  # pragma: no cover - exercised via CLI/network usage
+                raise LLMError(f"Unable to reach LLM endpoint: {exc.reason}") from exc
+        else:  # pragma: no cover - loop either breaks or raises
+            raise LLMError("LLM endpoint did not return a response.")
 
         try:
             parsed = json.loads(raw)
         except json.JSONDecodeError as exc:
-            raise LLMError("LLM endpoint returned invalid JSON.") from exc
+            raw_response_path = _write_raw_response(self.workdir, raw)
+            raise LLMError("LLM endpoint returned invalid JSON.", raw_response_path=raw_response_path) from exc
 
-        text = _extract_content(parsed)
+        try:
+            text = _extract_content(parsed)
+        except LLMError as exc:
+            exc.raw_response_path = exc.raw_response_path or _write_raw_response(self.workdir, raw)
+            raise
         if not text.strip():
-            raise LLMError("LLM endpoint returned empty content.")
+            raw_response_path = _write_raw_response(self.workdir, text)
+            raise LLMError("LLM endpoint returned empty content.", raw_response_path=raw_response_path)
+        raw_response_path = _write_raw_response(self.workdir, text)
         return CompletionResult(
             text=text,
             response_id=str(parsed.get("id", "")),
             usage=parsed.get("usage") or {},
+            raw_response_path=raw_response_path,
         )
 
     def analyze_image(self, system_prompt: str, user_prompt: str, image_path: Path) -> CompletionResult:
@@ -116,19 +186,25 @@ class OpenAICompatClient:
         }
         endpoint = f"{self.config.base_url}/chat/completions"
         body = json.dumps(payload).encode("utf-8")
-        http_request = request.Request(
-            endpoint,
-            data=body,
-            headers={
-                "Authorization": f"Bearer {self.config.api_key}",
-                "Content-Type": "application/json",
-            },
-            method="POST",
-        )
+        headers = {
+            "Authorization": f"Bearer {self.config.api_key}",
+            "Content-Type": "application/json",
+        }
 
         try:
-            with request.urlopen(http_request, timeout=self.config.timeout_seconds) as response:
-                raw = response.read().decode("utf-8")
+            response_body, _ = safe_fetch(
+                endpoint,
+                method="POST",
+                data=body,
+                headers=headers,
+                max_bytes=_LLM_MAX_BYTES,
+                timeout=self.config.timeout_seconds,
+            )
+            raw = response_body.decode("utf-8")
+        except FetchPolicyError as exc:
+            raise LLMError(f"unsafe LLM endpoint: {exc}") from exc
+        except (TimeoutError, socket.timeout) as exc:
+            raise LLMError(f"LLM endpoint timed out after {self.config.timeout_seconds} seconds.") from exc
         except error.HTTPError as exc:  # pragma: no cover - exercised via CLI/network usage
             details = exc.read().decode("utf-8", errors="replace")
             raise LLMError(f"HTTP {exc.code} from LLM endpoint: {details}") from exc
@@ -138,256 +214,24 @@ class OpenAICompatClient:
         try:
             parsed = json.loads(raw)
         except json.JSONDecodeError as exc:
-            raise LLMError("LLM endpoint returned invalid JSON.") from exc
+            raw_response_path = _write_raw_response(self.workdir, raw)
+            raise LLMError("LLM endpoint returned invalid JSON.", raw_response_path=raw_response_path) from exc
 
-        text = _extract_content(parsed)
+        try:
+            text = _extract_content(parsed)
+        except LLMError as exc:
+            exc.raw_response_path = exc.raw_response_path or _write_raw_response(self.workdir, raw)
+            raise
         if not text.strip():
-            raise LLMError("LLM endpoint returned empty content.")
+            raw_response_path = _write_raw_response(self.workdir, text)
+            raise LLMError("LLM endpoint returned empty content.", raw_response_path=raw_response_path)
+        raw_response_path = _write_raw_response(self.workdir, text)
         return CompletionResult(
             text=text,
             response_id=str(parsed.get("id", "")),
             usage=parsed.get("usage") or {},
+            raw_response_path=raw_response_path,
         )
-
-
-class CodexCLIClient:
-    """Use the local Codex CLI as the generation backend."""
-
-    def __init__(self, config: LLMConfig, workdir: Path) -> None:
-        self.config = config
-        self.workdir = workdir
-
-    def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
-        full_prompt = "\n\n".join(
-            [
-                "# System Instructions",
-                system_prompt,
-                "",
-                "# Task",
-                user_prompt,
-            ]
-        )
-        with tempfile.NamedTemporaryFile(prefix="aiwiki-codex-", suffix=".md", delete=False) as handle:
-            output_path = Path(handle.name)
-        command = [
-            self.config.codex_path or self.config.codex_command,
-            "exec",
-            "--skip-git-repo-check",
-            "--sandbox",
-            "read-only",
-            "--cd",
-            str(self.workdir),
-            "--color",
-            "never",
-            "--output-last-message",
-            str(output_path),
-        ]
-        if self.config.codex_reasoning_effort:
-            command.extend(["-c", f'model_reasoning_effort="{self.config.codex_reasoning_effort}"'])
-        if self.config.model:
-            command.extend(["--model", self.config.model])
-        command.append("-")
-        try:
-            completed = subprocess.run(
-                command,
-                input=full_prompt,
-                text=True,
-                capture_output=True,
-                cwd=self.workdir,
-                timeout=self.config.timeout_seconds,
-                check=False,
-            )
-        except subprocess.TimeoutExpired as exc:  # pragma: no cover - exercised via CLI/network usage
-            raise LLMError(f"Codex CLI timed out after {self.config.timeout_seconds} seconds.") from exc
-        except OSError as exc:  # pragma: no cover - exercised by environment failures
-            raise LLMError(f"Failed to launch Codex CLI: {exc}") from exc
-        finally:
-            text = output_path.read_text(encoding="utf-8", errors="replace") if output_path.exists() else ""
-            output_path.unlink(missing_ok=True)
-
-        if completed.returncode != 0:
-            details = completed.stderr.strip() or completed.stdout.strip() or text.strip()
-            raise LLMError(f"Codex CLI failed with exit code {completed.returncode}: {details}")
-        final_text = text.strip() or completed.stdout.strip()
-        if not final_text:
-            raise LLMError("Codex CLI returned no final content.")
-        return CompletionResult(text=final_text, response_id="codex-cli", usage={})
-
-    def analyze_image(self, system_prompt: str, user_prompt: str, image_path: Path) -> CompletionResult:
-        full_prompt = "\n\n".join(
-            [
-                "# System Instructions",
-                system_prompt,
-                "",
-                "# Task",
-                user_prompt,
-            ]
-        )
-        with tempfile.NamedTemporaryFile(prefix="aiwiki-codex-", suffix=".md", delete=False) as handle:
-            output_path = Path(handle.name)
-        command = [
-            self.config.codex_path or self.config.codex_command,
-            "exec",
-            "--skip-git-repo-check",
-            "--sandbox",
-            "read-only",
-            "--cd",
-            str(self.workdir),
-            "--color",
-            "never",
-            "--output-last-message",
-            str(output_path),
-            "--image",
-            str(image_path),
-        ]
-        if self.config.codex_reasoning_effort:
-            command.extend(["-c", f'model_reasoning_effort="{self.config.codex_reasoning_effort}"'])
-        if self.config.model:
-            command.extend(["--model", self.config.model])
-        command.append("-")
-        try:
-            completed = subprocess.run(
-                command,
-                input=full_prompt,
-                text=True,
-                capture_output=True,
-                cwd=self.workdir,
-                timeout=self.config.timeout_seconds,
-                check=False,
-            )
-        except subprocess.TimeoutExpired as exc:  # pragma: no cover - exercised via CLI/network usage
-            raise LLMError(f"Codex CLI timed out after {self.config.timeout_seconds} seconds.") from exc
-        except OSError as exc:  # pragma: no cover - exercised by environment failures
-            raise LLMError(f"Failed to launch Codex CLI: {exc}") from exc
-        finally:
-            text = output_path.read_text(encoding="utf-8", errors="replace") if output_path.exists() else ""
-            output_path.unlink(missing_ok=True)
-
-        if completed.returncode != 0:
-            details = completed.stderr.strip() or completed.stdout.strip() or text.strip()
-            raise LLMError(f"Codex CLI failed with exit code {completed.returncode}: {details}")
-        final_text = text.strip() or completed.stdout.strip()
-        if not final_text:
-            raise LLMError("Codex CLI returned no final content.")
-        return CompletionResult(text=final_text, response_id="codex-cli", usage={})
-
-
-class ClaudeCLIClient:
-    """Use the local Claude CLI as the generation backend."""
-
-    def __init__(self, config: LLMConfig, workdir: Path) -> None:
-        self.config = config
-        self.workdir = workdir
-
-    def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
-        command = [
-            self.config.claude_path or self.config.claude_command,
-            "--print",
-            "--output-format",
-            "text",
-            "--permission-mode",
-            "bypassPermissions",
-            "--tools",
-            "",
-            "--add-dir",
-            str(self.workdir),
-            "--system-prompt",
-            system_prompt,
-        ]
-        if self.config.model:
-            command.extend(["--model", self.config.model])
-        command.append(user_prompt)
-        try:
-            completed = subprocess.run(
-                command,
-                text=True,
-                capture_output=True,
-                stdin=subprocess.DEVNULL,
-                cwd=self.workdir,
-                timeout=self.config.timeout_seconds,
-                check=False,
-            )
-        except subprocess.TimeoutExpired as exc:  # pragma: no cover - exercised via CLI/network usage
-            raise LLMError(f"Claude CLI timed out after {self.config.timeout_seconds} seconds.") from exc
-        except OSError as exc:  # pragma: no cover - exercised by environment failures
-            raise LLMError(f"Failed to launch Claude CLI: {exc}") from exc
-
-        if completed.returncode != 0:
-            details = completed.stderr.strip() or completed.stdout.strip()
-            raise LLMError(f"Claude CLI failed with exit code {completed.returncode}: {details}")
-        final_text = completed.stdout.strip()
-        if not final_text:
-            raise LLMError("Claude CLI returned no final content.")
-        return CompletionResult(text=final_text, response_id="claude-cli", usage={})
-
-    def analyze_image(self, system_prompt: str, user_prompt: str, image_path: Path) -> CompletionResult:
-        del system_prompt
-        del user_prompt
-        del image_path
-        raise LLMError("Claude CLI image analysis is not supported by aiwiki yet.")
-
-
-class CopilotCLIClient:
-    """Use the local GitHub Copilot CLI in non-interactive prompt mode."""
-
-    def __init__(self, config: LLMConfig, workdir: Path) -> None:
-        self.config = config
-        self.workdir = workdir
-
-    def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
-        full_prompt = "\n\n".join(
-            [
-                "# System Instructions",
-                system_prompt,
-                "",
-                "# Task",
-                user_prompt,
-            ]
-        )
-        command = [
-            self.config.copilot_path or self.config.copilot_command,
-            "--prompt",
-            full_prompt,
-            "--silent",
-            "--output-format",
-            "text",
-            "--stream",
-            "off",
-            "--no-ask-user",
-            "--no-color",
-            "--allow-tool=read",
-            "--add-dir",
-            str(self.workdir),
-        ]
-        if self.config.model:
-            command.extend(["--model", self.config.model])
-        try:
-            completed = subprocess.run(
-                command,
-                text=True,
-                capture_output=True,
-                cwd=self.workdir,
-                timeout=self.config.timeout_seconds,
-                check=False,
-            )
-        except subprocess.TimeoutExpired as exc:  # pragma: no cover - exercised via CLI/network usage
-            raise LLMError(f"Copilot CLI timed out after {self.config.timeout_seconds} seconds.") from exc
-        except OSError as exc:  # pragma: no cover - exercised by environment failures
-            raise LLMError(f"Failed to launch Copilot CLI: {exc}") from exc
-
-        if completed.returncode != 0:
-            details = completed.stderr.strip() or completed.stdout.strip()
-            raise LLMError(f"Copilot CLI failed with exit code {completed.returncode}: {details}")
-        final_text = completed.stdout.strip()
-        if not final_text:
-            raise LLMError("Copilot CLI returned no final content.")
-        return CompletionResult(text=final_text, response_id="copilot-cli", usage={})
-
-    def analyze_image(self, system_prompt: str, user_prompt: str, image_path: Path) -> CompletionResult:
-        del system_prompt
-        del user_prompt
-        del image_path
-        raise LLMError("Copilot CLI image analysis is not supported by aiwiki yet.")
 
 
 class AnthropicClient:
@@ -395,8 +239,9 @@ class AnthropicClient:
 
     ANTHROPIC_VERSION = "2023-06-01"
 
-    def __init__(self, config: LLMConfig) -> None:
+    def __init__(self, config: LLMConfig, workdir: Path | None = None) -> None:
         self.config = config
+        self.workdir = workdir or Path.cwd()
 
     def _call_messages(self, system_prompt: str, content: list[dict[str, Any]] | str) -> CompletionResult:
         payload: dict[str, Any] = {
@@ -408,20 +253,26 @@ class AnthropicClient:
         }
         endpoint = f"{self.config.anthropic_base_url}/v1/messages"
         body = json.dumps(payload).encode("utf-8")
-        http_request = request.Request(
-            endpoint,
-            data=body,
-            headers={
-                "x-api-key": self.config.anthropic_api_key,
-                "anthropic-version": self.ANTHROPIC_VERSION,
-                "Content-Type": "application/json",
-            },
-            method="POST",
-        )
+        headers = {
+            "x-api-key": self.config.anthropic_api_key,
+            "anthropic-version": self.ANTHROPIC_VERSION,
+            "Content-Type": "application/json",
+        }
 
         try:
-            with request.urlopen(http_request, timeout=self.config.timeout_seconds) as response:
-                raw = response.read().decode("utf-8")
+            response_body, _ = safe_fetch(
+                endpoint,
+                method="POST",
+                data=body,
+                headers=headers,
+                max_bytes=_LLM_MAX_BYTES,
+                timeout=self.config.timeout_seconds,
+            )
+            raw = response_body.decode("utf-8")
+        except FetchPolicyError as exc:
+            raise LLMError(f"unsafe LLM endpoint: {exc}") from exc
+        except (TimeoutError, socket.timeout) as exc:
+            raise LLMError(f"Anthropic endpoint timed out after {self.config.timeout_seconds} seconds.") from exc
         except error.HTTPError as exc:  # pragma: no cover - exercised via CLI/network usage
             details = exc.read().decode("utf-8", errors="replace")
             raise LLMError(f"HTTP {exc.code} from Anthropic endpoint: {details}") from exc
@@ -431,15 +282,23 @@ class AnthropicClient:
         try:
             parsed = json.loads(raw)
         except json.JSONDecodeError as exc:
-            raise LLMError("Anthropic endpoint returned invalid JSON.") from exc
+            raw_response_path = _write_raw_response(self.workdir, raw)
+            raise LLMError("Anthropic endpoint returned invalid JSON.", raw_response_path=raw_response_path) from exc
 
-        text = _extract_anthropic_content(parsed)
+        try:
+            text = _extract_anthropic_content(parsed)
+        except LLMError as exc:
+            exc.raw_response_path = exc.raw_response_path or _write_raw_response(self.workdir, raw)
+            raise
         if not text.strip():
-            raise LLMError("Anthropic endpoint returned empty content.")
+            raw_response_path = _write_raw_response(self.workdir, text)
+            raise LLMError("Anthropic endpoint returned empty content.", raw_response_path=raw_response_path)
+        raw_response_path = _write_raw_response(self.workdir, text)
         return CompletionResult(
             text=text,
             response_id=str(parsed.get("id", "")),
             usage=parsed.get("usage") or {},
+            raw_response_path=raw_response_path,
         )
 
     def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
@@ -495,7 +354,7 @@ class ModelFallbackClient:
                 result = method(*args)
             except LLMError as exc:
                 last_error = exc
-                if self.index == len(self.clients) - 1 or not _is_model_fallback_error(str(exc)):
+                if self.index == len(self.clients) - 1 or not _is_model_retry_error(str(exc)):
                     raise
                 self.advance_model()
                 continue
@@ -503,25 +362,24 @@ class ModelFallbackClient:
             return result
         if last_error is not None:
             raise last_error
-        raise LLMError("No usable model fallback candidate was configured.")
+        raise LLMError("No usable model retry candidate was configured.")
 
 
 def create_backend_client(config: LLMConfig, workdir: Path) -> Any:
-    model_fallback_configs = _model_fallback_configs(config)
-    if len(model_fallback_configs) > 1:
-        return ModelFallbackClient(config, workdir, model_fallback_configs)
-    if config.backend == BACKEND_OPENAI_API:
-        return OpenAICompatClient(config)
+    # M7.4a Kill Switch: external LLM hook. Defer import to avoid cycles.
+    from aiwiki import autonomy_policy
+
+    reason = autonomy_policy.disabled_reason(workdir, "disable_external_llm")
+    if reason is not None:
+        raise AutonomyDisabled(reason)
+
+    model_retry_configs = _model_retry_configs(config)
+    if len(model_retry_configs) > 1:
+        return ModelFallbackClient(config, workdir, model_retry_configs)
+    if config.backend in {BACKEND_DEEPSEEK_API, BACKEND_OPENCODE_API, BACKEND_OPENAI_API}:
+        return OpenAICompatClient(config, workdir)
     if config.backend == BACKEND_ANTHROPIC_API:
-        return AnthropicClient(config)
-    if config.backend == BACKEND_NVIDIA_NIM_API:
-        return OpenAICompatClient(config)
-    if config.backend == BACKEND_CODEX_CLI:
-        return CodexCLIClient(config, workdir)
-    if config.backend == BACKEND_COPILOT_CLI:
-        return CopilotCLIClient(config, workdir)
-    if config.backend == BACKEND_CLAUDE_CLI:
-        return ClaudeCLIClient(config, workdir)
+        return AnthropicClient(config, workdir)
     raise LLMError(f"Unsupported backend `{config.backend}`.")
 
 
@@ -529,15 +387,19 @@ def probe_backend(config: LLMConfig, workdir: Path, timeout_seconds: int | None 
     probe_config = config
     if timeout_seconds is not None:
         probe_config = replace(config, timeout_seconds=timeout_seconds)
-    client = create_backend_client(probe_config, workdir)
     started = time.monotonic()
+    client: Any | None = None
     try:
-        result = client.complete(PROBE_SYSTEM_PROMPT, PROBE_USER_PROMPT)
+        client = create_backend_client(probe_config, workdir)
+        assert client is not None
+        result = client.complete(FRONTMATTER_PROBE_SYSTEM_PROMPT, FRONTMATTER_PROBE_USER_PROMPT)
     except LLMError as exc:
-        effective_config = getattr(client, "config", probe_config)
+        effective_config = getattr(client, "config", probe_config) if client is not None else probe_config
+        error_class = classify_backend_error(str(exc))
+        compatibility = "requires_credential" if _is_auth_error(str(exc)) else "unavailable"
         return {
             "ok": False,
-            "status": _classify_backend_error(str(exc)),
+            "status": compatibility,
             "backend_requested": probe_config.backend_requested or probe_config.backend,
             "backend": effective_config.backend,
             "model_requested": probe_config.model_requested,
@@ -546,21 +408,31 @@ def probe_backend(config: LLMConfig, workdir: Path, timeout_seconds: int | None 
             "response_preview": "",
             "matched_expected_output": False,
             "error": str(exc),
+            "compatibility": compatibility,
+            "error_class": error_class,
+            "raw_response_path": exc.raw_response_path or "",
+            "compatibility_hint": str(exc),
         }
 
     effective_config = getattr(client, "config", probe_config)
     response_text = result.text.strip()
+    is_compatible, compatibility_hint = _validate_frontmatter_probe_response(result.text)
+    compatibility = "compatible" if is_compatible else "degraded"
     return {
-        "ok": True,
-        "status": "ok",
+        "ok": compatibility == "compatible",
+        "status": compatibility,
         "backend_requested": probe_config.backend_requested or probe_config.backend,
         "backend": effective_config.backend,
         "model_requested": probe_config.model_requested,
         "model": effective_config.model,
         "duration_ms": int((time.monotonic() - started) * 1000),
         "response_preview": _response_preview(response_text),
-        "matched_expected_output": response_text == "OK",
+        "matched_expected_output": compatibility == "compatible",
         "error": "",
+        "compatibility": compatibility,
+        "error_class": "",
+        "raw_response_path": result.raw_response_path or "",
+        "compatibility_hint": compatibility_hint,
     }
 
 
@@ -579,81 +451,170 @@ def _available_probe_backends(config: LLMConfig) -> list[str]:
     ordered: list[str] = []
     for backend in (
         config.backend,
-        BACKEND_CODEX_CLI,
-        BACKEND_COPILOT_CLI,
-        BACKEND_CLAUDE_CLI,
-        BACKEND_NVIDIA_NIM_API,
+        BACKEND_DEEPSEEK_API,
+        BACKEND_OPENCODE_API,
+        BACKEND_ANTHROPIC_API,
+        BACKEND_OPENAI_API,
     ):
         if backend in ordered:
             continue
-        if backend == BACKEND_CODEX_CLI and config.codex_path:
+        if backend == BACKEND_DEEPSEEK_API and config.deepseek_api_key:
             ordered.append(backend)
-        elif backend == BACKEND_COPILOT_CLI and config.copilot_path:
+        elif backend == BACKEND_OPENCODE_API and config.opencode_api_key:
             ordered.append(backend)
-        elif backend == BACKEND_CLAUDE_CLI and config.claude_path:
+        elif backend == BACKEND_ANTHROPIC_API and config.anthropic_api_key:
             ordered.append(backend)
-        elif backend == BACKEND_NVIDIA_NIM_API and config.nvidia_nim_api_key:
+        elif backend == BACKEND_OPENAI_API and config.api_key:
             ordered.append(backend)
     return ordered
 
 
 def _config_for_backend(config: LLMConfig, backend: str) -> LLMConfig:
-    model_requested = config.model_requested.strip()
-    if model_requested:
-        model = model_requested
-    elif backend == BACKEND_CODEX_CLI:
-        model = DEFAULT_CODEX_MODEL
-    elif backend == BACKEND_NVIDIA_NIM_API:
-        model = DEFAULT_NVIDIA_NIM_MODEL
+    if backend == config.backend:
+        model = config.model or _effective_backend_default_model(backend, config)
+    elif backend == BACKEND_DEEPSEEK_API:
+        model = DEFAULT_DEEPSEEK_MODEL
+    elif backend == BACKEND_OPENCODE_API:
+        model = DEFAULT_OPENCODE_MODEL
+    elif backend == BACKEND_OPENAI_API:
+        model = config.model or ""
+    elif backend == BACKEND_ANTHROPIC_API:
+        model = config.model or ""
     else:
         model = ""
-    if backend == BACKEND_NVIDIA_NIM_API:
+    if backend == BACKEND_DEEPSEEK_API:
         return replace(
             config,
             backend=backend,
             model=model,
-            api_key=config.nvidia_nim_api_key,
-            base_url=config.nvidia_nim_base_url,
+            api_key=config.deepseek_api_key,
+            base_url=config.deepseek_base_url,
+        )
+    if backend == BACKEND_OPENCODE_API:
+        return replace(
+            config,
+            backend=backend,
+            model=model,
+            api_key=config.opencode_api_key,
+            base_url=config.opencode_base_url,
         )
     return replace(config, backend=backend, model=model)
 
 
+def _effective_backend_default_model(backend: str, config: LLMConfig) -> str:
+    if backend == BACKEND_DEEPSEEK_API:
+        return DEFAULT_DEEPSEEK_MODEL
+    if backend == BACKEND_OPENCODE_API:
+        return DEFAULT_OPENCODE_MODEL
+    return config.model or ""
+
+
 def _instantiate_cli_client(config: LLMConfig, workdir: Path) -> Any:
-    if config.backend == BACKEND_CODEX_CLI:
-        return CodexCLIClient(config, workdir)
-    if config.backend == BACKEND_NVIDIA_NIM_API:
-        return OpenAICompatClient(config)
-    if config.backend == BACKEND_COPILOT_CLI:
-        return CopilotCLIClient(config, workdir)
-    if config.backend == BACKEND_CLAUDE_CLI:
-        return ClaudeCLIClient(config, workdir)
+    if config.backend in {BACKEND_DEEPSEEK_API, BACKEND_OPENCODE_API, BACKEND_OPENAI_API}:
+        return OpenAICompatClient(config, workdir)
+    if config.backend == BACKEND_ANTHROPIC_API:
+        return AnthropicClient(config, workdir)
     raise LLMError(f"Unsupported backend `{config.backend}`.")
 
 
-def _model_fallback_configs(config: LLMConfig) -> list[LLMConfig]:
-    if config.model_requested.strip():
-        return [_config_for_backend(config, config.backend)]
-    if config.backend != BACKEND_NVIDIA_NIM_API:
-        return [_config_for_backend(config, config.backend)]
-    candidate_models = list(_default_model_chain(config.backend, config.model_requested))
+def _model_retry_configs(config: LLMConfig) -> list[LLMConfig]:
+    candidate_models = list(config.model_retry_chain)
     if len(candidate_models) <= 1:
         return [_config_for_backend(config, config.backend)]
     base_config = _config_for_backend(config, config.backend)
     return [replace(base_config, model=model) for model in candidate_models]
 
 
-def _is_model_fallback_error(message: str) -> bool:
+def _is_model_retry_error(message: str) -> bool:
     text = str(message or "").lower()
     if _classify_backend_error(text) in {"quota", "timeout", "unavailable"}:
         return True
     return any(pattern in text for pattern in ("unknown model", "unsupported model", "model_not_found"))
 
 
+def _is_auth_error(message: str) -> bool:
+    text = str(message or "").lower()
+    return any(
+        pattern in text
+        for pattern in (
+            "unauthorized",
+            "not signed in",
+            "not logged in",
+            "please login",
+            "api key",
+            "api_key",
+            "authentication",
+            "forbidden",
+            "permission",
+            "organization",
+            "401",
+            "403",
+            "expired token",
+            "invalid token",
+        )
+    )
+
+
+def _validate_frontmatter_probe_response(text: str) -> tuple[bool, str]:
+    raw_text = str(text or "")
+    if not raw_text.strip():
+        return False, "empty response"
+    for line in raw_text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("●"):
+            return False, "decoration prefix detected: ●"
+        if stripped.startswith("▶"):
+            return False, "decoration prefix detected: ▶"
+    lines = raw_text.splitlines()
+    first_index = next((index for index, line in enumerate(lines) if line.strip()), None)
+    if first_index is None:
+        return False, "empty response"
+    first_line = lines[first_index].strip()
+    if first_line != "---":
+        return False, f"missing opening frontmatter fence; first line: {repr(first_line[:80])}"
+    closing_index: int | None = None
+    for index in range(first_index + 1, len(lines)):
+        if lines[index].strip() == "---":
+            closing_index = index
+            break
+    if closing_index is None:
+        return False, "missing closing frontmatter fence"
+    frontmatter_lines = lines[first_index + 1 : closing_index]
+    if not any(line.strip() == "title: probe" for line in frontmatter_lines):
+        return False, "frontmatter missing 'title: probe'"
+    body = "\n".join(lines[closing_index + 1 :]).strip()
+    if "ok" not in body:
+        return False, "body missing 'ok' marker"
+    return True, ""
+
+
 def advance_client_model(client: Any) -> bool:
+    clients = getattr(client, "clients", None)
+    client_configs = getattr(client, "client_configs", None)
+    if isinstance(clients, list) and len(clients) <= 1:
+        return False
+    if isinstance(client_configs, list) and len(client_configs) <= 1:
+        return False
     advance = getattr(client, "advance_model", None)
     if callable(advance):
         return bool(advance())
     return False
+
+
+def _write_raw_response(root: Path, raw_text: str) -> str:
+    """Best-effort persistence for one LLM raw response body."""
+
+    text = str(raw_text or "")
+    timestamp = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace(":", "")
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
+    relative = Path(".aiwiki") / "llm-responses" / f"{timestamp}-{digest}.txt"
+    path = root / relative
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(path, text)
+    except OSError as exc:  # pragma: no cover - environment dependent best-effort path
+        return f"write_failed:{exc}"
+    return relative.as_posix()
 
 
 def _classify_backend_error(message: str) -> str:
@@ -679,6 +640,12 @@ def _classify_backend_error(message: str) -> str:
     if any(pattern in text for pattern in ("temporarily unavailable", "unavailable", "unable to reach", "connection")):
         return "unavailable"
     return "error"
+
+
+def classify_backend_error(message: str) -> str:
+    """Expose stable backend error classification for shell-facing summaries."""
+
+    return _classify_backend_error(message)
 
 
 def _response_preview(text: str, limit: int = 120) -> str:

@@ -1,0 +1,10 @@
+{
+  "backend": "opencode-api",
+  "failure": "simulated backend timeout",
+  "model": "stub-model",
+  "prompt_hash": "3c5abda47181b44f",
+  "response_id": "",
+  "response_text": "",
+  "sequence": 2,
+  "usage": {}
+}

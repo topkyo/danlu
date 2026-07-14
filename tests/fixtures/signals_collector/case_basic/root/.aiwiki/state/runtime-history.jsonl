@@ -1,0 +1,6 @@
+{"event_type":"review","occurred_at":"2026-04-24T00:00:01Z","protocol":"research","page_path":"wiki/decisions/scaling.md","source_ids":["src-1"],"concept_slugs":["scaling-law"],"elixir_refs":[],"judgment_refs":["judgment-a"]}
+{"event_type":"nightly","occurred_at":"2026-04-24T00:10:00Z","protocol":"ops","overdue_pages":["wiki/decisions/scaling.md"],"escalated_pages":["wiki/judgments/risk.md"]}
+{"event_type":"query","occurred_at":"2026-04-24T00:20:00Z","protocol":"research","question_hash":"sha256:abc"}
+{"event_type":"rewrite-apply","occurred_at":"2026-04-24T00:21:00Z","slug":"scaling-law"}
+{"event_type":"nightly-auto-bundle","occurred_at":"2026-04-24T00:22:00Z","protocol":"ops","bundle_count":1}
+{"event_type":"judgment-relation-refresh","occurred_at":"2026-04-24T00:23:00Z","added_relations":[],"removed_relations":[]}

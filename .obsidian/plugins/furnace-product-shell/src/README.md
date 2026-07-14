@@ -1,61 +1,76 @@
 # Furnace Product Shell — Source Modules
 
 The Obsidian plugin is shipped as a single `main.js` file (Obsidian does not
-support relative `require()` within plugins).  The source code lives in this
+support relative `require()` within plugins). The source code lives in this
 `src/` directory as separate modules for readability and maintenance.
+
+## Product Shell home surface
+The AgentOS shell surface is intentionally narrow:
+1. **Today Feed** — user-visible outputs, review prompts, and non-degraded activity from the runtime summary.
+2. **Universal Input** — the only default input surface; accepts URLs, file drags, raw text notes, and questions through `runUniversalInputCommand`.
+
+Unread reports are local UI state based on `lastViewedTimestamp`: unread cards show
+a small dot and stronger title weight, without Notice or Badge behavior.
+
+Universal Input owns URL/file/question routing. Legacy DropZone and start-guide surfaces are not part of the default shell.
+
+Advanced is gated by `showAdvancedCommands` and is limited to diagnostics/history,
+Recent Runs, Review Center, Execution Center, and refresh. Runtime write operations
+such as compile/nightly/protocol/apply/revert are not registered as Product Shell
+command-palette entries.
+
+Phase B preview: Feishu / WeCom webhook URLs will be configured in plugin settings,
+then bridged to the runtime through environment variables for report notifications.
 
 ## Module layout
 
 | File | Purpose |
 |------|---------|
 | `constants.js` | Plugin ID, view types, `DEFAULT_SETTINGS`, `ZH_TEXT` i18n dictionary, status label maps |
-| `helpers.js` | Pure helper functions (`truncateText`, `readJsonText`, `normalizeLocale`, `t`, `formatDisplayTime`, …) |
-| `modals.js` | All `Modal` subclasses (Ask, CaptureNote, Protocol, Search, DropUrl, DropFile, DropImage, StructuredCommand, ContextPicker) |
-| `views.js` | All `ItemView` subclasses (FurnaceCenter, RecentRuns, ReviewCenter, ExecutionCenter) |
+| `helpers.js` | Pure helper functions (`truncateText`, `groupReportsByDate`, `countUnreadReports`, …) |
+| `command_specs.js` | Pure launcher command argument/label specs for Product Shell actions |
+| `pending_state.js` | Pure pending-submission serialization, hydration, and status helpers |
+| `context_state.js` | Pure active protocol/file/concept/output context helpers |
+| `rewrite_state.js` | Pure rewrite proposal/recovery normalization and extraction helpers |
+| `control_items.js` | Pure review/execution control option builders for context pickers |
+| `modal_specs.js` | Structured command modal specs for operator actions |
+| `run_state.js` | Pure run-record initialization and run-log rendering helpers |
+| `state/health-state.js` | Pure LLM health, latest-run, shell-sync, and self-check state helpers |
+| `modals.js` | All `Modal` subclasses |
+| `views.js` | All `ItemView` subclasses |
 | `settings.js` | `FurnaceProductShellSettingTab` |
-| `render.js` | Standalone render functions extracted from the plugin class; each takes `(plugin, …)` as first argument |
-| `plugin.js` | `FurnaceProductShellPlugin` class — lifecycle, commands, state management, thin render wrappers |
+| `render_*` | Standalone render functions for Today, Universal Input, Advanced diagnostics, runs, review, and execution surfaces |
+| `plugin.js` | `FurnaceProductShellPlugin` class — lifecycle, state management, updates |
 
 ## Dependency order
 
-The modules are concatenated in this order so that every symbol is defined
-before it is referenced:
+The modules are concatenated in this order:
 
 1. `require` statements (added by `build.sh`)
 2. `constants.js`
 3. `helpers.js`
-4. `modals.js`
-5. `views.js`
-6. `settings.js`
-7. `render.js`
-8. `plugin.js`
+4. `command_specs.js`
+5. `pending_state.js`
+6. `context_state.js`
+7. `modals.js`
+8. `views.js`
+9. `settings.js`
+10. `render/cards.js`, `render_primitives.js`, `render_input.js`, `render_today.js`, `render_advanced.js`, `render_runs.js`, `render_home.js`, `render_review.js`, `render_execution.js`
+11. `plugin_helpers.js`
+12. `rewrite_state.js`
+13. `control_items.js`
+14. `modal_specs.js`
+15. `run_state.js`
+16. `state/health-state.js`
+17. `plugin.js`
 
 ## Building
 
 ```bash
-# From the plugin directory:
-bash build.sh
-
-# Or from the repo root:
 bash .obsidian/plugins/furnace-product-shell/build.sh
 ```
 
-The script writes `main.js` in the plugin directory.  Validate with:
-
+Validate with:
 ```bash
 node --check .obsidian/plugins/furnace-product-shell/main.js
 ```
-
-## Design notes
-
-- **No module system between files** — Obsidian loads only `main.js`, so the
-  build script concatenates the source files into a single CommonJS module.
-  Individual source files must not use `require()` or `module.exports` for
-  inter-module communication.
-- **Render extraction** — render methods are extracted from the plugin class
-  into standalone `function renderXxx(plugin, ...)` functions.  The plugin
-  class retains thin wrappers that delegate to these functions so that view
-  classes can still call `this.plugin.renderFurnaceCenter(contentEl)`.
-- **i18n** — the free function `t(locale, text, vars)` is defined in
-  `helpers.js` and used everywhere.  The plugin class provides a convenience
-  `this.t(text, vars)` that curries in the current locale.

@@ -1,4 +1,9 @@
-"""Stable runtime type declarations for cross-module contracts."""
+"""Stable runtime type declarations for cross-module contracts.
+
+OWNER STATUS: stable utility owner. Small, broadly imported; treat as a
+shared types module. Add new TypedDicts/protocols here only if they are
+genuinely cross-module contracts. See AGENTS.md migration policy.
+"""
 
 from __future__ import annotations
 
@@ -271,6 +276,10 @@ class ShellSummary(TypedDict, total=False):
     active_protocol: str
     available_protocols: list[str]
     llm_status: dict[str, Any]
+    latest_llm_run: dict[str, Any]
+    latest_shell_sync_run: dict[str, Any]
+    curated_page_roots: dict[str, str]
+    llm_health: dict[str, Any]
     review_backlog_counts: dict[str, Any]
     aging_summary: dict[str, Any]
     judgment_assets: dict[str, Any]
@@ -282,9 +291,11 @@ class ShellSummary(TypedDict, total=False):
     search_results: dict[str, Any]
     suggested_next_actions: list[dict[str, Any]]
     drift_warnings: list[dict[str, Any]]
+    rewrite_followup_actions: list[dict[str, Any]]
     recent_outputs: list[dict[str, Any]]
     recent_receipts: list[dict[str, Any]]
     recent_runs: list[dict[str, Any]]
     nightly: dict[str, Any]
+    metrics: list[dict[str, Any]]
     links: dict[str, str]
     capabilities: dict[str, Any]

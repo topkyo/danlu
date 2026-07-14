@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
+import hashlib
 import html
+import logging
 import os
 import re
 import shutil
@@ -10,13 +13,31 @@ import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
-from urllib import parse, request
+from urllib import parse
 
-from .app_content import append_wiki_log
-from .app_protocol import ensure_layout
-from .app_utils import first_markdown_heading, relative_path, render_frontmatter, slugify, utc_now
-from .config import LLMConfig
+from .app_protocol import ensure_layout, save_manifest
+from .app_state import DEFAULT_PROTOCOL, append_runtime_history, load_manifest, manifest_path, runtime_history_path
+from .app_utils import (
+    FetchPolicyError,
+    _validate_safe_url,
+    atomic_copy_file,
+    atomic_write_bytes,
+    atomic_write_text,
+    detect_kind,
+    first_markdown_heading,
+    next_identifier,
+    relative_path,
+    runtime_write_lock,
+    safe_fetch,
+    safe_resolve_within,
+    sha256_file,
+    slugify,
+    utc_now,
+)
+from .config import LLMConfig, _backend_supports_image_analysis
+from .drop_helpers import timestamped_stem
 from .llm import LLMError, create_backend_client
+from .render.paths import append_wiki_log
 
 try:
     from bs4 import BeautifulSoup
@@ -32,8 +53,87 @@ except ImportError:  # pragma: no cover - optional dependency
 USER_AGENT = "aiwiki/0.1 (+https://local)"
 MAX_TEXT_CHARS = 120000
 MAX_URL_IMAGES = 6
+SENSITIVE_SCAN_CONTEXT_CHARS = 60000
+_HTML_MAX_BYTES = 5 * 1024 * 1024
+_ASSET_MAX_BYTES = 50 * 1024 * 1024
+# Local PDF ingestion reuses the remote asset cap; images get a tighter OCR/vision cap.
+_LOCAL_PDF_MAX_BYTES = _ASSET_MAX_BYTES
+_LOCAL_IMAGE_MAX_BYTES = 25 * 1024 * 1024
+_SUPPORTED_IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml"}
+
+_LOGGER = logging.getLogger(__name__)
+
+_SENSITIVE_VALUE_PATTERN = re.compile(
+    r"""
+    (?:
+        \b(?:password|passwd|pwd|token|secret|api[_ -]?key|private[_ -]?key|access[_ -]?key|github[_ -]?token|ssh[_ -]?key|sudo[_ -]?password)\b
+        |(?:密码|口令|令牌|密钥|私钥)
+    )
+    \s*(?:[:=：]|is|为)\s*
+    (?P<value>.+)
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+_PRIVATE_KEY_BLOCK_PATTERN = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----")
+_SENSITIVE_PLACEHOLDERS = {
+    "",
+    "-",
+    "none",
+    "null",
+    "n/a",
+    "no",
+    "false",
+    "redacted",
+    "[redacted]",
+    "<redacted>",
+    "***",
+    "****",
+    "xxxxx",
+    "xxxxxx",
+    "todo",
+    "tbd",
+}
+
+
+class SensitiveContentError(ValueError):
+    """Raised when a raw note appears to contain credentials or secrets."""
+
+
+def _assert_file_size(path: Path, max_bytes: int, label: str) -> None:
+    size = path.stat().st_size
+    if size > max_bytes:
+        raise ValueError(f"{label} exceeds size limit: {size} > {max_bytes} bytes")
+
+
+def _assert_pdf_asset(path: Path) -> None:
+    with path.open("rb") as handle:
+        magic = handle.read(5)
+    if magic != b"%PDF-":
+        raise ValueError("File does not look like a PDF (magic bytes missing)")
+
+
+def _assert_supported_image_mime(mime: str) -> None:
+    if mime not in _SUPPORTED_IMAGE_MIME_TYPES:
+        raise ValueError(f"Unsupported image MIME type: {mime}; allowed: {sorted(_SUPPORTED_IMAGE_MIME_TYPES)}")
+
+
+def _normalize_repo_max_files(max_files: int) -> int:
+    if not isinstance(max_files, int) or max_files < 1 or max_files > 1000:
+        raise ValueError(f"max_files must be 1..1000, got {max_files}")
+    return max_files
+
+
+def _append_run_event(root: Path, event: dict[str, Any]) -> None:
+    from .runner.receipts import _append_log
+
+    _append_log(root, event)
 BROWSER_RENDER_TIMEOUT_SECONDS = 45
 BROWSER_VIRTUAL_TIME_BUDGET_MS = 8000
+ALLOW_BROWSER_NO_SANDBOX_ENV = "AIWIKI_ALLOW_BROWSER_NO_SANDBOX"
+PDF_EXTRACT_TIMEOUT_SECONDS = 60
+MIME_DETECT_TIMEOUT_SECONDS = 5
+IMAGE_OCR_TIMEOUT_SECONDS = 60
+GIT_METADATA_TIMEOUT_SECONDS = 15
 TEXT_FILE_SUFFIXES = {
     ".c",
     ".cc",
@@ -73,50 +173,112 @@ REPO_PRIORITY_FILES = (
 
 def drop_url(root: Path, url: str, title: str | None = None) -> dict[str, Any]:
     ensure_layout(root)
-    fetched = _fetch_url(url)
+    collection = _collect_url(root, url)
+    _validate_url_collection(collection)
+    with runtime_write_lock(root):
+        result = _materialize_url(root, url, title, collection)
+        for event in collection.get("skip_events", []):
+            _append_run_event(root, event)
+    return result
+
+
+def _collect_url(root: Path, url: str) -> dict[str, Any]:
+    fetched = _fetch_url(url, root=root)
+    inline_images: list[dict[str, Any]] = []
+    skip_events: list[dict[str, Any]] = []
+    for image_url in fetched["image_urls"][:MAX_URL_IMAGES]:
+        try:
+            payload, final_url = _collect_asset_bytes(root, image_url, max_bytes=_ASSET_MAX_BYTES)
+        except Exception as exc:
+            skip_events.append(
+                {
+                    "event": "url_image_download_skipped",
+                    "url": image_url,
+                    "reason": str(exc),
+                    "error_type": type(exc).__name__,
+                }
+            )
+            continue
+        inline_images.append(
+            {
+                "bytes": payload,
+                "suffix": _suffix_from_source(final_url, ""),
+                "source": final_url,
+            }
+        )
+    return {"fetched": fetched, "inline_images": inline_images, "skip_events": skip_events}
+
+
+def _validate_url_collection(collection: dict[str, Any]) -> None:
+    del collection
+
+
+def _materialize_url(root: Path, url: str, title: str | None, collection: dict[str, Any]) -> dict[str, Any]:
+    fetched = collection["fetched"]
     display_title = title or fetched["title"] or _label_from_url(fetched["final_url"])
-    asset_paths = _materialize_url_images(
-        root,
-        fetched["image_urls"],
-        preferred_slug=display_title,
-    )
-    stem = _timestamped_stem(display_title)
+    created_paths: list[Path] = []
+    asset_paths: list[str] = []
+    asset_dir = root / "raw" / "assets"
+    stem = timestamped_stem(display_title)
     note_path = _unique_path(root / "raw" / "inbox", stem, ".md")
-    page_assets = [f"- Stored asset: `{path}`" for path in asset_paths] or ["- No page images stored."]
-    markdown = _render_raw_note(
-        title=display_title,
-        source_type="url-drop",
-        original_path=fetched["final_url"],
-        sections=[
-            ("Source URL", [f"- Original URL: `{url}`", f"- Final URL: `{fetched['final_url']}`"]),
-            (
-                "Fetch Metadata",
-                [
-                    f"- Fetched at: `{utc_now()}`",
-                    f"- Content type: `{fetched['content_type']}`",
-                    f"- HTTP status: `{fetched['status']}`",
-                    f"- Browser renderer: `{fetched['browser_backend'] or 'none'}`",
-                    f"- Extraction mode: `{fetched['extraction_mode']}`",
-                ],
-            ),
-            ("Description", [fetched["description"] or "- No meta description found."]),
-            ("Page Assets", page_assets),
-            ("Extracted Content", [fetched["text"] or "No text content extracted from the page."]),
-        ],
-        extra_frontmatter={"asset_files": asset_paths},
-    )
-    _write_text(note_path, markdown)
-    append_wiki_log(
-        root,
-        "ingest",
-        display_title,
-        [
-            "source_type: `url-drop`",
-            f"original_url: `{url}`",
-            f"stored_note: `{relative_path(root, note_path)}`",
-            f"asset_files: `{len(asset_paths)}`",
-        ],
-    )
+    append_file_sizes = _snapshot_append_files(root)
+    try:
+        for index, image in enumerate(collection["inline_images"], start=1):
+            asset_path = _unique_path(
+                asset_dir,
+                timestamped_stem(f"{display_title}-image-{index}"),
+                image["suffix"],
+            )
+            _write_bytes(asset_path, image["bytes"])
+            created_paths.append(asset_path)
+            asset_paths.append(relative_path(root, asset_path))
+        ingest_metadata = {
+            "original_url": url,
+            "final_url": fetched["final_url"],
+            "content_type": fetched["content_type"],
+            "http_status": fetched["status"],
+            "browser_backend": fetched["browser_backend"] or "",
+            "extraction_mode": fetched["extraction_mode"],
+            "description": fetched["description"] or "",
+            "asset_files": asset_paths,
+            "fetched_at": utc_now(),
+        }
+        markdown = _write_url_note_body(display_title, fetched, asset_paths)
+        _write_text(note_path, markdown)
+        created_paths.append(note_path)
+        entry = _append_manifest_entry(
+            root,
+            stored_path=note_path,
+            original_path=url,
+            source_type="url-drop",
+            title=display_title,
+            ingest_metadata=ingest_metadata,
+        )
+        append_wiki_log(
+            root,
+            "ingest",
+            display_title,
+            [
+                "source_type: `url-drop`",
+                f"original_url: `{url}`",
+                f"stored_note: `{relative_path(root, note_path)}`",
+                f"asset_files: `{len(asset_paths)}`",
+            ],
+        )
+        _append_raw_added_history(
+            root,
+            material="url",
+            stored_path=note_path,
+            original_path=url,
+            source_type="url-drop",
+            title=display_title,
+            entry_id=entry["id"],
+            ingest_metadata=ingest_metadata,
+        )
+    except Exception:
+        _rollback_created_paths(created_paths)
+        _truncate_append_files(append_file_sizes)
+        raise
     return {
         "material": "url",
         "note_path": relative_path(root, note_path),
@@ -127,55 +289,125 @@ def drop_url(root: Path, url: str, title: str | None = None) -> dict[str, Any]:
     }
 
 
+def _write_url_note_body(display_title: str, fetched: dict[str, Any], asset_paths: list[str]) -> str:
+    """Write fetched page text to raw/inbox without frontmatter or capture-metadata sections."""
+    lines = [f"# {display_title}", ""]
+    body = str(fetched.get("text") or "").strip()
+    if body:
+        lines.append(body)
+        lines.append("")
+    elif fetched.get("description"):
+        lines.append(str(fetched["description"]).strip())
+        lines.append("")
+    else:
+        lines.append("No text content extracted from the page.")
+        lines.append("")
+    if asset_paths:
+        lines.append("## Assets")
+        lines.extend(f"- `{path}`" for path in asset_paths)
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _write_repo_note_body(display_title: str, snapshot: dict[str, Any]) -> str:
+    """Write repo snapshot text to raw/inbox without frontmatter or capture-metadata sections."""
+    lines = [f"# {display_title}", ""]
+    readme = str(snapshot.get("readme") or "").strip()
+    if readme:
+        lines.append(readme)
+        lines.append("")
+    tree_lines = snapshot.get("tree") or []
+    if tree_lines:
+        lines.append("## Repository Tree")
+        lines.extend(str(item) for item in tree_lines)
+        lines.append("")
+    for item in snapshot.get("files") or []:
+        if not isinstance(item, dict):
+            continue
+        path = str(item.get("path") or "").strip()
+        content = str(item.get("content") or "").strip()
+        if not path:
+            continue
+        lines.append(f"## {path}")
+        if content:
+            lines.append(content)
+        lines.append("")
+    if len(lines) <= 2:
+        lines.append("No repository text captured.")
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def drop_pdf(root: Path, source: str, title: str | None = None) -> dict[str, Any]:
     ensure_layout(root)
-    asset_path, original_path = _materialize_binary_source(root, source, preferred_slug=title or Path(source).stem)
-    if asset_path.suffix.lower() != ".pdf":
-        renamed = asset_path.with_suffix(".pdf")
-        asset_path.rename(renamed)
-        asset_path = renamed
-    extracted_text = _extract_pdf_text(asset_path)
-    display_title = title or Path(original_path).stem or asset_path.stem
-    stem = _timestamped_stem(display_title)
-    note_path = _unique_path(root / "raw" / "inbox", stem, ".md")
-    markdown = _render_raw_note(
-        title=display_title,
-        source_type="pdf-drop",
-        original_path=original_path,
-        sections=[
-            ("PDF Asset", [f"- Stored PDF: `{relative_path(root, asset_path)}`"]),
-            (
-                "Import Metadata",
-                [
-                    f"- Imported at: `{utc_now()}`",
-                    f"- File size: `{asset_path.stat().st_size}` bytes",
-                ],
-            ),
-            (
-                "Extracted Text",
-                [
-                    extracted_text
-                    or "No PDF text could be extracted. This file may be image-only and need OCR."
-                ],
-            ),
-        ],
-        extra_frontmatter={"asset_files": [relative_path(root, asset_path)]},
-    )
-    _write_text(note_path, markdown)
-    append_wiki_log(
-        root,
-        "ingest",
-        display_title,
-        [
-            "source_type: `pdf-drop`",
-            f"stored_note: `{relative_path(root, note_path)}`",
-            f"asset_path: `{relative_path(root, asset_path)}`",
-        ],
-    )
+    collection = _collect_pdf(root, source, title)
+    try:
+        _validate_pdf(collection)
+        with runtime_write_lock(root):
+            return _materialize_pdf(root, source, title, collection)
+    finally:
+        _cleanup_tmp_dir(collection["tmp_dir"])
+
+
+def _collect_pdf(root: Path, source: str, title: str | None = None) -> dict[str, Any]:
+    return _collect_binary_to_tmp(root, source, prefix="aiwiki-drop-pdf-", preferred_slug=title or Path(source).stem)
+
+
+def _validate_pdf(collection: dict[str, Any]) -> None:
+    tmp_path = collection["tmp_path"]
+    if tmp_path.suffix.lower() != ".pdf":
+        renamed = tmp_path.with_suffix(".pdf")
+        tmp_path.rename(renamed)
+        collection["tmp_path"] = renamed
+        tmp_path = renamed
+    _assert_file_size(tmp_path, _LOCAL_PDF_MAX_BYTES, "PDF asset")
+    _assert_pdf_asset(tmp_path)
+
+
+def _materialize_pdf(root: Path, source: str, title: str | None, collection: dict[str, Any]) -> dict[str, Any]:
+    del source
+    tmp_path = collection["tmp_path"]
+    original_path = collection["original_path"]
+    display_title = title or Path(original_path).stem or tmp_path.stem
+    asset_path = _unique_path(root / "raw" / "assets", timestamped_stem(display_title), ".pdf")
+    created_paths: list[Path] = []
+    append_file_sizes = _snapshot_append_files(root)
+    try:
+        atomic_copy_file(tmp_path, asset_path, fsync=True)
+        created_paths.append(asset_path)
+        entry = _append_manifest_entry(
+            root,
+            stored_path=asset_path,
+            original_path=original_path,
+            source_type="pdf-drop",
+            title=display_title,
+        )
+        append_wiki_log(
+            root,
+            "ingest",
+            display_title,
+            [
+                "source_type: `pdf-drop`",
+                f"asset_path: `{relative_path(root, asset_path)}`",
+            ],
+        )
+        _append_raw_added_history(
+            root,
+            material="pdf",
+            stored_path=asset_path,
+            original_path=original_path,
+            source_type="pdf-drop",
+            title=display_title,
+            entry_id=entry["id"],
+        )
+    except Exception:
+        _rollback_created_paths(created_paths)
+        _truncate_append_files(append_file_sizes)
+        raise
     return {
         "material": "pdf",
-        "note_path": relative_path(root, note_path),
         "asset_path": relative_path(root, asset_path),
+        "stored_path": relative_path(root, asset_path),
         "original_path": original_path,
         "title": display_title,
     }
@@ -189,78 +421,113 @@ def drop_image(
     client: Any | None = None,
 ) -> dict[str, Any]:
     ensure_layout(root)
-    asset_path, original_path = _materialize_binary_source(root, source, preferred_slug=title or Path(source).stem)
-    mime = _detect_mime_type(asset_path)
-    width, height = _image_dimensions(asset_path)
-    ocr_text = _extract_image_text(asset_path)
-    vision_result = _analyze_image_asset(
-        root,
-        asset_path,
-        mime=mime,
-        width=width,
-        height=height,
-        ocr_text=ocr_text,
-        client=client,
-        enable_vision=enable_vision,
+    collection = _collect_image(root, source, title, enable_vision, client)
+    try:
+        _validate_image(collection)
+        with runtime_write_lock(root):
+            return _materialize_image(root, source, title, collection)
+    finally:
+        _cleanup_tmp_dir(collection["tmp_dir"])
+
+
+def _collect_image(
+    root: Path,
+    source: str,
+    title: str | None = None,
+    enable_vision: bool = True,
+    client: Any | None = None,
+) -> dict[str, Any]:
+    collection = _collect_binary_to_tmp(root, source, prefix="aiwiki-drop-image-", preferred_slug=title or Path(source).stem)
+    try:
+        tmp_path = collection["tmp_path"]
+        mime = _detect_mime_type(tmp_path)
+        _assert_supported_image_mime(mime)
+        _assert_file_size(tmp_path, _LOCAL_IMAGE_MAX_BYTES, "image asset")
+        width, height = _image_dimensions(tmp_path)
+        ocr_text = _extract_image_text(tmp_path)
+        vision_result = _analyze_image_asset(
+            root,
+            tmp_path,
+            mime=mime,
+            width=width,
+            height=height,
+            ocr_text=ocr_text,
+            client=client,
+            enable_vision=enable_vision,
+        )
+    except Exception:
+        _cleanup_tmp_dir(collection["tmp_dir"])
+        raise
+    collection.update(
+        {
+            "mime": mime,
+            "width": width,
+            "height": height,
+            "ocr_text": ocr_text,
+            "vision_result": vision_result,
+        }
     )
+    return collection
+
+
+def _validate_image(collection: dict[str, Any]) -> None:
+    _assert_supported_image_mime(collection["mime"])
+    _assert_file_size(collection["tmp_path"], _LOCAL_IMAGE_MAX_BYTES, "image asset")
+
+
+def _materialize_image(root: Path, source: str, title: str | None, collection: dict[str, Any]) -> dict[str, Any]:
+    del source
+    tmp_path = collection["tmp_path"]
+    original_path = collection["original_path"]
+    mime = collection["mime"]
+    width = collection["width"]
+    height = collection["height"]
+    ocr_text = collection["ocr_text"]
+    vision_result = collection["vision_result"]
     visual_analysis = vision_result["analysis"]
     vision_backend = vision_result["backend"]
     vision_status = vision_result["status"]
-    display_title = title or Path(original_path).stem or asset_path.stem
-    stem = _timestamped_stem(display_title)
-    note_path = _unique_path(root / "raw" / "inbox", stem, ".md")
-    dimension_text = f"{width}x{height}" if width and height else "unknown"
-    extracted_text = ocr_text or "OCR is unavailable on this machine or no text was detected. Treat this as an image reference source."
-    visual_lines = [visual_analysis] if visual_analysis else [
-        "Visual analysis was not generated. Configure `codex-cli` if you want LLM-backed image understanding."
-    ]
-    markdown = _render_raw_note(
-        title=display_title,
-        source_type="image-drop",
-        original_path=original_path,
-        sections=[
-            ("Image Asset", [f"- Stored image: `{relative_path(root, asset_path)}`"]),
-            (
-                "Image Metadata",
-                [
-                    f"- Imported at: `{utc_now()}`",
-                    f"- MIME type: `{mime}`",
-                    f"- Dimensions: `{dimension_text}`",
-                    f"- File size: `{asset_path.stat().st_size}` bytes",
-                    f"- Vision backend: `{vision_backend or 'none'}`",
-                    f"- Vision status: `{vision_status}`",
-                ],
-            ),
-            (
-                "Extracted Text",
-                [
-                    extracted_text
-                ],
-            ),
-            ("Visual Analysis", visual_lines),
-        ],
-        extra_frontmatter={
-            "asset_files": [relative_path(root, asset_path)],
-            "vision_backend": vision_backend,
-            "vision_status": vision_status,
-        },
-    )
-    _write_text(note_path, markdown)
-    append_wiki_log(
-        root,
-        "ingest",
-        display_title,
-        [
-            "source_type: `image-drop`",
-            f"stored_note: `{relative_path(root, note_path)}`",
-            f"asset_path: `{relative_path(root, asset_path)}`",
-            f"vision_status: `{vision_status}`",
-        ],
-    )
+    display_title = title or Path(original_path).stem or tmp_path.stem
+    asset_path = _unique_path(root / "raw" / "assets", timestamped_stem(display_title), tmp_path.suffix.lower() or ".bin")
+    created_paths: list[Path] = []
+    append_file_sizes = _snapshot_append_files(root)
+    try:
+        atomic_copy_file(tmp_path, asset_path, fsync=True)
+        created_paths.append(asset_path)
+        entry = _append_manifest_entry(
+            root,
+            stored_path=asset_path,
+            original_path=original_path,
+            source_type="image-drop",
+            title=display_title,
+        )
+        append_wiki_log(
+            root,
+            "ingest",
+            display_title,
+            [
+                "source_type: `image-drop`",
+                f"asset_path: `{relative_path(root, asset_path)}`",
+                f"vision_status: `{vision_status}`",
+            ],
+        )
+        _append_raw_added_history(
+            root,
+            material="image",
+            stored_path=asset_path,
+            original_path=original_path,
+            source_type="image-drop",
+            title=display_title,
+            entry_id=entry["id"],
+        )
+    except Exception:
+        _rollback_created_paths(created_paths)
+        _truncate_append_files(append_file_sizes)
+        raise
     return {
         "material": "image",
-        "note_path": relative_path(root, note_path),
         "asset_path": relative_path(root, asset_path),
+        "stored_path": relative_path(root, asset_path),
         "original_path": original_path,
         "mime_type": mime,
         "dimensions": {"width": width, "height": height},
@@ -274,63 +541,89 @@ def drop_image(
 
 def drop_repo(root: Path, source: str, title: str | None = None, max_files: int = 200) -> dict[str, Any]:
     ensure_layout(root)
-    cleanup_path: Path | None = None
-    repo_path: Path
-    original_path = source
-    if _looks_like_repo_url(source):
-        cleanup_path = Path(tempfile.mkdtemp(prefix="aiwiki-repo-"))
-        repo_path = cleanup_path / "repo"
-        _clone_repo(source, repo_path)
-        original_path = source
-    else:
-        repo_path = Path(source).expanduser().resolve()
-        if not repo_path.is_dir():
-            raise FileNotFoundError(f"Repository path not found: {source}")
+    collection = _collect_repo(root, source, max_files)
+    _validate_repo(collection)
+    with runtime_write_lock(root):
+        return _materialize_repo(root, source, title, collection)
 
+
+def _collect_repo(root: Path, source: str, max_files: int = 200) -> dict[str, Any]:
+    max_files = _normalize_repo_max_files(max_files)
+    cleanup_path: Path | None = None
+    original_path = source
     try:
+        if _is_remote_repo_source(source):
+            if os.environ.get("AIWIKI_ALLOW_REMOTE_REPO_DROP") != "1":
+                raise ValueError("remote repo drop disabled; set AIWIKI_ALLOW_REMOTE_REPO_DROP=1 to enable")
+            cleanup_path = Path(tempfile.mkdtemp(prefix="aiwiki-repo-"))
+            repo_path = cleanup_path / "repo"
+            _clone_repo(source, repo_path)
+        else:
+            repo_path = safe_resolve_within(Path(source).expanduser().resolve(), root)
+            if not repo_path.is_dir():
+                raise FileNotFoundError(f"Repository path not found: {source}")
         snapshot = _repo_snapshot(repo_path, max_files=max_files)
     finally:
         if cleanup_path is not None:
-            shutil.rmtree(cleanup_path, ignore_errors=True)
+            _cleanup_tmp_dir(cleanup_path)
+    return {"snapshot": snapshot, "original_path": original_path}
 
+
+def _validate_repo(collection: dict[str, Any]) -> None:
+    del collection
+
+
+def _materialize_repo(root: Path, source: str, title: str | None, collection: dict[str, Any]) -> dict[str, Any]:
+    del source
+    snapshot = collection["snapshot"]
+    original_path = collection["original_path"]
     display_title = title or snapshot["name"]
-    stem = _timestamped_stem(display_title)
+    stem = timestamped_stem(display_title)
     note_path = _unique_path(root / "raw" / "inbox", stem, ".md")
-    sections = [
-        ("Repository", [f"- Source: `{original_path}`"]),
-        (
-            "Repository Metadata",
+    ingest_metadata = {
+        "repo_source": original_path,
+        "snapshot_at": utc_now(),
+        "commit": snapshot["commit"] or "",
+        "origin": snapshot["origin"] or "",
+    }
+    markdown = _write_repo_note_body(display_title, snapshot)
+    created_paths: list[Path] = []
+    append_file_sizes = _snapshot_append_files(root)
+    try:
+        _write_text(note_path, markdown)
+        created_paths.append(note_path)
+        entry = _append_manifest_entry(
+            root,
+            stored_path=note_path,
+            original_path=original_path,
+            source_type="repo-drop",
+            title=display_title,
+            ingest_metadata=ingest_metadata,
+        )
+        append_wiki_log(
+            root,
+            "ingest",
+            display_title,
             [
-                f"- Snapshot at: `{utc_now()}`",
-                f"- Commit: `{snapshot['commit'] or 'unknown'}`",
-                f"- Origin: `{snapshot['origin'] or 'unknown'}`",
+                "source_type: `repo-drop`",
+                f"stored_note: `{relative_path(root, note_path)}`",
+                f"source: `{original_path}`",
             ],
-        ),
-        ("README", [snapshot["readme"] or "No README text found."]),
-        ("Repository Tree", snapshot["tree"] or ["- No files captured."]),
-    ]
-    if snapshot["files"]:
-        file_lines = []
-        for item in snapshot["files"]:
-            file_lines.extend([f"### {item['path']}", item["content"], ""])
-        sections.append(("Key File Excerpts", file_lines))
-    markdown = _render_raw_note(
-        title=display_title,
-        source_type="repo-drop",
-        original_path=original_path,
-        sections=sections,
-    )
-    _write_text(note_path, markdown)
-    append_wiki_log(
-        root,
-        "ingest",
-        display_title,
-        [
-            "source_type: `repo-drop`",
-            f"stored_note: `{relative_path(root, note_path)}`",
-            f"source: `{original_path}`",
-        ],
-    )
+        )
+        _append_raw_added_history(
+            root,
+            material="repo",
+            stored_path=note_path,
+            original_path=original_path,
+            source_type="repo-drop",
+            title=display_title,
+            entry_id=entry["id"],
+            ingest_metadata=ingest_metadata,
+        )
+    except Exception:
+        _rollback_created_paths(created_paths)
+        _truncate_append_files(append_file_sizes)
+        raise
     return {
         "material": "repo",
         "note_path": relative_path(root, note_path),
@@ -346,6 +639,20 @@ def drop_note(
     title: str | None = None,
     text: str | None = None,
     kind: str = "note",
+    allow_sensitive: bool = False,
+) -> dict[str, Any]:
+    with runtime_write_lock(root):
+        return _drop_note_unlocked(root, source, title=title, text=text, kind=kind, allow_sensitive=allow_sensitive)
+
+
+def _drop_note_unlocked(
+    root: Path,
+    source: str | None = None,
+    *,
+    title: str | None = None,
+    text: str | None = None,
+    kind: str = "note",
+    allow_sensitive: bool = False,
 ) -> dict[str, Any]:
     ensure_layout(root)
     note_kind = kind.strip().lower()
@@ -354,43 +661,41 @@ def drop_note(
     if source and text is not None:
         raise ValueError("Provide either a note file path or --text, not both.")
     if text is not None:
-        captured_text = _normalize_text(text)
+        captured_text = text
         original_path = "inline://note"
         capture_mode = "inline-text"
         fallback_title = note_kind.title()
+        source_path = None
     else:
         if not source:
             raise ValueError("Provide a markdown/text file path or --text for drop-note.")
         source_path = Path(source).expanduser()
         if not source_path.exists() or not source_path.is_file():
             raise FileNotFoundError(f"Note file not found: {source}")
-        captured_text = _normalize_text(source_path.read_text(encoding="utf-8", errors="replace"))
+        captured_text = source_path.read_text(encoding="utf-8", errors="replace")
         original_path = str(source)
         capture_mode = "file"
         fallback_title = source_path.stem or note_kind.title()
     if not captured_text:
         raise RuntimeError("Note capture is empty.")
+    if not allow_sensitive:
+        _assert_no_sensitive_text(captured_text, source_label=original_path)
     display_title = title or _note_title(captured_text, fallback=fallback_title)
-    stem = _timestamped_stem(display_title)
-    note_path = _unique_path(root / "raw" / "inbox", stem, ".md")
-    markdown = _render_raw_note(
-        title=display_title,
-        source_type="note-drop",
+    stem = timestamped_stem(display_title)
+    suffix = source_path.suffix.lower() if source_path is not None and source_path.suffix else ".md"
+    note_path = _unique_path(root / "raw" / "inbox", stem, suffix)
+    if source_path is None:
+        atomic_write_text(note_path, captured_text, fsync=True)
+    else:
+        atomic_copy_file(source_path, note_path, fsync=True)
+    entry = _append_manifest_entry(
+        root,
+        stored_path=note_path,
         original_path=original_path,
-        sections=[
-            (
-                "Capture Metadata",
-                [
-                    f"- Captured at: `{utc_now()}`",
-                    f"- Capture mode: `{capture_mode}`",
-                    f"- Note kind: `{note_kind}`",
-                ],
-            ),
-            ("Captured Note", [captured_text]),
-        ],
-        extra_frontmatter={"note_kind": note_kind},
+        source_type="note-drop",
+        title=display_title,
+        note_kind=note_kind,
     )
-    _write_text(note_path, markdown)
     append_wiki_log(
         root,
         "ingest",
@@ -401,6 +706,17 @@ def drop_note(
             f"stored_note: `{relative_path(root, note_path)}`",
         ],
     )
+    _append_raw_added_history(
+        root,
+        material="note",
+        stored_path=note_path,
+        original_path=original_path,
+        source_type="note-drop",
+        title=display_title,
+        entry_id=entry["id"],
+        note_kind=note_kind,
+        capture_mode=capture_mode,
+    )
     return {
         "material": "note",
         "note_path": relative_path(root, note_path),
@@ -410,8 +726,186 @@ def drop_note(
     }
 
 
-def _fetch_url(url: str) -> dict[str, Any]:
-    fetched = _http_fetch_url(url)
+def _assert_no_sensitive_text(text: str, *, source_label: str) -> None:
+    findings = _sensitive_text_findings(text)
+    if not findings:
+        return
+    rendered = ", ".join(f"line {line_no} `{kind}`" for line_no, kind in findings[:4])
+    extra = "" if len(findings) <= 4 else f", +{len(findings) - 4} more"
+    raise SensitiveContentError(
+        f"Sensitive content detected in note input `{source_label}` ({rendered}{extra}). "
+        "Remove credentials before ingestion or rerun with --allow-sensitive for an intentional local-only secret vault."
+    )
+
+
+def _sensitive_text_findings(text: str) -> list[tuple[int, str]]:
+    findings: list[tuple[int, str]] = []
+    scanned = text[:SENSITIVE_SCAN_CONTEXT_CHARS]
+    for line_no, line in enumerate(scanned.splitlines(), start=1):
+        if _PRIVATE_KEY_BLOCK_PATTERN.search(line):
+            findings.append((line_no, "private-key"))
+            continue
+        match = _SENSITIVE_VALUE_PATTERN.search(line)
+        if not match:
+            continue
+        value = _normalized_sensitive_value(match.group("value"))
+        if value in _SENSITIVE_PLACEHOLDERS:
+            continue
+        findings.append((line_no, "credential-field"))
+    return findings
+
+
+def _normalized_sensitive_value(value: str) -> str:
+    cleaned = value.strip()
+    cleaned = re.split(r"\s+#|\s+//", cleaned, maxsplit=1)[0].strip()
+    cleaned = cleaned.strip("`\"")
+    return cleaned.lower()
+
+
+def _append_raw_added_history(
+    root: Path,
+    *,
+    material: str,
+    stored_path: Path,
+    original_path: str,
+    source_type: str,
+    title: str,
+    entry_id: str = "",
+    note_kind: str = "",
+    capture_mode: str = "",
+    ingest_metadata: dict[str, Any] | None = None,
+) -> None:
+    event: dict[str, Any] = {
+        "event_type": "raw-added",
+        "occurred_at": utc_now(),
+        "protocol": DEFAULT_PROTOCOL,
+        "material": material,
+        "stored_path": relative_path(root, stored_path),
+        "original_path": original_path,
+        "source_type": source_type,
+        "title": title,
+    }
+    if entry_id:
+        event["entry_id"] = entry_id
+        event["source_ids"] = [entry_id]
+    if note_kind:
+        event["note_kind"] = note_kind
+    if capture_mode:
+        event["capture_mode"] = capture_mode
+    if ingest_metadata:
+        event["ingest_metadata"] = ingest_metadata
+    append_runtime_history(root, event)
+
+
+def _append_manifest_entry(
+    root: Path,
+    *,
+    stored_path: Path,
+    original_path: str,
+    source_type: str,
+    title: str,
+    note_kind: str = "",
+    ingest_metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    manifest = load_manifest(root)
+    entries: list[dict[str, Any]] = manifest["entries"]
+    relative = relative_path(root, stored_path)
+    for entry in entries:
+        if entry.get("stored_path") == relative:
+            updated_at = utc_now()
+            entry.update(
+                {
+                    "title": title,
+                    "source_type": source_type,
+                    "note_kind": note_kind,
+                    "original_path": original_path,
+                    "kind": detect_kind(stored_path),
+                    "sha256": sha256_file(stored_path),
+                    "updated_at": updated_at,
+                }
+            )
+            if ingest_metadata:
+                entry["ingest_metadata"] = ingest_metadata
+            save_manifest(root, manifest)
+            return entry
+    existing_ids = {str(entry.get("id") or "") for entry in entries}
+    slug = slugify(title or stored_path.stem)
+    seed = f"source-{slug}" if slug and slug != "item" else f"source-{hashlib.sha256(relative.encode()).hexdigest()[:12]}"
+    entry_id = next_identifier(existing_ids, seed)
+    imported_at = utc_now()
+    entry = {
+        "id": entry_id,
+        "title": title,
+        "source_type": source_type,
+        "note_kind": note_kind,
+        "original_path": original_path,
+        "stored_path": relative,
+        "kind": detect_kind(stored_path),
+        "sha256": sha256_file(stored_path),
+        "imported_at": imported_at,
+        "updated_at": imported_at,
+    }
+    if ingest_metadata:
+        entry["ingest_metadata"] = ingest_metadata
+    entries.append(entry)
+    save_manifest(root, manifest)
+    return entry
+
+
+def _rollback_created_paths(created_paths: list[Path]) -> None:
+    for path in reversed(created_paths):
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as exc:
+            _LOGGER.warning("drop rollback unlink failed for %s: %s", path, exc)
+
+
+def _cleanup_tmp_dir(tmp_dir: Path) -> None:
+    """Best-effort remove a drop collect tmp dir; warn on failure, never raise.
+
+    Used by collect helpers to clear scratch dirs after materialize success or
+    on collect exception paths. Cleanup failures must not mask the original
+    error nor break the public drop API contract (no raise from cleanup).
+    """
+    try:
+        shutil.rmtree(tmp_dir)
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        _LOGGER.warning("drop tmp cleanup failed for %s: %s", tmp_dir, exc)
+
+
+def _snapshot_append_files(root: Path) -> dict[Path, tuple[bool, int]]:
+    candidates = [root / "wiki" / "indexes" / "log.md", runtime_history_path(root), manifest_path(root)]
+    sizes: dict[Path, tuple[bool, int]] = {}
+    for path in candidates:
+        try:
+            if path.exists():
+                sizes[path] = (True, path.stat().st_size)
+            else:
+                sizes[path] = (False, 0)
+        except OSError as exc:
+            _LOGGER.warning("drop rollback snapshot stat failed for %s: %s", path, exc)
+            continue
+    return sizes
+
+
+def _truncate_append_files(snapshots: dict[Path, tuple[bool, int]]) -> None:
+    for path, (existed, size) in snapshots.items():
+        try:
+            if not existed:
+                with contextlib.suppress(FileNotFoundError):
+                    path.unlink()
+                continue
+            if path.exists():
+                with path.open("rb+") as handle:
+                    handle.truncate(size)
+        except OSError as exc:
+            _LOGGER.warning("drop rollback truncate failed for %s: %s", path, exc)
+
+
+def _fetch_url(url: str, *, root: Path) -> dict[str, Any]:
+    fetched = _http_fetch_url(url, root=root)
     final_url = fetched["final_url"]
     content_type = fetched["content_type"]
     status = fetched["status"]
@@ -420,8 +914,9 @@ def _fetch_url(url: str) -> dict[str, Any]:
     browser_html = ""
     if _should_try_browser_render(final_url, content_type):
         try:
+            _validate_safe_url(final_url, allow_private=_allow_private_fetch())
             rendered = _render_url_in_browser(final_url)
-        except RuntimeError:
+        except (FetchPolicyError, RuntimeError):
             rendered = {"html": "", "backend": ""}
         browser_html = rendered["html"]
         browser_backend = rendered["backend"]
@@ -464,15 +959,25 @@ def _fetch_url(url: str) -> dict[str, Any]:
     }
 
 
-def _http_fetch_url(url: str) -> dict[str, str]:
+def _http_fetch_url(url: str, *, root: Path) -> dict[str, str]:
     try:
-        req = request.Request(url, headers={"User-Agent": USER_AGENT})
-        with request.urlopen(req, timeout=30) as response:
-            payload = response.read()
-            final_url = response.geturl()
-            content_type = response.headers.get_content_type()
-            charset = response.headers.get_content_charset() or "utf-8"
-            status = getattr(response, "status", 200)
+        parsed = parse.urlparse(url)
+        if parsed.scheme == "file":
+            local_path = safe_resolve_within(Path(parse.unquote(parsed.path)), root)
+            payload = local_path.read_bytes()
+            if len(payload) > _HTML_MAX_BYTES:
+                raise FetchPolicyError(f"response exceeds max_bytes={_HTML_MAX_BYTES}")
+            final_url = url
+        else:
+            payload, final_url = safe_fetch(
+                url,
+                max_bytes=_HTML_MAX_BYTES,
+                timeout=30,
+                allow_private=_allow_private_fetch(),
+            )
+        content_type = "text/html"
+        charset = "utf-8"
+        status = 200
         text = payload.decode(charset, errors="replace")
         return {
             "final_url": final_url,
@@ -528,11 +1033,22 @@ def _render_url_in_browser(url: str) -> dict[str, str]:
 def _render_url_with_playwright(url: str) -> str:
     if sync_playwright is None:
         return ""
+    allow_private = _allow_private_fetch()
     try:
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(headless=True)
             try:
                 page = browser.new_page(user_agent=USER_AGENT)
+
+                def _guard(route, request):  # type: ignore[no-untyped-def]
+                    try:
+                        _validate_safe_url(request.url, allow_private=allow_private)
+                    except FetchPolicyError:
+                        route.abort()
+                        return
+                    route.continue_()
+
+                page.route("**/*", _guard)
                 page.goto(url, wait_until="networkidle", timeout=BROWSER_RENDER_TIMEOUT_SECONDS * 1000)
                 return page.content()
             finally:
@@ -565,6 +1081,11 @@ def _render_url_with_browser_cli(url: str, browser_command: str) -> str:
         if completed.returncode != 0:
             details = completed.stderr.strip() or completed.stdout.strip()
             if "--no-sandbox" not in command and "sandbox" in details.lower():
+                if not _allow_browser_no_sandbox():
+                    raise RuntimeError(
+                        f"{Path(browser_command).name} render failed because browser sandboxing is unavailable. "
+                        f"Set {ALLOW_BROWSER_NO_SANDBOX_ENV}=1 to explicitly allow Chromium --no-sandbox fallback."
+                    )
                 return _render_url_with_browser_cli_no_sandbox(url, browser_command, user_data_dir)
             raise RuntimeError(f"{Path(browser_command).name} render failed: {details}")
         return completed.stdout
@@ -596,6 +1117,10 @@ def _render_url_with_browser_cli_no_sandbox(url: str, browser_command: str, user
         details = completed.stderr.strip() or completed.stdout.strip()
         raise RuntimeError(f"{Path(browser_command).name} render failed: {details}")
     return completed.stdout
+
+
+def _allow_browser_no_sandbox() -> bool:
+    return os.environ.get(ALLOW_BROWSER_NO_SANDBOX_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _extract_html_title(text: str) -> str:
@@ -813,73 +1338,103 @@ def _best_image_source(tag: Any) -> str:
     return ""
 
 
-def _resolve_asset_url(base_url: str, candidate: str) -> str:
+def _resolve_asset_url(base_url: str, candidate: str = "", *, root: Path | None = None) -> str:
     if not candidate:
-        return ""
+        candidate = base_url
     if candidate.startswith("data:"):
         return ""
     resolved = parse.urljoin(base_url, candidate.strip())
-    return resolved if parse.urlparse(resolved).scheme in {"http", "https", "file"} else ""
+    parsed = parse.urlparse(resolved)
+    if parsed.scheme in {"http", "https"}:
+        return resolved
+    if parsed.scheme == "file":
+        base_parsed = parse.urlparse(base_url)
+        if root is None and base_parsed.scheme != "file":
+            raise FetchPolicyError("file:// asset URL requires file:// base URL")
+        workspace_root = root or Path(parse.unquote(base_parsed.path)).parent
+        return safe_resolve_within(Path(parse.unquote(parsed.path)), workspace_root).as_uri()
+    return ""
 
 
-def _materialize_url_images(root: Path, image_urls: list[str], preferred_slug: str) -> list[str]:
-    stored: list[str] = []
-    for index, image_url in enumerate(image_urls[:MAX_URL_IMAGES], start=1):
-        try:
-            asset_path, _ = _download_asset_url(root, image_url, f"{preferred_slug}-image-{index}")
-        except Exception:
-            continue
-        stored.append(relative_path(root, asset_path))
-    return stored
+def _allow_private_fetch() -> bool:
+    return os.environ.get("AIWIKI_ALLOW_PRIVATE_FETCH", "").strip().lower() in {"1", "true", "yes"}
 
 
-def _download_asset_url(root: Path, source: str, preferred_slug: str) -> tuple[Path, str]:
-    asset_dir = root / "raw" / "assets"
-    req = request.Request(source, headers={"User-Agent": USER_AGENT})
-    with request.urlopen(req, timeout=60) as response:
-        payload = response.read()
-        final_url = response.geturl()
-        content_type = response.headers.get_content_type()
-    suffix = _suffix_from_source(final_url, content_type)
-    asset_path = _unique_path(asset_dir, _timestamped_stem(preferred_slug), suffix)
-    _write_bytes(asset_path, payload)
-    return asset_path, final_url
+def _collect_asset_bytes(root: Path, source: str, *, max_bytes: int) -> tuple[bytes, str]:
+    parsed = parse.urlparse(source)
+    if parsed.scheme == "file":
+        source_path = safe_resolve_within(Path(parse.unquote(parsed.path)), root)
+        if not source_path.is_file():
+            raise FileNotFoundError(f"Source not found: {source}")
+        if source_path.stat().st_size > max_bytes:
+            raise ValueError(f"asset exceeds size limit: {source_path.stat().st_size} > {max_bytes} bytes")
+        return source_path.read_bytes(), str(source_path)
+    return safe_fetch(source, max_bytes=max_bytes, timeout=60, allow_private=_allow_private_fetch())
 
 
-def _materialize_binary_source(root: Path, source: str, preferred_slug: str) -> tuple[Path, str]:
-    asset_dir = root / "raw" / "assets"
-    if source.startswith("http://") or source.startswith("https://"):
-        asset_path, final_url = _download_asset_url(root, source, preferred_slug)
-        return asset_path, final_url
-
-    source_path = Path(source).expanduser().resolve()
-    if not source_path.is_file():
-        raise FileNotFoundError(f"Source not found: {source}")
-    suffix = source_path.suffix.lower() or ".bin"
-    asset_path = _unique_path(asset_dir, _timestamped_stem(preferred_slug), suffix)
-    shutil.copy2(source_path, asset_path)
-    return asset_path, str(source_path)
+def _collect_binary_to_tmp(root: Path, source: str, *, prefix: str, preferred_slug: str) -> dict[str, Any]:
+    del preferred_slug
+    tmp_dir = Path(tempfile.mkdtemp(prefix=prefix))
+    try:
+        parsed = parse.urlparse(source)
+        source_scheme = parsed.scheme.lower()
+        if source_scheme in {"http", "https"}:
+            payload, final_url = safe_fetch(
+                source,
+                max_bytes=_ASSET_MAX_BYTES,
+                timeout=60,
+                allow_private=_allow_private_fetch(),
+            )
+            suffix = _suffix_from_source(final_url, "")
+            tmp_path = tmp_dir / f"asset{suffix}"
+            tmp_path.write_bytes(payload)
+            original_path = final_url
+        else:
+            if source_scheme == "file":
+                source_path = safe_resolve_within(Path(parse.unquote(parsed.path)), root)
+            else:
+                source_path = Path(source).expanduser().resolve()
+            if not source_path.is_file():
+                raise FileNotFoundError(f"Source not found: {source}")
+            suffix = source_path.suffix.lower() or ".bin"
+            tmp_path = tmp_dir / f"asset{suffix}"
+            shutil.copyfile(source_path, tmp_path)
+            original_path = str(source_path)
+        return {"tmp_dir": tmp_dir, "tmp_path": tmp_path, "original_path": original_path, "suffix": tmp_path.suffix.lower() or ".bin"}
+    except Exception:
+        _cleanup_tmp_dir(tmp_dir)
+        raise
 
 
 def _extract_pdf_text(path: Path) -> str:
-    completed = subprocess.run(
-        ["pdftotext", "-layout", str(path), "-"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            ["pdftotext", "-layout", str(path), "-"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=PDF_EXTRACT_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"pdftotext timed out after {PDF_EXTRACT_TIMEOUT_SECONDS}s"
+        ) from exc
     if completed.returncode != 0:
         raise RuntimeError(f"pdftotext failed: {completed.stderr.strip()}")
     return _truncate_text(_normalize_text(completed.stdout), MAX_TEXT_CHARS)
 
 
 def _detect_mime_type(path: Path) -> str:
-    completed = subprocess.run(
-        ["file", "--brief", "--mime-type", str(path)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            ["file", "--brief", "--mime-type", str(path)],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=MIME_DETECT_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        return "application/octet-stream"
     mime = completed.stdout.strip()
     return mime or "application/octet-stream"
 
@@ -921,12 +1476,16 @@ def _jpeg_dimensions(path: Path) -> tuple[int | None, int | None]:
 def _extract_image_text(path: Path) -> str:
     if shutil.which("tesseract") is None:
         return ""
-    completed = subprocess.run(
-        ["tesseract", str(path), "stdout"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            ["tesseract", str(path), "stdout"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=IMAGE_OCR_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        return ""
     if completed.returncode != 0:
         return ""
     return _truncate_text(_normalize_text(completed.stdout), 20000)
@@ -955,10 +1514,14 @@ def _analyze_image_asset(
         "Describe observable content, readable text, layout, chart or diagram structure, and notable signals. "
         "Do not invent details that are not visible in the image."
     )
+    try:
+        asset_label = relative_path(root, image_path)
+    except ValueError:
+        asset_label = str(image_path)
     user_prompt = "\n".join(
         [
             "Analyze this image asset for a source note.",
-            f"- Asset path: `{relative_path(root, image_path)}`",
+            f"- Asset path: `{asset_label}`",
             f"- MIME type: `{mime}`",
             f"- Dimensions: `{width or 'unknown'}x{height or 'unknown'}`",
             "",
@@ -985,7 +1548,7 @@ def _maybe_create_image_client(root: Path) -> Any | None:
         config = LLMConfig.from_env()
     except RuntimeError:
         return None
-    if config.backend != "codex-cli":
+    if not _backend_supports_image_analysis(config.backend, config.model):
         return None
     return create_backend_client(config, root)
 
@@ -1001,13 +1564,23 @@ def _looks_like_repo_url(source: str) -> bool:
     return lowered.startswith("http://") or lowered.startswith("https://") or lowered.startswith("git@")
 
 
+def _is_remote_repo_source(source: str) -> bool:
+    lowered = source.lower()
+    return _looks_like_repo_url(source) or lowered.startswith("git://")
+
+
 def _clone_repo(source: str, destination: Path) -> None:
-    completed = subprocess.run(
-        ["git", "clone", "--depth", "1", source, str(destination)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            ["git", "clone", "--depth", "1", source, str(destination)],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=60,
+        )
+    except subprocess.TimeoutExpired as exc:
+        shutil.rmtree(destination, ignore_errors=True)
+        raise RuntimeError(f"git clone timed out after 60s: {source}") from exc
     if completed.returncode != 0:
         raise RuntimeError(f"git clone failed: {completed.stderr.strip() or completed.stdout.strip()}")
 
@@ -1043,30 +1616,41 @@ def _repo_tree(repo_path: Path, max_files: int) -> list[str]:
     for path in sorted(repo_path.rglob("*")):
         if any(part in {".git", "node_modules", ".venv", "__pycache__", "dist", "build"} for part in path.parts):
             continue
+        if path.is_symlink():
+            continue
         if not path.is_file():
             continue
-        entries.append(path.relative_to(repo_path).as_posix())
+        safe_path = safe_resolve_within(path, repo_path)
+        entries.append(relative_path(repo_path, safe_path))
         if len(entries) >= max_files:
             break
     return entries
 
 
+# NOTE (R92-INPUT-SAFETY): max_files caps the main file walk in _repo_tree
+# but _repo_key_files does its own bounded walk (caps at 12 selected files
+# via the early-return in the loop). For a hard total walk bound, see future
+# R92-INPUT-SAFETY-WIDE.
 def _repo_key_files(repo_path: Path) -> list[str]:
     selected: list[str] = []
     seen: set[str] = set()
     for relative in REPO_PRIORITY_FILES:
         candidate = repo_path / relative
+        if candidate.is_symlink():
+            continue
         if candidate.is_file():
-            value = candidate.relative_to(repo_path).as_posix()
+            value = relative_path(repo_path, safe_resolve_within(candidate, repo_path))
             selected.append(value)
             seen.add(value)
 
     for path in sorted(repo_path.rglob("*")):
         if any(part in {".git", "node_modules", ".venv", "__pycache__", "dist", "build"} for part in path.parts):
             continue
+        if path.is_symlink():
+            continue
         if not path.is_file():
             continue
-        relative = path.relative_to(repo_path).as_posix()
+        relative = relative_path(repo_path, safe_resolve_within(path, repo_path))
         if relative in seen:
             continue
         if path.suffix.lower() not in TEXT_FILE_SUFFIXES and path.name not in {"Dockerfile", "Makefile"}:
@@ -1084,19 +1668,19 @@ def _read_text_file(path: Path) -> str:
 
 
 def _git_output(repo_path: Path, args: list[str]) -> str:
-    completed = subprocess.run(
-        ["git", "-C", str(repo_path), *args],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(repo_path), *args],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=GIT_METADATA_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        return ""
     if completed.returncode != 0:
         return ""
     return completed.stdout.strip()
-
-
-def _timestamped_stem(label: str) -> str:
-    return f"{utc_now().replace(':', '').replace('-', '').replace('+00:00', 'z')}-{slugify(label)[:48]}"
 
 
 def _unique_path(directory: Path, stem: str, suffix: str) -> Path:
@@ -1110,37 +1694,11 @@ def _unique_path(directory: Path, stem: str, suffix: str) -> Path:
 
 
 def _write_text(path: Path, content: str) -> None:
-    tmp = path.with_name(f".{path.name}.tmp")
-    tmp.write_text(content.rstrip() + "\n", encoding="utf-8")
-    tmp.replace(path)
+    atomic_write_text(path, content.rstrip() + "\n", fsync=True)
 
 
 def _write_bytes(path: Path, content: bytes) -> None:
-    tmp = path.with_name(f".{path.name}.tmp")
-    tmp.write_bytes(content)
-    tmp.replace(path)
-
-
-def _render_raw_note(
-    title: str,
-    source_type: str,
-    original_path: str,
-    sections: list[tuple[str, list[str]]],
-    extra_frontmatter: dict[str, Any] | None = None,
-) -> str:
-    frontmatter = {
-        "title": title,
-        "source_type": source_type,
-        "original_path": original_path,
-    }
-    if extra_frontmatter:
-        frontmatter.update(extra_frontmatter)
-    lines = [render_frontmatter(frontmatter), "", f"# {title}", ""]
-    for heading, body_lines in sections:
-        lines.append(f"## {heading}")
-        lines.extend(body_lines)
-        lines.append("")
-    return "\n".join(lines)
+    atomic_write_bytes(path, content, fsync=True)
 
 
 def _label_from_url(url: str) -> str:

@@ -1,0 +1,1 @@
+{"audit_event_id": "audit-de21257fd5c8440c76df", "event_type": "drift-scan", "occurred_at": "", "revert_supported": false, "source_ref": ".aiwiki/state/runtime-history.jsonl#L1", "source_stream": "runtime_history", "subject": {"id": "", "kind": "drift-scan"}, "trace_id": ""}

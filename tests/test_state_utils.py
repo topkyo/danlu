@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import aiwiki.app_state as state
 import aiwiki.app_utils as utils
@@ -37,6 +39,108 @@ class AppStateTests(unittest.TestCase):
         jsonl_path.parent.mkdir(parents=True, exist_ok=True)
         jsonl_path.write_text('{"a":1}\n\nnot-json\n["skip"]\n{"b":2}\n', encoding="utf-8")
         self.assertEqual(state.load_jsonl_documents(jsonl_path), [{"a": 1}, {"b": 2}])
+
+    def test_strict_loaders_raise_corrupt_state_error(self) -> None:
+        document_path = self.root / "tmp" / "doc.json"
+        # Missing file is allowed (returns {}) — strict only rejects corrupt content.
+        self.assertEqual(state.load_json_document_strict(document_path), {})
+
+        document_path.parent.mkdir(parents=True, exist_ok=True)
+        document_path.write_text('{"alpha": 1}', encoding="utf-8")
+        self.assertEqual(state.load_json_document_strict(document_path), {"alpha": 1})
+
+        document_path.write_text("{bad json", encoding="utf-8")
+        with self.assertRaises(state.CorruptStateError) as ctx:
+            state.load_json_document_strict(document_path)
+        self.assertEqual(ctx.exception.path, document_path)
+        self.assertIn("json decode failed", ctx.exception.reason)
+
+        document_path.write_text('["not", "an", "object"]', encoding="utf-8")
+        with self.assertRaises(state.CorruptStateError) as ctx:
+            state.load_json_document_strict(document_path)
+        self.assertIn("expected JSON object", ctx.exception.reason)
+
+        jsonl_path = self.root / "tmp" / "events.jsonl"
+        self.assertEqual(state.load_jsonl_documents_strict(jsonl_path), [])
+
+        jsonl_path.parent.mkdir(parents=True, exist_ok=True)
+        jsonl_path.write_text('{"a":1}\n{"b":2}\n', encoding="utf-8")
+        self.assertEqual(state.load_jsonl_documents_strict(jsonl_path), [{"a": 1}, {"b": 2}])
+
+        jsonl_path.write_text('{"a":1}\nnot-json\n{"b":2}\n', encoding="utf-8")
+        with self.assertRaises(state.CorruptStateError) as ctx:
+            state.load_jsonl_documents_strict(jsonl_path)
+        self.assertEqual(ctx.exception.line_number, 2)
+
+        jsonl_path.write_text('{"a":1}\n["skip"]\n', encoding="utf-8")
+        with self.assertRaises(state.CorruptStateError) as ctx:
+            state.load_jsonl_documents_strict(jsonl_path)
+        self.assertEqual(ctx.exception.line_number, 2)
+        self.assertIn("expected JSON object", ctx.exception.reason)
+
+    def test_best_effort_loaders_log_warning_on_corruption(self) -> None:
+        document_path = self.root / "tmp" / "warn.json"
+        document_path.parent.mkdir(parents=True, exist_ok=True)
+        document_path.write_text("{bad json", encoding="utf-8")
+        with self.assertLogs("aiwiki.app_state", level="WARNING") as cm:
+            self.assertEqual(state.load_json_document(document_path), {})
+        self.assertTrue(any("corrupt JSON state" in msg for msg in cm.output))
+
+        jsonl_path = self.root / "tmp" / "warn.jsonl"
+        jsonl_path.write_text('{"a":1}\nnot-json\n["skip"]\n{"b":2}\n', encoding="utf-8")
+        with self.assertLogs("aiwiki.app_state", level="WARNING") as cm:
+            result = state.load_jsonl_documents(jsonl_path)
+        self.assertEqual(result, [{"a": 1}, {"b": 2}])
+        joined = "\n".join(cm.output)
+        self.assertIn("corrupt JSONL line", joined)
+        self.assertIn("non-object JSONL record", joined)
+
+    def test_load_json_document_returns_empty_when_top_level_not_object(self) -> None:
+        document_path = self.root / "tmp" / "nonobject.json"
+        document_path.parent.mkdir(parents=True, exist_ok=True)
+        document_path.write_text('["a", "b"]', encoding="utf-8")
+        with self.assertLogs("aiwiki.app_state", level="WARNING") as cm:
+            self.assertEqual(state.load_json_document(document_path), {})
+        self.assertTrue(any("non-object JSON top-level" in msg for msg in cm.output))
+
+    def test_append_runtime_history_writes_universal_audit(self) -> None:
+        event = {
+            "event_type": "nightly",
+            "recorded_at": "2026-04-26T10:02:00+00:00",
+            "trace_id": "trace-runtime",
+            "protocol": "research",
+        }
+
+        state.append_runtime_history(self.root, event)
+        state.append_runtime_history(self.root, event)
+
+        history_lines = (self.root / ".aiwiki/state/runtime-history.jsonl").read_text(encoding="utf-8").splitlines()
+        audit_records = [
+            json.loads(line)
+            for line in (self.root / ".aiwiki/state/audit.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        history_records = [json.loads(line) for line in history_lines if line.strip()]
+        self.assertEqual(history_records, [event, event])
+        self.assertEqual(len(audit_records), 2)
+        self.assertEqual(audit_records[0]["source_stream"], "runtime_history")
+        self.assertEqual(audit_records[0]["source_ref"], ".aiwiki/state/runtime-history.jsonl#L1")
+        self.assertEqual(audit_records[0]["event_type"], "nightly")
+        self.assertEqual(audit_records[0]["occurred_at"], "2026-04-26T10:02:00+00:00")
+        self.assertEqual(audit_records[0]["trace_id"], "trace-runtime")
+        self.assertEqual(audit_records[0]["subject"], {"kind": "nightly", "id": ""})
+        self.assertFalse(audit_records[0]["revert_supported"])
+        self.assertEqual(audit_records[1]["source_ref"], ".aiwiki/state/runtime-history.jsonl#L2")
+
+    def test_append_runtime_history_propagates_fsync_failure(self) -> None:
+        event = {
+            "event_type": "review",
+            "occurred_at": "2026-04-27T00:00:00Z",
+            "protocol": "general",
+        }
+        with mock.patch.object(os, "fsync", side_effect=OSError("fsync failed")):
+            with self.assertRaises(OSError):
+                state.append_runtime_history(self.root, event)
 
     def test_build_state_loaders_normalize_and_fallback(self) -> None:
         self._write_json(
@@ -393,6 +497,13 @@ class AppUtilsTests(unittest.TestCase):
         self.assertEqual(utils.raw_note_metadata(note)["note_kind"], "transcript")
         self.assertEqual(utils.raw_note_metadata(image_path), {})
 
+    def test_parse_iso_datetime_accepts_z_suffix(self) -> None:
+        parsed = utils.parse_iso_datetime("2025-01-01T00:00:00Z")
+        self.assertIsNotNone(parsed)
+        assert parsed is not None
+        self.assertEqual(parsed.tzinfo.utcoffset(None).total_seconds(), 0)
+        self.assertEqual(parsed.isoformat(), "2025-01-01T00:00:00+00:00")
+
     def test_frontmatter_section_and_path_helpers(self) -> None:
         self.assertEqual(utils.parse_scalar('"hello"'), "hello")
         self.assertEqual(utils.parse_scalar('"broken'), '"broken')
@@ -510,7 +621,7 @@ class AppUtilsTests(unittest.TestCase):
         self.assertIn("\\u003c", safe_literal)
         self.assertIn("\\u0026", safe_literal)
         self.assertIn("\\u2028", safe_literal)
-        self.assertEqual(utils.tokenize("The fast latency and ops pipeline"), ["the", "fast", "latency", "and", "ops", "pipeline"])
+        self.assertEqual(utils.tokenize("The fast latency and ops pipeline"), ["latency", "ops", "pipeline"])
 
 
 if __name__ == "__main__":

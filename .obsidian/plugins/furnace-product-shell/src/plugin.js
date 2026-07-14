@@ -4,7 +4,10 @@
 module.exports = class FurnaceProductShellPlugin extends Plugin {
   async onload() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS);
-    this.pluginState = { recentRuns: [], llmHealth: null };
+    this.pluginState = { recentRuns: [] };
+    this.pendingSubmissions = []; // R89: 持久化 + runtime; status: running | received | done | failed | degraded; { id, payloadFingerprint, displayText, status, startedAt, finishedAt, error, reconcileTarget }
+    this.longRunningPollTimer = null;
+    this.longRunningPollRefreshInFlight = false;
     this.shellSummary = null;
     this.repoState = { valid: false, root: "", launcherPath: "", missingPaths: ["vault-root"] };
     this.openViews = new Set();
@@ -12,6 +15,9 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
     await this.loadPluginState();
     this.refreshRepoState();
+    if (typeof this.syncEvidenceGraphConfig === "function") {
+      void this.syncEvidenceGraphConfig({ quiet: true }).catch(() => {});
+    }
 
     this.registerView(VIEW_TYPE_FURNACE_CENTER, (leaf) => new FurnaceCenterView(leaf, this));
     this.registerView(VIEW_TYPE_RECENT_RUNS, (leaf) => new RecentRunsView(leaf, this));
@@ -40,10 +46,13 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     }));
 
     await this.loadShellSummaryFromDisk();
+    this.updateLongRunningPoller();
+
     this.updateStatusBar();
   }
 
   async onunload() {
+    this.stopLongRunningPoller();
     this.openViews.clear();
   }
 
@@ -55,61 +64,14 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         this.runUiAction(() => this.openFurnaceCenterView(), this.t("Open Furnace"));
       },
     });
-    this.addCommand({
-      id: "run-compile",
-      name: this.t("Compile"),
-      callback: () => {
-        this.runUiAction(() => this.runCompileCommand(), this.t("Compile"));
-      },
-    });
-    this.addCommand({
-      id: "run-ask",
-      name: this.t("Ask"),
-      callback: () => {
-        new AskCommandModal(this.app, this).open();
-      },
-    });
-    this.addCommand({
-      id: "capture-note",
-      name: this.t("Capture Note"),
-      callback: () => {
-        new CaptureNoteModal(this.app, this).open();
-      },
-    });
-    this.addCommand({
-      id: "drop-url",
-      name: this.t("Drop URL"),
-      callback: () => {
-        new DropUrlModal(this.app, this).open();
-      },
-    });
-    this.addCommand({
-      id: "drop-file",
-      name: this.t("Drop File"),
-      callback: () => {
-        new DropFileModal(this.app, this).open();
-      },
-    });
-    this.addCommand({
-      id: "drop-image",
-      name: this.t("Drop Image"),
-      callback: () => {
-        new DropImageModal(this.app, this).open();
-      },
-    });
-    this.addCommand({
-      id: "search-workspace",
-      name: this.t("Search Workspace"),
-      callback: () => {
-        new SearchCommandModal(this.app, this).open();
-      },
-    });
   }
 
   registerAdvancedCommands() {
     if (!this.settings.showAdvancedCommands) {
       return;
     }
+    // EP-005: kept for backward compatibility — these views can still be opened individually,
+    // but Furnace Center now also surfaces a unified activity timeline.
     this.addCommand({
       id: "open-recent-runs",
       name: this.t("Open Recent Runs"),
@@ -138,132 +100,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         this.runUiAction(() => this.refreshShellSummaryCommand(), this.t("Refresh Furnace Shell"));
       },
     });
-    this.addCommand({
-      id: "run-nightly",
-      name: this.t("Nightly"),
-      callback: () => {
-        this.runUiAction(() => this.runNightlyCommand(), this.t("Nightly"));
-      },
-    });
-    this.addCommand({
-      id: "set-protocol",
-      name: this.t("Set Protocol"),
-      callback: () => {
-        new ProtocolCommandModal(this.app, this).open();
-      },
-    });
-    this.addCommand({
-      id: "file-back",
-      name: this.t("File Back"),
-      callback: () => {
-        this.openFileBackModal();
-      },
-    });
-    this.addCommand({
-      id: "review-page",
-      name: this.t("Review Page"),
-      callback: () => {
-        this.openReviewPageContextPicker();
-      },
-    });
-    this.addCommand({
-      id: "review-next-page",
-      name: this.t("Review Next Page"),
-      callback: () => {
-        this.openReviewNextTransitionPicker();
-      },
-    });
-    this.addCommand({
-      id: "batch-review-pages",
-      name: this.t("Batch Review Pages"),
-      callback: () => {
-        this.openReviewBatchSuggestionPicker();
-      },
-    });
-    this.addCommand({
-      id: "review-rewrite",
-      name: this.t("Review Rewrite"),
-      callback: () => {
-        this.openReviewRewriteContextPicker();
-      },
-    });
-    this.addCommand({
-      id: "apply-rewrite",
-      name: this.t("Apply Rewrite"),
-      callback: () => {
-        this.openApplyRewriteModal();
-      },
-    });
-    this.addCommand({
-      id: "retire-concept",
-      name: this.t("Retire Concept"),
-      callback: () => {
-        this.openRetireConceptModal();
-      },
-    });
-    this.addCommand({
-      id: "reactivate-concept",
-      name: this.t("Reactivate Concept"),
-      callback: () => {
-        this.openReactivateConceptModal();
-      },
-    });
-    this.addCommand({
-      id: "apply-archive",
-      name: this.t("Apply archive"),
-      callback: () => {
-        this.openApplyArchiveContextPicker();
-      },
-    });
-    this.addCommand({
-      id: "revert-archive",
-      name: this.t("Revert archive"),
-      callback: () => {
-        this.openRevertArchiveContextPicker();
-      },
-    });
-    this.addCommand({
-      id: "review-action",
-      name: this.t("Review Action"),
-      callback: () => {
-        this.openReviewActionContextPicker();
-      },
-    });
-    this.addCommand({
-      id: "apply-action",
-      name: this.t("Apply Action"),
-      callback: () => {
-        this.openApplyActionContextPicker();
-      },
-    });
-    this.addCommand({
-      id: "revert-action",
-      name: this.t("Revert Action"),
-      callback: () => {
-        this.openRevertActionContextPicker();
-      },
-    });
-    this.addCommand({
-      id: "apply-all-accepted-low-risk",
-      name: this.t("Apply All Accepted Low-Risk Actions"),
-      callback: () => {
-        this.runUiAction(() => this.runApplyAllAcceptedLowRiskCommand(), this.t("Apply All Accepted Low-Risk Actions"));
-      },
-    });
-    this.addCommand({
-      id: "revert-last-action-batch",
-      name: this.t("Revert Last Action Batch"),
-      callback: () => {
-        this.runUiAction(() => this.runRevertLastBatchCommand(), this.t("Revert Last Action Batch"));
-      },
-    });
-    this.addCommand({
-      id: "open-home-note",
-      name: this.t("Open Home Note"),
-      callback: () => {
-        this.runUiAction(() => this.openHomeNote(), this.t("Open Home Note"));
-      },
-    });
   }
 
   registerOpenView(view) {
@@ -283,54 +119,30 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async loadPluginState() {
-    const data = (await this.loadData()) || {};
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, data.settings || {});
-    this.settings.locale = normalizeLocale(this.settings.locale);
-    const recentRuns = Array.isArray(data.recentRuns)
-      ? data.recentRuns
-        .filter((record) => record && typeof record === "object")
-        .map((record) => ({
-          ...record,
-          argv: Array.isArray(record.argv) ? record.argv.map((value) => String(value || "")) : [],
-          command: String(record.command || (Array.isArray(record.argv) && record.argv.length ? record.argv[0] : "")),
-          protocol: String(record.protocol || ""),
-          backend: String(record.backend || ""),
-          model: String(record.model || ""),
-          codexReasoningEffort: String(record.codexReasoningEffort || ""),
-          promptProfile: String(record.promptProfile || ""),
-          retryPromptProfile: String(record.retryPromptProfile || ""),
-          rewriteProposalPaths: this.normalizeRelativePathList(record.rewriteProposalPaths),
-          rewriteProposalSlugs: this.normalizeRelativePathList(record.rewriteProposalSlugs),
-          fallbackFrom: String(record.fallbackFrom || ""),
-          logPath: String(record.logPath || ""),
-          stdoutRaw: this.trimDiagnosticText(record.stdoutRaw || ""),
-          stderrRaw: this.trimDiagnosticText(record.stderrRaw || ""),
-          exitCode: record.exitCode === 0 || Number.isFinite(Number(record.exitCode || NaN))
-            ? Number(record.exitCode)
-            : "",
-          timeline: Array.isArray(record.timeline)
-            ? record.timeline
-              .filter((event) => event && typeof event === "object")
-              .map((event) => ({
-                stage: String(event.stage || ""),
-                at: String(event.at || ""),
-                summary: String(event.summary || ""),
-                status: String(event.status || ""),
-              }))
-            : [],
-        }))
-      : [];
-    const llmHealth = this.normalizeLlmHealthState(data.llmHealth) || this.inferLlmHealthFromRecentRuns(recentRuns);
-    this.pluginState = { recentRuns, llmHealth };
-    this.trimRecentRuns();
+    return loadProductShellPluginState(this);
   }
 
   async savePluginState() {
-    await this.saveData({
-      settings: this.settings,
-      recentRuns: this.pluginState.recentRuns,
-      llmHealth: this.pluginState.llmHealth,
-    });
+    return saveProductShellPluginState(this);
+  }
+
+  getAdvancedSectionExpanded(key) {
+    return getProductShellAdvancedSectionExpanded(this, key);
+  }
+
+  async setAdvancedSectionExpanded(key, value) {
+    return setProductShellAdvancedSectionExpanded(this, key, value);
+  }
+
+  // R89: 持久化 pending（运行时不变；只在 save 时序列化）
+  serializePendingSubmissions() {
+    return serializePendingSubmissionList(this.pendingSubmissions);
+  }
+
+  // R89: 启动时从持久化 settings hydrate；超过 TTL 24h 的 running/received → failed
+  // R90: done 状态加 7 天 TTL（避免无限堆积）
+  hydratePendingSubmissions(raw) {
+    return hydratePendingSubmissionList(raw);
   }
 
   trimRecentRuns() {
@@ -338,477 +150,75 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     this.pluginState.recentRuns = this.pluginState.recentRuns.slice(0, limit);
   }
 
-  trimDiagnosticText(value, limit = 16000) {
-    const text = String(value || "");
-    if (!text) {
-      return "";
-    }
-    if (text.length <= limit) {
-      return text;
-    }
-    return `${text.slice(0, limit)}\n...[truncated]`;
-  }
-
   normalizeLlmHealthState(value) {
-    if (!value || typeof value !== "object") {
-      return null;
-    }
-    const status = String(value.status || "").trim() || "unknown";
-    return {
-      status,
-      backend: String(value.backend || "").trim(),
-      model: String(value.model || "").trim(),
-      reason: String(value.reason || "").trim(),
-      checkedAt: String(value.checkedAt || "").trim(),
-      source: String(value.source || "").trim(),
-      fallbackCommand: String(value.fallbackCommand || "").trim(),
-      logPath: String(value.logPath || "").trim(),
-      resultPath: String(value.resultPath || "").trim(),
-      receiptPath: String(value.receiptPath || "").trim(),
-      stderrSummary: String(value.stderrSummary || "").trim(),
-      stderrRaw: this.trimDiagnosticText(value.stderrRaw || ""),
-    };
-  }
-
-  isLlmRelevantRecord(record) {
-    if (!record || typeof record !== "object") {
-      return false;
-    }
-    const command = String(record.command || "").trim();
-    return command === "run-ask" || String(record.fallbackFrom || "").trim() === "run-ask";
-  }
-
-  inferLlmHealthFromRecentRuns(records = []) {
-    const recentRuns = Array.isArray(records) ? records : [];
-    for (const record of recentRuns) {
-      if (!this.isLlmRelevantRecord(record)) {
-        continue;
-      }
-      const command = String(record.command || "").trim();
-      if (command === "run-ask" && record.status === "success") {
-        return this.normalizeLlmHealthState({
-          status: "healthy",
-          backend: record.backend,
-          model: record.model,
-          reason: "Recent run-ask succeeded.",
-          checkedAt: record.finishedAt || record.startedAt,
-          source: command,
-          logPath: record.logPath,
-          resultPath: record.resultPath,
-          receiptPath: record.receiptPath,
-        });
-      }
-      if (command === "run-ask" && record.status === "failed" && this.llmBackendUnavailable(record.errorSummary || record.stderrSummary || "")) {
-        return this.normalizeLlmHealthState({
-          status: "degraded",
-          backend: record.backend,
-          model: record.model,
-          reason: record.errorSummary || record.stderrSummary || "Recent run-ask fell back to deterministic ask.",
-          checkedAt: record.finishedAt || record.startedAt,
-          source: command,
-          fallbackCommand: "ask",
-          logPath: record.logPath,
-          stderrSummary: record.stderrSummary,
-          stderrRaw: record.stderrRaw,
-        });
-      }
-      if (command === "ask" && String(record.fallbackFrom || "").trim() === "run-ask") {
-        return this.normalizeLlmHealthState({
-          status: "degraded",
-          backend: record.backend,
-          model: record.model,
-          reason: "Recent run-ask fell back to deterministic ask.",
-          checkedAt: record.finishedAt || record.startedAt,
-          source: "run-ask",
-          fallbackCommand: command,
-          logPath: record.logPath,
-          resultPath: record.resultPath,
-        });
-      }
-    }
-    return null;
+    return normalizeLlmHealthState(this, value);
   }
 
   currentLlmHealth() {
-    const llmStatus = this.shellSummary && typeof this.shellSummary === "object" ? this.shellSummary.llm_status || {} : {};
-    const selected = this.currentLlmSelection();
-    const persisted = this.normalizeLlmHealthState(this.pluginState.llmHealth);
-    const inferred = this.inferLlmHealthFromRecentRuns(this.pluginState.recentRuns);
-    let health = inferred || persisted || {
-      status: "unknown",
-      backend: selected.backend || String(llmStatus.backend || ""),
-      model: selected.model || String(llmStatus.effective_model || llmStatus.model || ""),
-      reason: llmStatus.configured ? "No recent LLM health check yet." : "LLM is not configured.",
-      checkedAt: "",
-      source: "",
-      fallbackCommand: "",
-      logPath: "",
-      resultPath: "",
-      receiptPath: "",
-      stderrSummary: "",
-      stderrRaw: "",
-    };
-    if (health.backend && selected.backend && health.backend !== selected.backend) {
-      health = {
-        ...health,
-        status: "unknown",
-        backend: selected.backend,
-        model: selected.model || health.model,
-        reason: "Current route changed since the last recorded ask.",
-        fallbackCommand: "",
-      };
-    }
-    return {
-      ...health,
-      backend: health.backend || selected.backend || String(llmStatus.backend || ""),
-      model: health.model || selected.model || String(llmStatus.effective_model || llmStatus.model || ""),
-    };
+    return currentLlmHealth(this);
   }
 
   latestLlmRun() {
-    return this.pluginState.recentRuns.find((record) => this.isLlmRelevantRecord(record)) || null;
-  }
-
-  latestShellSyncRun() {
-    return this.pluginState.recentRuns.find((record) => record && record.command === "shell-status") || null;
+    return latestLlmRun(this);
   }
 
   currentShellSyncState() {
-    const runningRecord = this.pluginState.recentRuns.find((record) => record && record.command === "shell-status" && record.status === "running");
-    if (runningRecord) {
-      return {
-        status: "running",
-        reason: this.t("Refreshing shell summary."),
-        checkedAt: runningRecord.startedAt || "",
-        logPath: runningRecord.logPath || "",
-      };
-    }
-    const latestRecord = this.latestShellSyncRun();
-    if (latestRecord && latestRecord.status === "failed") {
-      return {
-        status: "failed",
-        reason: latestRecord.errorSummary || this.t("Latest refresh failed."),
-        checkedAt: latestRecord.finishedAt || latestRecord.startedAt || "",
-        logPath: latestRecord.logPath || "",
-      };
-    }
-    if (!this.shellSummary) {
-      return {
-        status: "unknown",
-        reason: this.t("shell-summary.json has not been generated yet. Run Refresh, Compile, or Nightly first."),
-        checkedAt: "",
-        logPath: latestRecord && latestRecord.logPath ? latestRecord.logPath : "",
-      };
-    }
-    return {
-      status: "healthy",
-      reason: this.t("Summary ready."),
-      checkedAt: String(this.shellSummary.generated_at || (latestRecord && (latestRecord.finishedAt || latestRecord.startedAt)) || ""),
-      logPath: latestRecord && latestRecord.logPath ? latestRecord.logPath : "",
-    };
-  }
-
-  parseTimestampMs(value) {
-    const timestamp = Date.parse(String(value || ""));
-    return Number.isFinite(timestamp) ? timestamp : NaN;
+    return currentShellSyncState(this);
   }
 
   selfCheckItems() {
-    const llmStatus = this.shellSummary && typeof this.shellSummary === "object" ? this.shellSummary.llm_status || {} : {};
-    const health = this.currentLlmHealth();
-    const latestLlmRun = this.latestLlmRun();
-    const availableBackends = Array.isArray(llmStatus.available_backends) ? llmStatus.available_backends.filter(Boolean) : [];
-    const requestedBackend = String(llmStatus.backend_requested || this.settings.llmBackend || "").trim();
-    const effectiveBackend = String(llmStatus.backend || "").trim();
-    const selected = this.currentLlmSelection();
-    const summaryTimestamp = this.parseTimestampMs(this.shellSummary && this.shellSummary.generated_at);
-    const summaryAgeMs = Number.isFinite(summaryTimestamp) ? Date.now() - summaryTimestamp : NaN;
-    const items = [];
-
-    items.push({
-      key: "runtime",
-      status: this.repoState.valid ? "healthy" : "failed",
-      title: "Runtime contract",
-      detail: this.repoState.valid
-        ? this.t("launcher {launcher} · root {root}", { launcher: this.settings.launcherPath || "", root: this.repoState.root || "" })
-        : this.t("Missing runtime paths: {missing}", { missing: this.repoState.missingPaths.join(", ") }),
-    });
-
-    if (!this.shellSummary) {
-      items.push({
-        key: "summary",
-        status: "failed",
-        title: "Shell summary",
-        detail: this.t("shell-summary.json has not been generated yet. Run Refresh, Compile, or Nightly first."),
-      });
-    } else {
-      items.push({
-        key: "summary",
-        status: Number.isFinite(summaryAgeMs) && summaryAgeMs > 15 * 60 * 1000 ? "warning" : "healthy",
-        title: "Shell summary",
-        detail: Number.isFinite(summaryAgeMs) && summaryAgeMs > 15 * 60 * 1000
-          ? this.t("Summary is stale; refresh before trusting the home surface.")
-          : this.t("Generated {time}", { time: String(this.shellSummary.generated_at || "") }),
-      });
-    }
-
-    items.push({
-      key: "route",
-      status: requestedBackend && effectiveBackend && (!availableBackends.length || availableBackends.includes(effectiveBackend)) ? "healthy" : "failed",
-      title: "LLM route",
-      detail: this.t("requested {requested} · effective {effective} · available {available}", {
-        requested: requestedBackend || this.t("unconfigured"),
-        effective: effectiveBackend || this.t("unconfigured"),
-        available: availableBackends.length ? availableBackends.join(", ") : this.t("none"),
-      }),
-    });
-
-    if (!requestedBackend) {
-      items.push({
-        key: "backend-discovery",
-        status: "warning",
-        title: "Backend discovery",
-        detail: this.t("No explicit LLM backend is selected. Choose one in Product Shell settings or set AIWIKI_LLM_BACKEND."),
-      });
-    } else {
-      const backendVisible = availableBackends.includes(requestedBackend);
-      items.push({
-        key: "backend-discovery",
-        status: backendVisible ? "healthy" : "warning",
-        title: "Backend discovery",
-        detail: backendVisible
-          ? this.t("Product Shell runtime can see the selected backend {backend}.", { backend: requestedBackend })
-          : this.t("Product Shell runtime cannot see the selected backend {backend}.", { backend: requestedBackend }),
-      });
-    }
-
-    if (!latestLlmRun) {
-      items.push({
-        key: "latest-ask",
-        status: "unknown",
-        title: "Latest ask execution",
-        detail: this.t("No Product Shell ask has been recorded yet."),
-      });
-    } else {
-      const latestStatus = latestLlmRun.status === "success"
-        ? "healthy"
-        : String(latestLlmRun.fallbackFrom || "").trim() === "run-ask"
-          ? "warning"
-          : "failed";
-      const latestDetail = latestStatus === "healthy"
-        ? this.t("Latest run-ask succeeded.")
-        : latestStatus === "warning"
-          ? this.t("Latest run-ask fell back to deterministic ask.")
-          : this.t("Latest run-ask failed without deterministic fallback.");
-      items.push({
-        key: "latest-ask",
-        status: latestStatus,
-        title: "Latest ask execution",
-        detail: `${latestDetail} ${latestLlmRun.errorSummary || latestLlmRun.resultPath || ""}`.trim(),
-      });
-    }
-
-    if (latestLlmRun && latestLlmRun.backend && selected.backend && latestLlmRun.backend !== selected.backend) {
-      items.push({
-        key: "route-drift",
-        status: "warning",
-        title: "Route drift",
-        detail: this.t("Latest Product Shell ask used {latest}; current route is {current}.", {
-          latest: latestLlmRun.backend,
-          current: selected.backend,
-        }),
-      });
-    } else {
-      items.push({
-        key: "route-drift",
-        status: "healthy",
-        title: "Route drift",
-        detail: this.t("Product Shell ask history matches the current route."),
-      });
-    }
-
-    if (health.status === "degraded" || health.status === "failed") {
-      items.push({
-        key: "health",
-        status: "warning",
-        title: "LLM health",
-        detail: health.reason || this.t("Recent run-ask fell back to deterministic ask."),
-      });
-    }
-
-    return items;
+    return selfCheckItems(this);
   }
 
   updateLlmHealth(nextState) {
-    this.pluginState.llmHealth = this.normalizeLlmHealthState(nextState);
-    this.updateStatusBar();
-    this.refreshOpenViews();
-    void this.savePluginState();
+    return updateLlmHealth(this, nextState);
   }
 
   recordLlmHealthFromRun(record, overrides = {}) {
-    if (!record || typeof record !== "object") {
-      return;
-    }
-    this.updateLlmHealth({
-      status: overrides.status || "unknown",
-      backend: overrides.backend || record.backend,
-      model: overrides.model || record.model,
-      reason: overrides.reason || record.errorSummary || "",
-      checkedAt: overrides.checkedAt || record.finishedAt || record.startedAt || new Date().toISOString(),
-      source: overrides.source || record.command || "",
-      fallbackCommand: overrides.fallbackCommand || record.fallbackFrom || "",
-      logPath: overrides.logPath || record.logPath || "",
-      resultPath: overrides.resultPath || record.resultPath || "",
-      receiptPath: overrides.receiptPath || record.receiptPath || "",
-      stderrSummary: overrides.stderrSummary || record.stderrSummary || "",
-      stderrRaw: overrides.stderrRaw || record.stderrRaw || "",
-    });
+    return recordLlmHealthFromRun(this, record, overrides);
   }
 
-  launcherIsExecutable(launcherPath) {
-    if (!launcherPath || !fs.existsSync(launcherPath)) {
-      return false;
-    }
-    try {
-      fs.accessSync(launcherPath, fs.constants.X_OK);
-      return true;
-    } catch (error) {
-      return false;
-    }
-  }
+  refreshRepoState() { this.repoState = refreshRepoState(this); this.updateStatusBar(); this.refreshOpenViews(); }
 
-  refreshRepoState() {
-    const adapter = this.app.vault && this.app.vault.adapter;
-    const root = adapter && typeof adapter.basePath === "string" ? adapter.basePath : "";
-    const launcherPath = this.resolveLauncherPath(root);
-    const missingPaths = [];
-    if (!root) {
-      missingPaths.push("vault-root");
-    } else {
-      [
-        "raw",
-        "wiki",
-        "schema",
-        "output",
-        ".aiwiki",
-      ].forEach((relativePath) => {
-        if (!fs.existsSync(path.join(root, relativePath))) {
-          missingPaths.push(relativePath);
-        }
-      });
-      if (!this.launcherIsExecutable(launcherPath)) {
-        missingPaths.push(this.settings.launcherPath);
-      }
-    }
-    this.repoState = {
-      valid: missingPaths.length === 0,
-      root,
-      launcherPath,
-      missingPaths,
-    };
-    this.updateStatusBar();
-    this.refreshOpenViews();
-  }
-
-  resolveLauncherPath(root) {
-    const launcherPath = String(this.settings.launcherPath || DEFAULT_SETTINGS.launcherPath).trim();
-    if (!root || !launcherPath) {
-      return "";
-    }
-    if (path.isAbsolute(launcherPath)) {
-      return launcherPath;
-    }
-    return path.join(root, launcherPath);
-  }
 
   getActiveProtocol() {
-    return String(this.shellSummary && this.shellSummary.active_protocol ? this.shellSummary.active_protocol : "general");
+    return getActiveProtocolFromSummary(this.shellSummary);
   }
 
   getAvailableProtocols() {
-    const fromSummary = this.shellSummary && Array.isArray(this.shellSummary.available_protocols)
-      ? this.shellSummary.available_protocols.filter((item) => typeof item === "string" && item)
-      : [];
-    return fromSummary.length ? fromSummary : DEFAULT_PROTOCOLS;
+    return getAvailableProtocolsFromSummary(this.shellSummary);
   }
 
   getActiveFilePath() {
-    const activeFile = this.app.workspace.getActiveFile ? this.app.workspace.getActiveFile() : null;
-    return activeFile && typeof activeFile.path === "string" ? activeFile.path : "";
+    return getActiveFilePathFromApp(this.app);
   }
 
   getActiveConceptSlug() {
-    const activePath = this.getActiveFilePath();
-    if (!activePath.startsWith("wiki/concepts/") || !activePath.endsWith(".md")) {
-      return "";
-    }
-    return path.basename(activePath, ".md");
+    return getConceptSlugForPath(this.getActiveFilePath());
   }
 
   getActiveOutputPath() {
-    const activePath = this.getActiveFilePath();
-    if (activePath.startsWith("output/") && activePath.endsWith(".md")) {
-      return activePath;
-    }
-    return "";
+    return getOutputPathForPath(this.getActiveFilePath());
   }
 
   getActiveCuratedPagePath() {
-    const activePath = this.getActiveFilePath();
-    if (
-      activePath.endsWith(".md")
-      && (activePath.startsWith("wiki/decisions/") || activePath.startsWith("wiki/judgments/"))
-    ) {
-      return activePath;
-    }
-    return "";
+    return getCuratedPagePathForSummary(this.getActiveFilePath(), this.shellSummary);
   }
 
-  appendOptionalArg(args, flag, value) {
-    const normalized = String(value || "").trim();
-    if (!normalized) {
-      return args;
-    }
-    args.push(flag, normalized);
-    return args;
+  normalizeRewriteProposalObjects(value) {
+    return normalizeRewriteProposalObjects(value);
   }
 
-  parseLineList(value) {
-    return Array.from(
-      new Set(
-        String(value || "")
-          .split(/\r?\n/)
-          .map((item) => String(item || "").trim())
-          .filter(Boolean)
-      )
-    );
+  normalizeRewriteFollowupActions(value) {
+    return normalizeRewriteFollowupActions(value);
   }
 
-  normalizeRelativePathList(value) {
-    const items = Array.isArray(value) ? value : [value];
-    return Array.from(
-      new Set(
-        items
-          .map((item) => String(item || "").trim())
-          .filter(Boolean)
-      )
-    );
-  }
-
-  extractRewriteProposalPaths(payload) {
-    if (!payload || typeof payload !== "object") {
-      return [];
-    }
-    return this.normalizeRelativePathList(payload.updated_rewrite_proposal_pages);
-  }
-
-  extractRewriteProposalSlugs(paths) {
-    return this.normalizeRelativePathList(paths).map((proposalPath) => path.basename(proposalPath, ".md"));
+  rewriteProposalPathsFromObjects(objects) {
+    return rewriteProposalPathsFromObjects(objects);
   }
 
   rewriteCandidatesForSlugs(slugs, mode = "review") {
-    const normalized = new Set(this.normalizeRelativePathList(slugs));
+    const normalized = new Set(normalizeRelativePathList(slugs));
     if (!normalized.size) {
       return [];
     }
@@ -816,29 +226,11 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   rewriteProposalSummary(record) {
-    const count = Array.isArray(record && record.rewriteProposalPaths) ? record.rewriteProposalPaths.length : 0;
-    if (!count) {
-      return "";
-    }
-    return this.t("rewrite proposals: {count}", { count });
+    return rewriteProposalSummary(this, record);
   }
 
-  openRewriteRecovery(record) {
-    const rewriteControls = this.rewriteCandidatesForSlugs(record && record.rewriteProposalSlugs, "review");
-    if (rewriteControls.length === 1) {
-      this.openReviewRewriteTransitionPicker(rewriteControls[0]);
-      return;
-    }
-    if (rewriteControls.length > 1) {
-      this.openReviewRewriteContextPicker(rewriteControls);
-      return;
-    }
-    const rewriteSlugs = this.normalizeRelativePathList(record && record.rewriteProposalSlugs);
-    if (rewriteSlugs.length === 1) {
-      this.openReviewRewriteModal({ slug: rewriteSlugs[0] });
-      return;
-    }
-    this.runUiAction(() => this.openReviewCenterView(), this.t("Open Review Center"));
+  openRewriteFollowup(record) {
+    return openRewriteFollowupForRecord(this, record);
   }
 
   openStructuredCommandModal(spec) {
@@ -850,73 +242,19 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   controlIdSet(key) {
-    const executionControls = this.shellSummary && typeof this.shellSummary === "object"
-      ? this.shellSummary.execution_controls
-      : null;
-    const values = executionControls && Array.isArray(executionControls[key]) ? executionControls[key] : [];
-    return new Set(values.map((item) => String(item || "").trim()).filter(Boolean));
+    return controlIdSet(this, key);
   }
 
   reviewControlList(key) {
-    const reviewControls = this.shellSummary && typeof this.shellSummary === "object"
-      ? this.shellSummary.review_controls
-      : null;
-    return reviewControls && Array.isArray(reviewControls[key]) ? reviewControls[key] : [];
+    return reviewControlList(this, key);
   }
 
   executionControlList(key) {
-    const executionControls = this.shellSummary && typeof this.shellSummary === "object"
-      ? this.shellSummary.execution_controls
-      : null;
-    return executionControls && Array.isArray(executionControls[key]) ? executionControls[key] : [];
-  }
-
-  uniqueContextOptions(options, keyName = "value") {
-    const seen = new Set();
-    return (Array.isArray(options) ? options : []).filter((option) => {
-      if (!option || typeof option !== "object") {
-        return false;
-      }
-      const key = String(option[keyName] || option.value || option.pagePath || option.actionId || option.entryId || "").trim();
-      if (!key || seen.has(key)) {
-        return false;
-      }
-      seen.add(key);
-      return true;
-    });
-  }
-
-  inferActionIdFromReceipt(receipt) {
-    if (!receipt || typeof receipt !== "object") {
-      return "";
-    }
-    return String(receipt.action_id || "").trim();
+    return executionControlList(this, key);
   }
 
   reviewPageControlItems() {
-    const pages = this.reviewControlList("pages");
-    return this.uniqueContextOptions(
-      pages.map((page) => {
-        const kind = String(page.kind || "").trim() || "page";
-        const status = String(page.status || "").trim() || "unknown";
-        const metaText = truncateText(reviewObjectMetaText(page, this.locale()) || "review object", 180);
-        return {
-          value: page.path,
-          label: page.title || page.path || "review-page",
-          description: metaText || `${this.t(kind)} | ${displayCuratedStatus(status, this.locale())} | ${this.t("review object")}`,
-          pageId: String(page.page_id || ""),
-          pagePath: String(page.path || ""),
-          pageKind: kind,
-          currentStatus: status,
-          confidence: String(page.confidence || ""),
-          canRefreshReview: Boolean(page.can_refresh_review),
-          allowedTransitions: Array.isArray(page.allowed_transitions) ? page.allowed_transitions : [],
-          preferredTransitions: Array.isArray(page.preferred_transitions) ? page.preferred_transitions : [],
-          defaultTransition: String(page.default_transition || ""),
-        };
-      }),
-      "pagePath"
-    );
+    return reviewPageControlItems(this);
   }
 
   nextReviewCandidate() {
@@ -925,313 +263,55 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   reviewKindLabel(kind, count = 1) {
-    const normalized = String(kind || "").trim();
-    if (normalized === "decision") {
-      return count === 1 ? this.t("decision") : this.t("decisions");
-    }
-    if (normalized === "judgment") {
-      return count === 1 ? this.t("judgment") : this.t("judgments");
-    }
-    return count === 1 ? this.t("page") : this.t("pages");
+    return reviewKindLabel(this, kind, count);
   }
 
   commonReviewTransitionOptions(pages) {
-    const controls = Array.isArray(pages) ? pages.filter((page) => page && typeof page === "object") : [];
-    if (!controls.length) {
-      return [];
-    }
-    const stats = new Map();
-    controls.forEach((page) => {
-      const seen = new Set();
-      this.transitionOptions("page", page).forEach((option) => {
-        if (seen.has(option.value)) {
-          return;
-        }
-        seen.add(option.value);
-        const current = stats.get(option.value) || {
-          value: option.value,
-          label: option.label,
-          sharedCount: 0,
-          preferredCount: 0,
-          defaultCount: 0,
-        };
-        current.label = option.label;
-        current.sharedCount += 1;
-        if (option.isPreferred) {
-          current.preferredCount += 1;
-        }
-        if (option.isDefault) {
-          current.defaultCount += 1;
-        }
-        stats.set(option.value, current);
-      });
-    });
-    return Array.from(stats.values())
-      .filter((option) => option.sharedCount === controls.length)
-      .sort((left, right) => {
-        if (left.defaultCount !== right.defaultCount) {
-          return right.defaultCount - left.defaultCount;
-        }
-        if (left.preferredCount !== right.preferredCount) {
-          return right.preferredCount - left.preferredCount;
-        }
-        return String(left.label || "").localeCompare(String(right.label || ""));
-      });
+    return commonReviewTransitionOptions(this, pages);
   }
 
   reviewBatchSuggestions() {
-    const groups = new Map();
-    this.visibleReviewPageCandidates().forEach((page) => {
-      const prioritized = this.preferredTransitionOptions("page", page);
-      const selectedOptions = prioritized.length
-        ? prioritized
-        : this.transitionOptions("page", page).filter((option) => option.isDefault).slice(0, 1);
-      selectedOptions.forEach((transition) => {
-        const kind = String(page.pageKind || "page").trim() || "page";
-        const key = `${kind}::${transition.value}`;
-        const current = groups.get(key) || {
-          key,
-          kind,
-          status: transition.value,
-          transitionLabel: transition.label,
-          pages: [],
-        };
-        current.pages.push(page);
-        groups.set(key, current);
-      });
-    });
-    return Array.from(groups.values())
-      .filter((group) => group.pages.length >= 2)
-      .map((group) => {
-        const count = group.pages.length;
-        const kindLabel = this.reviewKindLabel(group.kind, count);
-        return {
-          key: group.key,
-          kind: group.kind,
-          status: group.status,
-          label: `${group.transitionLabel} · ${count} ${kindLabel}`,
-          description: `${count} ${kindLabel} ${this.t("share the recommended transition")} ${String(group.transitionLabel || "").toLowerCase()}.`,
-          pagePaths: group.pages.map((page) => page.pagePath).filter(Boolean),
-          pages: group.pages,
-          statusOptions: this.commonReviewTransitionOptions(group.pages),
-        };
-      })
-      .sort((left, right) => {
-        if (right.pagePaths.length !== left.pagePaths.length) {
-          return right.pagePaths.length - left.pagePaths.length;
-        }
-        return String(left.label || "").localeCompare(String(right.label || ""));
-      });
+    return reviewBatchSuggestions(this);
   }
 
   rewriteControlItems(mode = "review") {
-    const proposals = this.reviewControlList("rewrite_proposals");
-    return this.uniqueContextOptions(
-      proposals
-        .filter((proposal) => (mode === "apply" ? Boolean(proposal.can_apply) : Boolean(proposal.can_review)))
-        .map((proposal) => {
-          const status = String(proposal.status || "").trim() || "unknown";
-          const priority = String(proposal.priority || "").trim() || "medium";
-          return {
-            value: proposal.slug,
-            label: proposal.title || proposal.slug || "rewrite-proposal",
-            description: `${displayRewriteStatus(status, this.locale())} | ${this.t("priority")} ${priority} | ${this.t("score")} ${proposal.score || 0}`,
-            slug: String(proposal.slug || ""),
-            status,
-            currentStatus: String(proposal.current_status || status),
-            proposalPath: String(proposal.proposal_path || ""),
-            targetPath: String(proposal.target_path || ""),
-            canApply: Boolean(proposal.can_apply),
-            canRefreshReview: Boolean(proposal.can_refresh_review),
-            allowedTransitions: Array.isArray(proposal.allowed_transitions) ? proposal.allowed_transitions : [],
-            preferredTransitions: Array.isArray(proposal.preferred_transitions) ? proposal.preferred_transitions : [],
-            defaultTransition: String(proposal.default_transition || ""),
-          };
-        }),
-      "slug"
-    );
+    return rewriteControlItems(this, mode);
   }
 
   actionControlItems(mode = "review") {
-    return this.uniqueContextOptions(
-      this.executionControlList("actions")
-        .filter((action) => {
-          if (mode === "apply") {
-            return Boolean(action.can_apply);
-          }
-          if (mode === "revert") {
-            return Boolean(action.can_revert);
-          }
-          return Boolean(action.can_review);
-        })
-        .map((action) => {
-          const status = String(action.status || "").trim() || "unknown";
-          const priority = String(action.priority || "").trim() || "medium";
-          const primaryPath = String(action.primary_path || "").trim();
-          return {
-            value: action.action_id,
-            label: action.title || action.action_id || "action",
-            description: `${displayActionStatus(status, this.locale())} | ${this.t("priority")} ${priority}${primaryPath ? ` | ${primaryPath}` : ""}`,
-            actionId: String(action.action_id || ""),
-            status,
-            currentStatus: String(action.current_status || status),
-            bundlePath: String(action.bundle_path || ""),
-            canRefreshReview: Boolean(action.can_refresh_review),
-            allowedTransitions: Array.isArray(action.allowed_transitions) ? action.allowed_transitions : [],
-            preferredTransitions: Array.isArray(action.preferred_transitions) ? action.preferred_transitions : [],
-            defaultTransition: String(action.default_transition || ""),
-          };
-        }),
-      "actionId"
-    );
+    return actionControlItems(this, mode);
   }
 
   archiveControlItems(mode = "apply") {
-    return this.uniqueContextOptions(
-      this.executionControlList("archives")
-        .filter((entry) => (mode === "revert" ? Boolean(entry.can_revert) : Boolean(entry.can_apply)))
-        .map((entry) => {
-          const candidateStatus = String(entry.candidate_status || "").trim();
-          const currentTemperature = String(entry.current_temperature || "").trim();
-          return {
-            value: entry.entry_id,
-            label: entry.title || entry.entry_id || "archive-entry",
-            description: `${this.t(candidateStatus || currentTemperature || "archive")} | ${entry.source_path || ""}`,
-            entryId: String(entry.entry_id || ""),
-            allowedTransitions: Array.isArray(entry.allowed_transitions) ? entry.allowed_transitions : [],
-            preferredTransitions: Array.isArray(entry.preferred_transitions) ? entry.preferred_transitions : [],
-            defaultTransition: String(entry.default_transition || ""),
-          };
-        }),
-      "entryId"
-    );
+    return archiveControlItems(this, mode);
   }
 
   actionControlsById() {
-    const controls = this.executionControlList("actions");
-    return new Map(
-      controls
-        .filter((action) => action && typeof action === "object" && String(action.action_id || "").trim())
-        .map((action) => [String(action.action_id || "").trim(), action])
-    );
+    return actionControlsById(this);
   }
 
   archiveControlsById() {
-    const controls = this.executionControlList("archives");
-    return new Map(
-      controls
-        .filter((entry) => entry && typeof entry === "object" && String(entry.entry_id || "").trim())
-        .map((entry) => [String(entry.entry_id || "").trim(), entry])
-    );
+    return archiveControlsById(this);
   }
 
   transitionLabel(controlType, transition) {
-    if (controlType === "page") {
-      return displayCuratedStatus(transition, this.locale());
-    }
-    if (controlType === "rewrite") {
-      return displayRewriteStatus(transition, this.locale());
-    }
-    if (controlType === "action") {
-      return displayActionStatus(transition, this.locale());
-    }
-    if (controlType === "archive") {
-      return transition === "revert" ? this.t("Revert archive") : this.t("Apply archive");
-    }
-    return this.t(String(transition || "transition"));
+    return transitionLabel(this, controlType, transition);
   }
 
   transitionOptions(controlType, control) {
-    if (!control || typeof control !== "object") {
-      return [];
-    }
-    const allowed = Array.isArray(control.allowedTransitions || control.allowed_transitions)
-      ? (control.allowedTransitions || control.allowed_transitions)
-      : [];
-    const preferredSet = new Set(
-      (Array.isArray(control.preferredTransitions || control.preferred_transitions)
-        ? (control.preferredTransitions || control.preferred_transitions)
-        : []
-      ).map((item) => String(item || "").trim()).filter(Boolean)
-    );
-    const defaultTransition = String(control.defaultTransition || control.default_transition || "").trim();
-    return allowed
-      .map((value) => String(value || "").trim())
-      .filter(Boolean)
-      .map((value) => ({
-        value,
-        label: this.transitionLabel(controlType, value),
-        description: preferredSet.has(value) ? this.t("preferred transition") : this.t("allowed transition"),
-        isDefault: value === defaultTransition,
-        isPreferred: preferredSet.has(value),
-      }))
-      .sort((left, right) => {
-        if (left.isDefault !== right.isDefault) {
-          return left.isDefault ? -1 : 1;
-        }
-        if (left.isPreferred !== right.isPreferred) {
-          return left.isPreferred ? -1 : 1;
-        }
-        return String(left.label || "").localeCompare(String(right.label || ""));
-      });
+    return transitionOptions(this, controlType, control);
   }
 
   preferredTransitionOptions(controlType, control) {
-    return this.transitionOptions(controlType, control).filter((option) => option.isPreferred).slice(0, 2);
+    return preferredTransitionOptions(this, controlType, control);
   }
 
   manualReviewOption(controlType) {
-    const labelMap = {
-      page: this.t("Manual review..."),
-      rewrite: this.t("Manual rewrite review..."),
-      action: this.t("Manual action review..."),
-    };
-    return {
-      value: "__manual__",
-      label: labelMap[controlType] || this.t("Manual review..."),
-      description: this.t("keep current status and capture note / confidence in the full form"),
-      isManual: true,
-      isPreferred: false,
-      isDefault: false,
-    };
+    return manualReviewOption(this, controlType);
   }
 
   openTransitionPicker({ title, description, controlType, control, onSubmit, onFallback, onManual, emptyNotice }) {
-    const transitionOptions = this.transitionOptions(controlType, control);
-    if (!transitionOptions.length && typeof onManual !== "function") {
-      if (emptyNotice) {
-        new Notice(emptyNotice);
-      }
-      if (typeof onFallback === "function") {
-        onFallback();
-      }
-      return;
-    }
-    if (!transitionOptions.length && typeof onManual === "function") {
-      onManual();
-      return;
-    }
-    if (transitionOptions.length === 1 && typeof onManual !== "function") {
-      onSubmit(transitionOptions[0].value);
-      return;
-    }
-    const options = transitionOptions.slice();
-    if (typeof onManual === "function") {
-      options.push(this.manualReviewOption(controlType));
-    }
-    this.openContextPicker({
-      title,
-      description,
-      submitLabel: this.t("Use"),
-      options,
-      onSubmit: (option) => {
-        if (option && option.isManual && typeof onManual === "function") {
-          onManual();
-          return;
-        }
-        onSubmit(option.value);
-      },
-    });
+    return openTransitionPickerForControl(this, { title, description, controlType, control, onSubmit, onFallback, onManual, emptyNotice });
   }
 
   async runReviewPageTransition(pagePath, status) {
@@ -1246,8 +326,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       throw new Error(this.t("Batch review requires at least one page path."));
     }
     const args = ["--batch", ...normalizedPaths, "--status", status];
-    this.appendOptionalArg(args, "--note", note);
-    this.appendOptionalArg(args, "--confidence", confidence);
+    appendOptionalArg(args, "--note", note);
+    appendOptionalArg(args, "--confidence", confidence);
     await this.runCliAction(`Batch Review: ${status}`, "review-page", args);
   }
 
@@ -1276,145 +356,38 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   openContextAwareAction(spec) {
-    const options = this.uniqueContextOptions(spec.options || [], spec.keyName || "value");
-    if (!options.length) {
-      new Notice(spec.emptyNotice || this.t("No context is currently available; fell back to the manual form."));
-      spec.onFallback();
-      return;
-    }
-    if (options.length === 1) {
-      spec.onSubmit(options[0]);
-      return;
-    }
-    this.openContextPicker({
-      title: spec.title,
-      description: spec.description,
-      submitLabel: spec.submitLabel || "Use",
-      options,
-      onSubmit: spec.onSubmit,
-    });
+    return openContextAwareActionForSpec(this, spec);
   }
 
   async handleVaultChange(relativePath) {
-    if (!relativePath) {
-      return;
-    }
-    if (relativePath === SHELL_SUMMARY_PATH) {
-      await this.loadShellSummaryFromDisk();
-      return;
-    }
-    if (relativePath.startsWith("output/") || relativePath.startsWith("wiki/indexes/")) {
-      this.refreshOpenViews();
-    }
+    return handleProductShellVaultChange(this, relativePath);
+  }
+
+  async syncEvidenceGraphConfig({ quiet = true } = {}) {
+    return syncProductShellEvidenceGraphConfig(this, { quiet });
+  }
+
+  async maybeRepairEvidenceGraphFilter() {
+    return maybeRepairProductShellEvidenceGraphFilter(this);
+  }
+
+  async openEvidenceGraphView() {
+    return openProductShellEvidenceGraphView(this);
   }
 
   updateStatusBar() {
-    if (!this.statusBarItem) {
-      return;
-    }
-    const runningCount = this.pluginState.recentRuns.filter((entry) => entry.status === "running").length;
-    if (!this.repoState.valid) {
-      this.statusBarItem.setText(this.t("Furnace shell unavailable"));
-      this.statusBarItem.setAttribute("aria-label", this.t("Missing runtime paths: {missing}", { missing: this.repoState.missingPaths.join(", ") }));
-      return;
-    }
-    const protocol = this.getActiveProtocol();
-    const llmHealth = this.currentLlmHealth();
-    const syncState = this.currentShellSyncState();
-    const llmSuffix = llmHealth.status === "degraded" ? this.t(" | llm degraded") : "";
-    const syncSuffix = syncState.status === "running" ? this.t(" | syncing") : "";
-    const suffix = runningCount ? this.t(" | running {count}", { count: runningCount }) : "";
-    this.statusBarItem.setText(`${this.t("Furnace")} ${protocol}${llmSuffix}${syncSuffix}${suffix}`);
-    this.statusBarItem.setAttribute("aria-label", this.t("Furnace Product Shell active protocol {protocol}", { protocol }));
+    return updateProductShellStatusBar(this);
   }
 
   async loadShellSummaryFromDisk() {
-    if (!this.repoState.valid) {
-      this.shellSummary = null;
-      this.updateStatusBar();
-      this.refreshOpenViews();
-      return null;
-    }
-    const summaryFile = this.app.vault.getAbstractFileByPath(SHELL_SUMMARY_PATH);
-    if (!summaryFile) {
-      this.shellSummary = null;
-      this.updateStatusBar();
-      this.refreshOpenViews();
-      return null;
-    }
-    try {
-      const text = await this.app.vault.cachedRead(summaryFile);
-      this.shellSummary = readJsonText(text);
-    } catch (error) {
-      console.error("[furnace-product-shell] failed to read shell summary", error);
-      this.shellSummary = null;
-    }
-    this.updateStatusBar();
-    this.refreshOpenViews();
-    return this.shellSummary;
+    return loadProductShellSummaryFromDisk(this);
   }
 
-  async execLauncher(args) {
-    if (!this.repoState.valid) {
-      throw new Error(this.t("Missing runtime paths: {missing}", { missing: this.repoState.missingPaths.join(", ") }));
-    }
-    return await new Promise((resolve, reject) => {
-      const env = Object.assign({}, process.env);
-      if (this.settings.llmBackend) {
-        env.AIWIKI_LLM_BACKEND = this.settings.llmBackend;
-      }
-      if (this.settings.llmModel) {
-        env.AIWIKI_LLM_MODEL = this.settings.llmModel;
-      }
-      if (this.settings.llmNvidiaNimApiKey) {
-        env.AIWIKI_NVIDIA_NIM_API_KEY = this.settings.llmNvidiaNimApiKey;
-      }
-      if (this.settings.llmNvidiaNimBaseUrl) {
-        env.AIWIKI_NVIDIA_NIM_BASE_URL = this.settings.llmNvidiaNimBaseUrl;
-      }
-      const child = spawn(this.repoState.launcherPath, args, {
-        cwd: this.repoState.root,
-        env,
-      });
-      let stdout = "";
-      let stderr = "";
-      child.stdout.on("data", (chunk) => {
-        stdout += String(chunk);
-      });
-      child.stderr.on("data", (chunk) => {
-        stderr += String(chunk);
-      });
-      child.on("error", (error) => {
-        reject(error);
-      });
-      child.on("close", (code) => {
-        let payload = null;
-        try {
-          payload = readJsonText(stdout);
-        } catch (error) {
-          payload = null;
-        }
-        if (code === 0) {
-          resolve({ stdout, stderr, payload, code });
-          return;
-        }
-        const error = new Error(stderr.trim() || stdout.trim() || this.t("Command failed with exit code {code}", { code }));
-        error.code = code;
-        error.stdout = stdout;
-        error.stderr = stderr;
-        error.payload = payload;
-        reject(error);
-      });
-    });
-  }
+  async execLauncher(args) { return execLauncher(this, args); }
+  createRuntimeClient() { return createRuntimeClient(this); }
+  async executeRuntimeCommand(args) { return this.createRuntimeClient().exec(args); }
 
-  runUiAction(action, label = "ui-action") {
-    Promise.resolve()
-      .then(() => action())
-      .catch((error) => {
-        console.error(`[furnace-product-shell] ${label} failed`, error);
-      });
-  }
+  runUiAction(action, label = "ui-action") { runUiAction(this, action, label); }
 
   currentLlmSelection() {
     const llmStatus = this.shellSummary && typeof this.shellSummary === "object" ? this.shellSummary.llm_status || {} : {};
@@ -1426,339 +399,72 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   resolveAbsoluteWorkspacePath(relativePath) {
-    const normalized = String(relativePath || "").trim();
-    if (!normalized || !this.repoState.root) {
-      return "";
-    }
-    return path.join(this.repoState.root, normalized);
-  }
-
-  runLogRelativePath(record) {
-    return `output/control/plugin-runs/${String(record && record.id ? record.id : "").trim()}.md`;
+    return resolveProductShellRunLogPath(this.repoState.root, relativePath);
   }
 
   persistRunLog(record, details = {}) {
-    if (!record || typeof record !== "object") {
-      return;
-    }
-    const logPath = String(record.logPath || this.runLogRelativePath(record)).trim();
-    const absolutePath = this.resolveAbsoluteWorkspacePath(logPath);
-    if (!logPath || !absolutePath) {
-      return;
-    }
-    record.logPath = logPath;
-    const stdoutText = String(details.stdoutRaw || record.stdoutRaw || "").trim();
-    const stderrText = String(details.stderrRaw || record.stderrRaw || "").trim();
-    const rewriteProposalCount = Array.isArray(record.rewriteProposalPaths) ? record.rewriteProposalPaths.length : 0;
-    const lines = [
-      "# Product Shell Run Log",
-      "",
-      this.t("Generated by Product Shell run logging."),
-      "",
-      `- ${this.t("Status")}: ${this.t(record.status || "unknown")}`,
-      `- ${this.t("Protocol")}: ${record.protocol ? this.t(record.protocol) : this.t("unknown")}`,
-      `- ${this.t("LLM Backend")}: ${record.backend || this.t("unconfigured")}`,
-      `- ${this.t("LLM Model")}: ${record.model || this.t("default")}`,
-      `- ${this.t("Codex effort")}: ${record.codexReasoningEffort || "-"}`,
-      `- ${this.t("Prompt profile")}: ${record.promptProfile || "-"}`,
-      `- ${this.t("Retry prompt")}: ${record.retryPromptProfile || "-"}`,
-      `- ${this.t("Working directory")}: ${this.repoState.root || "."}`,
-      `- ${this.t("Arguments")}: ${record.args || record.command || ""}`,
-      `- ${this.t("Fallback from")}: ${record.fallbackFrom || "-"}`,
-      `- ${this.t("Result path")}: ${record.resultPath || "-"}`,
-      `- ${this.t("Receipt path")}: ${record.receiptPath || "-"}`,
-      ...(rewriteProposalCount
-        ? [`- ${this.t("rewrite proposals: {count}", { count: rewriteProposalCount })}`]
-        : []),
-      `- ${this.t("Log path")}: ${logPath}`,
-      `- ${this.t("Exit code")}: ${record.exitCode === "" ? "-" : String(record.exitCode)}`,
-      `- started: ${record.startedAt || "-"}`,
-      `- finished: ${record.finishedAt || "-"}`,
-      "",
-      "## Timeline",
-      "",
-    ];
-    const timeline = Array.isArray(record.timeline) ? record.timeline : [];
-    if (!timeline.length) {
-      lines.push(`- ${this.t("No stage events recorded.")}`);
-    } else {
-      timeline.forEach((event) => {
-        lines.push(`- ${event.at || "-"} | ${this.t(event.stage || "event")} | ${event.summary || "-"}`);
-      });
-    }
-    if (record.resultPath || record.receiptPath || record.errorSummary) {
-      lines.push("", "## Summary", "");
-      if (record.resultPath) {
-        lines.push(`- ${this.t("Result path")}: ${record.resultPath}`);
-      }
-      if (record.receiptPath) {
-        lines.push(`- ${this.t("Receipt path")}: ${record.receiptPath}`);
-      }
-      if (record.errorSummary) {
-        lines.push(`- error: ${record.errorSummary}`);
-      }
-      if (Array.isArray(record.rewriteProposalPaths) && record.rewriteProposalPaths.length) {
-        lines.push(`- ${this.t("rewrite proposals: {count}", { count: record.rewriteProposalPaths.length })}`);
-        record.rewriteProposalPaths.forEach((proposalPath) => {
-          lines.push(`  - ${proposalPath}`);
-        });
-      }
-    }
-    if (stdoutText) {
-      lines.push("", "## Standard output", "", "```text", stdoutText, "```");
-    }
-    if (stderrText) {
-      lines.push("", "## Standard error", "", "```text", stderrText, "```");
-    }
-    fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
-    fs.writeFileSync(absolutePath, `${lines.join("\n")}\n`, "utf8");
+    persistProductShellRunLog({
+      record,
+      details,
+      t: this.t.bind(this),
+      repoRoot: this.repoState.root || ".",
+    });
   }
 
   async copyText(value) {
-    const text = String(value || "").trim();
-    if (!text) {
-      new Notice(this.t("Nothing to copy."));
-      return false;
-    }
-    if (clipboard && typeof clipboard.writeText === "function") {
-      clipboard.writeText(text);
-      new Notice(this.t("Copied to clipboard."));
-      return true;
-    }
-    if (window.navigator && window.navigator.clipboard && typeof window.navigator.clipboard.writeText === "function") {
-      await window.navigator.clipboard.writeText(text);
-      new Notice(this.t("Copied to clipboard."));
-      return true;
-    }
-    new Notice(this.t("Clipboard is not available in this environment."));
-    return false;
+    return copyProductShellText(this, value);
   }
 
   async revealWorkspacePath(relativePath) {
-    const normalized = String(relativePath || "").trim();
-    const absolutePath = this.resolveAbsoluteWorkspacePath(normalized);
-    if (!normalized || !absolutePath || !fs.existsSync(absolutePath)) {
-      new Notice(this.t("Path not found: {path}", { path: normalized || relativePath || "" }));
-      return;
-    }
-    if (shell && typeof shell.showItemInFolder === "function") {
-      shell.showItemInFolder(absolutePath);
-      return;
-    }
-    if (shell && typeof shell.openPath === "function") {
-      await shell.openPath(path.dirname(absolutePath));
-      return;
-    }
-    new Notice(this.t("Unable to reveal {path}", { path: normalized }));
-  }
-
-  appendRunEvent(record, stage, summary = "", status = "") {
-    if (!record || typeof record !== "object") {
-      return;
-    }
-    if (!Array.isArray(record.timeline)) {
-      record.timeline = [];
-    }
-    record.timeline.push({
-      stage: String(stage || "").trim(),
-      at: new Date().toISOString(),
-      summary: String(summary || "").trim(),
-      status: String(status || "").trim(),
-    });
+    return revealProductShellWorkspacePath(this, relativePath);
   }
 
   createRunRecord(label, args) {
-    const llm = this.currentLlmSelection();
-    const protocol = this.getActiveProtocol();
-    const runId = `run-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
-    const record = {
-      id: runId,
-      label,
-      args: args.join(" "),
-      argv: Array.isArray(args) ? args.slice() : [],
-      command: Array.isArray(args) && args.length ? String(args[0] || "") : "",
-      status: "running",
-      startedAt: new Date().toISOString(),
-      finishedAt: "",
-      protocol,
-      backend: llm.backend,
-      model: llm.model,
-      codexReasoningEffort: llm.codexReasoningEffort || "",
-      promptProfile: "",
-      retryPromptProfile: "",
-      rewriteProposalPaths: [],
-      rewriteProposalSlugs: [],
-      stdoutSummary: "",
-      stderrSummary: "",
-      stdoutRaw: "",
-      stderrRaw: "",
-      resultPath: "",
-      receiptPath: "",
-      logPath: `output/control/plugin-runs/${runId}.md`,
-      exitCode: "",
-      errorSummary: "",
-      fallbackFrom: "",
-      timeline: [],
-    };
-    this.appendRunEvent(record, "Submitted", label || record.args || "command", "running");
-    if (record.protocol || record.backend || record.model) {
-      const context = [record.protocol, record.backend, record.model].filter(Boolean).join(" · ");
-      this.appendRunEvent(record, "Runtime selected", context, "running");
-    }
-    this.pluginState.recentRuns.unshift(record);
-    this.trimRecentRuns();
-    this.persistRunLog(record);
-    this.updateStatusBar();
-    this.refreshOpenViews();
-    void this.savePluginState();
-    return record;
+    return createProductShellPluginRunRecord(this, label, args);
   }
 
   updateRunRecord(record, updates) {
-    Object.assign(record, updates);
-    this.trimRecentRuns();
-    this.persistRunLog(record);
-    this.updateStatusBar();
-    this.refreshOpenViews();
-    void this.savePluginState();
-  }
-
-  extractPrimaryPath(payload) {
-    if (!payload || typeof payload !== "object") {
-      return "";
-    }
-    const candidateKeys = ["path", "output_path", "receipt_path", "state_path", "index_path", "report_path"];
-    for (const key of candidateKeys) {
-      const value = payload[key];
-      if (typeof value === "string" && value.trim()) {
-        return value.trim();
-      }
-    }
-    return "";
+    return updateProductShellPluginRunRecord(this, record, updates);
   }
 
   latestPluginRun() {
-    return this.pluginState.recentRuns.length ? this.pluginState.recentRuns[0] : null;
+    return latestProductShellPluginRun(this);
   }
 
   async rerunRecord(record) {
-    const argv = record && Array.isArray(record.argv) ? record.argv.map((value) => String(value || "")) : [];
-    if (!argv.length) {
-      new Notice(this.t("Cannot re-run this entry because argv was not recorded."));
-      return null;
-    }
-    return await this.runPluginCommand(record.label || record.args || this.t("command"), argv, { refreshAfter: true });
+    return rerunProductShellPluginRecord(this, record);
   }
 
   async runPluginCommand(label, args, options = {}) {
-    const record = this.createRunRecord(label, args);
-    this.appendRunEvent(record, "Executing", args.join(" "), "running");
-    this.updateRunRecord(record, {});
-    try {
-      const result = await this.execLauncher(args);
-      const primaryPath = this.extractPrimaryPath(result.payload);
-      const receiptPath = result.payload && typeof result.payload.receipt_path === "string" ? result.payload.receipt_path : "";
-      const rewriteProposalPaths = this.extractRewriteProposalPaths(result.payload);
-      const rewriteProposalSlugs = this.extractRewriteProposalSlugs(rewriteProposalPaths);
-      if (options.updateSummaryFromPayload && result.payload && result.payload.kind === "product-shell-summary") {
-        this.shellSummary = result.payload;
-        this.updateStatusBar();
-        this.refreshOpenViews();
-      } else if (options.refreshAfter !== false) {
-        await this.refreshShellSummarySilently();
-      }
-      const llm = this.currentLlmSelection();
-      this.appendRunEvent(record, "Completed", primaryPath || receiptPath || this.t("Command completed successfully."), "success");
-      if (primaryPath || receiptPath) {
-        this.appendRunEvent(record, "Artifacts", [primaryPath, receiptPath].filter(Boolean).join(" · "), "success");
-      }
-      if (rewriteProposalPaths.length) {
-        this.appendRunEvent(record, "Rewrite proposals", this.rewriteProposalSummary({ rewriteProposalPaths }), "success");
-      }
-      this.updateRunRecord(record, {
-        status: "success",
-        finishedAt: new Date().toISOString(),
-        exitCode: 0,
-        backend: llm.backend || record.backend,
-        model: llm.model || record.model,
-        codexReasoningEffort: llm.codexReasoningEffort || record.codexReasoningEffort,
-        promptProfile: result.payload && typeof result.payload.prompt_profile === "string" ? result.payload.prompt_profile : record.promptProfile,
-        retryPromptProfile:
-          result.payload && typeof result.payload.retry_prompt_profile === "string" ? result.payload.retry_prompt_profile : record.retryPromptProfile,
-        rewriteProposalPaths,
-        rewriteProposalSlugs,
-        stdoutSummary: truncateText(result.stdout),
-        stderrSummary: truncateText(result.stderr),
-        stdoutRaw: this.trimDiagnosticText(result.stdout),
-        stderrRaw: this.trimDiagnosticText(result.stderr),
-        resultPath: primaryPath,
-        receiptPath,
-      });
-      if (record.command === "run-ask") {
-        this.recordLlmHealthFromRun(record, {
-          status: "healthy",
-          reason: "Recent run-ask succeeded.",
-          source: "run-ask",
-        });
-      }
-      this.persistRunLog(record, { stdoutRaw: result.stdout, stderrRaw: result.stderr });
-      if (options.notice !== false) {
-        new Notice(`${this.t(label)} ${this.t("completed")}.`);
-      }
-      return result.payload;
-    } catch (error) {
-      this.appendRunEvent(record, "Failed", truncateText(error.message || "Command failed", 180), "failed");
-      this.updateRunRecord(record, {
-        status: "failed",
-        finishedAt: new Date().toISOString(),
-        exitCode: Number.isFinite(Number(error.code)) ? Number(error.code) : "",
-        stdoutSummary: truncateText(error.stdout || ""),
-        stderrSummary: truncateText(error.stderr || ""),
-        stdoutRaw: this.trimDiagnosticText(error.stdout || ""),
-        stderrRaw: this.trimDiagnosticText(error.stderr || ""),
-        errorSummary: truncateText(error.message || "Command failed"),
-      });
-      if (record.command === "run-ask" && this.llmBackendUnavailable(error)) {
-        this.recordLlmHealthFromRun(record, {
-          status: "degraded",
-          reason: truncateText(error.message || error.stderr || error.stdout || "LLM backend unavailable", 240),
-          source: "run-ask",
-          fallbackCommand: "ask",
-          stderrSummary: truncateText(error.stderr || ""),
-          stderrRaw: this.trimDiagnosticText(error.stderr || error.stdout || ""),
-        });
-      }
-      this.persistRunLog(record, {
-        stdoutRaw: error.stdout || "",
-        stderrRaw: error.stderr || "",
-      });
-      new Notice(`${this.t(label)} ${this.t("failed: {message}", { message: truncateText(error.message || this.t("unknown error"), 120) })}`);
-      throw error;
-    }
+    return runProductShellPluginCommand(this, label, args, options);
   }
 
   async refreshShellSummarySilently() {
-    try {
-      const result = await this.execLauncher(["shell-status"]);
-      if (result.payload && result.payload.kind === "product-shell-summary") {
-        this.shellSummary = result.payload;
-        this.updateStatusBar();
-        this.refreshOpenViews();
-        return result.payload;
-      }
-    } catch (error) {
-      console.error("[furnace-product-shell] shell-status refresh failed", error);
-    }
-    return await this.loadShellSummaryFromDisk();
+    return refreshProductShellSummarySilently(this);
+  }
+
+  
+  processShellSummaryUpdates(summary) {
+    return processProductShellSummaryUpdates(this, summary);
   }
 
   async refreshShellSummaryCommand() {
-    await this.runPluginCommand(this.t("Refresh Furnace Shell"), ["shell-status"], {
-      refreshAfter: false,
-      updateSummaryFromPayload: true,
-      notice: false,
-    });
+    return refreshProductShellSummaryCommand(this);
   }
+
+  // R90: done 卡"打开报告/查看回执"统一入口；处理 path 缺失 + open 失败 + 用户反馈
+  async openPendingDoneTarget(target, reconcilePath) {
+    return openProductShellPendingDoneTarget(this, target, reconcilePath);
+  }
+
+  async readWorkspaceSnippet(relativePath, length = 420) {
+    return readProductShellWorkspaceSnippet(this, relativePath, length);
+  }
+
+  quoteFileToComposer(relativePath) {
+    return quoteProductShellFileToComposer(this, relativePath);
+  }
+
 
   async runCompileCommand() {
     await this.runPluginCommand(this.t("Compile"), ["compile"], { refreshAfter: true });
@@ -1766,6 +472,18 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   async runNightlyCommand() {
     await this.runPluginCommand(this.t("Nightly"), ["nightly"], { refreshAfter: true });
+  }
+
+  async runTodaySnoozeCommand(target, days = 1) {
+    const normalizedTarget = String(target || "").trim();
+    if (!normalizedTarget) {
+      return;
+    }
+    await this.runPluginCommand(
+      `${this.t("Snooze")}: ${truncateText(normalizedTarget, 48)}`,
+      ["today-snooze", normalizedTarget, "--days", String(days)],
+      { refreshAfter: true }
+    );
   }
 
   async runShellSearchCommand(query, limit = 8) {
@@ -1793,385 +511,187 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async openHomeNote() {
-    await this.openWorkspacePath("HOME.md");
+    return openProductShellHomeNote(this);
   }
 
   async openOutputsHub() {
-    const links = this.shellSummary && typeof this.shellSummary === "object" ? this.shellSummary.links || {} : {};
-    const preferredPath = String(links.output_packs_markdown || "wiki/indexes/Outputs.md").trim();
-    await this.openWorkspacePath(preferredPath);
+    return openProductShellOutputsHub(this);
   }
 
   async runProtocolSetCommand(protocol) {
     await this.runPluginCommand(`${this.t("Set Protocol")}: ${protocol}`, ["protocol-set", protocol], { refreshAfter: true });
   }
 
-  llmBackendUnavailable(error) {
-    const text = String(error && error.message ? error.message : error || "").toLowerCase();
-    return [
-      "usage limit",
-      "no quota",
-      "upgrade to pro",
-      "purchase more credits",
-      "organization does not have access",
-      "login again",
-      "timed out",
-      "timeout",
-      "authentication",
-      "auth",
-    ].some((pattern) => text.includes(pattern));
+  pushPendingSubmission(displayText, opts = {}) {
+    return pushPendingSubmissionRuntime(this, displayText, opts);
+  }
+
+  resetPendingSubmissionForRetry(id) {
+    return resetPendingSubmissionRuntimeForRetry(this, id);
+  }
+
+  markPendingSubmissionReceived(id) {
+    return markPendingSubmissionRuntimeReceived(this, id);
+  }
+
+  markPendingSubmissionDone(id, reconcileTarget, reconcilePath) {
+    return markPendingSubmissionRuntimeDone(this, id, reconcileTarget, reconcilePath);
+  }
+
+  isPendingSubmissionDegraded(entry) {
+    return isPendingSubmissionDegradedEntry(entry);
+  }
+
+  markPendingSubmissionFailed(id, error) {
+    return markPendingSubmissionRuntimeFailed(this, id, error);
+  }
+
+  removePendingSubmission(id) {
+    if (removePendingSubmissionRuntimeEntry(this, id)) commitPendingSubmissionRuntimeChange(this);
+  }
+
+  _findPending(id) {
+    return findPendingSubmissionRuntimeEntry(this, id);
+  }
+
+  updatePendingSubmissionRetryArgs(id, retryArgs) {
+    return updatePendingSubmissionRuntimeRetryArgs(this, id, retryArgs);
+  }
+
+  updatePendingSubmissionRunNotes(id, runNotesPath, runId, opts = {}) {
+    return updatePendingSubmissionRuntimeRunNotes(this, id, runNotesPath, runId, opts);
+  }
+
+  updatePendingSubmissionArtifactMeta(id, meta, opts = {}) {
+    return updatePendingSubmissionRuntimeArtifactMeta(this, id, meta, opts);
+  }
+
+  hasActiveLongRunningPending() {
+    return pendingHasActiveLongRunning(this.pendingSubmissions);
+  }
+
+  updateLongRunningPoller() {
+    return updateProductShellLongRunningPoller(this);
+  }
+
+  startLongRunningPoller() {
+    return startProductShellLongRunningPoller(this);
+  }
+
+  stopLongRunningPoller() {
+    return stopProductShellLongRunningPoller(this);
+  }
+
+  getLastSummaryRefreshLabel() {
+    return productShellLastSummaryRefreshLabel(this);
+  }
+
+  reconcilePendingSubmissions(summary) {
+    return reconcilePendingSubmissionsRuntime(this, summary);
+  }
+
+  async runUniversalInputCommand({ payload, title }) {
+    return runProductShellUniversalInputCommand(this, { payload, title });
   }
 
   async runAskCommand({ question, format, mode, protocol }) {
-    const args = [mode, question, "--format", format];
-    if (protocol) {
-      args.push("--protocol", protocol);
-    }
-    try {
-      await this.runPluginCommand(`${this.t("Ask")}: ${truncateText(question, 48)}`, args, { refreshAfter: true });
-    } catch (error) {
-      if (mode === "run-ask" && this.llmBackendUnavailable(error)) {
-        new Notice(this.t("LLM backend unavailable; retried with deterministic ask."));
-        const fallbackArgs = ["ask", question, "--format", format];
-        if (protocol) {
-          fallbackArgs.push("--protocol", protocol);
-        }
-        await this.runPluginCommand(`${this.t("Ask")}: ${truncateText(question, 48)} · ${this.t("Deterministic fallback")}`, fallbackArgs, { refreshAfter: true });
-        const fallbackRecord = this.latestPluginRun();
-        if (fallbackRecord) {
-          this.appendRunEvent(fallbackRecord, "Fallback", this.t("Recent run-ask fell back to deterministic ask."), "success");
-          this.updateRunRecord(fallbackRecord, { fallbackFrom: "run-ask" });
-          this.recordLlmHealthFromRun(fallbackRecord, {
-            status: "degraded",
-            source: "run-ask",
-            fallbackCommand: "ask",
-            reason: "Recent run-ask fell back to deterministic ask.",
-          });
-        }
-        return;
-      }
-      throw error;
-    }
+    return runProductShellAskCommand(this, { question, format, mode, protocol });
+  }
+
+  async runDroppedPayloadsWithAutoAsk({ payloads, question, protocol }) {
+    return runProductShellDroppedPayloadsWithAutoAsk(this, { payloads, question, protocol });
+  }
+
+  completePendingMaterialDrop(id, materialPaths) {
+    return completeProductShellPendingMaterialDrop(this, id, materialPaths);
+  }
+
+  async runDroppedFilesWithAutoAsk({ files, question, protocol }) {
+    return runProductShellDroppedFilesWithAutoAsk(this, { files, question, protocol });
+  }
+
+  async runReportSubgraphCommand({ reportPath }) {
+    return runProductShellReportSubgraphCommand(this, { reportPath });
+  }
+
+  collectReportCandidates() {
+    return collectProductShellReportCandidates(this);
+  }
+
+  openReportSubgraphPicker() {
+    return openProductShellReportSubgraphPicker(this);
   }
 
   async runDropUrlCommand({ url, title }) {
-    const args = ["drop-url", url];
-    if (title) {
-      args.push("--title", title);
-    }
-    await this.runPluginCommand(`${this.t("Drop URL")}: ${truncateText(title || url, 48)}`, args, { refreshAfter: true });
+    return runProductShellDropUrlCommand(this, { url, title });
+  }
+
+  openDropUrlModal(initialUrl = "") {
+    new DropUrlModal(this.app, this).setInitialUrl(initialUrl).open();
   }
 
   async runDropFileCommand({ mode, source, title, maxFiles }) {
-    const normalizedMode = String(mode || "pdf").trim() === "repo" ? "repo" : "pdf";
-    const args = [normalizedMode === "repo" ? "drop-repo" : "drop-pdf", source];
-    if (title) {
-      args.push("--title", title);
-    }
-    if (normalizedMode === "repo") {
-      args.push("--max-files", String(Number.isFinite(Number(maxFiles)) && Number(maxFiles) > 0 ? Number(maxFiles) : 200));
-    }
-    await this.runPluginCommand(`${this.t("Drop File")}: ${truncateText(title || path.basename(source) || source, 48)}`, args, { refreshAfter: true });
+    return runProductShellDropFileCommand(this, { mode, source, title, maxFiles });
   }
 
   async runDropImageCommand({ source, title, noVision }) {
-    const args = ["drop-image", source];
-    if (title) {
-      args.push("--title", title);
-    }
-    if (noVision) {
-      args.push("--no-vision");
-    }
-    await this.runPluginCommand(`${this.t("Drop Image")}: ${truncateText(title || path.basename(source) || source, 48)}`, args, { refreshAfter: true });
+    return runProductShellDropImageCommand(this, { source, title, noVision });
   }
 
   async runDropNoteCommand({ text, title, kind }) {
-    const args = ["drop-note", "--text", text];
-    if (title) {
-      args.push("--title", title);
-    }
-    args.push("--kind", kind || "note");
-    await this.runPluginCommand(`${this.t("Capture Note")}: ${truncateText(title || text, 48)}`, args, { refreshAfter: true });
+    return runProductShellDropNoteCommand(this, { text, title, kind });
   }
 
   async runCliAction(label, command, args = []) {
-    await this.runPluginCommand(label, [command, ...args], { refreshAfter: true });
+    return runProductShellCliAction(this, label, command, args);
   }
 
   async runLauncherCommand(fullCommandStr, label = "Suggested Action") {
-    // Extract CLI subcommand+args from a full command string like:
-    //   "PYTHONPATH=src python3 -m aiwiki.cli --root . review-action foo --status accepted"
-    // The launcher already sets PYTHONPATH and --root, so we strip the prefix.
-    let trimmed = String(fullCommandStr || "").trim();
-    const prefixPattern = /^(?:PYTHONPATH=\S+\s+)?(?:python3?\s+-m\s+aiwiki\.cli\s+)?(?:--root\s+\S+\s+)?/;
-    trimmed = trimmed.replace(prefixPattern, "").trim();
-    if (!trimmed) {
-      new Notice(this.t("Cannot parse command: {command}", { command: truncateText(fullCommandStr, 80) }));
-      return;
-    }
-    // Simple shell-like split respecting double quotes
-    const args = [];
-    let current = "";
-    let inQuote = false;
-    for (let i = 0; i < trimmed.length; i++) {
-      const ch = trimmed[i];
-      if (ch === '"') {
-        inQuote = !inQuote;
-      } else if (ch === " " && !inQuote) {
-        if (current) {
-          args.push(current);
-          current = "";
-        }
-      } else {
-        current += ch;
-      }
-    }
-    if (current) {
-      args.push(current);
-    }
-    await this.runPluginCommand(label, args, { refreshAfter: true });
+    return runProductShellLauncherCommand(this, fullCommandStr, label);
   }
 
   openFileBackModal(prefill = {}) {
-    this.openStructuredCommandModal({
-      title: this.t("File Back"),
-      description: this.t("File an output artifact back into wiki/derived, wiki/decisions, or wiki/judgments."),
-      fields: [
-        {
-          key: "artifact",
-          label: this.t("Artifact path"),
-          required: true,
-          placeholder: this.t("output/reports/....md"),
-          initialValue: () => prefill.artifact || this.getActiveOutputPath(),
-        },
-        {
-          key: "title",
-          label: this.t("Title"),
-          placeholder: this.t("Optional filed-back title"),
-          initialValue: prefill.title || "",
-        },
-        {
-          key: "kind",
-          label: this.t("Kind"),
-          kind: "select",
-          initialValue: prefill.kind || "derived",
-          options: [
-            ["derived", this.t("derived")],
-            ["decision", this.t("decision")],
-            ["judgment", this.t("judgment")],
-          ],
-        },
-        {
-          key: "protocol",
-          label: this.t("Protocol"),
-          kind: "select",
-          initialValue: prefill.protocol || "",
-          options: [["", this.t("current protocol")], ...this.getAvailableProtocols().map((item) => [item, item])],
-        },
-      ],
-      onSubmit: async (values) => {
-        const args = [values.artifact];
-        this.appendOptionalArg(args, "--title", values.title);
-        this.appendOptionalArg(args, "--kind", values.kind);
-        this.appendOptionalArg(args, "--protocol", values.protocol);
-        await this.runCliAction(`File Back: ${values.kind}`, "file-back", args);
-      },
-    });
+    this.openStructuredCommandModal(buildFileBackModalSpec(this, prefill));
   }
 
   openReviewPageModal(prefill = {}) {
-    this.openStructuredCommandModal({
-      title: this.t("Review Page"),
-      description: this.t("Advance a decision or judgment page through the explicit review workflow."),
-      fields: [
-        {
-          key: "page",
-          label: this.t("Page path"),
-          required: true,
-          placeholder: this.t("wiki/decisions/... or wiki/judgments/..."),
-          initialValue: () => prefill.pagePath || this.getActiveCuratedPagePath(),
-        },
-        {
-          key: "status",
-          label: this.t("Status"),
-          required: true,
-          placeholder: this.t("approved / confirmed / needs-revision ..."),
-          initialValue: prefill.status || "",
-        },
-        {
-          key: "note",
-          label: this.t("Note"),
-          kind: "textarea",
-          placeholder: this.t("Optional review note"),
-          rows: 4,
-          initialValue: prefill.note || "",
-        },
-        {
-          key: "confidence",
-          label: this.t("Confidence"),
-          placeholder: this.t("Optional confidence override"),
-          initialValue: prefill.confidence || "",
-        },
-      ],
-      onSubmit: async (values) => {
-        const args = [values.page, "--status", values.status];
-        this.appendOptionalArg(args, "--note", values.note);
-        this.appendOptionalArg(args, "--confidence", values.confidence);
-        await this.runCliAction(`Review Page: ${values.status}`, "review-page", args);
-      },
-    });
+    this.openStructuredCommandModal(buildReviewPageModalSpec(this, prefill));
   }
 
   openReviewRewriteModal(prefill = {}) {
-    this.openStructuredCommandModal({
-      title: this.t("Review Rewrite"),
-      description: this.t("Advance a concept rewrite proposal through the rewrite workflow."),
-      fields: [
-        { key: "slug", label: this.t("Concept slug"), required: true, initialValue: () => prefill.slug || this.getActiveConceptSlug() },
-        { key: "status", label: this.t("Status"), required: true, placeholder: this.t("accepted / rejected / needs-revision ..."), initialValue: prefill.status || "" },
-        { key: "note", label: this.t("Note"), kind: "textarea", rows: 4, placeholder: this.t("Optional review note"), initialValue: prefill.note || "" },
-      ],
-      onSubmit: async (values) => {
-        const args = [values.slug, "--status", values.status];
-        this.appendOptionalArg(args, "--note", values.note);
-        await this.runCliAction(`Review Rewrite: ${values.slug}`, "review-rewrite", args);
-      },
-    });
+    this.openStructuredCommandModal(buildReviewRewriteModalSpec(this, prefill));
   }
 
   openApplyRewriteModal(prefill = {}) {
-    this.openStructuredCommandModal({
-      title: this.t("Apply Rewrite"),
-      description: this.t("Apply an accepted concept rewrite proposal."),
-      fields: [
-        { key: "slug", label: this.t("Concept slug"), required: true, initialValue: () => prefill.slug || this.getActiveConceptSlug() },
-        { key: "note", label: this.t("Note"), kind: "textarea", rows: 4, placeholder: this.t("Optional apply note"), initialValue: prefill.note || "" },
-      ],
-      onSubmit: async (values) => {
-        const args = [values.slug];
-        this.appendOptionalArg(args, "--note", values.note);
-        await this.runCliAction(`Apply Rewrite: ${values.slug}`, "apply-rewrite", args);
-      },
-    });
+    this.openStructuredCommandModal(buildApplyRewriteModalSpec(this, prefill));
   }
 
   openRetireConceptModal(prefill = {}) {
-    this.openStructuredCommandModal({
-      title: this.t("Retire Concept"),
-      description: this.t("Apply an explicit retired override for a concept."),
-      fields: [
-        { key: "slug", label: this.t("Concept slug"), required: true, initialValue: () => prefill.slug || this.getActiveConceptSlug() },
-        { key: "note", label: this.t("Note"), kind: "textarea", rows: 4, placeholder: this.t("Why retire this concept?"), initialValue: prefill.note || "" },
-      ],
-      onSubmit: async (values) => {
-        const args = [values.slug];
-        this.appendOptionalArg(args, "--note", values.note);
-        await this.runCliAction(`Retire Concept: ${values.slug}`, "retire-concept", args);
-      },
-    });
+    this.openStructuredCommandModal(buildRetireConceptModalSpec(this, prefill));
   }
 
   openReactivateConceptModal(prefill = {}) {
-    this.openStructuredCommandModal({
-      title: this.t("Reactivate Concept"),
-      description: this.t("Clear the explicit retired override for a concept."),
-      fields: [
-        { key: "slug", label: this.t("Concept slug"), required: true, initialValue: () => prefill.slug || this.getActiveConceptSlug() },
-        { key: "note", label: this.t("Note"), kind: "textarea", rows: 4, placeholder: this.t("Optional reactivate note"), initialValue: prefill.note || "" },
-      ],
-      onSubmit: async (values) => {
-        const args = [values.slug];
-        this.appendOptionalArg(args, "--note", values.note);
-        await this.runCliAction(`Reactivate Concept: ${values.slug}`, "reactivate-concept", args);
-      },
-    });
+    this.openStructuredCommandModal(buildReactivateConceptModalSpec(this, prefill));
   }
 
   openApplyArchiveModal(prefill = {}) {
-    this.openStructuredCommandModal({
-      title: this.t("Apply Archive"),
-      description: this.t("Apply a ready archive candidate and pin it to archived."),
-      fields: [
-        { key: "entry_id", label: this.t("Entry id"), required: true, placeholder: this.t("manifest/material entry id"), initialValue: prefill.entryId || "" },
-        { key: "note", label: this.t("Note"), kind: "textarea", rows: 4, placeholder: this.t("Optional apply note"), initialValue: prefill.note || "" },
-      ],
-      onSubmit: async (values) => {
-        const args = [values.entry_id];
-        this.appendOptionalArg(args, "--note", values.note);
-        await this.runCliAction(`Apply Archive: ${values.entry_id}`, "apply-archive", args);
-      },
-    });
+    this.openStructuredCommandModal(buildApplyArchiveModalSpec(this, prefill));
   }
 
   openRevertArchiveModal(prefill = {}) {
-    this.openStructuredCommandModal({
-      title: this.t("Revert Archive"),
-      description: this.t("Revert the latest explicit archive transition."),
-      fields: [
-        { key: "entry_id", label: this.t("Entry id"), required: true, placeholder: this.t("manifest/material entry id"), initialValue: prefill.entryId || "" },
-        { key: "note", label: this.t("Note"), kind: "textarea", rows: 4, placeholder: this.t("Optional revert note"), initialValue: prefill.note || "" },
-      ],
-      onSubmit: async (values) => {
-        const args = [values.entry_id];
-        this.appendOptionalArg(args, "--note", values.note);
-        await this.runCliAction(`Revert Archive: ${values.entry_id}`, "revert-archive", args);
-      },
-    });
+    this.openStructuredCommandModal(buildRevertArchiveModalSpec(this, prefill));
   }
 
   openReviewActionModal(prefill = {}) {
-    this.openStructuredCommandModal({
-      title: this.t("Review Action"),
-      description: this.t("Advance a machine-memory repair action through the explicit action workflow."),
-      fields: [
-        { key: "action_id", label: this.t("Action id"), required: true, placeholder: this.t("machine-memory action id"), initialValue: prefill.actionId || "" },
-        { key: "status", label: this.t("Status"), required: true, placeholder: this.t("accepted / rejected / ready ..."), initialValue: prefill.status || "" },
-        { key: "note", label: this.t("Note"), kind: "textarea", rows: 4, placeholder: this.t("Optional action review note"), initialValue: prefill.note || "" },
-      ],
-      onSubmit: async (values) => {
-        const args = [values.action_id, "--status", values.status];
-        this.appendOptionalArg(args, "--note", values.note);
-        await this.runCliAction(`Review Action: ${values.action_id}`, "review-action", args);
-      },
-    });
+    this.openStructuredCommandModal(buildReviewActionModalSpec(this, prefill));
   }
 
   openApplyActionModal(prefill = {}) {
-    this.openStructuredCommandModal({
-      title: this.t("Apply Action"),
-      description: this.t("Apply an accepted low-risk machine-memory repair action."),
-      fields: [
-        { key: "action_id", label: this.t("Action id"), required: true, placeholder: this.t("machine-memory action id"), initialValue: prefill.actionId || "" },
-        { key: "note", label: this.t("Note"), kind: "textarea", rows: 4, placeholder: this.t("Optional apply note"), initialValue: prefill.note || "" },
-        { key: "bundle", label: this.t("Bundle path"), placeholder: this.t("Optional execution bundle path"), initialValue: prefill.bundle || "" },
-        { key: "dry_run", label: this.t("Dry run"), kind: "toggle", initialValue: Boolean(prefill.dryRun) },
-      ],
-      onSubmit: async (values) => {
-        const args = [values.action_id];
-        this.appendOptionalArg(args, "--note", values.note);
-        this.appendOptionalArg(args, "--bundle", values.bundle);
-        if (values.dry_run) {
-          args.push("--dry-run");
-        }
-        await this.runCliAction(`Apply Action: ${values.action_id}`, "apply-action", args);
-      },
-    });
+    this.openStructuredCommandModal(buildApplyActionModalSpec(this, prefill));
   }
 
   openRevertActionModal(prefill = {}) {
-    this.openStructuredCommandModal({
-      title: this.t("Revert Action"),
-      description: this.t("Revert the latest low-risk safe apply for a machine-memory action."),
-      fields: [
-        { key: "action_id", label: this.t("Action id"), required: true, placeholder: this.t("machine-memory action id"), initialValue: prefill.actionId || "" },
-        { key: "note", label: this.t("Note"), kind: "textarea", rows: 4, placeholder: this.t("Optional revert note"), initialValue: prefill.note || "" },
-      ],
-      onSubmit: async (values) => {
-        const args = [values.action_id];
-        this.appendOptionalArg(args, "--note", values.note);
-        await this.runCliAction(`Revert Action: ${values.action_id}`, "revert-action", args);
-      },
-    });
+    this.openStructuredCommandModal(buildRevertActionModalSpec(this, prefill));
   }
 
   openReviewPageContextPicker(options = this.visibleReviewPageCandidates()) {
@@ -2196,66 +716,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   openReviewPageBatchModal(prefill = {}) {
-    const pagePaths = Array.isArray(prefill.pagePaths) ? prefill.pagePaths : [];
-    const statusOptions = Array.isArray(prefill.statusOptions) ? prefill.statusOptions : [];
-    const normalizedStatusOptions = statusOptions.map((option) => ({
-      value: option.value,
-      label: option.label || this.transitionLabel("page", option.value),
-    }));
-    const statusField = normalizedStatusOptions.length
-      ? {
-          key: "status",
-          label: this.t("Status"),
-          required: true,
-          kind: "select",
-          initialValue: prefill.status || normalizedStatusOptions[0].value || "",
-          options: normalizedStatusOptions,
-        }
-      : {
-          key: "status",
-          label: this.t("Status"),
-          required: true,
-          placeholder: this.t("tracking / needs-revisit / approved ..."),
-          initialValue: prefill.status || "",
-        };
-    this.openStructuredCommandModal({
-      title: this.t("Batch Review Pages"),
-      description: prefill.description || this.t("Advance multiple review pages that share a safe common transition."),
-      submitLabel: this.t("Run batch"),
-      fields: [
-        {
-          key: "pages",
-          label: this.t("Page paths"),
-          required: true,
-          kind: "textarea",
-          rows: 6,
-          placeholder: this.t("wiki/judgments/... (one per line)"),
-          initialValue: pagePaths.join("\n"),
-        },
-        statusField,
-        {
-          key: "note",
-          label: this.t("Note"),
-          kind: "textarea",
-          rows: 4,
-          placeholder: this.t("Optional shared batch note"),
-          initialValue: prefill.note || "",
-        },
-        {
-          key: "confidence",
-          label: this.t("Confidence"),
-          placeholder: this.t("Optional shared confidence override"),
-          initialValue: prefill.confidence || "",
-        },
-      ],
-      onSubmit: async (values) => {
-        const paths = this.parseLineList(values.pages);
-        if (!paths.length) {
-          throw new Error(this.t("Batch review requires at least one page path."));
-        }
-        await this.runReviewPageBatchTransition(paths, values.status, values.note, values.confidence);
-      },
-    });
+    this.openStructuredCommandModal(buildReviewPageBatchModalSpec(this, prefill));
   }
 
   openReviewBatchSuggestionPicker() {
@@ -2415,17 +876,19 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     });
   }
 
-  async openView(viewType) {
+  async openView(viewType, options = {}) {
     let leaf = this.app.workspace.getLeavesOfType(viewType)[0];
     if (!leaf) {
-      leaf = this.app.workspace.getRightLeaf(false) || this.app.workspace.getLeaf(true);
+      leaf = options.preferMain
+        ? this.app.workspace.getLeaf(true)
+        : (this.app.workspace.getRightLeaf(false) || this.app.workspace.getLeaf(true));
     }
     await leaf.setViewState({ type: viewType, active: true });
     this.app.workspace.revealLeaf(leaf);
   }
 
   async openFurnaceCenterView() {
-    await this.openView(VIEW_TYPE_FURNACE_CENTER);
+    await this.openView(VIEW_TYPE_FURNACE_CENTER, { preferMain: true });
   }
 
   async openRecentRunsView() {
@@ -2441,32 +904,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async openWorkspacePath(relativePath) {
-    const normalized = String(relativePath || "").trim();
-    if (!normalized) {
-      new Notice(this.t("No path to open."));
-      return;
-    }
-    const abstractFile = this.app.vault.getAbstractFileByPath(normalized);
-    if (abstractFile && normalized.endsWith(".md")) {
-      const leaf = this.app.workspace.getLeaf(true);
-      await leaf.openFile(abstractFile);
-      return;
-    }
-    if (!this.repoState.root) {
-      new Notice(this.t("Unable to open {path}", { path: normalized }));
-      return;
-    }
-    const absolutePath = path.join(this.repoState.root, normalized);
-    if (!fs.existsSync(absolutePath)) {
-      new Notice(this.t("Path not found: {path}", { path: normalized }));
-      return;
-    }
-    if (typeof this.app.vault.adapter.getResourcePath === "function") {
-      const resourcePath = this.app.vault.adapter.getResourcePath(normalized);
-      window.open(resourcePath, "_blank");
-      return;
-    }
-    new Notice(this.t("Unable to open resource: {path}", { path: normalized }));
+    return openProductShellWorkspacePath(this, relativePath);
   }
 
 
@@ -2478,10 +916,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   renderActionButtons(container, buttons) {
     renderActionButtons(this, container, buttons);
-  }
-
-  renderGettingStartedSection(container) {
-    renderGettingStartedSection(this, container);
   }
 
   renderPanel(container, title, description = "", options = {}) {
@@ -2496,16 +930,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return renderPill(this, container, text, extraClass);
   }
 
-  latestInteractionEntry() {
-    return latestInteractionEntry(this);
-  }
-
   renderMainHeader(container) {
     renderMainHeader(this, container);
-  }
-
-  renderInteractionPanel(container) {
-    renderInteractionPanel(this, container);
   }
 
   renderMaterialPanel(container) {
@@ -2532,8 +958,15 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     renderDigestPanel(this, container);
   }
 
-  renderAdvancedPanel(container) {
-    renderAdvancedPanel(this, container);
+  
+  renderReportsPanel(container, reports) {
+    renderReportsPanel(this, container, reports);
+  }
+  renderReportsGroup(container, reports, emptyText) {
+    renderReportsGroup(this, container, reports, emptyText);
+  }
+  renderAdvancedDrawer(container) {
+    renderAdvancedDrawer(this, container);
   }
 
   renderFurnaceCenter(contentEl) {
