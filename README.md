@@ -165,7 +165,8 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . nightly
 ## 日常入口
 
 - Obsidian 工作台：[HOME.md](./HOME.md)
-- AgentOS 9.0 评分与 release gate：[AGOS-9-Scorecard.md](<./docs/AGOS-9-Scorecard.md>)（执行计划：[AGOS-9-Execution-Plan.md](<./docs/AGOS-9-Execution-Plan.md>)）
+- AgentOS 9.0 评分与 release gate：[AGOS-9-Scorecard.md](<./docs/AGOS-9-Scorecard.md>)（历史执行计划：[archive/AGOS-9-Execution-Plan.md](<./docs/archive/AGOS-9-Execution-Plan.md>)）
+- 当前清理 / 商业 / 全平台计划：[Furnace Cleanup Commercial Audit Plan 2026-07.md](<./docs/Furnace Cleanup Commercial Audit Plan 2026-07.md>)
 - 炼丹炉 Agent 架构（终局 SoT）：[Furnace Agent Architecture.md](<./docs/Furnace Agent Architecture.md>)
 - 炼丹炉进化机制（实现契约 SoT）：[Furnace Evolution Mechanics.md](<./docs/Furnace Evolution Mechanics.md>)
 - 运行机制与 nightly fallback：[Furnace Runtime Operations.md](<./docs/Furnace Runtime Operations.md>)
@@ -328,32 +329,20 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check --probe-all --probe-time
 ## 验证
 
 ```bash
-scripts/agentstack verify --target auto
+bash scripts/verify.sh
 ```
 
 ## 开发说明
 
-本仓库使用 AgentStack 作为 agent/tooling 协议和验证入口；它不属于 `aiwiki` runtime，也不改变 CLI/runtime 行为。当前安装平台是 `codex,claude,opencode`。
+验证入口是项目自有 `scripts/verify.sh`，不属于 `aiwiki` runtime 行为本身。AgentStack 脚手架已从本仓库移除。
 
-检查 AgentStack 安装健康：
-
-```bash
-scripts/agentstack doctor --platforms codex,claude,opencode
-```
-
-运行当前变更的 targeted verify：
+按改动路径建议 verify target：
 
 ```bash
-scripts/agentstack verify --target auto
+bash scripts/verify_target_rules.sh
 ```
 
-发布级或 broad-risk 变更再运行全量验证：
-
-```bash
-scripts/agentstack verify --full
-```
-
-底层项目验证仍可直接调用：
+按 target 验证，或跑全量：
 
 ```bash
 bash scripts/verify.sh [scripts|smoke|python-static|unit|acceptance|cli-smoke|product-shell-static|all]

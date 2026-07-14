@@ -2,7 +2,7 @@
 
 > 性质：原 contract，**已转 receipt 化**。本文档保留作为长期 dogfood SoT，新增"实跑历史"章节（§8）记录 v0 / v1 落地。
 > 状态：`closed-with-v0-and-v1-receipts`（2026-05-01）— 首两次实跑已完成，receipt 落 dogfood vault；后续 dogfood 仍按本文档 §2 七步 flow 推进
-> 来源：`docs/Furnace Next Direction Post-P4.md` §D-4
+> 来源：`docs/archive/Furnace Next Direction Post-P4.md` §D-4
 > 实跑 receipt：
 > - v0 (2026-04-30, 9 min, 3 demo notes, codex-cli/gpt-5.5)：dogfood vault `output/reports/dogfood-receipt-investing-v0.md`
 > - v1 (2026-05-01, +PDF + 双 backend)：dogfood vault `output/reports/dogfood-receipt-investing-v1.md`
@@ -357,7 +357,7 @@ F-INV-1 ~ F-INV-19，每条：
 ## 6. 与现有 SoT 的关系
 
 - 上层 SoT：`docs/Furnace Agent Architecture.md` + `docs/Furnace Evolution Mechanics.md`
-- 直接引用方向：`docs/Furnace Next Direction Post-P4.md` §D-4
+- 直接引用方向史料：`docs/archive/Furnace Next Direction Post-P4.md` §D-4
 - 历史 dogfood receipt 参考：`docs/archive/Furnace Next Direction P4.md` 引用的 `dogfood-receipt-v0.md`（research protocol）
 - 不替代：本文档只是 contract，实跑后产出的 receipt 是另一份独立 artifact
 

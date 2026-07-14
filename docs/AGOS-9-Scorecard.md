@@ -1,7 +1,7 @@
 # AgentOS 9.0 Scorecard
 
 > **SoT**：本文件是炼丹炉从 7.8/10 推进到 9.0/10 的统一评分与 release gate。
-> **执行计划**：[AGOS-9-Execution-Plan.md](./AGOS-9-Execution-Plan.md)
+> **执行计划史料**：[AGOS-9-Execution-Plan.md](./archive/AGOS-9-Execution-Plan.md)
 > **基线 tag**：`v0.3.0-agentos-baseline`（进入 AGOS 路线前的回溯点）
 
 ## 评分原则
@@ -324,7 +324,7 @@ PYTHONPATH=src python -m pytest tests/test_post_agos_risk.py -q
 ### 历史 / thesis（非 runtime spec）
 
 - `docs/Furnace Elixir.md`
-- `docs/Furnace Next Direction Post-P4.md`
+- `docs/archive/Furnace Next Direction Post-P4.md`
 - `docs/archive/*`
 
 ### 验证命令

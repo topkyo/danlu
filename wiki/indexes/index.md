@@ -18,20 +18,13 @@
 - [决策索引](./decisions.md)
 - [判断索引](./judgments.md)
 - [判断资产](./judgment-assets.md)
-- [Agent Workbench](./agent-workbench.md)
-- [认知历史](./cognitive-history.md)
 - [协议总览](./protocols.md)
 - [炉心面板](./furnace-center.md)
-- [执行中心](./execution-center.md)
-- [输出 Pack 总览](./output-packs.md)
-- [领域 Pilot 总览](./domain-pilots.md)
 - [审阅队列](./review-queue.md)
 - [审阅中心](./review-center.md)
-- [Aging 报告](./aging-report.md)
 - [编译状态](./compile-status.md)
 - [机器记忆](./machine-memory.md)
 - [图谱视图](./graph-view.md)
-- [机器记忆拓扑](./machine-memory-topology.md)
 - [机器记忆动作队列](./machine-memory-actions.md)
 - [机器记忆修复计划](./machine-memory-repair-plan.md)
 - [Rewrite Proposals](./rewrite-proposals.md)
@@ -41,6 +34,8 @@
 - [操作日志](./log.md)
 - [运行时规则](../../schema/index.md)
 - [协议规则](../../schema/protocols/index.md)
+
+> 这些索引页由 `aiwiki compile` 生成。当前仓库快照未包含 `agent-workbench.md`、`cognitive-history.md`、`execution-center.md`、`output-packs.md`、`domain-pilots.md`、`aging-report.md`、`machine-memory-topology.md` 等派生页；若需要，应通过 compile 重新生成或调整生成规则，不在这里手写占位页。
 
 ## 最近来源
 - 还没有登记任何来源。

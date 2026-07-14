@@ -1,7 +1,8 @@
 # B — Slimdown Plan 下一轮目标推演（AOS-005 候选）
 
+> Historical: 历史分析，LOC/状态可能过期；执行以 Cleanup Plan + Scorecard 为准。
 > 只读推演。基于 C 文档（AOS-004 翻盘缺口）和 D 文档（ROI 排序）的结论。
-> SoT：`docs/Furnace Agent OS Slimdown Plan.md`、`docs/Furnace Next Direction Post-P4.md`。
+> SoT：`docs/archive/Furnace Agent OS Slimdown Plan.md`、`docs/archive/Furnace Next Direction Post-P4.md`。
 > **状态更新（2026-05-20）**：本文写作时 AOS-004 仍是 `not-yet`。后续 2026-05-19 P1 dogfood compounding proof 已将 `knowledge_compounding_proof` 跑到 `pass`，并有非空 `compounding_sample`。因此本文的 AOS-005 候选分析可继续作为下一轮减法/后端收敛参考，但“不应立即启动、仍被 AOS-004 阻塞”的前提已 superseded。
 
 ## 1. 推演前提

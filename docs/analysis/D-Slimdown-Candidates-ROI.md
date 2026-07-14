@@ -1,5 +1,6 @@
 # D — 代码瘦身候选模块清单：6.5 万行的 ROI 排序
 
+> Historical: 历史分析，LOC/状态可能过期；执行以 Cleanup Plan + Scorecard 为准。
 > 只读静态分析。仅给出候选优先级，不动代码。
 > SoT：`wc -l`、`grep -c ^def/class`、`git log --name-only` churn 数据、`src/aiwiki/` 各模块 docstring 中的 OWNER STATUS。
 

@@ -7,6 +7,8 @@ kind: "dashboard"
 
 这里是编译后的知识层。
 
+> `wiki/indexes/` 是 compile 生成的派生索引区；策略见 [[wiki/indexes/README|wiki/indexes policy]]。破链应通过 compile 重生或移出仓库处理，不把这里当事实 SoT 手写维护。
+
 ## 主要区域
 
 - `wiki/sources/`：摘要、溯源和来源级反向链接
@@ -21,7 +23,6 @@ kind: "dashboard"
 ## 架构入口
 
 - [[README|使用说明]]：当前产品和 runtime 入口
-- [[wiki/indexes/protocols|协议总览]]：当前 active protocol 和可用协议库
 - [[wiki/indexes/protocols|协议总览]]：当前 active protocol 和可用协议库
 - [[wiki/indexes/furnace-center|炉心面板]]：统一入口，先看今天该处理什么
 - [[schema/index|运行时规则]]：compile、ask、lint 共同遵循的规则层

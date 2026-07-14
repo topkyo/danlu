@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from aiwiki.config import LLMConfig
-from aiwiki.llm import _config_for_backend, probe_backend
+from aiwiki.llm import probe_backend
 
 _LOGGER = logging.getLogger("aiwiki")
 _REQUIRE_COMPATIBLE_ENV = "AIWIKI_REQUIRE_COMPATIBLE_BACKEND"
@@ -85,7 +85,7 @@ def preflight_check_backend(root: Path, *, timeout_seconds: int = 30) -> dict[st
 
 
 def preflight_check_backend_chain(root: Path, *, timeout_seconds: int = 10) -> dict[str, Any]:
-    """Probe only the configured primary backend and explicit backend fallbacks."""
+    """Probe the configured primary backend."""
 
     try:
         config = LLMConfig.from_env()
@@ -98,15 +98,11 @@ def preflight_check_backend_chain(root: Path, *, timeout_seconds: int = 10) -> d
         }
 
     primary = _probe_chain_item(config, root, timeout_seconds=timeout_seconds, role="primary")
-    fallbacks: list[dict[str, Any]] = []
-    for backend in getattr(config, "backend_fallback_chain", ()) or ():
-        fallback_config = _config_for_backend(config, backend)
-        fallbacks.append(_probe_chain_item(fallback_config, root, timeout_seconds=timeout_seconds, role="fallback"))
     return {
         "kind": "backend-chain-preflight",
         "status": "compatible" if primary.get("compatibility") == "compatible" else "degraded",
         "primary": primary,
-        "fallbacks": fallbacks,
+        "fallbacks": [],
     }
 
 

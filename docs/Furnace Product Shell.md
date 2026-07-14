@@ -2,7 +2,14 @@
 
 *Obsidian 插件 UI 层事实源；炼丹炉"一个输入端 + 一个输出端"原则的可视化呈现*
 *Status: Active SoT, decision points resolved (§10)*
-*Last updated: 2026-05-24*
+*Last updated: 2026-07-14*
+
+## Platform boundary（2026-07）
+
+- **当前正式支持：Desktop Obsidian only**（Mac / Linux；Windows 同桌面模型）。`manifest.json` 中 `isDesktopOnly: true`。
+- 插件通过 Node `child_process.spawn` 调用 vault-local / absolute `aiwiki-launcher.sh`，再进入 Python CLI；因此依赖本机 shell、文件系统绝对路径与 Python runtime。
+- **iPad / iOS Obsidian：不支持全功能直移植。** 移动端无 Node/Electron/任意 shell，不能本地执行 aiwiki。若未来做移动端，只能是 thin client（只读 summary + 提交 queue/API），见 [Cleanup Commercial Audit Plan 2026-07 §3](./Furnace%20Cleanup%20Commercial%20Audit%20Plan%202026-07.md)。
+- 商业口径：Mac desktop 是主产品面；不要对外宣称“炼丹炉插件已支持 iPhone/iPad 全功能炼化”。
 
 ## 0. 第一性原理
 

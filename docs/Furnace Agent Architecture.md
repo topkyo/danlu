@@ -5,8 +5,8 @@ status: "active"
 owner: "tim"
 supersedes:
   - docs/Alchemy Furnace.md
-  - docs/Furnace Ultimate Architecture.md
-  - docs/Furnace Protocols.md
+  - docs/archive/Furnace Ultimate Architecture.md
+  - docs/archive/Furnace Protocols.md
 related_docs:
   - docs/Furnace Evolution Mechanics.md
   - docs/Furnace Elixir.md
@@ -117,7 +117,7 @@ related_docs:
 
 ## 2.0 AgentOS 9.0 Scorecard
 
-9.0 达标口径与 release gate 见 [AGOS-9-Scorecard.md](./AGOS-9-Scorecard.md)；里程碑执行见 [AGOS-9-Execution-Plan.md](./AGOS-9-Execution-Plan.md)。评分必须区分 `historical` / `fixture` / `replay` / `live` 四类证据，不得把历史 dogfood PASS 当作当前 clean vault 的 live PASS。
+9.0 达标口径与 release gate 见 [AGOS-9-Scorecard.md](./AGOS-9-Scorecard.md)；里程碑执行史料见 [AGOS-9-Execution-Plan.md](./archive/AGOS-9-Execution-Plan.md)。评分必须区分 `historical` / `fixture` / `replay` / `live` 四类证据，不得把历史 dogfood PASS 当作当前 clean vault 的 live PASS。
 
 ## 2.1 Current Implementation Map
 
@@ -437,8 +437,8 @@ L0（维护层）由 `AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT=1` 控制；L1-L3/Judgment
 本文档取代：
 
 - `docs/Alchemy Furnace.md`（基线叙事被 §1 / §5 / §10 吸收）
-- `docs/Furnace Ultimate Architecture.md`（九层叙事被 §2 / §5 / §6 / §7 / §8 吸收）
-- `docs/Furnace Protocols.md`（一个炉子多协议被 §9 吸收）
+- `docs/archive/Furnace Ultimate Architecture.md`（九层叙事被 §2 / §5 / §6 / §7 / §8 吸收）
+- `docs/archive/Furnace Protocols.md`（一个炉子多协议被 §9 吸收）
 
 旧文档应物理归档到 `docs/archive/`，并在 frontmatter 标注 `superseded_by: docs/Furnace Agent Architecture.md`。
 

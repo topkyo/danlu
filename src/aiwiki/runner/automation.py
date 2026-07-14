@@ -35,21 +35,13 @@ def auto_process_once(
 ) -> dict[str, Any]:
     ensure_layout(root)
     llm_enabled = bool(client) or (not deterministic_only and llm_status()["configured"])
-    llm_failed = False
 
     if llm_enabled and not deterministic_only:
         try:
             compile_result = run_compile(root, client=client, limit=compile_limit)
         except Exception as exc:
-            logging.getLogger("aiwiki").warning("LLM compile failed, falling back to deterministic: %s", exc)
-            llm_failed = True
-            with runtime_write_lock(root):
-                compile_result = {
-                    "compile": compile_wiki(root),
-                    "updated_pages": [],
-                    "pending_pages": _pending_summary_count(root),
-                    "skipped_pages": 0,
-                }
+            logging.getLogger("aiwiki").error("LLM compile failed during automation: %s", exc)
+            raise RuntimeError("LLM compile failed during automation; deterministic fallback is disabled.") from exc
     else:
         with runtime_write_lock(root):
             compile_result = {
@@ -59,17 +51,12 @@ def auto_process_once(
                 "skipped_pages": 0,
             }
 
-    if semantic_lint and llm_enabled and not deterministic_only and not llm_failed:
+    if semantic_lint and llm_enabled and not deterministic_only:
         try:
             lint_result = run_lint(root, client=client)
         except Exception as exc:
-            logging.getLogger("aiwiki").warning("LLM lint failed, falling back to deterministic: %s", exc)
-            llm_failed = True
-            with runtime_write_lock(root):
-                lint_result = {
-                    "deterministic": lint_wiki(root),
-                    "semantic_report": "",
-                }
+            logging.getLogger("aiwiki").error("LLM lint failed during automation: %s", exc)
+            raise RuntimeError("LLM lint failed during automation; deterministic fallback is disabled.") from exc
     else:
         with runtime_write_lock(root):
             lint_result = {
@@ -79,7 +66,7 @@ def auto_process_once(
 
     snapshot = inbox_snapshot(root)
     signal_pipeline = run_signal_pipeline(root)
-    actually_used_llm = bool(llm_enabled and not deterministic_only and not llm_failed)
+    actually_used_llm = bool(llm_enabled and not deterministic_only)
     result = {
         "processed_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "mode": "deterministic-only" if deterministic_only else "llm-enabled",
@@ -87,7 +74,7 @@ def auto_process_once(
         "semantic_lint": semantic_lint,
         "compile_limit": compile_limit,
         "llm_used": actually_used_llm,
-        "llm_fallback": llm_failed,
+        "llm_fallback": False,
         "compile": compile_result,
         "lint": lint_result,
         "signal_pipeline": signal_pipeline,
@@ -100,7 +87,7 @@ def auto_process_once(
             {
                 "event": "auto-process",
                 "llm_used": result["llm_used"],
-                "llm_fallback": llm_failed,
+                "llm_fallback": False,
                 "compile_limit": compile_limit,
                 "inbox_digest": snapshot["digest"],
             },

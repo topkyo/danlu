@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 from ..app_cache import sync_query_cache
-from ..app_content import append_wiki_log, manifest_change_summary
 from ..app_state import (
     active_corpora_state_path,
     archive_candidates_state_path,
@@ -22,8 +21,10 @@ from ..app_state import (
     ranking_build_state_path,
     save_compile_state,
 )
-from ..app_surfaces import render_compile_status
 from ..app_utils import relative_path, write_if_changed_ignoring_timestamps
+from ..content.io import manifest_change_summary
+from ..render.compile_status import render_compile_status
+from ..render.paths import append_wiki_log
 from ..vault_obsidian_graph import sync_evidence_graph_workspace
 from .context import CompileContext
 

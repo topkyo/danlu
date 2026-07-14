@@ -1,7 +1,7 @@
 # C — AOS-004 翻盘路径分析：从 `not-yet` 到 `pass`
 
 > 只读分析。不修改 runtime / schema / gate 阈值。
-> SoT：`scripts/dogfood_maturity_gate.py`、`docs/Furnace Agent OS Slimdown Plan.md`、`docs/Furnace Investing Dogfood Plan.md`、`PROGRESS.md`。
+> SoT：`scripts/dogfood_maturity_gate.py`、`docs/archive/Furnace Agent OS Slimdown Plan.md`、`docs/Furnace Investing Dogfood Plan.md`、`PROGRESS.md`。
 > **状态更新（2026-05-20）**：本文是 AOS-004 翻盘前的路径分析。后续 2026-05-19 P1 dogfood compounding proof 已按“路径 1”补齐真实 sample，`knowledge_compounding_proof.status=pass` 且 `compounding_sample != null`。当前 `/home/tim/danlu/炼丹炉` 已被清仓恢复为干净初始 vault，旧 maturity-gate receipt/snapshot 文件不在当前路径；历史 pass 以 git/`PROGRESS.md` 中固化的旧 session 结果为准。
 
 ## 1. 问题陈述
@@ -43,7 +43,7 @@ FAILED_RECEIPT_STATUSES = {"blocked", "error", "failed", "reverted"}
 
 ## 3. 当时为什么跑不出 sample
 
-基于已读 `Furnace Investing Dogfood Plan.md` 和 `Furnace Next Direction Post-P4.md`，可推断的断点（按可能性排序）：
+基于已读 `Furnace Investing Dogfood Plan.md` 和 `docs/archive/Furnace Next Direction Post-P4.md`，可推断的断点（按可能性排序）：
 
 ### 断点 A：output artifact frontmatter 没有记录派生层复用
 当时 dogfood vault 已经存在判断/金丹复用的静态迹象，但可能没有任何 `output/**/*.md` 的 `derived_from` / `source_files` 写入 `wiki/judgments/*`、`wiki/decisions/*` 或 `wiki/elixirs/*`。

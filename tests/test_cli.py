@@ -209,6 +209,8 @@ class CLITests(unittest.TestCase):
         help_text = parser.format_help()
 
         self.assertEqual(PRIMARY_SURFACE_COMMANDS, ("drop", "today", "metrics", "advanced"))
+        self.assertIn("PRIMARY_SURFACE commands", help_text)
+        self.assertIn("drop,\ntoday, metrics, advanced", help_text)
         self.assertIn("Daily path", help_text)
         self.assertIn("drop", help_text)
         self.assertIn("today", help_text)
@@ -240,6 +242,7 @@ class CLITests(unittest.TestCase):
         help_text = advanced_parser.format_help()
 
         self.assertIn("compile", help_text)
+        self.assertIn("[compat] Compile manifest entries", help_text)
         self.assertIn("run-nightly", help_text)
         self.assertIn("planner-log-list", help_text)
         self.assertIn("l3-proposal-generate", help_text)

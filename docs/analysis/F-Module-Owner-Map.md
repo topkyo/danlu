@@ -1,5 +1,6 @@
 # F — 模块 Owner 映射
 
+> Historical: 历史分析，LOC/状态可能过期；执行以 Cleanup Plan + Scorecard 为准。
 > 合并 AGOS-005 seam map 与 runtime 模块归属。**勿向 facade 文件新增逻辑。**
 
 ## Owner 子包（在此编写）
