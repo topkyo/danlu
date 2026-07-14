@@ -1,7 +1,7 @@
 ---
 title: "炼丹炉大扫除 / 商业审计 / 全平台 Obsidian 移植计划"
 kind: "plan"
-status: "executed-pending-review"
+status: "executed-reviewed-pass"
 updated_at: 2026-07-14
 supersedes:
   - "docs/archive/Furnace Next Direction Post-P4.md (direction context only)"
