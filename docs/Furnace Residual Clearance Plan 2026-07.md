@@ -1,7 +1,7 @@
 ---
 title: "炼丹炉 Residual Clearance Plan"
 kind: "plan"
-status: "executed-pending-merge"
+status: "executed-reviewed-pass"
 updated_at: 2026-07-14
 parent: "docs/Furnace Cleanup Commercial Audit Plan 2026-07.md"
 ---
@@ -33,7 +33,7 @@ parent: "docs/Furnace Cleanup Commercial Audit Plan 2026-07.md"
 - [x] R-MOBILE：`RuntimeClient` / DesktopLauncher / VaultQueue + Python drain + tests
 - [x] R-DOCS：更新 Cleanup Plan residual、docs/README、M-MOBILE 勾选
 - [x] R-C4：maturity long-window probe 脚本（只报告 not-yet / pass，不伪造）
-- [ ] verify + independent review + merge to `investing-research`
+- [x] verify + independent review + merge to `investing-research`
 
 ## Verify
 
