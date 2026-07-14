@@ -299,11 +299,14 @@ const ZH_TEXT = {
   "Deterministic fallback": "本地兜底",
   "Deterministic fallback active": "已使用本地兜底",
   "Recent run-ask succeeded.": "最近一次 run-ask 成功完成。",
+  "Latest run-ask succeeded.": "最近一次 run-ask 成功完成。",
   "Recent run-ask fell back to deterministic ask.": "最近一次 run-ask 已回退到 deterministic ask。",
+  "Latest run-ask produced an LLM failure notice.": "最近一次 run-ask 生成了 LLM 失败说明。",
   "LLM timed out or failed; only deterministic fallback is available.": "LLM 超时或失败；当前只有本地兜底结果。",
   "LLM timed out; deterministic fallback only.": "LLM 超时；仅生成了本地兜底结果。",
   "LLM timed out; deterministic fallback only. Open the artifact for local context, then retry or switch model.": "LLM 超时；仅生成了本地兜底结果。可打开产物查看本地上下文，再重试或切换模型。",
   "LLM timed out; no substantive answer was generated. Try again or switch model.": "LLM 超时，未生成实质回答。请重试或切换模型。",
+  "Latest run-ask failed before producing an LLM result.": "最近一次 run-ask 在生成 LLM 结果前失败。",
   available: "可用",
   "configured but unavailable": "已配置但不可用",
   "not configured": "未配置",
@@ -319,6 +322,7 @@ const ZH_TEXT = {
   "长程报告生成中，可稍后刷新": "长程报告生成中，可稍后刷新",
   "长程报告可能已完成，刷新看看": "长程报告可能已完成，刷新看看",
   "Latest run-ask failed without deterministic fallback.": "最近一次 run-ask 失败，且没有进入 deterministic fallback。",
+  "LLM failure notice active": "LLM 失败说明已启用",
   "No Product Shell ask has been recorded yet.": "当前还没有 Product Shell Ask 记录。",
   "Product Shell ask history matches the current route.": "Product Shell 的 Ask 历史与当前路由一致。",
   "Latest Product Shell ask used {latest}; current route is {current}.": "最近一次 Product Shell Ask 使用的是 {latest}；当前路由是 {current}。",
@@ -9064,11 +9068,18 @@ async function refreshProductShellSummaryCommand(plugin) {
 
 // Extracted from plugin.js
 
+const LLM_HEALTH_FAILURE_NOTICE_DELIVERY_MODES = {
+    "deterministic-fallback": true,
+    "llm-failed": true,
+  };
+
 function normalizeLlmHealthState(plugin, value) {
     if (!value || typeof value !== "object") {
       return null;
     }
     const status = String(value.status || "").trim() || "unknown";
+    const fallbackCommandValue = preferredObjectField(value, "fallbackCommand", "fallback_command");
+    const recoveryCommandValue = preferredObjectField(value, "recoveryCommand", "recovery_command");
     return {
       status,
       backend: String(value.backend || "").trim(),
@@ -9080,13 +9091,13 @@ function normalizeLlmHealthState(plugin, value) {
       reason: String(value.reason || "").trim(),
       checkedAt: String(value.checkedAt || value.checked_at || "").trim(),
       source: String(value.source || "").trim(),
-      fallbackCommand: String(value.fallbackCommand || value.fallback_command || "").trim(),
+      fallbackCommand: String(fallbackCommandValue || "").trim(),
       fallbackStage: String(value.fallbackStage || value.fallback_stage || "").trim(),
       fallbackReason: String(value.fallbackReason || value.fallback_reason || "").trim(),
       contractValidated: Object.prototype.hasOwnProperty.call(value, "contractValidated")
         ? Boolean(value.contractValidated)
         : Boolean(value.contract_validated),
-      recoveryCommand: String(value.recoveryCommand || value.recovery_command || "").trim(),
+      recoveryCommand: String(recoveryCommandValue || "").trim(),
       routeDrift: Boolean(value.routeDrift || value.route_drift),
       routeDriftReason: String(value.routeDriftReason || value.route_drift_reason || "").trim(),
       logPath: String(value.logPath || value.log_path || "").trim(),
@@ -9098,12 +9109,64 @@ function normalizeLlmHealthState(plugin, value) {
   }
 
 
+function preferredObjectField(value, preferredKey, legacyKey) {
+    return Object.prototype.hasOwnProperty.call(value, preferredKey)
+      ? value[preferredKey]
+      : value[legacyKey];
+  }
+
+
+function llmHealthTimestamp(value) {
+    const timestamp = Date.parse(String(value || "").trim());
+    return Number.isFinite(timestamp) ? timestamp : 0;
+  }
+
+
+function shellSummaryHealthTimestamp(plugin, summaryHealth) {
+    if (!plugin.shellSummary || typeof plugin.shellSummary !== "object") {
+      return 0;
+    }
+    return Math.max(
+      llmHealthTimestamp(summaryHealth && summaryHealth.checkedAt),
+      llmHealthTimestamp(plugin.shellSummary.generated_at)
+    );
+  }
+
+
+function shouldUsePluginLlmHealth(plugin, pluginHealth, summaryHealth) {
+    if (!pluginHealth) {
+      return false;
+    }
+    if (!summaryHealth) {
+      return true;
+    }
+    const pluginTimestamp = llmHealthTimestamp(pluginHealth.checkedAt);
+    const summaryTimestamp = shellSummaryHealthTimestamp(plugin, summaryHealth);
+    return Boolean(pluginTimestamp) && pluginTimestamp > summaryTimestamp;
+  }
+
+
+function fillLlmHealthRoute(plugin, health, selected, llmStatus) {
+    return {
+      ...health,
+      backend: health.backend || selected.backend || String(llmStatus.backend || ""),
+      model: health.model || selected.model || String(llmStatus.effective_model || llmStatus.model || ""),
+    };
+  }
+
+
 function currentLlmHealth(plugin) {
     const llmStatus = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary.llm_status || {} : {};
     const summaryHealth = plugin.shellSummary && typeof plugin.shellSummary === "object"
       ? plugin.normalizeLlmHealthState(plugin.shellSummary.llm_health)
       : null;
+    const pluginHealth = plugin.pluginState && typeof plugin.pluginState === "object"
+      ? plugin.normalizeLlmHealthState(plugin.pluginState.llmHealth)
+      : null;
     const selected = plugin.currentLlmSelection();
+    if (shouldUsePluginLlmHealth(plugin, pluginHealth, summaryHealth)) {
+      return fillLlmHealthRoute(plugin, pluginHealth, selected, llmStatus);
+    }
     if (!summaryHealth) {
       return {
         status: "unknown",
@@ -9120,17 +9183,15 @@ function currentLlmHealth(plugin) {
         stderrRaw: "",
       };
     }
-    return {
-      ...summaryHealth,
-      backend: summaryHealth.backend || selected.backend || String(llmStatus.backend || ""),
-      model: summaryHealth.model || selected.model || String(llmStatus.effective_model || llmStatus.model || ""),
-    };
+    return fillLlmHealthRoute(plugin, summaryHealth, selected, llmStatus);
   }
 
 
 function latestLlmRun(plugin) {
     if (plugin.shellSummary && typeof plugin.shellSummary === "object" && plugin.shellSummary.latest_llm_run && typeof plugin.shellSummary.latest_llm_run === "object") {
       const summaryRun = plugin.shellSummary.latest_llm_run;
+      const fallbackFromValue = preferredObjectField(summaryRun, "fallbackFrom", "fallback_from");
+      const fallbackCommandValue = preferredObjectField(summaryRun, "fallbackCommand", "fallback_command");
       return {
         ...summaryRun,
         command: String(summaryRun.command || summaryRun.event || "").trim(),
@@ -9140,13 +9201,20 @@ function latestLlmRun(plugin) {
         receiptPath: String(summaryRun.receiptPath || summaryRun.receipt_path || "").trim(),
         logPath: String(summaryRun.logPath || summaryRun.log_path || "").trim(),
         errorSummary: String(summaryRun.errorSummary || summaryRun.error || summaryRun.fallback_reason || "").trim(),
-        fallbackFrom: String(summaryRun.fallbackFrom || summaryRun.fallback_from || "").trim(),
-        fallbackCommand: String(summaryRun.fallbackCommand || summaryRun.fallback_command || "").trim(),
+        fallbackFrom: String(fallbackFromValue || "").trim(),
+        fallbackCommand: String(fallbackCommandValue || "").trim(),
         fallbackUsed: Boolean(summaryRun.fallbackUsed || summaryRun.fallback_used),
         deliveryMode: String(summaryRun.deliveryMode || summaryRun.delivery_mode || "").trim(),
       };
     }
     return null;
+  }
+
+
+function latestLlmRunLocalDegradedArtifact(latestLlmRun) {
+    const deliveryMode = String(latestLlmRun && latestLlmRun.deliveryMode || "").trim();
+    if (Object.prototype.hasOwnProperty.call(LLM_HEALTH_FAILURE_NOTICE_DELIVERY_MODES, deliveryMode)) return true;
+    return !deliveryMode && Boolean(latestLlmRun && latestLlmRun.fallbackUsed);
   }
 
   // EP-015: latestShellSyncRun() removed. The sole authoritative source for
@@ -9280,8 +9348,8 @@ function selfCheckItems(plugin) {
         detail: plugin.t("No summary latest LLM run data available."),
       });
     } else {
-      const usedFallback = Boolean(latestLlmRun.fallbackUsed) || String(latestLlmRun.deliveryMode || "").trim() === "deterministic-fallback";
-      const latestStatus = usedFallback
+      const localDegradedArtifact = latestLlmRunLocalDegradedArtifact(latestLlmRun);
+      const latestStatus = localDegradedArtifact
         ? "warning"
         : latestLlmRun.status === "success"
           ? "healthy"
@@ -9289,8 +9357,8 @@ function selfCheckItems(plugin) {
       const latestDetail = latestStatus === "healthy"
         ? plugin.t("Latest run-ask succeeded.")
         : latestStatus === "warning"
-          ? plugin.t("Latest run-ask fell back to deterministic ask.")
-          : plugin.t("Latest run-ask failed without deterministic fallback.");
+          ? plugin.t("Latest run-ask produced an LLM failure notice.")
+          : plugin.t("Latest run-ask failed before producing an LLM result.");
       items.push({
         key: "latest-ask",
         status: latestStatus,
@@ -9333,7 +9401,7 @@ function selfCheckItems(plugin) {
         key: "health",
         status: "warning",
         title: "LLM health",
-        detail: health.reason || plugin.t("Recent run-ask fell back to deterministic ask."),
+        detail: health.reason || plugin.t("Latest run-ask produced an LLM failure notice."),
       });
     }
 
@@ -9342,6 +9410,16 @@ function selfCheckItems(plugin) {
 
 
 function updateLlmHealth(plugin, nextState) {
+    const normalized = plugin.normalizeLlmHealthState(nextState);
+    if (normalized) {
+      if (!plugin.pluginState || typeof plugin.pluginState !== "object") {
+        plugin.pluginState = { recentRuns: [], llmHealth: null };
+      }
+      if (!Array.isArray(plugin.pluginState.recentRuns)) {
+        plugin.pluginState.recentRuns = [];
+      }
+      plugin.pluginState.llmHealth = normalized;
+    }
     plugin.updateStatusBar();
     plugin.refreshOpenViews();
     void plugin.savePluginState();
@@ -9352,6 +9430,9 @@ function recordLlmHealthFromRun(plugin, record, overrides = {}) {
     if (!record || typeof record !== "object") {
       return;
     }
+    const fallbackCommand = Object.prototype.hasOwnProperty.call(overrides, "fallbackCommand")
+      ? overrides.fallbackCommand
+      : record.fallbackCommand || record.fallbackFrom || "";
     plugin.updateLlmHealth({
       status: overrides.status || "unknown",
       backend: overrides.backend || record.backend,
@@ -9363,7 +9444,7 @@ function recordLlmHealthFromRun(plugin, record, overrides = {}) {
       reason: overrides.reason || record.errorSummary || "",
       checkedAt: overrides.checkedAt || record.finishedAt || record.startedAt || new Date().toISOString(),
       source: overrides.source || record.command || "",
-      fallbackCommand: overrides.fallbackCommand || record.fallbackCommand || record.fallbackFrom || "",
+      fallbackCommand,
       fallbackStage: overrides.fallbackStage || record.fallbackStage || "",
       fallbackReason: overrides.fallbackReason || record.fallbackReason || "",
       contractValidated: Object.prototype.hasOwnProperty.call(overrides, "contractValidated") ? Boolean(overrides.contractValidated) : Boolean(record.contractValidated),
