@@ -74,10 +74,10 @@ Obsidian 是前端/IDE；炼丹炉是整个系统；`aiwiki` 是底层 runtime�
 如果你想基于当前 runtime 快速起一个新的 Obsidian 炼丹炉工作区：
 
 ```bash
-PYTHONPATH=src python3 -m aiwiki.cli --root . new-vault ../demo-furnace-vault
+PYTHONPATH=src python3 -m aiwiki.cli --root . advanced new-vault ../demo-furnace-vault
 cd ../demo-furnace-vault
-./scripts/aiwiki-launcher.sh shell-status
-./scripts/aiwiki-launcher.sh compile
+./scripts/aiwiki-launcher.sh advanced shell-status
+./scripts/aiwiki-launcher.sh advanced compile
 ```
 
 它会一次性生成：

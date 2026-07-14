@@ -78,8 +78,8 @@ fi
 LLM_LIMIT="${AIWIKI_RELEASE_LLM_SAMPLE_LIMIT:-50}"
 LLM_MIN_SUCCESS_RATE="${AIWIKI_RELEASE_LLM_MIN_SUCCESS_RATE:-0.8}"
 LLM_MAX_TIMEOUT_FAILURES="${AIWIKI_RELEASE_LLM_MAX_TIMEOUT_FAILURES:-3}"
-LLM_SUMMARY="$(python3 -m aiwiki.cli --root "$VAULT" llm-telemetry --limit "$LLM_LIMIT")"
-BACKEND_SUMMARY="$(python3 -m aiwiki.cli --root "$VAULT" backend-telemetry --limit "$LLM_LIMIT")"
+LLM_SUMMARY="$(python3 -m aiwiki.cli --root "$VAULT" advanced llm-telemetry --limit "$LLM_LIMIT")"
+BACKEND_SUMMARY="$(python3 -m aiwiki.cli --root "$VAULT" advanced backend-telemetry --limit "$LLM_LIMIT")"
 echo "$LLM_SUMMARY"
 echo "$BACKEND_SUMMARY"
 if python3 - "$LLM_SUMMARY" "$BACKEND_SUMMARY" "$LLM_MIN_SUCCESS_RATE" "$LLM_MAX_TIMEOUT_FAILURES" <<'PY'

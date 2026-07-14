@@ -86,7 +86,7 @@ truthy() {
 mkdir -p "$SYSTEMD_USER_DIR" "$AIWIKI_CONFIG_DIR"
 
 PYTHONPATH="$PROJECT_ROOT/src${PYTHONPATH:+:$PYTHONPATH}" "$PYTHON_BIN" -m aiwiki.cli \
-  --root "$PROJECT_ROOT" sync-product-shell "$VAULT_ROOT" >/dev/null
+  --root "$PROJECT_ROOT" advanced sync-product-shell "$VAULT_ROOT" >/dev/null
 
 if [[ ! -f "$WATCH_ENV_PATH" ]]; then
   cat >"$WATCH_ENV_PATH" <<EOF

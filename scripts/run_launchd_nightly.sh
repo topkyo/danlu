@@ -16,10 +16,11 @@ fi
 COMPILE_LIMIT="${AIWIKI_NIGHTLY_COMPILE_LIMIT:-5}"
 
 if [[ "${AIWIKI_NIGHTLY_DETERMINISTIC_ONLY:-0}" == "1" ]]; then
-  exec "$LAUNCHER" nightly
+  exec "$LAUNCHER" advanced nightly
 fi
 
 ARGS=(
+  advanced
   run-nightly
   --compile-limit "$COMPILE_LIMIT"
 )

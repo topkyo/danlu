@@ -35,7 +35,7 @@ run_aiwiki() {
 
 llm_configured() {
   if [ -x "$LAUNCHER" ]; then
-    "$LAUNCHER" llm-check | python3 -c 'import json, sys; payload = json.load(sys.stdin); sys.exit(0 if payload.get("configured") else 1)'
+    "$LAUNCHER" advanced llm-check | python3 -c 'import json, sys; payload = json.load(sys.stdin); sys.exit(0 if payload.get("configured") else 1)'
     return $?
   fi
   python3 - <<'PY'

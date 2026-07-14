@@ -23,6 +23,6 @@ python3 "$PROJECT_ROOT/scripts/dogfood_maturity_gate.py" --root "$VAULT" collect
 echo
 python3 "$PROJECT_ROOT/scripts/dogfood_maturity_gate.py" --root "$VAULT" summarize --days 3 --require-current-day
 echo
-python3 -m aiwiki.cli --root "$VAULT" llm-telemetry --limit 20
+python3 -m aiwiki.cli --root "$VAULT" advanced llm-telemetry --limit 20
 echo
-python3 -m aiwiki.cli --root "$VAULT" backend-telemetry --limit 50
+python3 -m aiwiki.cli --root "$VAULT" advanced backend-telemetry --limit 50
