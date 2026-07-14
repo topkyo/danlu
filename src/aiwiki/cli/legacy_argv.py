@@ -130,8 +130,9 @@ def rewrite_legacy_top_level_argv(
     """
 
     if argv is None:
-        return None
-    rewritten = list(argv)
+        rewritten = list(sys.argv[1:])
+    else:
+        rewritten = list(argv)
     index = 0
     while index < len(rewritten):
         token = rewritten[index]

@@ -52,6 +52,13 @@ class LegacyArgvRewriteTests(unittest.TestCase):
         self.assertIn("deprecated", stderr.getvalue().lower())
         self.assertIn("advanced lint", stderr.getvalue())
 
+    def test_none_argv_rewrites_sys_argv(self) -> None:
+        with patch("sys.argv", ["aiwiki", "--root", "/vault", "compile"]):
+            self.assertEqual(
+                rewrite_legacy_top_level_argv(None, emit_warning=False),
+                ["--root", "/vault", "advanced", "compile"],
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

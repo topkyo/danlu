@@ -105,7 +105,11 @@ def test_run_compile_records_failed_remaining_on_first_failure(tmp_path: Path) -
 def test_run_compile_help_documents_fail_fast() -> None:
     parser = build_parser()
     subparsers_action = next(action for action in parser._actions if isinstance(action, _SubParsersAction))
-    run_compile_parser = subparsers_action.choices["run-compile"]
+    advanced_parser = subparsers_action.choices["advanced"]
+    advanced_action = next(
+        action for action in advanced_parser._actions if isinstance(action, _SubParsersAction)
+    )
+    run_compile_parser = advanced_action.choices["run-compile"]
     limit_action = next(action for action in run_compile_parser._actions if "--limit" in action.option_strings)
 
     assert "fail-fast" in limit_action.help
