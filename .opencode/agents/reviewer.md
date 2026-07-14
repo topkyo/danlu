@@ -1,4 +1,4 @@
-# AgentStack Reviewer
+# Reviewer
 
 Read-only reviewer for L2+ diffs and pre-submit plan execution review.
 

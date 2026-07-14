@@ -45,7 +45,7 @@
   - `bash -n scripts/run_nightly.sh`
   - `git diff --check`
 - Project:
-  - `scripts/agentstack verify --target auto`
+  - `bash scripts/verify.sh`
 
 ## Risks
 - Direct ask behavior is user-facing; preserve existing prompt text while adding provenance metadata.

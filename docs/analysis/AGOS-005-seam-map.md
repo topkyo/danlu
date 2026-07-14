@@ -1,5 +1,6 @@
 # AGOS-005 Runtime Hub Seam Map
 
+> Historical: 历史分析，LOC/状态可能过期；执行以 Cleanup Plan + Scorecard 为准。
 > Targeted slimming map for AGOS-005. No broad refactor.
 
 ## Priority order (ROI × blast radius)

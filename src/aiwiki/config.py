@@ -51,8 +51,6 @@ class LLMConfig:
     model: str = ""
     model_requested: str = ""
     model_fallback_chain: tuple[str, ...] = ()
-    backend_fallback_chain: tuple[str, ...] = ()
-    backend_fallback_model: str = ""
     api_key: str = ""
     deepseek_api_key: str = ""
     deepseek_api_key_source: str = ""
@@ -130,8 +128,6 @@ class LLMConfig:
             model=effective_model,
             model_requested=values["model"],
             model_fallback_chain=effective_model_fallback_chain,
-            backend_fallback_chain=(),
-            backend_fallback_model="",
             api_key=effective_api_key,
             deepseek_api_key=values["deepseek_api_key"],
             deepseek_api_key_source=values["deepseek_api_key_source"],
@@ -195,9 +191,6 @@ class LLMConfig:
             "effective_model": effective_model,
             "model_source": _compute_model_source(values["model"], backend),
             "model_fallback_chain": list(effective_model_fallback_chain),
-            "backend_fallback_chain": [],
-            "backend_fallback_model": "",
-            "backend_fallbacks": [],
             "api_key_present": effective_api_key_present,
             "deepseek_api_key_present": bool(values["deepseek_api_key"]),
             "deepseek_api_key_source": values["deepseek_api_key_source"],
@@ -235,8 +228,6 @@ def _read_env() -> dict[str, Any]:
     requested_backend = (os.environ.get("AIWIKI_LLM_BACKEND") or DEFAULT_BACKEND).strip().lower()
     model = (os.environ.get("AIWIKI_LLM_MODEL") or os.environ.get("OPENAI_MODEL") or "").strip()
     env_model_fallback = os.environ.get("AIWIKI_MODEL_FALLBACK")
-    env_backend_fallback = ""
-    env_backend_fallback_model = ""
     api_key = (os.environ.get("AIWIKI_LLM_API_KEY") or os.environ.get("OPENAI_API_KEY") or "").strip()
     deepseek_api_key, deepseek_api_key_source = _resolve_deepseek_api_key()
     opencode_api_key, opencode_api_key_source = _resolve_opencode_api_key()
@@ -264,8 +255,6 @@ def _read_env() -> dict[str, Any]:
         "model": model,
         "model_fallback": None,
         "env_model_fallback": env_model_fallback,
-        "env_backend_fallback": env_backend_fallback,
-        "env_backend_fallback_model": env_backend_fallback_model,
         "api_key": api_key,
         "deepseek_api_key": deepseek_api_key,
         "deepseek_api_key_source": deepseek_api_key_source,
@@ -368,40 +357,6 @@ def _resolve_model_fallback_chain(values: dict[str, Any]) -> tuple[str, ...]:
     if values.get("model_fallback") is not None:
         return _parse_model_fallback_chain(values.get("model_fallback"))
     return _parse_model_fallback_chain(values.get("env_model_fallback"))
-
-
-def _resolve_backend_fallback_chain(values: dict[str, Any]) -> tuple[str, ...]:
-    del values
-    return ()
-
-
-def _backend_fallback_statuses(values: dict[str, Any], *, primary_backend: str) -> list[dict[str, Any]]:
-    del values, primary_backend
-    return []
-
-
-def _static_backend_available(values: dict[str, Any], backend: str) -> tuple[bool, str]:
-    if backend == BACKEND_DEEPSEEK_API:
-        return (bool(values.get("deepseek_api_key")), "deepseek api key configured" if values.get("deepseek_api_key") else "deepseek api key missing")
-    if backend == BACKEND_OPENCODE_API:
-        return (bool(values.get("opencode_api_key")), "opencode api key configured" if values.get("opencode_api_key") else "opencode api key missing")
-    if backend == BACKEND_OPENAI_API:
-        return (bool(values.get("api_key")), "openai-compatible api key configured" if values.get("api_key") else "openai-compatible api key missing")
-    if backend == BACKEND_ANTHROPIC_API:
-        return (bool(values.get("anthropic_api_key")), "anthropic api key configured" if values.get("anthropic_api_key") else "anthropic api key missing")
-    return False, "unsupported backend"
-
-
-def _default_model_for_backend(backend: str, values: dict[str, Any]) -> str:
-    if backend == BACKEND_DEEPSEEK_API:
-        return DEFAULT_DEEPSEEK_MODEL
-    if backend == BACKEND_OPENCODE_API:
-        return DEFAULT_OPENCODE_MODEL
-    if backend == BACKEND_OPENAI_API:
-        return str(values.get("model") or DEFAULT_OPENAI_API_MODEL)
-    if backend == BACKEND_ANTHROPIC_API:
-        return str(values.get("model") or DEFAULT_ANTHROPIC_API_MODEL)
-    return str(values.get("model") or "")
 
 
 def _parse_model_fallback_chain(raw: Any) -> tuple[str, ...]:

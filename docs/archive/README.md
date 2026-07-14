@@ -2,7 +2,7 @@
 title: "炼丹炉归档文档索引"
 kind: "index"
 status: "archive"
-updated_at: 2026-05-01
+updated_at: 2026-07-14
 ---
 
 # 炼丹炉归档文档索引
@@ -24,5 +24,8 @@ updated_at: 2026-05-01
 | [Furnace Next Direction P0-P3](<./Furnace Next Direction P0-P3.md>) | [Cleanup Commercial Audit Plan 2026-07](<../Furnace Cleanup Commercial Audit Plan 2026-07.md>) + Scorecard |
 | [Furnace Next Direction P4](<./Furnace Next Direction P4.md>) | [Cleanup Commercial Audit Plan 2026-07](<../Furnace Cleanup Commercial Audit Plan 2026-07.md>) + `PROGRESS.md` |
 | [Furnace Product UX Assessment](<./Furnace Product UX Assessment.md>) | [Furnace Product Shell](<../Furnace Product Shell.md>) |
-
-> 待 Wave A 执行时迁入本目录（或原地标 historical）的候选：`AGOS-9-Execution-Plan.md`、`Furnace AgentOS Completion Plan.md`、`Furnace Agent OS Slimdown Plan.md`、`Furnace Next Direction Post-P4.md`、`deepseek-comprehensive-evaluation-2026-05-03.md`。详见 Cleanup Plan §4 Wave A。
+| [AGOS-9-Execution-Plan](<./AGOS-9-Execution-Plan.md>) | [AGOS-9-Scorecard](<../AGOS-9-Scorecard.md>) + `PROGRESS.md` |
+| [Furnace AgentOS Completion Plan](<./Furnace AgentOS Completion Plan.md>) | [AGOS-9-Scorecard](<../AGOS-9-Scorecard.md>) + `PROGRESS.md` |
+| [Furnace Agent OS Slimdown Plan](<./Furnace Agent OS Slimdown Plan.md>) | [Cleanup Commercial Audit Plan 2026-07](<../Furnace Cleanup Commercial Audit Plan 2026-07.md>) + [AGOS-9-Scorecard](<../AGOS-9-Scorecard.md>) |
+| [Furnace Next Direction Post-P4](<./Furnace Next Direction Post-P4.md>) | [Cleanup Commercial Audit Plan 2026-07](<../Furnace Cleanup Commercial Audit Plan 2026-07.md>) + [Furnace Product Shell](<../Furnace Product Shell.md>) + [Furnace Runtime Operations](<../Furnace Runtime Operations.md>) |
+| [deepseek-comprehensive-evaluation-2026-05-03](<./deepseek-comprehensive-evaluation-2026-05-03.md>) | [Furnace Runtime Operations](<../Furnace Runtime Operations.md>) + [AGOS-9-Scorecard](<../AGOS-9-Scorecard.md>) |

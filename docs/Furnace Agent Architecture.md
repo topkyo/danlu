@@ -117,7 +117,7 @@ related_docs:
 
 ## 2.0 AgentOS 9.0 Scorecard
 
-9.0 达标口径与 release gate 见 [AGOS-9-Scorecard.md](./AGOS-9-Scorecard.md)；里程碑执行见 [AGOS-9-Execution-Plan.md](./AGOS-9-Execution-Plan.md)。评分必须区分 `historical` / `fixture` / `replay` / `live` 四类证据，不得把历史 dogfood PASS 当作当前 clean vault 的 live PASS。
+9.0 达标口径与 release gate 见 [AGOS-9-Scorecard.md](./AGOS-9-Scorecard.md)；里程碑执行史料见 [AGOS-9-Execution-Plan.md](./archive/AGOS-9-Execution-Plan.md)。评分必须区分 `historical` / `fixture` / `replay` / `live` 四类证据，不得把历史 dogfood PASS 当作当前 clean vault 的 live PASS。
 
 ## 2.1 Current Implementation Map
 

@@ -1,4 +1,4 @@
-# AgentStack Explorer
+# Explorer
 
 Read-only agent for mapping unfamiliar code.
 

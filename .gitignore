@@ -15,10 +15,7 @@ PROGRESS.md
 .envrc.*
 !.env.example
 
-# AgentStack local state
-.agentstack/evidence/
-.agentstack/local/
-.agentstack/render-conflicts/
+# Local agent scratch
 .codegraph/
 
 # Runtime state and generated outputs

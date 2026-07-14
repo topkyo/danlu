@@ -49,10 +49,6 @@ verify_scripts() {
     [[ -e "$script" ]] || continue
     bash -n "$script"
   done
-  for script in scripts/agentstack scripts/agentstack-*; do
-    [[ -e "$script" ]] || continue
-    bash -n "$script"
-  done
   for script in scripts/*.py; do
     [[ -e "$script" ]] || continue
     "$PYTHON" -m py_compile "$script"

@@ -328,32 +328,20 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check --probe-all --probe-time
 ## 验证
 
 ```bash
-scripts/agentstack verify --target auto
+bash scripts/verify.sh
 ```
 
 ## 开发说明
 
-本仓库使用 AgentStack 作为 agent/tooling 协议和验证入口；它不属于 `aiwiki` runtime，也不改变 CLI/runtime 行为。当前安装平台是 `codex,claude,opencode`。
+验证入口是项目自有 `scripts/verify.sh`，不属于 `aiwiki` runtime 行为本身。AgentStack 脚手架已从本仓库移除。
 
-检查 AgentStack 安装健康：
-
-```bash
-scripts/agentstack doctor --platforms codex,claude,opencode
-```
-
-运行当前变更的 targeted verify：
+按改动路径建议 verify target：
 
 ```bash
-scripts/agentstack verify --target auto
+bash scripts/verify_target_rules.sh
 ```
 
-发布级或 broad-risk 变更再运行全量验证：
-
-```bash
-scripts/agentstack verify --full
-```
-
-底层项目验证仍可直接调用：
+按 target 验证，或跑全量：
 
 ```bash
 bash scripts/verify.sh [scripts|smoke|python-static|unit|acceptance|cli-smoke|product-shell-static|all]

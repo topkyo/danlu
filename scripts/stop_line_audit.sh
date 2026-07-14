@@ -18,7 +18,7 @@ die() {
 }
 
 baseline=""
-contract=".agentstack/context/active.md"
+contract=""
 json=0
 
 while [[ $# -gt 0 ]]; do
@@ -60,6 +60,10 @@ if [[ -z "$baseline" ]]; then
   else
     baseline="HEAD~1"
   fi
+fi
+
+if [[ -z "$contract" ]]; then
+  die "ContractRequired: pass --contract <path> (AgentStack active.md has been removed)"
 fi
 
 if [[ ! -f "$contract" ]]; then

@@ -413,7 +413,6 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
             "usage_visibility": str(llm_status.get("usage_visibility") or ""),
             "usage_accounting": str(llm_status.get("usage_accounting") or ""),
             "message": str(llm_status.get("message") or ""),
-            "backend_fallbacks": list(llm_status.get("backend_fallbacks", [])),
         },
         "latest_llm_run": latest_llm_run,
         "latest_shell_sync_run": latest_shell_sync_run,

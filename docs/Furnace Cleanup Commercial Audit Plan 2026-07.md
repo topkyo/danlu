@@ -4,10 +4,10 @@ kind: "plan"
 status: "active-plan"
 updated_at: 2026-07-14
 supersedes:
-  - "docs/Furnace Next Direction Post-P4.md (direction context only)"
-  - "docs/Furnace Agent OS Slimdown Plan.md (campaign completed)"
-  - "docs/Furnace AgentOS Completion Plan.md (C1-C8 completed)"
-  - "docs/AGOS-9-Execution-Plan.md (execution history; scorecard remains SoT)"
+  - "docs/archive/Furnace Next Direction Post-P4.md (direction context only)"
+  - "docs/archive/Furnace Agent OS Slimdown Plan.md (campaign completed)"
+  - "docs/archive/Furnace AgentOS Completion Plan.md (C1-C8 completed)"
+  - "docs/archive/AGOS-9-Execution-Plan.md (execution history; scorecard remains SoT)"
 based_on:
   - "2026-07-14 multi-agent full-repo scan (architecture / debt / garbage / commercial / mobile)"
 ---
@@ -247,7 +247,7 @@ Obsidian UI → Node spawn → aiwiki-launcher.sh → Python CLI → vault write
 | A6 | 清理跨 backend failover 测试保护；旧 backend fixture 改名为 stub/historical，避免伪装生产路径 | `tests/test_runner.py` 等 | 中 | runner/llm/preflight pytest + acceptance 抽样 | 否 |
 | A7 | `PROGRESS.md` 切档：只留近期 active；旧 AGOS/C 段进 `archive/rounds/` | `PROGRESS.md`, `archive/rounds/*` | 中 | scripts | 否 |
 | A8 | `wiki/indexes/` 策略：生成态不入 SoT；破链修复或改为 compile 产物 / fixture，不手写维护 | `wiki/indexes/*` | 中 | compile smoke 或明确移出 | 否 |
-| A9 | `.agentstack`：补真实路径或标明 scaffold-only；空 `active.md` 不冒充任务上下文 | `.agentstack/*` | 低 | `scripts/agentstack doctor` | 是 |
+| A9 | AgentStack scaffold 已移除；文档与验证入口改回 canonical verify | `.agentstack/*`, `scripts/agentstack*`, docs | 低 | `bash scripts/verify.sh scripts` | 是 |
 | A10 | Product Shell README / 商业文档写明 Desktop-only 与移动端非目标（本阶段） | Product Shell docs + 本计划 §3 | 低 | product-shell-static | 是 |
 
 **Wave A Done 判据：**
@@ -287,7 +287,7 @@ Obsidian UI → Node spawn → aiwiki-launcher.sh → Python CLI → vault write
 | `docs/Furnace Cleanup Commercial Audit Plan 2026-07.md` | **Add（本文件）** | 执行 SoT（阶段性） |
 | `docs/README.md` | Update Active / Plans 索引 | 避免 SoT 误导 |
 | `docs/archive/README.md` | Update 归档表 + 替代指针 | 归档可导航 |
-| `docs/AGOS-9-Execution-Plan.md` 等已完成 plan | Archive or mark historical | 清文档垃圾 |
+| `docs/archive/AGOS-9-Execution-Plan.md` 等已完成 plan | Archived / historical | 清文档垃圾 |
 | `src/aiwiki/runner/automation.py` | Fix fail-closed | 清隐式兜底 |
 | `src/aiwiki/config.py` (+ callers/tests) | Remove dead backend_fallback | 清死代码 |
 | `tests/test_runner.py` 等 | Retarget fixtures | 防死路径复活 |
@@ -311,11 +311,11 @@ Obsidian UI → Node spawn → aiwiki-launcher.sh → Python CLI → vault write
 
 ### Phase 1 — Wave A 执行（下一编码 PR）
 
-- [ ] A1–A3 文档归档与 Active 修正
-- [ ] A4 automation fail-closed
-- [ ] A5–A6 死 fallback 与测试清理
-- [ ] A7–A9 PROGRESS / wiki indexes / agentstack
-- [ ] A10 Desktop-only 口径同步
+- [x] A1–A3 文档归档与 Active 修正（Wave A docs-only slice：完成意图）
+- [x] A4 automation fail-closed
+- [x] A5–A6 死 fallback 与测试清理
+- [x] A7–A9 AgentStack 移除；PROGRESS/wiki indexes 仍待后续
+- [x] A10 Desktop-only 口径同步
 - [ ] targeted verify + 独立 review
 
 ### Phase 2 — Wave B
@@ -333,6 +333,10 @@ Obsidian UI → Node spawn → aiwiki-launcher.sh → Python CLI → vault write
 
 ## 7. Verify
 
+### AgentStack removal note
+
+AgentStack 已从仓库移除；当前验证入口改为 `bash scripts/verify.sh [target]`。历史 `scripts/agentstack ...` 命令不再作为本计划 gate。
+
 ### Targeted（每完成一个 Wave A 切片）
 
 ```bash
@@ -340,7 +344,6 @@ bash scripts/docs_consistency_check.sh
 bash scripts/verify.sh scripts
 PYTHONPATH=src python3 -m pytest tests/test_config.py tests/test_preflight.py tests/test_runner.py -q -k "fallback or backend or automation or watch"
 bash scripts/verify.sh product-shell-static
-scripts/agentstack verify --target auto
 ```
 
 ### Full（Wave A 收口 / 推送前）

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Project-owned AgentStack verify-auto rules for ai-wiki.
+# Emit verify.sh targets based on changed paths.
 set -euo pipefail
 
 changed_files() {
@@ -14,9 +14,6 @@ changed_files() {
 
   find . -type f \
     ! -path './.git/*' \
-    ! -path './.agentstack/evidence/*' \
-    ! -path './.agentstack/local/*' \
-    ! -path './.agentstack/render-conflicts/*' \
     ! -path './.venv/*' \
     ! -path './node_modules/*' \
     ! -path './dist/*' \
@@ -28,18 +25,15 @@ emit_targets_for_path() {
   local path="$1"
 
   case "$path" in
-    .agentstack/evidence/*|.agentstack/local/*|.agentstack/render-conflicts/*)
-      return 0
-      ;;
     AGENTS.md|CLAUDE.md|PROGRESS.md|README.md|docs/*|docs/**/*|*.md)
       echo scripts
       return 0
       ;;
-    .agents/*|.agents/**/*|.agentstack/*|.agentstack/**/*|.claude/*|.claude/**/*|.opencode/*|.opencode/**/*)
+    .claude/*|.claude/**/*|.opencode/*|.opencode/**/*)
       echo scripts
       return 0
       ;;
-    scripts/verify.sh|scripts/verify_target_rules.sh|scripts/agentstack|scripts/agentstack-*)
+    scripts/verify.sh|scripts/verify_target_rules.sh)
       echo scripts
       return 0
       ;;
@@ -82,24 +76,37 @@ emit_targets_for_path() {
       echo unit
       return 0
       ;;
-    pyproject.toml|requirements*.txt|setup.cfg|tox.ini)
-      echo python-static
-      echo unit
+    *)
       return 0
       ;;
   esac
-
-  echo scripts
 }
 
-files="$(changed_files | awk 'NF' | sort -u)"
+main() {
+  local path=""
+  local -a targets=()
+  local seen=""
 
-if [ -z "$files" ]; then
-  echo smoke
-  exit 0
-fi
+  while IFS= read -r path; do
+    [[ -n "$path" ]] || continue
+    while IFS= read -r target; do
+      [[ -n "$target" ]] || continue
+      case " $seen " in
+        *" $target "*) ;;
+        *)
+          targets+=("$target")
+          seen+=" $target"
+          ;;
+      esac
+    done < <(emit_targets_for_path "$path")
+  done < <(changed_files | awk 'NF' | sort -u)
 
-while IFS= read -r path; do
-  [ -n "$path" ] || continue
-  emit_targets_for_path "$path"
-done <<< "$files" | awk 'NF' | sort -u
+  if [[ ${#targets[@]} -eq 0 ]]; then
+    echo scripts
+    return 0
+  fi
+
+  printf '%s\n' "${targets[@]}"
+}
+
+main "$@"

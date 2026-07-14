@@ -28,21 +28,21 @@ updated_at: 2026-07-14
 
 ## Direction context（非当前执行 SoT）
 
-| 文档 | 角色 |
-|---|---|
-| [Furnace Next Direction Post-P4](<./Furnace Next Direction Post-P4.md>) | Post-P4 方向史料；执行以 Scorecard + Cleanup Plan + `PROGRESS.md` 为准 |
-| [AGOS-9-Execution-Plan](<./AGOS-9-Execution-Plan.md>) | AGOS 执行历史；release 口径以 Scorecard 为准 |
-| [Furnace AgentOS Completion Plan](<./Furnace AgentOS Completion Plan.md>) | AOS-C1..C8 完成记录 |
-| [Furnace Agent OS Slimdown Plan](<./Furnace Agent OS Slimdown Plan.md>) | broad slimdown campaign 已结束；后续只做 targeted seam |
+历史方向与已完成执行计划已移入 [docs/archive/](<./archive/README.md>)；当前执行以 Scorecard + Cleanup Plan + `PROGRESS.md` 为准。
 
 ## Archived（已 superseded / 已完成，保留作史料）
 
 见 [docs/archive/README.md](<./archive/README.md>)。
 
-本轮新增归档：
-- [Furnace Next Direction P0-P3](<./archive/Furnace Next Direction P0-P3.md>) → superseded by `Furnace Next Direction Post-P4`
+近期归档：
+- [Furnace Next Direction P0-P3](<./archive/Furnace Next Direction P0-P3.md>) → 历史上由 Post-P4 接续；当前执行以 Cleanup Plan + Scorecard 为准
 - [Furnace Next Direction P4](<./archive/Furnace Next Direction P4.md>) → P4-1~15 已完成，保留 dogfood F-fix 史料
 - [Furnace Product UX Assessment](<./archive/Furnace Product UX Assessment.md>) → M-UX.1 已落地，当前 Product Shell 事实以 `Furnace Product Shell` 为准
+- [Furnace Next Direction Post-P4](<./archive/Furnace Next Direction Post-P4.md>) → 当前方向以 Cleanup Plan + Scorecard + `PROGRESS.md` 为准
+- [AGOS-9-Execution-Plan](<./archive/AGOS-9-Execution-Plan.md>) → release gate 以 Scorecard 为准
+- [Furnace AgentOS Completion Plan](<./archive/Furnace AgentOS Completion Plan.md>) → 完成记录保留作史料
+- [Furnace Agent OS Slimdown Plan](<./archive/Furnace Agent OS Slimdown Plan.md>) → 后续只按 Cleanup Plan 做 targeted seam
+- [deepseek-comprehensive-evaluation-2026-05-03](<./archive/deepseek-comprehensive-evaluation-2026-05-03.md>) → LLM/运行口径以 Runtime Ops + Scorecard 为准
 
 ## 阅读顺序
 
@@ -51,7 +51,7 @@ updated_at: 2026-07-14
 3. 需要操作本机自动化时看 [Furnace Runtime Operations](<./Furnace Runtime Operations.md>)。
 4. 当前清理 / 商业 / 全平台边界看 [Furnace Cleanup Commercial Audit Plan 2026-07](<./Furnace Cleanup Commercial Audit Plan 2026-07.md>) 和 `PROGRESS.md`。
 5. 需要看 Product Shell 时再看 [Furnace Product Shell](<./Furnace Product Shell.md>)（Desktop-only；iPad/iOS 见 Cleanup Plan §3）。
-6. 历史方向与 AGOS 执行记录见上方 Direction context，不作为当前执行 SoT。
+6. 历史方向与 AGOS/AOS 执行记录见 [archive](<./archive/README.md>)，不作为当前执行 SoT。
 
 ## 关系
 

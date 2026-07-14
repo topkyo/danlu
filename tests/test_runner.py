@@ -114,7 +114,7 @@ class _DummyClient:
         raise AssertionError("complete should not be called in this test")
 
 
-class _BackendFailoverAskClient:
+class _SameBackendFallbackAskClient:
     def __init__(self, response_text: str | None = None) -> None:
         self.response_text = response_text or _VALID_REPORT_BODY
         self.config = type(
@@ -124,20 +124,20 @@ class _BackendFailoverAskClient:
         )()
 
     def advance_model(self) -> bool:
-        if self.config.backend == "codex-cli":
+        if self.config.model == "gpt-5.5":
             return False
         self.config = type(
             "Config",
             (),
-            {"model": "gpt-5.5", "backend": "codex-cli", "backend_requested": "opencode-api", "timeout_seconds": 120},
+            {"model": "gpt-5.5", "backend": "opencode-api", "backend_requested": "opencode-api", "timeout_seconds": 120},
         )()
         return True
 
     def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
         del system_prompt, user_prompt
-        if self.config.backend == "opencode-api":
+        if self.config.model == "deepseek-v4-pro":
             raise LLMError("LLM endpoint timed out after 120 seconds.")
-        return CompletionResult(text=self.response_text, response_id="resp_failover", usage={"total_tokens": 6})
+        return CompletionResult(text=self.response_text, response_id="resp_model_fallback", usage={"total_tokens": 6})
 
 
 class _StaticAskClient:
@@ -627,27 +627,27 @@ class RunnerTests(unittest.TestCase):
         run_notes = (self.root / result["run_notes_path"]).read_text(encoding="utf-8")
         self.assertIn(matching_receipts[-1]["receipt_path"], run_notes)
 
-    def test_run_ask_direct_note_marks_backend_failover_stage(self) -> None:
+    def test_run_ask_direct_note_marks_model_chain_fallback_stage(self) -> None:
         with patch("aiwiki.runner.workflows_ask.ask_question") as deterministic_ask:
             result = run_ask(
                 self.root,
                 "你是什么大模型？",
                 "note",
-                client=_BackendFailoverAskClient(response_text="我是备用 Codex。"),
+                client=_SameBackendFallbackAskClient(response_text="我是备用模型。"),
                 direct=True,
             )
 
         deterministic_ask.assert_not_called()
         self.assertEqual(result["delivery_mode"], "llm-direct")
         self.assertEqual(result["backend_requested"], "opencode-api")
-        self.assertEqual(result["backend_effective"], "codex-cli")
+        self.assertEqual(result["backend_effective"], "opencode-api")
         self.assertEqual(result["model_selected"], "deepseek-v4-pro")
         self.assertEqual(result["model_final"], "gpt-5.5")
-        self.assertEqual(result["fallback_stage"], "backend-failover")
+        self.assertEqual(result["fallback_stage"], "model-chain")
         receipt = json.loads((self.root / ".aiwiki/logs/llm-receipts.jsonl").read_text(encoding="utf-8").splitlines()[-1])
         self.assertEqual(receipt["event"], "run-ask-direct")
-        self.assertEqual(receipt["fallback_stage"], "backend-failover")
-        self.assertEqual(receipt["backend_effective"], "codex-cli")
+        self.assertEqual(receipt["fallback_stage"], "model-chain")
+        self.assertEqual(receipt["backend_effective"], "opencode-api")
 
     def test_run_ask_direct_note_rejects_template_answer_before_success(self) -> None:
         class _TemplateThenValidClient:
@@ -660,12 +660,12 @@ class RunnerTests(unittest.TestCase):
                 self.calls = 0
 
             def advance_model(self) -> bool:
-                if self.config.backend == "codex-cli":
+                if self.config.model == "gpt-5.5":
                     return False
                 self.config = type(
                     "Config",
                     (),
-                    {"model": "gpt-5.5", "backend": "codex-cli", "backend_requested": "opencode-api", "timeout_seconds": 45},
+                    {"model": "gpt-5.5", "backend": "opencode-api", "backend_requested": "opencode-api", "timeout_seconds": 45},
                 )()
                 return True
 
@@ -687,8 +687,8 @@ class RunnerTests(unittest.TestCase):
 
         deterministic_ask.assert_not_called()
         self.assertEqual(result["delivery_mode"], "llm-direct")
-        self.assertEqual(result["backend_effective"], "codex-cli")
-        self.assertEqual(result["fallback_stage"], "backend-failover")
+        self.assertEqual(result["backend_effective"], "opencode-api")
+        self.assertEqual(result["fallback_stage"], "model-chain")
         content = (self.root / result["path"]).read_text(encoding="utf-8")
         self.assertIn("当前配置的备用模型是 gpt-5.5。", content)
         self.assertNotIn("_LLM:", content)
@@ -934,12 +934,12 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(output_frontmatter["run_id"], result["run_id"])
         self.assertEqual(output_frontmatter["run_notes_path"], result["run_notes_path"])
 
-    def test_run_ask_marks_backend_failover_stage_in_report_receipts(self) -> None:
-        artifact_path = self.root / "output" / "reports" / "query-backend-failover.md"
+    def test_run_ask_marks_model_chain_fallback_stage_in_report_receipts(self) -> None:
+        artifact_path = self.root / "output" / "reports" / "query-model-fallback.md"
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
-        artifact_path.write_text("---\nid: query-backend-failover\nkind: report\n---\n\n# Placeholder\n", encoding="utf-8")
+        artifact_path.write_text("---\nid: query-model-fallback\nkind: report\n---\n\n# Placeholder\n", encoding="utf-8")
         artifact = {
-            "path": "output/reports/query-backend-failover.md",
+            "path": "output/reports/query-model-fallback.md",
             "format": "report",
             "protocol": "general",
             "ranked_sources": ["source-1"],
@@ -951,17 +951,17 @@ class RunnerTests(unittest.TestCase):
 
         with patch("aiwiki.runner.workflows_ask.ask_question", return_value=artifact):
             with patch("aiwiki.runner.workflows_ask._build_ask_prompt", return_value="report prompt"):
-                result = run_ask(self.root, "测试", "report", client=_BackendFailoverAskClient(), lean=True)
+                result = run_ask(self.root, "测试", "report", client=_SameBackendFallbackAskClient(), lean=True)
 
         self.assertEqual(result["backend_requested"], "opencode-api")
-        self.assertEqual(result["backend_effective"], "codex-cli")
+        self.assertEqual(result["backend_effective"], "opencode-api")
         self.assertEqual(result["model_selected"], "deepseek-v4-pro")
         self.assertEqual(result["model_final"], "gpt-5.5")
-        self.assertEqual(result["fallback_stage"], "backend-failover")
+        self.assertEqual(result["fallback_stage"], "model-chain")
         receipt = json.loads((self.root / ".aiwiki/logs/llm-receipts.jsonl").read_text(encoding="utf-8").splitlines()[-1])
         self.assertEqual(receipt["event"], "run-ask")
-        self.assertEqual(receipt["fallback_stage"], "backend-failover")
-        self.assertEqual(receipt["backend_effective"], "codex-cli")
+        self.assertEqual(receipt["fallback_stage"], "model-chain")
+        self.assertEqual(receipt["backend_effective"], "opencode-api")
         self.assertEqual(receipt["model_final"], "gpt-5.5")
 
     def test_run_ask_success_preserves_deterministic_source_files_and_writes_execution_receipts(self) -> None:

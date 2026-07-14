@@ -1,6 +1,6 @@
 # 炼丹炉 Post-AGOS 风险计划
 
-> Harness 可读 SoT，承接 [AGOS-9-Execution-Plan.md](./AGOS-9-Execution-Plan.md) 之后的 milestone。
+> Harness 可读 SoT，承接 [AGOS-9-Execution-Plan.md](./archive/AGOS-9-Execution-Plan.md) 之后的 milestone。
 > Track A 解除 9.0 发布阻塞；Track B 降低结构债。
 
 ## Track A — AGOS-9-BLOCKER
@@ -25,4 +25,4 @@
 
 ## 冻结清单
 
-与 [Furnace Agent OS Slimdown Plan.md](./Furnace%20Agent%20OS%20Slimdown%20Plan.md) 一致，未变更。
+与 [Furnace Agent OS Slimdown Plan.md](./archive/Furnace%20Agent%20OS%20Slimdown%20Plan.md) 一致，未变更。

@@ -519,32 +519,6 @@ class ShellFlowTests(AppFlowTestBase):
         self.assertEqual(result["llm_health"]["receipt_path"], ".aiwiki/logs/llm-receipts.jsonl")
         self.assertEqual(result["llm_health"]["log_path"], ".aiwiki/logs/runs.jsonl")
 
-    def test_shell_status_llm_status_exposes_backend_fallbacks(self) -> None:
-        fallback_status = {
-            "configured": True,
-            "backend": "opencode-api",
-            "backend_requested": "opencode-api",
-            "model_requested": "deepseek-v4-pro",
-            "model": "deepseek-v4-pro",
-            "effective_model": "deepseek-v4-pro",
-            "codex_reasoning_effort": "",
-            "available_backends": ["opencode-api", "opencode-api"],
-            "image_analysis_supported": False,
-            "auth_mode": "api-key",
-            "usage_visibility": "visible",
-            "usage_accounting": "manual",
-            "message": "configured",
-            "backend_fallbacks": [
-                {"backend": "opencode-api", "available": True, "reason": "configured"},
-                {"backend": "opencode-api", "available": True, "reason": "fallback"},
-            ],
-        }
-
-        with patch("aiwiki.app_shell.summary.LLMConfig.status_from_env", return_value=fallback_status):
-            result = shell_status(self.root)
-
-        self.assertEqual(result["llm_status"]["backend_fallbacks"], fallback_status["backend_fallbacks"])
-
     def test_shell_status_surfaces_curated_page_roots(self) -> None:
         # EP-015: curated_page_roots is a single source of truth for which
         # repo-relative prefixes count as curated pages. The plugin uses

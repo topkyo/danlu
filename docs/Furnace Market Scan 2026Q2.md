@@ -7,7 +7,7 @@ created_at: 2026-04-30
 related_docs:
   - docs/Furnace Agent Architecture.md
   - docs/Furnace Evolution Mechanics.md
-  - docs/Furnace Next Direction Post-P4.md
+  - docs/archive/Furnace Next Direction Post-P4.md
 ---
 
 # 炼丹炉 / aiwiki 市场对标调研 2026Q2

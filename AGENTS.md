@@ -10,8 +10,8 @@
 - 代码修改、测试和 runtime 文档更新默认发生在 `/Users/ht/github/danlu`；只有用户要求验证真实 dogfood 行为、检查 Product Shell 产物或重跑坏产物时，才以 iCloud Obsidian vault 作为 `--root` 运行 runtime。
 - 分析用户实际 Product Shell 提问、报告质量、LLM receipt、run notes 或 vault 内容时，默认查 iCloud Obsidian vault，不要误用当前代码仓库的 `output/control/shell-summary.json` 代替 dogfood 证据。
 - iCloud vault 的 `scripts/aiwiki-launcher.sh` 是用户可见运行入口，当前应指向 runtime root `/Users/ht/github/danlu`；旧 `/home/tim/...` 路径只属于历史记录。
-- 动态任务状态写 `PROGRESS.md`；跨对话仍然成立的项目知识写 `MEMORY.md` 或 `.agentstack/memory/project.md`。
-- AgentStack 的当前执行上下文写 `.agentstack/context/active.md`；本地证据写 `.agentstack/evidence/`，该目录不入库。
+- 动态任务状态写 `PROGRESS.md`；跨对话仍然成立的项目知识写 `MEMORY.md`。
+- 当前阶段性执行计划：`docs/Furnace Cleanup Commercial Audit Plan 2026-07.md`。
 
 禁止长期写进本文件：
 
@@ -19,30 +19,22 @@
 - 单轮任务才成立的中间结论
 - 会频繁变化的执行过程细节
 
-## AgentStack 工作流
+## 工作流
 
-- 本仓库使用 AgentStack 接管工程工作流，安装平台为 `codex,claude,opencode`。
-- 小范围代码变更默认按 L1 处理：使用 `agentstack-devloop`，做最小正确修改，运行 targeted verify，再收口。
-- 需求模糊、行为选择未定、UI/API 取舍或用户要求先讨论时，使用 `agentstack-brainstorming`。
-- 多文件、多步骤且范围已明确时，先用 `agentstack-write-plan` 形成可执行计划。
-- 已有已批准计划时，用 `agentstack-execute-plan` 按顺序执行。
-- 结束阶段用 `agentstack-finish` 汇总变更、验证、审查状态、风险和后续事项。
-- 未知代码区先做局部只读探索：列出相关文件、关键符号、建议局部命令、风险和待验证假设，再进入编辑。
+- 小范围代码变更：最小正确修改 → targeted verify → 收口。
+- 需求模糊或行为未定时：先短设计/选项，再实现。
+- 多文件多步骤且范围已明确：先写可执行计划，再按序执行。
+- 未知代码区先做局部只读探索：相关文件、关键符号、建议命令、风险和待验证假设，再编辑。
 - 可并行做只读探索，但主 agent 负责需求澄清、任务拆分、最终判断、集成和验证。
-- 执行已批准计划后，且在提交或推送 L2+ / 复杂 diff 前，必须另起 read-only reviewer subagent 做独立审查。
-- reviewer 只报告 correctness / security / scope / missing verification 风险，不改代码、不跑测试；主 agent 负责修复、集成、验证和最终判断。
-- 独立审查结果用 `scripts/agentstack review --id independent --reviewer independent --handoff PATH --result pass|needs-fix|blocked` 记录；如 review 后发生实质代码修改，必须重新 targeted verify 并复审，或明确记录为何无需复审。
-- 提交/推送前必须满足 targeted verify pass、独立 reviewer 无阻断问题、review evidence 已记录；除非用户明确要求跳过该 gate。
-- 不把 AgentStack 当成 runtime 依赖；它只约束 agent/tooling 协议、验证入口和开发协作方式。
+- L2+ / 复杂 diff 提交前：另起 read-only reviewer 报告 correctness / security / scope / missing verification；主 agent 负责修复与验证。
+- 不引入 AgentStack 或等价 scaffolding；验证与协作直接用本仓库 `scripts/verify.sh` 与文档 SoT。
 
 ## 验证入口
 
-- 安装健康检查：`scripts/agentstack doctor --platforms codex,claude,opencode`
-- targeted verify：`scripts/agentstack verify --target auto`
-- 全量 verify：`scripts/agentstack verify --full`
-- 项目底层验证入口：`bash scripts/verify.sh [target]`
+- 主验证入口：`bash scripts/verify.sh [target]`
 - 常用 target：`scripts`、`smoke`、`python-static`、`unit`、`acceptance`、`cli-smoke`、`product-shell-static`、`all`
-- `scripts/verify_target_rules.sh` 是项目自有 target emitter，供 AgentStack auto verify 使用。
+- 按改动路径建议 target：`bash scripts/verify_target_rules.sh`
+- 文档一致性：`bash scripts/docs_consistency_check.sh`
 
 ## 风格
 
@@ -77,23 +69,23 @@
 ## 当前方向
 
 - 维护炼丹炉五层主线：`raw / wiki / machine memory / schema / outputs`。
-- 维持 deterministic baseline + 显式 LLM 执行层；Shell/CLI 默认主路由是 `opencode-api/deepseek-v4-pro`，不自动 fallback 到 `codex-cli/gpt-5.5` 或写占位式 deterministic fallback 内容。
+- 维持 deterministic baseline + 显式 LLM 执行层；Shell/CLI 默认主路由是 `opencode-api/deepseek-v4-pro`，不自动跨 backend fallback，也不写占位式 deterministic fallback 成功内容。
 - 维持直接投喂入口：`drop-url` / `drop-pdf` / `drop-image` / `drop-repo`。
 - 维持协议 runtime：`general / investing / research / product / ops`。
 - 维持治理与执行层：`review / aging / escalation / repair / nightly / apply / revert / audit`。
 - 保持 `raw/ -> wiki/ -> output/` 分层，不引入 hosted service、multi-user sync、heavy RAG infra 或 fine-tuning。
+- Product Shell 正式支持 Desktop Obsidian only；iPad/iOS 不做全功能直移植。
 
 ## Source Of Truth
 
 - 项目规范：`README.md`
-- AgentStack 当前上下文：`.agentstack/context/active.md`
-- AgentStack 项目记忆：`.agentstack/memory/project.md`
+- 架构 / 契约 / 运行：`docs/README.md` Active 表
+- 阶段性计划：`docs/Furnace Cleanup Commercial Audit Plan 2026-07.md`
 - 任务状态：`PROGRESS.md`
-- 本地验证入口：`scripts/agentstack verify --target auto`
-- 底层验证入口：`bash scripts/verify.sh`
-- 运行态验证入口：目前使用 `tests/` 中的 fixture-driven CLI smoke tests
+- 验证入口：`bash scripts/verify.sh`
+- 运行态验证：`tests/` fixture-driven CLI smoke / acceptance
 - 部署入口：none
-- Dogfood receipt 试运行期间，先 `source .envrc.dogfood` 再执行 CLI；该文件仅作 dogfood 加速器，runtime 默认值不变。
+- Dogfood 试运行可 `source .envrc.dogfood`；该文件仅作加速器，runtime 默认值不变。
 
 ## 稳定约束
 
@@ -109,9 +101,8 @@
 可直接做：
 
 - 本地代码、文档、测试修改
-- AgentStack 本地脚手架生成、清理和重建
 - 目录结构调整与无副作用的本地验证
-- 当前用户范围内的 `systemd --user` 服务安装与更新
+- 当前用户范围内的 `systemd --user` / launchd 服务安装与更新
 
 需要先确认：
 

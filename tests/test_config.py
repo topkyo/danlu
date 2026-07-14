@@ -43,7 +43,6 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.opencode_api_key_source, "AIWIKI_OPENCODE_API_KEY")
         self.assertEqual(config.base_url, DEFAULT_OPENCODE_BASE_URL)
         self.assertEqual(config.model_fallback_chain, (DEFAULT_OPENCODE_MODEL,))
-        self.assertEqual(config.backend_fallback_chain, ())
 
     def test_from_env_uses_deepseek_profile_with_key_and_base_url_override(self) -> None:
         config = self._from_env(
@@ -73,7 +72,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(anthropic.model, DEFAULT_ANTHROPIC_API_MODEL)
         self.assertEqual(anthropic.anthropic_api_key, "anthropic_key")
 
-    def test_model_and_backend_fallback_env_are_explicitly_ignored_for_backend_switching(self) -> None:
+    def test_model_fallback_env_keeps_backend_fallback_env_removed(self) -> None:
         config = self._from_env(
             {
                 "AIWIKI_OPENCODE_API_KEY": "opencode_test_key",
@@ -85,8 +84,8 @@ class ConfigTests(unittest.TestCase):
 
         self.assertEqual(config.backend, BACKEND_OPENCODE_API)
         self.assertEqual(config.model_fallback_chain, (DEFAULT_OPENCODE_MODEL, "fallback-a", "fallback-b"))
-        self.assertEqual(config.backend_fallback_chain, ())
-        self.assertEqual(config.backend_fallback_model, "")
+        self.assertFalse(hasattr(config, "backend_fallback_chain"))
+        self.assertFalse(hasattr(config, "backend_fallback_model"))
 
     def test_from_env_rejects_removed_or_unknown_backends(self) -> None:
         for backend in ["codex-cli", "copilot-cli", "claude-cli", "nvidia-nim-api", "openrouter-api", "mystery"]:
@@ -116,6 +115,9 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(status["auth_mode"], "api-key")
         self.assertEqual(status["usage_visibility"], "response-usage")
         self.assertEqual(status["usage_accounting"], "opencode-api")
+        self.assertNotIn("backend_fallback_chain", status)
+        self.assertNotIn("backend_fallback_model", status)
+        self.assertNotIn("backend_fallbacks", status)
 
 
 if __name__ == "__main__":
