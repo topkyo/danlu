@@ -72,6 +72,14 @@ def _next_jsonl_line_number(path: Path) -> int:
     return count + 1
 
 
+_HISTORICAL_LINEAGE_KEYS = (
+    "fallback_from",
+    "fallback_command",
+    "fallback_stage",
+    "fallback_reason",
+)
+
+
 def _infer_delivery_mode(status: str, error: str = "", fallback_stage: str = "", explicit: str = "", skipped: bool = False) -> str:
     if explicit:
         return explicit
@@ -86,14 +94,20 @@ def _infer_delivery_mode(status: str, error: str = "", fallback_stage: str = "",
     return ""
 
 
+def _omit_empty_historical_lineage(payload: dict[str, Any]) -> None:
+    """Drop empty historical fallback lineage keys so success receipts stay clean."""
+
+    for key in _HISTORICAL_LINEAGE_KEYS:
+        if not str(payload.get(key) or ""):
+            payload.pop(key, None)
+
+
 def _empty_llm_audit() -> dict[str, Any]:
     return {
         "backend_requested": "",
         "backend_effective": "",
         "model_selected": "",
         "model_final": "",
-        "fallback_stage": "",
-        "fallback_reason": "",
         "contract_validated": False,
     }
 
@@ -109,8 +123,11 @@ def _build_llm_audit(
     audit = _empty_llm_audit()
     stages = fallback_stages or []
     audit["model_selected"] = model_selected
-    audit["fallback_stage"] = _fallback_stage_label(stages)
-    audit["fallback_reason"] = fallback_reason
+    fallback_stage_label = _fallback_stage_label(stages)
+    if fallback_stage_label:
+        audit["fallback_stage"] = fallback_stage_label
+    if fallback_reason:
+        audit["fallback_reason"] = fallback_reason
     audit["contract_validated"] = contract_validated
     if client is None:
         return audit
@@ -126,6 +143,7 @@ def _merge_llm_audits(current: dict[str, Any], update: dict[str, Any]) -> dict[s
     if isinstance(current, dict):
         merged.update(current)
     if not isinstance(update, dict):
+        _omit_empty_historical_lineage(merged)
         return merged
     if not merged["backend_requested"]:
         merged["backend_requested"] = str(update.get("backend_requested") or "")
@@ -139,10 +157,17 @@ def _merge_llm_audits(current: dict[str, Any], update: dict[str, Any]) -> dict[s
     for label in (str(merged.get("fallback_stage") or ""), str(update.get("fallback_stage") or "")):
         for stage in label.split("+"):
             _append_fallback_stage(stages, stage)
-    merged["fallback_stage"] = _fallback_stage_label(stages)
+    fallback_stage_label = _fallback_stage_label(stages)
+    if fallback_stage_label:
+        merged["fallback_stage"] = fallback_stage_label
+    else:
+        merged.pop("fallback_stage", None)
     if str(update.get("fallback_reason") or ""):
         merged["fallback_reason"] = str(update.get("fallback_reason") or "")
+    elif not str(merged.get("fallback_reason") or ""):
+        merged.pop("fallback_reason", None)
     merged["contract_validated"] = bool(merged.get("contract_validated")) or bool(update.get("contract_validated"))
+    _omit_empty_historical_lineage(merged)
     return merged
 
 
@@ -155,6 +180,10 @@ def _llm_audit_from_result(result: dict[str, Any]) -> dict[str, Any]:
             audit[key] = bool(result.get(key))
         else:
             audit[key] = str(result.get(key) or "")
+    for key in ("fallback_stage", "fallback_reason"):
+        value = str(result.get(key) or "")
+        if value:
+            audit[key] = value
     return audit
 
 
@@ -195,9 +224,11 @@ def build_llm_attempt_receipt(
     normalized_event["delivery_mode"] = classify_fallback_stage(normalized_event, status=status, error=error, skipped=skipped)
     normalized_event.setdefault("fallback_used", False)
     if not normalized_event["fallback_used"]:
-        normalized_event["fallback_used"] = bool(normalized_event.get("delivery_mode") == "deterministic-fallback" or str(normalized_event.get("fallback_stage") or ""))
-    normalized_event.setdefault("fallback_from", "")
-    normalized_event.setdefault("fallback_command", "")
+        normalized_event["fallback_used"] = bool(
+            normalized_event.get("delivery_mode") == "deterministic-fallback"
+            or str(normalized_event.get("fallback_stage") or "")
+        )
+    _omit_empty_historical_lineage(normalized_event)
     normalized_event.setdefault("primary_attempt_status", "")
     normalized_event.setdefault("primary_error", "")
     normalized_raw_response_path = raw_response_path or ""
@@ -215,14 +246,18 @@ def build_llm_attempt_receipt(
     )
     if error:
         normalized_event["error"] = error
-    llm_audit.update({
+    audit_update = {
         "delivery_mode": normalized_event.get("delivery_mode", ""),
         "fallback_used": bool(normalized_event.get("fallback_used", False)),
-        "fallback_from": str(normalized_event.get("fallback_from") or ""),
-        "fallback_command": str(normalized_event.get("fallback_command") or ""),
         "primary_attempt_status": str(normalized_event.get("primary_attempt_status") or ""),
         "primary_error": str(normalized_event.get("primary_error") or ""),
-    })
+    }
+    for historical_lineage_key in _HISTORICAL_LINEAGE_KEYS:
+        if historical_lineage_key in normalized_event:
+            audit_update[historical_lineage_key] = str(normalized_event.get(historical_lineage_key) or "")
+        else:
+            llm_audit.pop(historical_lineage_key, None)
+    llm_audit.update(audit_update)
     return normalized_event
 
 
