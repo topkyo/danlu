@@ -3600,16 +3600,39 @@ module.exports = { refreshRepoState, resolveLauncherPath, launcherIsExecutable }
 // Extracted from plugin.js — wraps spawn/child_process calls to the aiwiki launcher.
 // Note: spawn, fs, path, buildNotifyEnv, readJsonText are already in the build header.
 
+const PRIMARY_SURFACE_COMMANDS = new Set(["drop", "today", "metrics", "advanced"]);
+const PRIMARY_DROP_REPLACEMENTS = {
+  "drop-url": ["drop", "url"],
+  "drop-pdf": ["drop", "pdf"],
+  "drop-image": ["drop", "image"],
+  "drop-repo": ["drop", "repo"],
+  "drop-note": ["drop", "markdown"],
+};
+
+function normalizeLauncherArgv(args) {
+  const argv = Array.isArray(args) ? args.map((item) => String(item)) : [];
+  const command = argv[0] || "";
+  if (!command || PRIMARY_SURFACE_COMMANDS.has(command)) {
+    return argv;
+  }
+  const dropReplacement = PRIMARY_DROP_REPLACEMENTS[command];
+  if (dropReplacement) {
+    return dropReplacement.concat(argv.slice(1));
+  }
+  return ["advanced", ...argv];
+}
+
 function execLauncher(plugin, args) {
   if (!plugin.repoState.valid) {
     throw new Error(plugin.t("Missing runtime paths: {missing}", { missing: plugin.repoState.missingPaths.join(", ") }));
   }
+  const launcherArgs = normalizeLauncherArgv(args);
   return new Promise((resolve, reject) => {
     const env = Object.assign({}, process.env);
     clearKnownLlmEnv(env);
     Object.assign(env, buildLlmEnv(plugin.settings));
     Object.assign(env, buildNotifyEnv(plugin.settings));
-    const child = spawn(plugin.repoState.launcherPath, args, {
+    const child = spawn(plugin.repoState.launcherPath, launcherArgs, {
       cwd: plugin.repoState.root,
       env,
     });
@@ -3654,7 +3677,7 @@ function runUiAction(plugin, action) {
     });
 }
 
-module.exports = { execLauncher, runUiAction };
+module.exports = { execLauncher, runUiAction, normalizeLauncherArgv };
 
 // --- src/bridge/runtime_client.js ---
 

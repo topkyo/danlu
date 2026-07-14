@@ -88,7 +88,8 @@ def _rewrite_universal_drop_argv(argv: list[str] | None) -> list[str] | None:
                 file=sys.stderr,
             )
             raise SystemExit(2)
-        rewritten[drop_index:] = ["ask", routed_payload, *rest]
+        # Ask lives under advanced after primary-surface cleanup.
+        rewritten[drop_index:] = ["advanced", "ask", routed_payload, *rest]
     else:
         routed_subcommand = {
             UniversalRoute.URL: "url",

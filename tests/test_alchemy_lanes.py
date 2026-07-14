@@ -1639,6 +1639,13 @@ class AlchemyLaneCLITests(unittest.TestCase):
     def tearDown(self) -> None:
         self.tempdir.cleanup()
 
+
+    @staticmethod
+    def _without_deprecation(stderr: str) -> str:
+        return "\n".join(
+            line for line in stderr.splitlines() if not line.startswith("[deprecated]")
+        )
+
     def _run_main(self, argv: list[str]) -> tuple[int, dict[str, object], str]:
         stdout = io.StringIO()
         stderr = io.StringIO()
@@ -1653,7 +1660,11 @@ class AlchemyLaneCLITests(unittest.TestCase):
     def test_parser_registers_nested_alchemy_commands(self) -> None:
         parser = build_parser()
         action = next(item for item in parser._actions if getattr(item, "dest", "") == "command")
-        alchemy_parser = action.choices["alchemy"]
+        advanced = action.choices["advanced"]
+        adv_action = next(
+            item for item in advanced._actions if getattr(item, "dest", "") == "advanced_command"
+        )
+        alchemy_parser = adv_action.choices["alchemy"]
         lane_action = next(item for item in alchemy_parser._actions if getattr(item, "dest", "") == "alchemy_lane")
         self.assertEqual(set(lane_action.choices), {"heavy", "light", "judge", "judge-proposal", "distill", "review", "propose", "legacy-migration", "auto", "superseded-cleanup"})
         auto_parser = lane_action.choices["auto"]
@@ -1682,7 +1693,7 @@ class AlchemyLaneCLITests(unittest.TestCase):
             )
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload["lane"], "heavy")
         mocked.assert_called_once_with(
             self.root,
@@ -1722,7 +1733,7 @@ class AlchemyLaneCLITests(unittest.TestCase):
             )
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload["requested_primitives"], ["review"])
         mocked.assert_called_once_with(
             self.root,
@@ -1762,7 +1773,7 @@ class AlchemyLaneCLITests(unittest.TestCase):
             )
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload["primitive"], "judge")
         mocked.assert_called_once_with(
             self.root,
@@ -1801,7 +1812,7 @@ class AlchemyLaneCLITests(unittest.TestCase):
             )
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload["primitive"], "judge")
         mocked.assert_called_once_with(
             self.root,
@@ -1841,7 +1852,7 @@ class AlchemyLaneCLITests(unittest.TestCase):
             )
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload["primitive"], "judge")
         self.assertEqual(payload["mode"], "propose")
         mocked.assert_called_once_with(
@@ -1870,7 +1881,7 @@ class AlchemyLaneCLITests(unittest.TestCase):
             )
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload["primitive"], "judge")
         self.assertEqual(payload["mode"], "proposal-apply")
         mocked.assert_called_once_with(
@@ -1903,7 +1914,7 @@ class AlchemyLaneCLITests(unittest.TestCase):
             )
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload["primitive"], "distill")
         mocked.assert_called_once_with(
             self.root,
@@ -1942,7 +1953,7 @@ class AlchemyLaneCLITests(unittest.TestCase):
             )
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload["primitive"], "distill")
         mocked.assert_called_once_with(
             self.root,
@@ -1980,7 +1991,7 @@ class AlchemyLaneCLITests(unittest.TestCase):
             )
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload["primitive"], "review")
         mocked.assert_called_once_with(
             self.root,
@@ -2019,7 +2030,7 @@ class AlchemyLaneCLITests(unittest.TestCase):
             )
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload["primitive"], "review")
         mocked.assert_called_once_with(
             self.root,
@@ -2057,7 +2068,7 @@ class AlchemyLaneCLITests(unittest.TestCase):
             )
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload["primitive"], "propose")
         mocked.assert_called_once_with(
             self.root,
@@ -2096,7 +2107,7 @@ class AlchemyLaneCLITests(unittest.TestCase):
             )
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload["primitive"], "propose")
         mocked.assert_called_once_with(
             self.root,

@@ -104,6 +104,13 @@ def _settled_elixir_path(root: Path, elixir_id: str) -> Path:
 
 
 class ExecutionTests(unittest.TestCase):
+
+    @staticmethod
+    def _without_deprecation(stderr: str) -> str:
+        return "\n".join(
+            line for line in stderr.splitlines() if not line.startswith("[deprecated]")
+        )
+
     def setUp(self) -> None:
         self.tempdir = tempfile.TemporaryDirectory()
         self.root = Path(self.tempdir.name)
@@ -424,7 +431,7 @@ class ExecutionTests(unittest.TestCase):
         )
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload["status"], "confirmed")
         self.assertIn("wiki/judgments/", payload["path"])
 
@@ -677,7 +684,7 @@ class ExecutionTests(unittest.TestCase):
         code, payload, stderr = self._run_cli(["review-page", "--all-pending", "--status", "confirmed"])
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload["operation"], "review-page-batch")
         self.assertEqual(payload["count"], 2)
         self.assertTrue((self.root / payload["receipt_path"]).exists())
@@ -714,13 +721,13 @@ class ExecutionTests(unittest.TestCase):
             ["review-action", title_fragment, "--status", "accepted", "--note", "Auto-match."]
         )
         self.assertEqual(code, 0)
-        self.assertEqual(review_stderr, "")
+        self.assertEqual(self._without_deprecation(review_stderr), "")
         self.assertEqual(review_payload["status"], "accepted")
         self.assertEqual(review_payload["id"], action["id"])
 
         code, apply_payload, apply_stderr = self._run_cli(["apply-action", title_fragment, "--dry-run"])
         self.assertEqual(code, 0)
-        self.assertEqual(apply_stderr, "")
+        self.assertEqual(self._without_deprecation(apply_stderr), "")
         self.assertTrue(apply_payload["dry_run"])
         self.assertEqual(apply_payload["id"], action["id"])
         self.assertTrue((self.root / apply_payload["bundle_path"]).exists())
@@ -731,7 +738,7 @@ class ExecutionTests(unittest.TestCase):
         code, payload, stderr = self._run_cli(["apply-action", "--all-accepted-low-risk", "--note", "Batch apply."])
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload["operation"], "action-apply-batch")
         self.assertEqual(payload["count"], 2)
         self.assertTrue((self.root / payload["receipt_path"]).exists())
@@ -741,6 +748,12 @@ class ExecutionTests(unittest.TestCase):
 
 
 class AlchemyTests(unittest.TestCase):
+    @staticmethod
+    def _without_deprecation(stderr: str) -> str:
+        return "\n".join(
+            line for line in stderr.splitlines() if not line.startswith("[deprecated]")
+        )
+
     def setUp(self) -> None:
         self.tempdir = tempfile.TemporaryDirectory()
         self.root = Path(self.tempdir.name)
@@ -1027,7 +1040,7 @@ class AlchemyTests(unittest.TestCase):
         )
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         new_path = self.root / payload["path"]
         fm = parse_frontmatter(new_path.read_text(encoding="utf-8"))
         self.assertIn(f"wiki/elixirs/{first['elixir_id']}.md", fm["derived_from"])

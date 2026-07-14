@@ -34,15 +34,11 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         metavar="{" + ",".join(PRIMARY_SURFACE_COMMANDS) + "}",
     )
-    _register_legacy_top_level_parsers(subparsers)
+    # Operator/compat commands are registered only under `advanced` (no dual
+    # top-level registration). Legacy top-level argv is rewritten in dispatch.
     today_parser = subparsers.add_parser("today", help="炼丹炉今日产出 / 待办 / 建议")
     today_parser.add_argument("--json", action="store_true", help="JSON 输出（按 section 桶化）")
     today_parser.set_defaults(handler_command="today")
-    today_snooze_parser = subparsers.add_parser("today-snooze", help="把 Today 中的确认项暂时隐藏。")
-    today_snooze_parser.add_argument("target", help="要隐藏的 Today entry target（通常是 review:<bucket> 或 wiki/... 路径）")
-    today_snooze_parser.add_argument("--days", type=int, default=1, help="隐藏天数，默认 1 天。")
-    today_snooze_parser.add_argument("--note", default="", help="可选备注。")
-    today_snooze_parser.set_defaults(handler_command="today-snooze")
     metrics_parser = subparsers.add_parser("metrics", help="炼丹炉知识复利指标")
     metrics_parser.add_argument("--json", action="store_true", help="JSON 输出")
     metrics_parser.add_argument(
@@ -68,10 +64,8 @@ def build_parser() -> argparse.ArgumentParser:
 def _converge_default_help_surface(subparsers: argparse._SubParsersAction) -> None:
     """Keep legacy commands parseable while making top-level help product-first.
 
-    AOS-002 intentionally does not delete commands or add aliases.  The complete
-    operator surface remains available both as legacy top-level commands and via
-    ``aiwiki advanced ...``; this only changes the default help listing so the
-    daily path is `drop` + `today` rather than a backlog of internal mechanisms.
+    Operator commands live only under ``aiwiki advanced ...``. This hook keeps
+    top-level help product-first if argparse ever exposes extra choices.
     """
     visible = {
         getattr(action, "dest", ""): action
@@ -86,9 +80,15 @@ def _converge_default_help_surface(subparsers: argparse._SubParsersAction) -> No
 
 
 def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -> None:
-    """Register compat/operator commands without making them the primary surface."""
+    """Register operator/compat commands under the advanced drawer only."""
 
     subparsers.add_parser("layout", help="Create the expected directory layout.")
+
+    today_snooze_parser = subparsers.add_parser("today-snooze", help="把 Today 中的确认项暂时隐藏。")
+    today_snooze_parser.add_argument("target", help="要隐藏的 Today entry target（通常是 review:<bucket> 或 wiki/... 路径）")
+    today_snooze_parser.add_argument("--days", type=int, default=1, help="隐藏天数，默认 1 天。")
+    today_snooze_parser.add_argument("--note", default="", help="可选备注。")
+    today_snooze_parser.set_defaults(handler_command="today-snooze")
 
     autonomy_status_parser = subparsers.add_parser(
         "autonomy-status",

@@ -21,6 +21,7 @@ from aiwiki.cli import (
     build_parser,
     main,
 )
+from aiwiki.cli.legacy_argv import rewrite_legacy_top_level_argv
 from aiwiki.cli.parsers import PRIMARY_SURFACE_COMMANDS
 from aiwiki.execution.candidates import promote_candidate
 from aiwiki.today_feed import build_today_feed as real_build_today_feed
@@ -50,6 +51,13 @@ class CLITests(unittest.TestCase):
         with patch("sys.stdout", new=stdout), patch("sys.stderr", new=stderr):
             code = main(["--root", str(self.root), *argv])
         return code, stdout.getvalue(), stderr.getvalue()
+
+
+    @staticmethod
+    def _without_deprecation(stderr: str) -> str:
+        return "\n".join(
+            line for line in stderr.splitlines() if not line.startswith("[deprecated]")
+        )
 
     def _write_jsonl(self, relative_path: str, records: list[dict[str, object]]) -> None:
         path = self.root / relative_path
@@ -136,7 +144,11 @@ class CLITests(unittest.TestCase):
         parser = build_parser()
         action = next(item for item in parser._actions if getattr(item, "dest", "") == "command")
         self.assertIsNotNone(action)
-        ask_parser = next(choice for name, choice in action.choices.items() if name == "ask")
+        advanced = action.choices["advanced"]
+        adv_action = next(
+            item for item in advanced._actions if getattr(item, "dest", "") == "advanced_command"
+        )
+        ask_parser = adv_action.choices["ask"]
         format_action = next(item for item in ask_parser._actions if item.dest == "format")
         self.assertEqual(format_action.choices, ("report", "decision-memo", "sop", "slides", "figure", "note"))
 
@@ -144,6 +156,7 @@ class CLITests(unittest.TestCase):
         parser = build_parser()
 
         args = parser.parse_args([
+            "advanced",
             "run-ask-submit",
             "What changed?",
             "--format",
@@ -169,13 +182,13 @@ class CLITests(unittest.TestCase):
     def test_run_ask_resume_parser_requires_job_id(self) -> None:
         parser = build_parser()
 
-        args = parser.parse_args(["run-ask-resume", "--job-id", "ask-report-20260518T000000Z-1-2"])
+        args = parser.parse_args(["advanced", "run-ask-resume", "--job-id", "ask-report-20260518T000000Z-1-2"])
 
         self.assertEqual(args.handler_command, "run-ask-resume")
         self.assertEqual(args.job_id, "ask-report-20260518T000000Z-1-2")
 
         with self.assertRaises(SystemExit):
-            parser.parse_args(["run-ask-resume"])
+            parser.parse_args(["advanced", "run-ask-resume"])
 
     def test_legacy_settled_alias_is_absent(self) -> None:
         from aiwiki import runner
@@ -222,15 +235,22 @@ class CLITests(unittest.TestCase):
         self.assertNotIn("l3-proposal-generate", help_text)
         self.assertNotIn("run-nightly", help_text)
 
-    def test_legacy_top_level_commands_remain_parseable(self) -> None:
+    def test_legacy_top_level_commands_live_under_advanced_only(self) -> None:
         parser = build_parser()
         action = next(item for item in parser._actions if getattr(item, "dest", "") == "command")
+        advanced = action.choices["advanced"]
+        adv_action = next(
+            item for item in advanced._actions if getattr(item, "dest", "") == "advanced_command"
+        )
 
         for command in ("compile", "run-nightly", "planner-log-list", "l3-proposal-generate", "trace"):
-            self.assertIn(command, action.choices)
+            self.assertNotIn(command, action.choices)
+            self.assertIn(command, adv_action.choices)
 
-        self.assertEqual(parser.parse_args(["compile"]).handler_command, "compile")
         self.assertEqual(parser.parse_args(["advanced", "compile"]).handler_command, "compile")
+        rewritten = rewrite_legacy_top_level_argv(["compile"], emit_warning=False)
+        self.assertEqual(rewritten, ["advanced", "compile"])
+        self.assertEqual(parser.parse_args(rewritten).handler_command, "compile")
 
     def test_advanced_help_keeps_operator_surface_visible(self) -> None:
         parser = build_parser()
@@ -269,14 +289,18 @@ class CLITests(unittest.TestCase):
     def test_auto_resolve_actions_subcommand_exists(self) -> None:
         parser = build_parser()
         action = next(item for item in parser._actions if getattr(item, "dest", "") == "command")
+        advanced = action.choices["advanced"]
+        adv_action = next(
+            item for item in advanced._actions if getattr(item, "dest", "") == "advanced_command"
+        )
 
-        self.assertIn("auto-resolve-actions", action.choices)
+        self.assertNotIn("auto-resolve-actions", action.choices)
+        self.assertIn("auto-resolve-actions", adv_action.choices)
 
-    def test_trace_subcommand_exists_top_level_and_advanced(self) -> None:
+    def test_trace_subcommand_exists_under_advanced_only(self) -> None:
         parser = build_parser()
         action = next(item for item in parser._actions if getattr(item, "dest", "") == "command")
-        self.assertIn("trace", action.choices)
-        # also under advanced
+        self.assertNotIn("trace", action.choices)
         advanced = action.choices["advanced"]
         adv_action = next(
             item for item in advanced._actions if getattr(item, "dest", "") == "advanced_command"
@@ -286,22 +310,27 @@ class CLITests(unittest.TestCase):
     def test_report_subgraph_subcommand_exists(self) -> None:
         parser = build_parser()
         action = next(item for item in parser._actions if getattr(item, "dest", "") == "command")
-        self.assertIn("report-subgraph", action.choices)
+        self.assertNotIn("report-subgraph", action.choices)
+        advanced = action.choices["advanced"]
+        adv_action = next(
+            item for item in advanced._actions if getattr(item, "dest", "") == "advanced_command"
+        )
+        self.assertIn("report-subgraph", adv_action.choices)
 
     def test_report_subgraph_parser_args(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["report-subgraph", "--report", "output/reports/demo.md"])
+        args = parser.parse_args(["advanced", "report-subgraph", "--report", "output/reports/demo.md"])
         self.assertEqual(args.handler_command, "report-subgraph")
         self.assertEqual(args.report, "output/reports/demo.md")
         self.assertIsNone(args.output)
 
         args2 = parser.parse_args(
-            ["report-subgraph", "--report", "output/reports/demo.md", "--output", "custom/path.md"]
+            ["advanced", "report-subgraph", "--report", "output/reports/demo.md", "--output", "custom/path.md"]
         )
         self.assertEqual(args2.output, "custom/path.md")
 
         with self.assertRaises(SystemExit):
-            parser.parse_args(["report-subgraph"])  # --report required
+            parser.parse_args(["advanced", "report-subgraph"])  # --report required
 
     def test_report_subgraph_dispatch_writes_output_and_returns_payload(self) -> None:
         fake_subgraph = {
@@ -398,7 +427,7 @@ class CLITests(unittest.TestCase):
             code, stdout, stderr = self._run_main_raw(["today"])
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertIn("Today's Reports", stdout)
         self.assertIn("Needs Review", stdout)
         self.assertIn("Completed Elixirs", stdout)
@@ -414,7 +443,7 @@ class CLITests(unittest.TestCase):
                 code, stdout, stderr = self._run_main_raw(["today"])
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         feed_builder.assert_called_once_with(summary)
         self.assertIn("Today's Reports", stdout)
         self.assertIn("Needs Review", stdout)
@@ -435,7 +464,7 @@ class CLITests(unittest.TestCase):
             code, stdout, stderr = self._run_main_raw(["today"])
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         for word in {"shell-summary", "review_backlog_counts", "planner-log", "audit.jsonl", "execution-receipts"}:
             self.assertNotIn(word, stdout)
 
@@ -446,7 +475,7 @@ class CLITests(unittest.TestCase):
             code, stdout, stderr = self._run_main_raw(["today"])
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertIn("Run `aiwiki advanced ...`", stdout)
         self.assertIn("Run `aiwiki metrics`", stdout)
 
@@ -454,7 +483,7 @@ class CLITests(unittest.TestCase):
         code, stdout, stderr = self._run_main_raw(["metrics"])
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         for key in (
             "provenance_completeness",
             "stale_ratio",
@@ -470,7 +499,7 @@ class CLITests(unittest.TestCase):
         code, stdout, stderr = self._run_main_raw(["metrics", "--json"])
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         payload = json.loads(stdout)
         self.assertEqual(len(payload), 7)
         self.assertEqual(payload[0]["key"], "provenance_completeness")
@@ -479,14 +508,14 @@ class CLITests(unittest.TestCase):
         code, stdout, stderr = self._run_main_raw(["metrics"])
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertIn("炼丹炉 Knowledge Compounding Metrics", stdout)
 
     def test_metrics_text_output_contains_chinese_label(self) -> None:
         code, stdout, stderr = self._run_main_raw(["metrics"])
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertIn("知识溯源完整度", stdout)
 
     def test_metrics_appends_history_jsonl_each_invocation(self) -> None:
@@ -512,7 +541,7 @@ class CLITests(unittest.TestCase):
         # 7d emits a "no baseline within window" trailing block.
         code, stdout, stderr = self._run_main_raw(["metrics", "--delta", "7d"])
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertIn("delta 7d: no baseline within window", stdout)
 
     def test_metrics_delta_30d_accepted(self) -> None:
@@ -524,7 +553,7 @@ class CLITests(unittest.TestCase):
         # M7.4c: status command on empty vault prints all flags as enabled.
         code, stdout, stderr = self._run_main_raw(["autonomy-status"])
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertIn("disable_lane_apply", stdout)
         self.assertIn("disable_external_llm", stdout)
         self.assertIn("file exists : False", stdout)
@@ -568,7 +597,7 @@ class CLITests(unittest.TestCase):
             code, stdout, stderr = self._run_main_raw(["today"])
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertIn("(no reports today)", stdout)
         self.assertIn("(automation idle)", stdout)
         self.assertIn("(no pending review)", stdout)
@@ -587,7 +616,7 @@ class CLITests(unittest.TestCase):
             code, stdout, stderr = self._run_main_raw(["today", "--json"])
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         payload = json.loads(stdout)
         # 顶层 keys
         self.assertEqual(
@@ -632,7 +661,7 @@ class CLITests(unittest.TestCase):
             code, stdout, stderr = self._run_main_raw(["today", "--json"])
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         payload = json.loads(stdout)
         self.assertEqual(payload["automation_status"], [])
 
@@ -657,7 +686,7 @@ class CLITests(unittest.TestCase):
             code, stdout, stderr = self._run_main_raw(["today", "--json"])
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         payload = json.loads(stdout)
         self.assertEqual(len(payload["suggested_next_actions"]), 1)
         self.assertEqual(payload["suggested_next_actions"][0]["title"], "打开报告包")
@@ -671,7 +700,7 @@ class CLITests(unittest.TestCase):
         with patch("aiwiki.cli.build_shell_summary", return_value=summary):
             code, payload, stderr = self._run_main(["today-snooze", "review:counter_evidence_candidates", "--days", "1"])
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload["status"], "snoozed")
         self.assertEqual(payload["target"], "review:counter_evidence_candidates")
         self.assertEqual(payload["snoozed_until"], payload["snoozed_at"][:10])
@@ -692,7 +721,7 @@ class CLITests(unittest.TestCase):
         with patch("aiwiki.cli.build_shell_summary", return_value=summary_with_snooze):
             code, stdout, stderr = self._run_main_raw(["today", "--json"])
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         data = json.loads(stdout)
         self.assertEqual(data["needs_review"], [])
 
@@ -704,7 +733,7 @@ class CLITests(unittest.TestCase):
                 ["retire-concept", "alpha", "beta", "gamma", "--note", "noise"]
             )
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload["count"], 3)
         self.assertEqual(payload["slugs"], ["alpha", "beta", "gamma"])
         self.assertEqual([r["slug"] for r in payload["receipts"]], ["alpha", "beta", "gamma"])
@@ -719,7 +748,7 @@ class CLITests(unittest.TestCase):
         with patch("aiwiki.cli.retire_concept", return_value={"slug": "solo", "status": "retired"}) as mocked, patch("aiwiki.cli.compile_wiki") as compile_mock:
             code, payload, stderr = self._run_main(["retire-concept", "solo"])
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload, {"slug": "solo", "status": "retired"})
         mocked.assert_called_once()
         compile_mock.assert_called_once_with(self.root)
@@ -748,7 +777,7 @@ class CLITests(unittest.TestCase):
                 ["reactivate-concept", "alpha", "beta", "--note", "wake"]
             )
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload["count"], 2)
         self.assertEqual(mocked.call_count, 2)
         compile_mock.assert_called_once_with(self.root)
@@ -763,7 +792,7 @@ class CLITests(unittest.TestCase):
                 ["review-concept", "alpha", "--status", "deferred", "--note", "ack"]
             )
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload, {"slug": "alpha", "status": "deferred"})
         mocked.assert_called_once()
         call = mocked.call_args
@@ -790,7 +819,7 @@ class CLITests(unittest.TestCase):
                 ["review-concept", "alpha", "beta", "--status", "deferred"]
             )
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload["count"], 2)
         mocked.assert_called_once()
         call = mocked.call_args
@@ -832,7 +861,7 @@ class CLITests(unittest.TestCase):
                 ["review-concept", "--status", "deferred", "--all-pending"]
             )
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         batch_mock.assert_called_once()
         compile_mock.assert_called_once_with(self.root)
         slugs_arg = batch_mock.call_args.args[1]
@@ -869,7 +898,7 @@ class CLITests(unittest.TestCase):
                 ["review-action", "act-1", "act-2", "--status", "accepted", "--note", "ok"]
             )
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload["count"], 2)
         mocked.assert_called_once_with(self.root, ["act-1", "act-2"], "accepted", note="ok")
 
@@ -937,7 +966,7 @@ class CLITests(unittest.TestCase):
                 ]
             )
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         mocked.assert_called_once_with(self.root, ["link-a"], "accepted", note=None)
 
     def test_review_queue_json_buckets_decision_entries(self) -> None:
@@ -953,7 +982,7 @@ class CLITests(unittest.TestCase):
         with patch("aiwiki.cli.build_shell_summary", return_value=summary):
             code, payload, stderr = self._run_main(["review-queue", "--json"])
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload["active_protocol"], "research")
         # 有 3 个 review_backlog_counts buckets + counter_evidence
         self.assertIn("concept_backlog", payload["buckets"])
@@ -975,7 +1004,7 @@ class CLITests(unittest.TestCase):
         with patch("aiwiki.cli.build_shell_summary", return_value=summary):
             code, payload, stderr = self._run_main(["review-queue", "--bucket", "concept_backlog", "--json"])
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(set(payload["buckets"].keys()), {"concept_backlog"})
         self.assertEqual(payload["total"], 1)
 
@@ -989,7 +1018,7 @@ class CLITests(unittest.TestCase):
         with patch("aiwiki.cli.build_shell_summary", return_value=summary):
             code, stdout, stderr = self._run_main_raw(["review-queue"])
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertIn("# Review Queue", stdout)
         self.assertIn("## concept_backlog", stdout)
         self.assertIn("total        : 1", stdout)
@@ -1020,7 +1049,7 @@ class CLITests(unittest.TestCase):
         with patch("aiwiki.cli.build_shell_summary", return_value=summary):
             code, payload, stderr = self._run_main(["review-queue", "--bucket", "machine_memory_actions", "--json"])
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload["total"], 1)
         item = payload["buckets"]["machine_memory_actions"][0]
         self.assertEqual(item["id"], "link-alpha-beta")
@@ -1056,7 +1085,7 @@ class CLITests(unittest.TestCase):
         with patch("aiwiki.cli.build_shell_summary", return_value=summary):
             code, payload, stderr = self._run_main(["review-queue", "--bucket", "ready_actions", "--json"])
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload["total"], 2)
         self.assertEqual([item["id"] for item in payload["buckets"]["ready_actions"]], ["apply-me", "resolve-me"])
         self.assertEqual(
@@ -1080,7 +1109,7 @@ class CLITests(unittest.TestCase):
         with patch("aiwiki.cli.build_shell_summary", return_value=summary):
             code, payload, stderr = self._run_main(["review-queue", "--bucket", "ready_actions", "--json"])
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         items = payload["buckets"]["ready_actions"]
         self.assertEqual(payload["total"], 3)
         self.assertEqual(items[-1]["id"], "batch-apply-all-accepted-low-risk")
@@ -1104,7 +1133,7 @@ class CLITests(unittest.TestCase):
         with patch("aiwiki.cli.build_shell_summary", return_value=summary):
             code, payload, stderr = self._run_main(["review-queue", "--bucket", "ready_actions", "--json"])
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload["total"], 1)
         self.assertEqual(payload["buckets"]["ready_actions"][0]["id"], "apply-me")
 
@@ -1133,7 +1162,7 @@ class CLITests(unittest.TestCase):
         with patch("aiwiki.cli.build_shell_summary", return_value=summary):
             code, payload, stderr = self._run_main(["review-queue", "--bucket", "pending_judgments", "--json"])
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         item = payload["buckets"]["pending_judgments"][0]
         self.assertEqual(item["id"], "judgment-alpha")
         self.assertEqual(
@@ -1151,7 +1180,7 @@ class CLITests(unittest.TestCase):
         with patch("aiwiki.cli.build_shell_summary", return_value=summary):
             code, stdout, stderr = self._run_main_raw(["review-queue", "--bucket", "ready_actions"])
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertIn("command: PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action apply-me --dry-run", stdout)
 
     def test_review_queue_empty_renders_placeholder(self) -> None:
@@ -1167,7 +1196,7 @@ class CLITests(unittest.TestCase):
         with patch("aiwiki.cli.build_shell_summary", return_value=summary):
             code, stdout, stderr = self._run_main_raw(["today"])
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         for heading in [
             "Today's Reports",
             "Needs Review",
@@ -1190,14 +1219,16 @@ class CLITests(unittest.TestCase):
                 code, payload, stderr = self._run_main(["--model-fallback", "foo", "llm-check"])
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload, {"status": "ok"})
         mocked_status.assert_called_once()
         self.assertEqual(captured["fallback"], "foo")
 
     def test_cli_model_fallback_repeated(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["--model-fallback", "a", "--model-fallback", "b", "llm-check"])
+        args = parser.parse_args(
+            ["--model-fallback", "a", "--model-fallback", "b", "advanced", "llm-check"]
+        )
 
         self.assertEqual(args.model_fallback, ["a", "b"])
 
@@ -1218,7 +1249,7 @@ class CLITests(unittest.TestCase):
                 code, payload, stderr = self._run_main(["--model-fallback", "cli-a,cli-b", "llm-check"])
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload, {"status": "ok"})
         self.assertEqual(captured["fallback"], "cli-a,cli-b")
 
@@ -1240,7 +1271,7 @@ class CLITests(unittest.TestCase):
             code, stdout, stderr = self._run_main_raw(["today"])
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertIn("- [research] Daily Report — report 输出 — output/reports/daily.md", stdout)
 
     def test_today_filters_non_today_reports(self) -> None:
@@ -1261,7 +1292,7 @@ class CLITests(unittest.TestCase):
             code, stdout, stderr = self._run_main_raw(["today"])
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertNotIn("output/reports/yesterday.md", stdout)
         self.assertIn("(no reports today)", stdout)
 
@@ -1277,7 +1308,7 @@ class CLITests(unittest.TestCase):
             code, stdout, stderr = self._run_main_raw(["today"])
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertNotIn("Review next page", stdout)
         self.assertNotIn("aiwiki review-page --next --status approved", stdout)
         self.assertIn("(no suggested next actions)", stdout)
@@ -1294,7 +1325,7 @@ class CLITests(unittest.TestCase):
             code, stdout, stderr = self._run_main_raw(["today"])
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertIn("Open report pack", stdout)
         self.assertIn("aiwiki report-pack --latest", stdout)
 
@@ -1305,7 +1336,7 @@ class CLITests(unittest.TestCase):
                 code, _stdout, stderr = self._run_main_raw(["today"])
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         llm_mock.assert_not_called()
 
     def test_today_does_not_mutate_shell_status_json(self) -> None:
@@ -1315,13 +1346,18 @@ class CLITests(unittest.TestCase):
                 code, _stdout, stderr = self._run_main_raw(["today"])
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         shell_status_mock.assert_not_called()
 
     def test_drop_url_dispatches_to_drop_url_handler(self) -> None:
         parser = build_parser()
 
-        legacy_args = parser.parse_args(["drop-url", "https://example.com", "--title", "Example"])
+        legacy_args = parser.parse_args(
+            rewrite_legacy_top_level_argv(
+                ["drop-url", "https://example.com", "--title", "Example"],
+                emit_warning=False,
+            )
+        )
         drop_args = parser.parse_args(["drop", "url", "https://example.com", "--title", "Example"])
 
         self.assertEqual(drop_args.handler_command, legacy_args.handler_command)
@@ -1331,7 +1367,12 @@ class CLITests(unittest.TestCase):
     def test_drop_pdf_dispatch(self) -> None:
         parser = build_parser()
 
-        legacy_args = parser.parse_args(["drop-pdf", "paper.pdf", "--title", "Paper"])
+        legacy_args = parser.parse_args(
+            rewrite_legacy_top_level_argv(
+                ["drop-pdf", "paper.pdf", "--title", "Paper"],
+                emit_warning=False,
+            )
+        )
         drop_args = parser.parse_args(["drop", "pdf", "paper.pdf", "--title", "Paper"])
 
         self.assertEqual(drop_args.handler_command, "drop-pdf")
@@ -1342,14 +1383,23 @@ class CLITests(unittest.TestCase):
     def test_drop_pdf_help_renders_magic_bytes_literal(self) -> None:
         parser = build_parser()
         action = next(item for item in parser._actions if getattr(item, "dest", "") == "command")
-        legacy_parser = action.choices["drop-pdf"]
+        drop_parser = action.choices["drop"]
+        drop_action = next(
+            item for item in drop_parser._actions if getattr(item, "dest", "") == "drop_command"
+        )
+        pdf_parser = drop_action.choices["pdf"]
 
-        self.assertIn("%PDF-", legacy_parser.format_help())
+        self.assertIn("%PDF-", pdf_parser.format_help())
 
     def test_drop_image_dispatch(self) -> None:
         parser = build_parser()
 
-        legacy_args = parser.parse_args(["drop-image", "chart.png", "--title", "Chart", "--no-vision"])
+        legacy_args = parser.parse_args(
+            rewrite_legacy_top_level_argv(
+                ["drop-image", "chart.png", "--title", "Chart", "--no-vision"],
+                emit_warning=False,
+            )
+        )
         drop_args = parser.parse_args(["drop", "image", "chart.png", "--title", "Chart", "--no-vision"])
 
         self.assertEqual(drop_args.handler_command, "drop-image")
@@ -1361,7 +1411,12 @@ class CLITests(unittest.TestCase):
     def test_drop_repo_dispatch(self) -> None:
         parser = build_parser()
 
-        legacy_args = parser.parse_args(["drop-repo", "repo", "--title", "Repo", "--max-files", "10"])
+        legacy_args = parser.parse_args(
+            rewrite_legacy_top_level_argv(
+                ["drop-repo", "repo", "--title", "Repo", "--max-files", "10"],
+                emit_warning=False,
+            )
+        )
         drop_args = parser.parse_args(["drop", "repo", "repo", "--title", "Repo", "--max-files", "10"])
 
         self.assertEqual(drop_args.handler_command, "drop-repo")
@@ -1373,7 +1428,12 @@ class CLITests(unittest.TestCase):
     def test_drop_markdown_dispatch(self) -> None:
         parser = build_parser()
 
-        legacy_args = parser.parse_args(["drop-note", "notes.md", "--text", "hello", "--kind", "transcript"])
+        legacy_args = parser.parse_args(
+            rewrite_legacy_top_level_argv(
+                ["drop-note", "notes.md", "--text", "hello", "--kind", "transcript"],
+                emit_warning=False,
+            )
+        )
         drop_args = parser.parse_args(["drop", "markdown", "notes.md", "--text", "hello", "--kind", "transcript"])
         md_args = parser.parse_args(["drop", "md", "notes.md", "--text", "hello", "--kind", "transcript"])
 
@@ -1500,7 +1560,7 @@ class CLITests(unittest.TestCase):
                     code, payload, stderr = self._run_main(argv)
 
                 self.assertEqual(code, 0)
-                self.assertEqual(stderr, "")
+                self.assertEqual(self._without_deprecation(stderr), "")
                 self.assertEqual(payload["route"], name)
                 mocked.assert_called_once_with(*expected_args, **expected_kwargs)
 
@@ -1526,7 +1586,7 @@ class CLITests(unittest.TestCase):
                 code, payload, stderr = self._run_main(["drop", "-"])
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload["material"], "url")
         mocked.assert_called_once_with(self.root, "https://example.com", title=None)
 
@@ -1555,7 +1615,7 @@ class CLITests(unittest.TestCase):
             code, payload, stderr = self._run_main(["drop", "what is x?"])
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload["question"], "what is x?")
         mocked.assert_called_once_with(
             self.root,
@@ -1571,7 +1631,7 @@ class CLITests(unittest.TestCase):
             code, payload, stderr = self._run_main(["drop", "ask: hello"])
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload["question"], "hello")
         mocked.assert_called_once_with(
             self.root,
@@ -1645,7 +1705,7 @@ class CLITests(unittest.TestCase):
 
         self.assertEqual(
             _rewrite_universal_drop_argv(["drop", "explain quantum entanglement"]),
-            ["ask", "explain quantum entanglement"],
+            ["advanced", "ask", "explain quantum entanglement"],
         )
 
     def test_universal_drop_posix_relative_path_unknown_ext_fails_loud(self) -> None:
@@ -1674,55 +1734,62 @@ class CLITests(unittest.TestCase):
 
         self.assertEqual(
             _rewrite_universal_drop_argv(["drop", "Q: summarize README"]),
-            ["ask", "Q: summarize README"],
+            ["advanced", "ask", "Q: summarize README"],
         )
 
     def test_advanced_compile_dispatches_to_compile_handler(self) -> None:
         parser = build_parser()
 
-        legacy_args = parser.parse_args(["compile"])
+        rewritten = rewrite_legacy_top_level_argv(["compile"], emit_warning=False)
         advanced_args = parser.parse_args(["advanced", "compile"])
 
-        self.assertEqual(legacy_args.handler_command, "compile")
-        self.assertEqual(advanced_args.handler_command, legacy_args.handler_command)
+        self.assertEqual(rewritten, ["advanced", "compile"])
+        self.assertEqual(advanced_args.handler_command, "compile")
+        self.assertEqual(parser.parse_args(rewritten).handler_command, "compile")
 
     def test_advanced_drop_url_dispatches_to_drop_url_handler(self) -> None:
         parser = build_parser()
 
-        legacy_args = parser.parse_args(["drop-url", "https://example.com", "--title", "Example"])
+        primary_args = parser.parse_args(["drop", "url", "https://example.com", "--title", "Example"])
         advanced_args = parser.parse_args(["advanced", "drop-url", "https://example.com", "--title", "Example"])
 
-        self.assertEqual(legacy_args.handler_command, "drop-url")
-        self.assertEqual(advanced_args.handler_command, legacy_args.handler_command)
-        self.assertEqual(advanced_args.url, legacy_args.url)
-        self.assertEqual(advanced_args.title, legacy_args.title)
+        self.assertEqual(primary_args.handler_command, "drop-url")
+        self.assertEqual(advanced_args.handler_command, primary_args.handler_command)
+        self.assertEqual(advanced_args.url, primary_args.url)
+        self.assertEqual(advanced_args.title, primary_args.title)
 
     def test_advanced_alchemy_nested_dispatch(self) -> None:
         parser = build_parser()
 
-        legacy_args = parser.parse_args(["alchemy", "heavy", "all", "--dry-run", "--max-signals", "3"])
         advanced_args = parser.parse_args(["advanced", "alchemy", "heavy", "all", "--dry-run", "--max-signals", "3"])
+        rewritten = rewrite_legacy_top_level_argv(
+            ["alchemy", "heavy", "all", "--dry-run", "--max-signals", "3"],
+            emit_warning=False,
+        )
 
-        self.assertEqual(legacy_args.handler_command, "alchemy")
-        self.assertEqual(advanced_args.handler_command, legacy_args.handler_command)
-        self.assertEqual(advanced_args.alchemy_lane, legacy_args.alchemy_lane)
-        self.assertEqual(advanced_args.scope, legacy_args.scope)
-        self.assertEqual(advanced_args.max_signals, legacy_args.max_signals)
+        self.assertEqual(advanced_args.handler_command, "alchemy")
+        self.assertEqual(parser.parse_args(rewritten).handler_command, advanced_args.handler_command)
+        self.assertEqual(advanced_args.alchemy_lane, "heavy")
+        self.assertEqual(advanced_args.scope, "all")
+        self.assertEqual(advanced_args.max_signals, 3)
 
     def test_advanced_review_nested_dispatch(self) -> None:
         parser = build_parser()
 
-        legacy_args = parser.parse_args(["review", "proposals", "--kind", "prompt_proposal", "--state", "candidate", "--json"])
         advanced_args = parser.parse_args(
             ["advanced", "review", "proposals", "--kind", "prompt_proposal", "--state", "candidate", "--json"]
         )
+        rewritten = rewrite_legacy_top_level_argv(
+            ["review", "proposals", "--kind", "prompt_proposal", "--state", "candidate", "--json"],
+            emit_warning=False,
+        )
 
-        self.assertEqual(legacy_args.handler_command, "review")
-        self.assertEqual(advanced_args.handler_command, legacy_args.handler_command)
-        self.assertEqual(advanced_args.review_command, legacy_args.review_command)
-        self.assertEqual(advanced_args.kind, legacy_args.kind)
-        self.assertEqual(advanced_args.state, legacy_args.state)
-        self.assertEqual(advanced_args.json, legacy_args.json)
+        self.assertEqual(advanced_args.handler_command, "review")
+        self.assertEqual(parser.parse_args(rewritten).handler_command, advanced_args.handler_command)
+        self.assertEqual(advanced_args.review_command, "proposals")
+        self.assertEqual(advanced_args.kind, "prompt_proposal")
+        self.assertEqual(advanced_args.state, "candidate")
+        self.assertTrue(advanced_args.json)
 
     def test_advanced_no_deprecation_warning(self) -> None:
         with patch("aiwiki.cli.drop_url", return_value={"material": "url"}):
@@ -1735,26 +1802,32 @@ class CLITests(unittest.TestCase):
     def test_advanced_audit_backfill_dispatch(self) -> None:
         parser = build_parser()
 
-        legacy_args = parser.parse_args(["audit-backfill", "--dry-run", "--limit", "6"])
         advanced_args = parser.parse_args(["advanced", "audit-backfill", "--dry-run", "--limit", "6"])
+        rewritten = rewrite_legacy_top_level_argv(
+            ["audit-backfill", "--dry-run", "--limit", "6"],
+            emit_warning=False,
+        )
 
-        self.assertEqual(legacy_args.handler_command, "audit-backfill")
-        self.assertEqual(advanced_args.handler_command, legacy_args.handler_command)
-        self.assertEqual(advanced_args.dry_run, legacy_args.dry_run)
-        self.assertEqual(advanced_args.limit, legacy_args.limit)
+        self.assertEqual(advanced_args.handler_command, "audit-backfill")
+        self.assertEqual(parser.parse_args(rewritten).handler_command, "audit-backfill")
+        self.assertTrue(advanced_args.dry_run)
+        self.assertEqual(advanced_args.limit, 6)
 
     def test_advanced_alchemy_revert_dispatch(self) -> None:
         parser = build_parser()
 
-        legacy_args = parser.parse_args(["alchemy-revert", "--elixir-id", "elixir-vla-robotics-deadbeef", "--note", "undo"])
         advanced_args = parser.parse_args(
             ["advanced", "alchemy-revert", "--elixir-id", "elixir-vla-robotics-deadbeef", "--note", "undo"]
         )
+        rewritten = rewrite_legacy_top_level_argv(
+            ["alchemy-revert", "--elixir-id", "elixir-vla-robotics-deadbeef", "--note", "undo"],
+            emit_warning=False,
+        )
 
-        self.assertEqual(legacy_args.handler_command, "alchemy-revert")
-        self.assertEqual(advanced_args.handler_command, legacy_args.handler_command)
-        self.assertEqual(advanced_args.elixir_id, legacy_args.elixir_id)
-        self.assertEqual(advanced_args.note, legacy_args.note)
+        self.assertEqual(advanced_args.handler_command, "alchemy-revert")
+        self.assertEqual(parser.parse_args(rewritten).handler_command, "alchemy-revert")
+        self.assertEqual(advanced_args.elixir_id, "elixir-vla-robotics-deadbeef")
+        self.assertEqual(advanced_args.note, "undo")
 
     def test_main_dispatches_command_handlers(self) -> None:
         parser = build_parser()
@@ -2221,8 +2294,9 @@ class CLITests(unittest.TestCase):
 
         for name, argv, target, expected_args, expected_kwargs in cases:
             with self.subTest(command=name):
-                parsed_args = parser.parse_args(argv)
-                self.assertEqual(parsed_args.handler_command, parsed_args.command)
+                rewritten = rewrite_legacy_top_level_argv(argv, emit_warning=False)
+                parsed_args = parser.parse_args(rewritten)
+                self.assertEqual(parsed_args.handler_command, argv[0])
                 stdout = io.StringIO()
                 stderr = io.StringIO()
                 with patch("sys.stdout", new=stdout), patch("sys.stderr", new=stderr):
@@ -2259,7 +2333,7 @@ class CLITests(unittest.TestCase):
             code, payload, stderr = self._run_main(["llm-check", "--probe", "--probe-timeout", "9"])
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         mocked.assert_called_once_with(self.root, probe_all=False, timeout_seconds=9)
         self.assertTrue(payload["probe"]["ok"])
 
@@ -2267,28 +2341,28 @@ class CLITests(unittest.TestCase):
             code, payload, stderr = self._run_main(["llm-check", "--probe-all", "--probe-timeout", "14"])
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         mocked_all.assert_called_once_with(self.root, probe_all=True, timeout_seconds=14)
         self.assertEqual(payload["probes"][0]["backend"], "opencode-api")
 
     def test_alchemy_start_requires_protocol_arg(self) -> None:
         parser = build_parser()
         with self.assertRaises(SystemExit):
-            parser.parse_args(["alchemy-start", "investing-foo-abc12345", "--topic", "VLA robotics"])
+            parser.parse_args(["advanced", "alchemy-start", "investing-foo-abc12345", "--topic", "VLA robotics"])
 
     def test_alchemy_finalize_cli_smoke(self) -> None:
         with patch("aiwiki.cli.run_alchemy_finalize", return_value={"command": "alchemy-finalize"}) as mocked:
             code, payload, stderr = self._run_main(["alchemy-finalize", "--elixir-id", "elixir-vla-robotics-deadbeef"])
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload.get("command"), "alchemy-finalize")
         mocked.assert_called_once_with(self.root, elixir_id="elixir-vla-robotics-deadbeef")
 
     def test_alchemy_finalize_requires_elixir_id(self) -> None:
         parser = build_parser()
         with self.assertRaises(SystemExit):
-            parser.parse_args(["alchemy-finalize"])
+            parser.parse_args(["advanced", "alchemy-finalize"])
 
     def test_alchemy_promote_cli_smoke(self) -> None:
         with patch("aiwiki.cli.run_alchemy_promote", return_value={"command": "alchemy-promote"}) as mocked:
@@ -2297,7 +2371,7 @@ class CLITests(unittest.TestCase):
             )
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload.get("command"), "alchemy-promote")
         mocked.assert_called_once_with(
             self.root,
@@ -2308,7 +2382,7 @@ class CLITests(unittest.TestCase):
     def test_alchemy_promote_requires_elixir_id(self) -> None:
         parser = build_parser()
         with self.assertRaises(SystemExit):
-            parser.parse_args(["alchemy-promote"])
+            parser.parse_args(["advanced", "alchemy-promote"])
 
     def test_alchemy_revert_cli_smoke(self) -> None:
         with patch(
@@ -2320,7 +2394,7 @@ class CLITests(unittest.TestCase):
             )
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload.get("elixir_id"), "elixir-vla-robotics-deadbeef")
         self.assertEqual(payload.get("path"), "output/_candidates/elixirs/elixir-vla-robotics-deadbeef.md")
         mocked.assert_called_once_with(
@@ -2332,7 +2406,7 @@ class CLITests(unittest.TestCase):
     def test_alchemy_revert_requires_elixir_id(self) -> None:
         parser = build_parser()
         with self.assertRaises(SystemExit):
-            parser.parse_args(["alchemy-revert"])
+            parser.parse_args(["advanced", "alchemy-revert"])
 
     def test_alchemy_demote_cli_smoke(self) -> None:
         with patch(
@@ -2344,7 +2418,7 @@ class CLITests(unittest.TestCase):
             )
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload.get("elixir_id"), "elixir-vla-robotics-deadbeef")
         self.assertEqual(payload.get("path"), "output/_candidates/elixirs/elixir-vla-robotics-deadbeef.md")
         mocked.assert_called_once_with(
@@ -2356,7 +2430,7 @@ class CLITests(unittest.TestCase):
     def test_alchemy_demote_requires_elixir_id(self) -> None:
         parser = build_parser()
         with self.assertRaises(SystemExit):
-            parser.parse_args(["alchemy-demote"])
+            parser.parse_args(["advanced", "alchemy-demote"])
 
     def test_alchemy_start_propagates_protocol_to_frontmatter(self) -> None:
         ensure_layout(self.root)
@@ -2371,7 +2445,7 @@ class CLITests(unittest.TestCase):
         )
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         path = self.root / str(payload["path"])
         self.assertTrue(path.exists())
         frontmatter = parse_frontmatter(path.read_text(encoding="utf-8"))
@@ -2414,7 +2488,7 @@ class CLITests(unittest.TestCase):
             code, payload, stderr = self._run_main(["auto-once", "--compile-limit", "4"])
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload["command"], "auto-once")
         auto_mock.assert_called_once_with(self.root, compile_limit=4, deterministic_only=True, semantic_lint=True)
 
@@ -2422,7 +2496,7 @@ class CLITests(unittest.TestCase):
             code, payload, stderr = self._run_main(["watch", "--max-cycles", "1", "--skip-initial"])
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(payload["command"], "watch")
         watch_mock.assert_called_once_with(
             self.root,
@@ -2472,7 +2546,7 @@ class CLITests(unittest.TestCase):
                 code, payload, stderr = self._run_main(["compile"])
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         compile_mock.assert_called_once_with(self.root)
         recovery_mock.assert_called_once_with(self.root, ["wiki/rewrite-proposals/transformer-scaling.md"])
         self.assertEqual(payload["updated_rewrite_proposals"][0]["slug"], "transformer-scaling")
@@ -2643,14 +2717,14 @@ class CLITests(unittest.TestCase):
             ["signals-replay", "--source", "archive", "--trace-id", "550e8400-e29b-41d4-a716-446655440000"]
         )
         self.assertEqual(sig_code, 0)
-        self.assertEqual(sig_stderr, "")
+        self.assertEqual(self._without_deprecation(sig_stderr), "")
         self.assertEqual(sig_payload["scanned_count"], 3)
         self.assertEqual(sig_payload["new_count"], 2)
         self.assertEqual(sig_payload["emitted_by_kind"]["drift"], 2)
 
         pl_code, pl_payload, pl_stderr = self._run_main(["planner-log-replay"])
         self.assertEqual(pl_code, 0)
-        self.assertEqual(pl_stderr, "")
+        self.assertEqual(self._without_deprecation(pl_stderr), "")
         self.assertEqual(pl_payload["scanned_count"], 2)
         self.assertEqual(pl_payload["new_count"], 2)
         self.assertEqual(pl_payload["emitted_by_decision"]["enqueue-heavy"], 0)
@@ -2694,7 +2768,7 @@ class CLITests(unittest.TestCase):
         )
 
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertIn("sig-20260424-txt0001", stdout)
         self.assertIn("drift", stdout)
         self.assertIn("high", stdout)
@@ -2715,7 +2789,7 @@ class CLITests(unittest.TestCase):
 
         code, payload, stderr = self._run_main(["signals-list", "--json"])
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(len(payload), 1)
         self.assertEqual(payload[0]["signal_id"], "sig-20260424-json0001")
         self.assertEqual(payload[0]["kind"], "runtime_failure")
@@ -2750,7 +2824,7 @@ class CLITests(unittest.TestCase):
 
         code, stdout, stderr = self._run_main_raw(["signals-show", signal_id])
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertIn("Signal:", stdout)
         self.assertIn("kind: elixir_dependency_break", stdout)
         self.assertIn("Related planner decisions:", stdout)
@@ -2791,7 +2865,7 @@ class CLITests(unittest.TestCase):
 
         code, stdout, stderr = self._run_main_raw(["planner-log-list", "--decision", "generate-proposal"])
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertIn("generate-proposal", stdout)
         self.assertIn(signal_id, stdout)
         self.assertNotIn("enqueue-light", stdout)
@@ -2813,7 +2887,7 @@ class CLITests(unittest.TestCase):
 
         code, payload, stderr = self._run_main(["planner-log-list", "--signal-id", signal_id, "--json"])
         self.assertEqual(code, 0)
-        self.assertEqual(stderr, "")
+        self.assertEqual(self._without_deprecation(stderr), "")
         self.assertEqual(len(payload), 1)
         self.assertEqual(payload[0]["signal_id"], signal_id)
         self.assertEqual(payload[0]["decision"], "ignore")
@@ -2894,12 +2968,12 @@ class CLITests(unittest.TestCase):
             ["signals-replay", "--source", "archive", "--trace-id", "550e8400-e29b-41d4-a716-446655440000"]
         )
         self.assertEqual(sig_code, 0)
-        self.assertEqual(sig_stderr, "")
+        self.assertEqual(self._without_deprecation(sig_stderr), "")
         self.assertEqual(sig_payload["new_count"], 1)
 
         planner_code, planner_payload, planner_stderr = self._run_main(["planner-log-replay"])
         self.assertEqual(planner_code, 0)
-        self.assertEqual(planner_stderr, "")
+        self.assertEqual(self._without_deprecation(planner_stderr), "")
         self.assertEqual(planner_payload["new_count"], 1)
 
         records = self._read_jsonl(".aiwiki/state/signals.jsonl")
@@ -2908,7 +2982,7 @@ class CLITests(unittest.TestCase):
 
         show_code, show_stdout, show_stderr = self._run_main_raw(["signals-show", signal_id])
         self.assertEqual(show_code, 0)
-        self.assertEqual(show_stderr, "")
+        self.assertEqual(self._without_deprecation(show_stderr), "")
         self.assertIn(signal_id, show_stdout)
         self.assertIn("elixir_dependency_break", show_stdout)
         self.assertIn("Related planner decisions:", show_stdout)
