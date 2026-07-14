@@ -37,7 +37,19 @@ NIGHTLY_PERSISTENT="${AIWIKI_NIGHTLY_PERSISTENT:-true}"
 INSTALL_DOGFOOD_MATURITY="${AIWIKI_INSTALL_DOGFOOD_MATURITY:-0}"
 DOGFOOD_MATURITY_ON_CALENDAR="${AIWIKI_DOGFOOD_MATURITY_ON_CALENDAR:-*-*-* 00:15:00 UTC}"
 DOGFOOD_MATURITY_PERSISTENT="${AIWIKI_DOGFOOD_MATURITY_PERSISTENT:-true}"
-DOGFOOD_MATURITY_VAULT_DEFAULT="${AIWIKI_DOGFOOD_VAULT:-/home/tim/danlu/炼丹炉}"
+DOGFOOD_MATURITY_VAULT_DEFAULT="${AIWIKI_DOGFOOD_VAULT:-}"
+
+truthy() {
+  case "${1,,}" in
+    1|true|yes|on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+if truthy "$INSTALL_DOGFOOD_MATURITY" && [[ -z "$DOGFOOD_MATURITY_VAULT_DEFAULT" ]]; then
+  echo "error: AIWIKI_INSTALL_DOGFOOD_MATURITY=1 requires AIWIKI_DOGFOOD_VAULT to be set" >&2
+  exit 1
+fi
 
 ensure_env_key() {
   local file="$1"
@@ -74,13 +86,6 @@ env_key_value() {
   else
     printf '%s\n' "$default"
   fi
-}
-
-truthy() {
-  case "${1,,}" in
-    1|true|yes|on) return 0 ;;
-    *) return 1 ;;
-  esac
 }
 
 mkdir -p "$SYSTEMD_USER_DIR" "$AIWIKI_CONFIG_DIR"

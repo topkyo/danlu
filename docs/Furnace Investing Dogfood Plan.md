@@ -67,11 +67,11 @@ source .envrc.dogfood
 cd "$AIWIKI_DOGFOOD_VAULT"
 
 # 确认 backend 可用
-PYTHONPATH=/home/tim/ai-wiki/src python3 -m aiwiki.cli --root . llm-check --probe --format human
+PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check --probe --format human
 
 # 切到 investing 协议
-PYTHONPATH=/home/tim/ai-wiki/src python3 -m aiwiki.cli --root . protocol-set investing
-PYTHONPATH=/home/tim/ai-wiki/src python3 -m aiwiki.cli --root . protocol-status
+PYTHONPATH=src python3 -m aiwiki.cli --root . protocol-set investing
+PYTHONPATH=src python3 -m aiwiki.cli --root . protocol-status
 ```
 
 **Stop**：若 `llm-check --probe` 返回 `unavailable / requires_credential`，停止 dogfood，把状态记录到摩擦报告 `R-LLM-001`，等 backend ready 再继续。

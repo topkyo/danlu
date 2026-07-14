@@ -29,7 +29,7 @@ supersedes:
 - **P0 代码修复**：2 个失败测试、安装脚本硬编码开发者路径
 - **P1 安全/可靠性加固**：凭据 repr 防泄漏、`atomic_append_jsonl` 原子化、`load_manifest` 损坏保护、静默吞错修复、deterministic 路径锁合并
 - **P2 测试基础设施**：coverage 配置、Product Shell JS 测试纳入 CI、verify.sh smoke 去重
-- **P0 文档修复**：Cleanup Plan 红线矛盾、Active 表缺失文档、`/home/tim` 过期路径（18 处）、AGENTS.md 过期断言
+- **P0 文档修复**：Cleanup Plan 红线矛盾、Active 表缺失文档、`旧开发者 home 路径` 过期路径（18 处）、AGENTS.md 过期断言
 - **P0 商业化文档新建**：LICENSE、INSTALL.md、USER_GUIDE.md
 - **P1 商业化文档新建**：PRICING.md、BOUNDARIES.md、CHANGELOG.md、PRIVACY.md、SUPPORT.md、COMPARE.md
 - **文档重写/归档**：README.md 拆分、Cleanup Plan 归档、过期文档路径修正、frontmatter 补齐
@@ -124,7 +124,7 @@ supersedes:
 | 商业化必需文档完备度 | 1.0 | LICENSE/CHANGELOG/USER_GUIDE/PRICING/PRIVACY/SLA 全缺 |
 | 文档治理与一致性 | 5.0 | 8 文档脱索引、3 应归档未归档、CLAUDE.md 冲突 |
 | 对外可读性 | 2.5 | README 高度开发者向，无 end-user quickstart |
-| 过期事实清理 | 4.0 | 18 处 `/home/tim` 残留 active 文档 |
+| 过期事实清理 | 4.0 | 18 处 `旧开发者 home 路径` 残留 active 文档 |
 
 ---
 
@@ -133,7 +133,7 @@ supersedes:
 | # | 风险 | 维度 | 严重度 |
 |---|---|---|---|
 | 1 | 无 LICENSE / 定价 / 包装 / 购买路径 | 商业 | 阻断 |
-| 2 | 安装门槛硬伤：硬编码 `/home/tim/danlu/炼丹炉` | 商业+代码 | 阻断 |
+| 2 | 安装门槛硬伤：硬编码旧开发者 dogfood vault 路径 | 商业+代码 | 阻断 |
 | 3 | 2 个真实失败测试使 `verify.sh unit/all` 变 RED | 测试 | 阻断 |
 | 4 | 凭据可能泄漏：`LLMConfig` plain dataclass `__repr__` | 安全 | 高 |
 | 5 | `atomic_append_jsonl` 非原子，audit stream 中途崩溃留半截 | 安全 | 中-高 |
@@ -159,7 +159,7 @@ supersedes:
 | A4 | 删除 `CLAUDE.md`（与 AGENTS.md 事实冲突，路径全错，AGENTS.md 是 SoT） | `CLAUDE.md` | 低-中 | `git grep CLAUDE` 无引用 | 是 |
 | A5 | `wiki/indexes/*.md` 26 个 stale 生成态移出 git + `.gitignore`（保留 README.md） | `wiki/indexes/*.md`, `.gitignore` | 中 | `git ls-files wiki/indexes/` 只剩 README.md | 否 |
 | A6 | `docs/analysis/` 10 个 historical 文件归档到 `docs/archive/analysis/` | `docs/analysis/*` → `docs/archive/analysis/` | 中 | `bash scripts/docs_consistency_check.sh` | 是 |
-| A7 | 删除 `AGENTS.md` Cursor Cloud section 中 test_app.py `/home/tim` 过期断言（tests/ 下 0 命中） | `AGENTS.md` | 低 | `git grep "/home/tim" tests/` 为空 | 是 |
+| A7 | 删除 `AGENTS.md` Cursor Cloud section 中 test_app.py 旧开发者 home 路径过期断言（tests/ 下 0 命中） | `AGENTS.md` | 低 | `git grep -E "^/home/" tests/` 为空 | 是 |
 
 **Wave A Done 判据**：
 - `.agentstack/` 不在磁盘且被 ignore
@@ -175,18 +175,18 @@ supersedes:
 | ID | 任务 | 主要路径 | 风险 | 验证 | 并行 |
 |---|---|---|---|---|---|
 | B1 | 修复 2 个失败测试：`test_app_runtime.py:1426` 断言 `advanced llm-check`；`:1488` mock launcher 条件改为 `advanced` + `llm-check` 两参数匹配 | `tests/test_app_runtime.py` | 低 | `PYTHONPATH=src python3 -m pytest tests/test_app_runtime.py -k nightly_script -q` | 是 |
-| B2 | 修复 `install_user_service.sh:40` 硬编码：去掉 `/home/tim/danlu/炼丹炉` default，改为空 + 必填校验 | `scripts/install_user_service.sh` | 低 | `bash scripts/verify.sh scripts` | 是 |
-| B3 | 修复 `dogfood_maturity_gate.py:25` 等 6 处脚本硬编码 `/home/tim` default | `scripts/dogfood_maturity_gate.py`, `scripts/agos9_*.sh`, `scripts/investing_dogfood_preflight.sh`, `scripts/product_shell_smoke.sh` | 低-中 | `bash scripts/verify.sh scripts` | 是 |
+| B2 | 修复 `install_user_service.sh:40` 硬编码：去掉旧开发者 dogfood vault 路径 default，改为空 + 必填校验 | `scripts/install_user_service.sh` | 低 | `bash scripts/verify.sh scripts` | 是 |
+| B3 | 修复 `dogfood_maturity_gate.py:25` 等 6 处脚本硬编码 `旧开发者 home 路径` default | `scripts/dogfood_maturity_gate.py`, `scripts/agos9_*.sh`, `scripts/investing_dogfood_preflight.sh`, `scripts/product_shell_smoke.sh` | 低-中 | `bash scripts/verify.sh scripts` | 是 |
 | B4 | 修复 Cleanup Plan 红线矛盾：删除"不删 app.py"红线行（app.py 已删） | `docs/Furnace Cleanup Commercial Audit Plan 2026-07.md:50` | 低 | `bash scripts/docs_consistency_check.sh` | 是 |
 | B5 | 归档前一轮 Cleanup Plan（`executed-reviewed-pass`）到 `docs/archive/` | `docs/Furnace Cleanup Commercial Audit Plan 2026-07.md` → `docs/archive/` | 低 | docs consistency | 是 |
 | B6 | 修复 `docs/README.md` Active 表：补齐 5 个脱索引文档（2 runbook + UX Checklist + Optional-Deps-Matrix + Agentic Debt Autopilot） | `docs/README.md` | 低 | docs consistency | 是 |
-| B7 | 修复 6 个 active 文档 18 处 `/home/tim` 过期路径 → `$AIWIKI_DOGFOOD_VAULT` 或 `/Users/ht/github/danlu` | `docs/AGOS-9-Scorecard.md`, `docs/Furnace Runtime Operations.md`, `docs/Furnace Investing Dogfood Plan.md`, `docs/AGOS-9-Dogfood-Proof-Runbook.md`, `docs/AGOS-9-Investing-Preflight-Runbook.md`, `docs/Furnace Agentic Debt Autopilot.md` | 低-中 | `git grep "/home/tim" docs/ --not docs/archive/` 为空 | 是 |
+| B7 | 修复 6 个 active 文档 18 处旧开发者 home 路径过期路径 → `$AIWIKI_DOGFOOD_VAULT` 或 `/Users/ht/github/danlu` | `docs/AGOS-9-Scorecard.md`, `docs/Furnace Runtime Operations.md`, `docs/Furnace Investing Dogfood Plan.md`, `docs/AGOS-9-Dogfood-Proof-Runbook.md`, `docs/AGOS-9-Investing-Preflight-Runbook.md`, `docs/Furnace Agentic Debt Autopilot.md` | 低-中 | `git grep -E "^/home/" docs/ ':!docs/archive/'` 为空 | 是 |
 | B8 | 归档 `docs/Furnace AOS-003 Compat Shim Audit.md`（已 Superseded）和 `docs/Furnace Post-AGOS Risk Plan.md`（已完成）到 `docs/archive/` | 2 文件 → `docs/archive/` | 低 | docs consistency | 是 |
 
 **Wave B Done 判据**：
 - `bash scripts/verify.sh unit` PASS（无失败测试）
-- `git grep "/home/tim" -- scripts/` 为空
-- `git grep "/home/tim" -- docs/` 排除 archive/ 为空
+- `git grep -E "^/home/" -- scripts/` 为空
+- `git grep -E "^/home/" -- docs/ ':!docs/archive/'` 为空
 - `docs/README.md` Active 表无脱索引文档
 - Cleanup Plan 红线无矛盾
 
@@ -283,7 +283,7 @@ supersedes:
 | `docs/Furnace AOS-003 Compat Shim Audit.md` | 归档 | B | Superseded 未移 |
 | `docs/Furnace Post-AGOS Risk Plan.md` | 归档 | B | 已完成未移 |
 | `docs/README.md` | 补齐 Active 表 | B | 8 文档脱索引 |
-| 6 个 active 文档 /home/tim | 修正路径 | B | 18 处过期路径 |
+| 6 个 active 文档 旧开发者 home 路径 | 修正路径 | B | 18 处过期路径 |
 | `src/aiwiki/config.py:47-66` | `field(repr=False)` | C | 凭据防泄漏 |
 | `src/aiwiki/app_utils.py:453-472` | `os.write` 原子化 | C | audit stream 完整性 |
 | `src/aiwiki/app_state.py:125-130` | strict loader | C | manifest 损坏保护 |
@@ -333,7 +333,7 @@ supersedes:
 - [ ] B2-B3 修复脚本硬编码路径
 - [ ] B4-B5 修正 Cleanup Plan 红线 + 归档
 - [ ] B6 补齐 docs/README.md Active 表
-- [ ] B7 修复 18 处 /home/tim 过期路径
+- [ ] B7 修复 18 处 旧开发者 home 路径 过期路径
 - [ ] B8 归档 Superseded/已完成文档
 - [ ] targeted verify + docs consistency
 
@@ -365,7 +365,7 @@ supersedes:
 
 - [ ] full `bash scripts/verify.sh` PASS
 - [ ] `bash scripts/docs_consistency_check.sh` PASS
-- [ ] `git grep "/home/tim" -- scripts/ docs/` 排除 archive 为空
+- [ ] `git grep -E "^/home/" -- scripts/ docs/ ':!docs/archive/'` 为空
 - [ ] `git ls-files wiki/indexes/` 只剩 README.md
 - [ ] 独立 read-only reviewer 报告
 - [ ] 评分卡更新：代码 6.5→8.0、文档 4.5→7.0、综合 6.8→7.5
@@ -385,7 +385,7 @@ bash scripts/verify.sh scripts
 PYTHONPATH=src python3 -m pytest tests/test_app_runtime.py -k "nightly_script" -q
 bash scripts/verify.sh scripts
 bash scripts/docs_consistency_check.sh
-git grep "/home/tim" -- scripts/ docs/ --not docs/archive/ || echo "clean"
+git grep -E "^/home/" -- scripts/ docs/ ':!docs/archive/' || echo "clean"
 
 # Wave C-1
 PYTHONPATH=src python3 -m pytest tests/test_config.py tests/unit/test_atomic_io.py tests/ -k "manifest or machine_memory_action or automation or watch" -q
@@ -406,7 +406,7 @@ bash scripts/verify.sh all
 ```bash
 bash scripts/verify.sh
 bash scripts/docs_consistency_check.sh
-git grep "/home/tim" -- scripts/ docs/ --not docs/archive/ || echo "clean"
+git grep -E "^/home/" -- scripts/ docs/ ':!docs/archive/' || echo "clean"
 git ls-files wiki/indexes/ | grep -v README.md || echo "indexes clean"
 ```
 
@@ -447,7 +447,7 @@ git ls-files wiki/indexes/ | grep -v README.md || echo "indexes clean"
 
 - `bash scripts/verify.sh all` PASS（无失败测试）
 - `bash scripts/verify.sh product-shell-static` 执行 JS 行为测试
-- `git grep "/home/tim" -- scripts/ docs/` 排除 archive 为空
+- `git grep -E "^/home/" -- scripts/ docs/ ':!docs/archive/'` 为空
 - `git ls-files wiki/indexes/` 只剩 `README.md`
 - `CLAUDE.md` 不存在，`AGENTS.md` 是唯一 agent protocol
 - `LICENSE` + `docs/INSTALL.md` + `docs/USER_GUIDE.md` + `docs/commercial/*` 存在
@@ -467,7 +467,7 @@ git ls-files wiki/indexes/ | grep -v README.md || echo "indexes clean"
 | Agent | 维度 | 关键发现 |
 |---|---|---|
 | oracle | 架构与代码质量 | 综合 6.9；facade 清除彻底；app_state 1222 行负担；Top5 风险 |
-| councillor | 文档一致性 | 综合 6.9；8 文档脱索引；18 处 /home/tim；CLAUDE.md 冲突 |
+| councillor | 文档一致性 | 综合 6.9；8 文档脱索引；18 处 旧开发者 home 路径；CLAUDE.md 冲突 |
 | councillor | 商业就绪度 | 综合 6.0；无定价/包装；安装门槛硬伤；证据诚实度 8.5 最高 |
 | oracle | 安全与可靠性 | 综合 7.7；SSRF 纵深防御生产级；凭据 repr 风险；JSONL 非原子 |
 | explore | 测试与验证 | 综合 7.0；2 真实失败；coverage 无配置；JS 测试未跑 |

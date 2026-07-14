@@ -22,7 +22,7 @@ if str(SRC_ROOT) not in sys.path:
 
 from aiwiki.dogfood_maturity import build_semantic_path_report  # noqa: E402
 
-DEFAULT_VAULT_ROOT = Path("/home/tim/danlu/炼丹炉")
+DEFAULT_VAULT_ROOT = None
 MATURITY_GATE_REL_DIR = Path("output") / "control" / "maturity-gate"
 PLANNER_LOG_REL_PATH = Path(".aiwiki") / "state" / "planner-log.jsonl"
 PROMPTS_ASK_REL_PATH = Path("prompts") / "ask.md"
@@ -67,7 +67,9 @@ def resolve_root(root: str | None = None, *, env: dict[str, str] | None = None) 
         value = str(env_map.get(key) or "").strip()
         if value:
             return Path(value).expanduser().resolve()
-    return DEFAULT_VAULT_ROOT.resolve()
+    raise ValueError(
+        "Dogfood vault root is required. Set AIWIKI_DOGFOOD_VAULT or AIWIKI_VAULT, or pass --root."
+    )
 
 
 def maturity_gate_dir(root: Path) -> Path:

@@ -66,7 +66,7 @@ Live dogfood proof 需要同时观察：
 
 ## Dogfood Evidence
 
-2026-06-01 在真实 dogfood vault `/home/tim/danlu/炼丹炉` 上执行 debt-autopilot 小批次消化：
+2026-06-01 在真实 dogfood vault `$AIWIKI_DOGFOOD_VAULT` 上执行 debt-autopilot 小批次消化：
 
 - pending source summaries 清零。
 - weak/rewrite concept debt 清零。

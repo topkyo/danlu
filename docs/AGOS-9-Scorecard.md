@@ -11,7 +11,7 @@
    - `historical`：git / `PROGRESS.md` 固化的历史 pass，当前 vault 可能不可复算
    - `fixture`：repo tests / acceptance replay，不证明 live dogfood
    - `replay`：maturity gate replay / scripted recovery，弱于多周 natural run
-   - `live`：当前 dogfood vault `--root /home/tim/danlu/炼丹炉` 现场可复算
+   - `live`：当前 dogfood vault `--root $AIWIKI_DOGFOOD_VAULT` 现场可复算
    - 当前 3-day live release proof 可支撑本地 release gate；14/30-day natural run 是更强的长期运行证据，未自然发生前不得标成 PASS。
 3. **Blocking fail**：任一 blocking gate 失败，总分不得宣称 ≥ 9.0。
 4. **非目标不变**：hosted service、multi-user sync、heavy RAG、fine-tuning、隐式跨 backend routing 仍为非目标。
@@ -63,7 +63,7 @@ AOS-C1~C8 已按 harness 顺序完成本地 release gate。当前本地 release 
 
 | 证据 | 路径 | 类型 |
 |------|------|------|
-| Maturity receipts | `/home/tim/danlu/炼丹炉/output/control/maturity-gate/run-*.json` | live |
+| Maturity receipts | `$AIWIKI_DOGFOOD_VAULT/output/control/maturity-gate/run-*.json` | live |
 | Compounding snapshot | `.../maturity-gate/snapshot-*.json` | live |
 | Execution receipts | `.../output/control/execution-receipts/*.json` | live |
 | 历史记录 | git log + `PROGRESS.md` | historical |
@@ -71,8 +71,8 @@ AOS-C1~C8 已按 harness 顺序完成本地 release gate。当前本地 release 
 ### 验证命令
 
 ```bash
-python3 scripts/dogfood_maturity_gate.py --root /home/tim/danlu/炼丹炉 collect
-python3 scripts/dogfood_maturity_gate.py --root /home/tim/danlu/炼丹炉 summarize --days 3
+python3 scripts/dogfood_maturity_gate.py --root $AIWIKI_DOGFOOD_VAULT collect
+python3 scripts/dogfood_maturity_gate.py --root $AIWIKI_DOGFOOD_VAULT summarize --days 3
 ```
 
 ### Fail gate（blocking）

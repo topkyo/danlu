@@ -1432,8 +1432,8 @@ class RuntimeFlowTests(AppFlowTestBase):
         self.assertIn('export PYTHONPATH="$PROJECT_ROOT/src${PYTHONPATH:+:$PYTHONPATH}"', content)
         self.assertIn('--root "$TARGET_ROOT"', content)
         self.assertIn('LAUNCHER="$TARGET_ROOT/scripts/aiwiki-launcher.sh"', content)
-        self.assertIn('"$LAUNCHER" llm-check', content)
-        self.assertIn('exec "$LAUNCHER" nightly', content)
+        self.assertIn('"$LAUNCHER" advanced llm-check', content)
+        self.assertIn('exec "$LAUNCHER" advanced nightly', content)
         self.assertIn('python3 -m aiwiki.cli --root "$TARGET_ROOT" "$@"', content)
         self.assertIn("run-nightly", content)
         self.assertIn("nightly", content)
@@ -1497,11 +1497,11 @@ exit 0
             launcher.write_text(
                 f"""#!/usr/bin/env bash
 printf '%s\\n' "$*" >>{str(log_path)!r}
-if [[ "${{1:-}}" == "llm-check" ]]; then
+if [[ "${{1:-}}" == "advanced" && "${{2:-}}" == "llm-check" ]]; then
   printf '{{"configured": true}}\\n'
   exit 0
 fi
-if [[ "${{1:-}}" == "run-nightly" ]]; then
+if [[ "${{1:-}}" == "advanced" && "${{2:-}}" == "run-nightly" ]]; then
   exit 42
 fi
 exit 0
@@ -1530,7 +1530,7 @@ exit 0
             lines = log_path.read_text(encoding="utf-8").splitlines()
 
         self.assertEqual(completed.returncode, 42, completed.stderr)
-        self.assertEqual(lines, ["llm-check", "run-nightly --compile-limit 4 --no-semantic-lint"])
+        self.assertEqual(lines, ["advanced llm-check", "advanced run-nightly --compile-limit 4 --no-semantic-lint"])
         self.assertIn("deterministic nightly fallback suppressed after run-nightly failure", completed.stderr)
 
     def test_run_nightly_script_ignores_obsolete_fallback_env_after_llm_failure(self) -> None:
