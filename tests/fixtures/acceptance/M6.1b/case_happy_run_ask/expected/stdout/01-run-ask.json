@@ -4,10 +4,6 @@
   "backend_requested": "opencode-api",
   "contract_validated": true,
   "delivery_mode": "llm-success",
-  "fallback_command": "",
-  "fallback_from": "",
-  "fallback_reason": "",
-  "fallback_stage": "",
   "fallback_used": false,
   "format": "report",
   "graph_anchor_node_ids": [
