@@ -9,14 +9,15 @@ parent: "docs/Furnace Cleanup Commercial Audit Plan 2026-07.md"
 # Residual Clearance Plan（2026-07）
 
 承接 Cleanup Plan residual：C1/C2 单 seam、真实 Demo Pack、移动端 companion。  
-**C4 14/30-day natural proof 仍不伪造**，本轮只提供探测命令与 not-yet 口径。
+**C4 14/30-day natural proof 仍不伪造**，本轮只提供探测命令与 not-yet 口径。  
+纯 facade 一次清除在本 PR 执行；CLI primary surface 已合入 `investing-research`。禁止再开“半迁移 facade”条目。
 
 ## Goal
 
 1. C1/C2：各做一个**有测试边界的单 seam**，禁止 broad rewrite。
 2. C3：交付可打开的脱敏 Demo Pack vault fixture + 截图/视频脚本。
 3. C5：落地 `RuntimeClient` 抽象、`VaultQueueClient`、desktop drain；companion 薄路径（Desktop-only 主插件不变）。
-4. facade 再迁一批低风险调用（可选）。
+4. ~~facade 再迁一批（可选）~~ → **superseded**：按 `AGENTS.md` 一次清除，不做半迁移。
 
 ## Out
 
@@ -54,4 +55,5 @@ cd .obsidian/plugins/furnace-product-shell && npm test -- --testPathPattern='run
 
 ## Follow-up completed
 
-- 纯 facade 一次清除：见后续 PR / `AGENTS.md` 定案执行。
+- 纯 facade 一次清除：已执行（删除 `app.py` / `app_content` / `app_render` / `app_surfaces` / `app_memory_surfaces`；owner 直引）。
+- CLI primary surface：顶层只注册 `drop/today/metrics/advanced`；旧顶层 rewrite compat。

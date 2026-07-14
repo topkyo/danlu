@@ -48,7 +48,7 @@ PY
 }
 
 append_run_nightly_args() {
-  ARGS+=(run-nightly --compile-limit "$COMPILE_LIMIT")
+  ARGS+=(advanced run-nightly --compile-limit "$COMPILE_LIMIT")
   if [[ "$NO_SEMANTIC_LINT" == "1" ]]; then
     ARGS+=(--no-semantic-lint)
   fi
@@ -57,9 +57,9 @@ append_run_nightly_args() {
 run_deterministic_nightly() {
   log "running deterministic nightly"
   if [ -x "$LAUNCHER" ]; then
-    exec "$LAUNCHER" nightly
+    exec "$LAUNCHER" advanced nightly
   fi
-  exec python3 -m aiwiki.cli --root "$TARGET_ROOT" nightly
+  exec python3 -m aiwiki.cli --root "$TARGET_ROOT" advanced nightly
 }
 
 require_llm() {

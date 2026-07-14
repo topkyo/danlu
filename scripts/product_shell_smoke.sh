@@ -117,10 +117,10 @@ llm_backend_unavailable() {
     || [[ "$normalized" == *"llm backend resolution failed"* ]]
 }
 
-run_json "shell-status" shell-status
-run_json "llm-check" llm-check
-run_json "ask" ask "$ASK_QUERY" --format report
-run_json "run-ask" run-ask "$RUN_ASK_QUERY" --format report
+run_json "shell-status" advanced shell-status
+run_json "llm-check" advanced llm-check
+run_json "ask" advanced ask "$ASK_QUERY" --format report
+run_json "run-ask" advanced run-ask "$RUN_ASK_QUERY" --format report
 
 if [[ "$WITH_NOTE_WRITE" == "1" ]]; then
   run_json "drop markdown" drop markdown --title "$DROP_TITLE" --text "$DROP_TEXT" --kind note

@@ -221,9 +221,9 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . advanced nightly
 查看和切换：
 
 ```bash
-PYTHONPATH=src python3 -m aiwiki.cli --root . protocol-status
-PYTHONPATH=src python3 -m aiwiki.cli --root . protocol-set investing
-PYTHONPATH=src python3 -m aiwiki.cli --root . ask "Compare A and B" --format report --protocol research
+PYTHONPATH=src python3 -m aiwiki.cli --root . advanced protocol-status
+PYTHONPATH=src python3 -m aiwiki.cli --root . advanced protocol-set investing
+PYTHONPATH=src python3 -m aiwiki.cli --root . advanced ask "Compare A and B" --format report --protocol research
 ```
 
 当前协议已经会影响：
@@ -294,19 +294,19 @@ runtime policy 缺省采用 `autonomy_profile=agentic`：未写 `.aiwiki/state/a
 常见配置：
 
 ```bash
-AIWIKI_LLM_BACKEND=deepseek-api AIWIKI_DEEPSEEK_API_KEY=sk-... PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
-AIWIKI_OPENCODE_API_KEY=opencode-... PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
-AIWIKI_LLM_BACKEND=opencode-api AIWIKI_OPENCODE_API_KEY=opencode-... PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
-AIWIKI_LLM_BACKEND=openai-api AIWIKI_LLM_API_KEY=sk-... PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
-AIWIKI_LLM_BACKEND=anthropic-api AIWIKI_ANTHROPIC_API_KEY=sk-ant-... PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
+AIWIKI_LLM_BACKEND=deepseek-api AIWIKI_DEEPSEEK_API_KEY=sk-... PYTHONPATH=src python3 -m aiwiki.cli --root . advanced llm-check
+AIWIKI_OPENCODE_API_KEY=opencode-... PYTHONPATH=src python3 -m aiwiki.cli --root . advanced llm-check
+AIWIKI_LLM_BACKEND=opencode-api AIWIKI_OPENCODE_API_KEY=opencode-... PYTHONPATH=src python3 -m aiwiki.cli --root . advanced llm-check
+AIWIKI_LLM_BACKEND=openai-api AIWIKI_LLM_API_KEY=sk-... PYTHONPATH=src python3 -m aiwiki.cli --root . advanced llm-check
+AIWIKI_LLM_BACKEND=anthropic-api AIWIKI_ANTHROPIC_API_KEY=sk-ant-... PYTHONPATH=src python3 -m aiwiki.cli --root . advanced llm-check
 ```
 
 检查当前后端：
 
 ```bash
-PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check
-PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check --probe
-PYTHONPATH=src python3 -m aiwiki.cli --root . llm-check --probe-all --probe-timeout 20
+PYTHONPATH=src python3 -m aiwiki.cli --root . advanced llm-check
+PYTHONPATH=src python3 -m aiwiki.cli --root . advanced llm-check --probe
+PYTHONPATH=src python3 -m aiwiki.cli --root . advanced llm-check --probe-all --probe-timeout 20
 ```
 
 认证说明：
@@ -354,7 +354,7 @@ bash scripts/verify.sh [scripts|smoke|python-static|unit|acceptance|cli-smoke|pr
 ```bash
 bash scripts/verify.sh
 PYTHONPATH=src python3 -m unittest discover -s tests -p 'test_*.py'
-PYTHONPATH=src python3 -m aiwiki.cli --root . protocol-status
+PYTHONPATH=src python3 -m aiwiki.cli --root . advanced protocol-status
 ```
 
 新增能力时，优先沿下面这张模块边界图落位，而不是继续往巨石文件里堆：

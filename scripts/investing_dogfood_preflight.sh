@@ -32,11 +32,11 @@ echo "=== Investing Dogfood Preflight ==="
 echo "vault: $VAULT"
 echo
 
-python3 -m aiwiki.cli --root "$VAULT" llm-check --probe --format human
+python3 -m aiwiki.cli --root "$VAULT" advanced llm-check --probe --format human
 echo
 
-python3 -m aiwiki.cli --root "$VAULT" protocol-set investing
-python3 -m aiwiki.cli --root "$VAULT" protocol-status
+python3 -m aiwiki.cli --root "$VAULT" advanced protocol-set investing
+python3 -m aiwiki.cli --root "$VAULT" advanced protocol-status
 echo
 
 for path in wiki/judgments schema prompts/ask.md; do
@@ -50,7 +50,7 @@ done
 if [[ "$SMOKE_DROP" == "1" ]]; then
   NOTE_TITLE="preflight-smoke-$(date -u +%Y%m%dT%H%M%SZ)"
   python3 -m aiwiki.cli --root "$VAULT" drop markdown --title "$NOTE_TITLE" --text "investing preflight smoke material"
-  python3 -m aiwiki.cli --root "$VAULT" compile --deterministic-only
+  python3 -m aiwiki.cli --root "$VAULT" advanced compile --deterministic-only
   echo "[OK] smoke drop+compile"
 fi
 

@@ -24,7 +24,7 @@ echo "strict: $STRICT"
 echo "write_json: $WRITE_JSON"
 echo
 
-RESULT_JSON="$(python3 -m aiwiki.cli --root "$VAULT" llm-check --probe-all --format json --probe-timeout "$PROBE_TIMEOUT")"
+RESULT_JSON="$(python3 -m aiwiki.cli --root "$VAULT" advanced llm-check --probe-all --format json --probe-timeout "$PROBE_TIMEOUT")"
 
 python3 - <<'PY' "$RESULT_JSON" "$STRICT"
 import json
