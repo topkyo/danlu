@@ -53,47 +53,11 @@ from .app_lifecycle import (
     rewrite_proposal_needs_review,
     valid_curated_statuses,
 )
-from .app_memory import (
-    active_corpus_bridge_evidence_ids,
-    append_machine_memory_history,
-    attach_judgment_assets_to_machine_memory,
-    build_execution_audit_snapshot,
-    build_machine_memory,
-    build_machine_memory_graph,
-    build_machine_memory_health,
-    build_machine_memory_query,
-    build_material_state_documents,
-    collect_execution_consistency_signals,
-    concept_lifecycle_entry,
-    concept_page_path,
-    concept_page_snapshot,
-    concept_rewrite_proposal_digest,
-    machine_memory_digest,
-    machine_memory_snapshot_is_reusable,
-    plan_machine_memory_build,
-    question_signature,
-    reconcile_active_corpora_state,
-    reconcile_concept_rewrite_proposals,
-    reconcile_machine_memory_actions,
-    record_query_route_telemetry,
-    refresh_material_state,
-    render_concept_quality,
-    render_concept_rewrite_index,
-    render_concept_rewrite_proposal_page,
-    render_drift_report,
-    render_execution_proposal_page,
-    render_graph_health,
-    render_machine_memory_actions,
-    render_machine_memory_index,
-    render_machine_memory_repair_plan,
-    render_machine_memory_topology,
-    reuse_machine_memory_core,
-    summarize_machine_memory_transition,
-    upsert_active_corpus,
-)
 from .app_memory_query import (
     build_machine_memory_query_routes,
+    concept_page_snapshot,
     ranked_machine_memory_anchor_nodes,
+    record_query_route_telemetry,
     shortest_machine_memory_path,
 )
 from .app_protocol import (
@@ -119,6 +83,13 @@ from .app_protocol import (
     protocol_title,
     resolve_protocol,
     schedule_review_windows,
+)
+from .app_routing import (
+    active_corpus_bridge_evidence_ids,
+    build_material_state_documents,
+    reconcile_active_corpora_state,
+    refresh_material_state,
+    upsert_active_corpus,
 )
 from .app_shell import build_shell_summary, write_shell_summary
 from .app_state import (
@@ -207,6 +178,7 @@ from .app_utils import (
     extract_provenance_paths,
     next_available_stem,
     parse_frontmatter,
+    question_signature,
     read_text_preview,
     relative_path,
     render_frontmatter,
@@ -273,13 +245,46 @@ from .content.memory import (
     validate_low_risk_action_targets,
 )
 from .content.outputs import classify_recurring_output_kind
+from .execution.lifecycle import concept_lifecycle_entry, concept_page_path
+from .memory.actions import reconcile_machine_memory_actions
+from .memory.build_plan import plan_machine_memory_build
+from .memory.builder import build_machine_memory
+from .memory.core import (
+    machine_memory_digest,
+    machine_memory_snapshot_is_reusable,
+    reuse_machine_memory_core,
+)
 from .memory.execution_surfaces import (
+    build_execution_audit_snapshot,
+    collect_execution_consistency_signals,
+    concept_rewrite_proposal_digest,
+    reconcile_concept_rewrite_proposals,
+    render_concept_quality,
+    render_concept_rewrite_index,
+    render_concept_rewrite_proposal_page,
     render_execution_audit,
     render_execution_audit_html,
     render_execution_center,
     render_execution_center_html,
+    render_execution_proposal_page,
 )
-from .memory.graph import render_machine_memory_graph_html
+from .memory.graph import (
+    append_machine_memory_history,
+    build_machine_memory_query,
+    render_machine_memory_graph_html,
+    summarize_machine_memory_transition,
+)
+from .memory.graph_builder import build_machine_memory_graph
+from .memory.health import build_machine_memory_health
+from .memory.judgment_assets import attach_judgment_assets_to_machine_memory
+from .memory.status import (
+    render_drift_report,
+    render_graph_health,
+    render_machine_memory_actions,
+    render_machine_memory_index,
+    render_machine_memory_repair_plan,
+)
+from .memory.topology import render_machine_memory_topology
 from .render.cognitive_history import render_cognitive_history
 from .render.compile_status import render_compile_status
 from .render.furnace_center import (

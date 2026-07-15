@@ -41,13 +41,6 @@ from .app_lifecycle import (
     transition_profile,
     valid_curated_statuses,
 )
-from .app_memory import (
-    protocol_hints_for_material,
-    question_signature,
-    recency_score_for_timestamp,
-    timestamp_is_newer,
-    update_latest_timestamp,
-)
 from .app_protocol import (
     ACTION_STATUSES,
     ACTIVE_CORPUS_STATUSES,
@@ -117,6 +110,7 @@ from .app_utils import (
     html_safe_json_literal,
     parse_frontmatter,
     parse_iso_datetime,
+    question_signature,
     read_text_preview,
     relative_path,
     render_frontmatter,
@@ -151,6 +145,12 @@ from .content.memory import (
     rewrite_proposal_is_apply_ready,
     safe_apply_preview,
     validate_low_risk_action_targets,
+)
+from .memory.scoring import (
+    protocol_hints_for_material,
+    recency_score_for_timestamp,
+    timestamp_is_newer,
+    update_latest_timestamp,
 )
 from .render.paths import (
     execution_bundle_path,

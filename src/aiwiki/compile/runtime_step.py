@@ -9,22 +9,8 @@ from typing import Any
 
 from ..app_compile_ops import render_protocols_dashboard
 from ..app_lifecycle import build_knowledge_lifecycle_document
-from ..app_memory import (
-    append_machine_memory_history,
-    attach_judgment_assets_to_machine_memory,
-    build_execution_audit_snapshot,
-    build_machine_memory_graph,
-    build_machine_memory_health,
-    build_material_state_documents,
-    machine_memory_digest,
-    machine_memory_snapshot_is_reusable,
-    plan_machine_memory_build,
-    reconcile_concept_rewrite_proposals,
-    reconcile_machine_memory_actions,
-    reuse_machine_memory_core,
-    summarize_machine_memory_transition,
-)
 from ..app_protocol import DEFAULT_DASHBOARD_FILES, MANAGED_DASHBOARD_TEMPLATE_FILES
+from ..app_routing import build_material_state_documents
 from ..app_state import (
     DEFAULT_PROTOCOL,
     append_runtime_history,
@@ -70,11 +56,28 @@ from ..content.memory import (
 )
 from ..lifecycle.aging import collect_aging_signals
 from ..lifecycle.status import curated_page_transition_profile
+from ..memory.actions import reconcile_machine_memory_actions
+from ..memory.build_plan import plan_machine_memory_build
+from ..memory.core import (
+    machine_memory_digest,
+    machine_memory_snapshot_is_reusable,
+    reuse_machine_memory_core,
+)
 from ..memory.execution_surfaces import (
+    build_execution_audit_snapshot,
+    reconcile_concept_rewrite_proposals,
     render_execution_audit,
     render_execution_center,
 )
-from ..memory.graph import collect_report_anchors, render_machine_memory_graph_html
+from ..memory.graph import (
+    append_machine_memory_history,
+    collect_report_anchors,
+    render_machine_memory_graph_html,
+    summarize_machine_memory_transition,
+)
+from ..memory.graph_builder import build_machine_memory_graph
+from ..memory.health import build_machine_memory_health
+from ..memory.judgment_assets import attach_judgment_assets_to_machine_memory
 from ..memory.status import (
     render_drift_report,
     render_graph_health,

@@ -17,7 +17,6 @@ from aiwiki.app_compile import (
     promote_recurring_outputs,
     write_nightly_health,
 )
-from aiwiki.app_memory import store_concept_rewrite_candidate
 from aiwiki.app_protocol import ensure_layout
 from aiwiki.app_shell import rewrite_followup_payload_for_paths
 from aiwiki.app_state import load_machine_memory, load_manifest, nightly_health_state_path
@@ -33,6 +32,7 @@ from aiwiki.content.memory import concept_summary_is_placeholder, placeholder_co
 from aiwiki.execution.audit_reconciliation import reconcile_execution_receipts
 from aiwiki.execution.receipts import write_execution_receipt
 from aiwiki.llm import CompletionResult, LLMError
+from aiwiki.memory.rewrite_candidates import store_concept_rewrite_candidate
 from aiwiki.runner.clients import (
     _append_fallback_stage,
     _client_model_name,

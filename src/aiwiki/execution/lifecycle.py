@@ -37,7 +37,6 @@ from pathlib import Path
 from typing import Any
 
 from ..app_lifecycle import refresh_knowledge_lifecycle_state
-from ..app_memory import concept_lifecycle_entry, concept_page_path
 from ..app_protocol import ensure_layout
 from ..app_state import (
     append_runtime_history,
@@ -61,6 +60,24 @@ from ..content.io import sync_manifest_with_raw
 from ..render.paths import append_wiki_log
 from .audit_preview import AUDIT_STREAM_PATH
 from .receipts import write_execution_receipt
+
+
+def concept_page_path(root: Path, slug: str) -> Path:
+    return root / "wiki" / "concepts" / f"{slug}.md"
+
+
+def concept_lifecycle_entry(lifecycle_state: dict[str, Any], slug: str) -> dict[str, Any]:
+    target_path = f"wiki/concepts/{slug}.md"
+    return next(
+        (
+            dict(entry)
+            for entry in lifecycle_state.get("entries", [])
+            if isinstance(entry, dict)
+            and str(entry.get("kind") or "") == "concept"
+            and str(entry.get("path") or "") == target_path
+        ),
+        {},
+    )
 
 
 def _hash_json(value: Any) -> str:
