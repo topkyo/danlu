@@ -2643,7 +2643,7 @@ class CLITests(unittest.TestCase):
                 {"id": "action-b", "title": "Alpha audit", "status": "accepted", "kind": "add-source-concept-link", "active": True},
             ]
         }
-        with patch("aiwiki.cli.load_machine_memory_action_state", return_value=state):
+        with patch("aiwiki.cli.load_machine_memory_action_state_strict", return_value=state):
             self.assertEqual(_resolve_action_id(self.root, "action-a"), "action-a")
             with self.assertRaises(RuntimeError):
                 _resolve_action_id(self.root, "Alpha")
@@ -2666,7 +2666,7 @@ class CLITests(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             _resolve_action_ids(self.root, "action-a", batch=["action-b"], all_accepted_low_risk=False)
-        with patch("aiwiki.cli.load_machine_memory_action_state", return_value={"actions": []}):
+        with patch("aiwiki.cli.load_machine_memory_action_state_strict", return_value={"actions": []}):
             with self.assertRaises(RuntimeError):
                 _resolve_action_ids(
                     self.root,
@@ -2681,7 +2681,7 @@ class CLITests(unittest.TestCase):
                 {"id": "monitor-a", "title": "Monitor A", "status": "accepted", "kind": "monitor-bridge-concept", "active": True, "policy_decision": "review"},
             ]
         }
-        with patch("aiwiki.cli.load_machine_memory_action_state", return_value=state):
+        with patch("aiwiki.cli.load_machine_memory_action_state_strict", return_value=state):
             with self.assertRaises(RuntimeError):
                 _resolve_action_ids(self.root, None, batch=None, all_accepted_low_risk=True)
 

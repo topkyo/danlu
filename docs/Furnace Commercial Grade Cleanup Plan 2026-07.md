@@ -511,6 +511,8 @@ git ls-files wiki/indexes/ | grep -v README.md || echo "indexes clean"
 |---|---|---|
 | `test_obsidian_workspace.test_workspace_defaults_open_home_and_furnace_center` | 脆弱：依赖已提交 `.obsidian/workspace.json`，本地 Obsidian 保存可漂移 | 非当前 snapshot 必失败；勿当 setup 失败 |
 | `test_drop.test_fetch_url_raises_when_no_text_can_be_recovered` | 环境耦合：本机有 Chrome 时可能走 headless 渲染并在无网时超时 | 记为 non-blocking；后续应 mock browser 路径 |
+| `test_acceptance_loop` happy/backend_failure replay | PR#11 模板文案变更导致 prompt_hash 与 golden 不一致（Linux CI 现态） | 单独立项刷新 acceptance fixture；不挡 D4/文档收口 |
+| `test_relative_path_normalizes_macos_private_var_alias` | Darwin-only `/private/var` alias | 非 darwin 平台 skip |
 
 ---
 

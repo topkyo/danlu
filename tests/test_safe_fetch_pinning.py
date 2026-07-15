@@ -101,6 +101,8 @@ class SafeFetchPinningTests(unittest.TestCase):
         self.assertNotIn("check_hostname", captured)
 
     def test_relative_path_normalizes_macos_private_var_alias(self) -> None:
+        if __import__("sys").platform != "darwin":
+            self.skipTest("macOS /private/var alias only exists on Darwin")
         relative_path = __import__("aiwiki.app_utils", fromlist=["relative_path"]).relative_path
         root = Path("/var/folders/example/vault")
         path = Path("/private/var/folders/example/vault/wiki/page.md")
