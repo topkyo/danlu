@@ -53,7 +53,7 @@ updated_at: "2026-07-15"
 
 > **注**：本节是 AOS-C8 milestone 2026-05-24 冻结 release evidence，pytest+coverage+辅助脚本集在该日均存在。2026-07-15 清理（见 CHANGELOG [Unreleased]）后，`scripts/verify.sh all` 只走 `scripts + product-shell-static + cli-smoke + smoke + python-static + acceptance`（≈ 18 s），不再含 pytest 2509 / coverage 92%；`scripts/agos9_release_audit.sh` / `scripts/agos9_dogfood_proof_status.sh` / `scripts/dogfood_maturity_gate.py` 已删除。本节的"2439 unit tests + coverage 92%"是历史 AOS-C8 frozen 口径，不再适用于 post-cleanup verify.sh。下面的 `bash scripts/verify.sh PASS（2439 unit tests ...）` 同样标记为 [AOS-C8 frozen 2026-05-24]；post-cleanup 对应位置移到 `bash scripts/verify.sh all` 17 acceptance replay（见 8. 更新记录 2026-07-15 cross-review 段）。下方散落的 `pytest tests/test_*.py` 命令与 `dogfood_maturity_gate.py` 引用是 AOS-C8 时期的 gate 执行方式；这些脚本/测试文件已删除，现行 release gate 以 acceptance 17 fixture replay 等价，杜绝把 pytest/coverage 当作 post-cleanup 重新引入。
 
-AOS-C1~C8 已按 harness 顺序完成本地 release gate。当前本地 release evidence：`bash scripts/verify.sh` PASS（2439 unit tests、coverage 92%、acceptance 17 passed）；`bash scripts/agos9_release_audit.sh` PASS；`bash scripts/agos9_dogfood_proof_status.sh` PASS（会执行 local dogfood `collect --write` 写入最新 snapshot，不删除数据、不读/打印凭据）；`bash scripts/docs_consistency_check.sh` PASS；C8 `qa-review` / `qa-runtime` PASS，`run_plan` closed-loop PASS。Dogfood latest 3-day live window 覆盖 2026-05-21/22/23，`operational_maturity.status=pass`、`receipt_integrity.status=pass`、`knowledge_compounding_proof.status=pass`、`semantic_path_observed=true`、`effective_l3_candidates=0`、`budget_violations=[]`。AOS-C3 legacy direct-note missing execution receipts 已由 warn-only `receipt_coverage` 明确解释，不作为当前 release blocker；新增 direct/local success path 已写 execution receipt；2026-05-24 P1-P5 stabilization 进一步把 report/background/direct/local success receipts 统一到 `receipt_matrix_version=1` + `run_ask_path` + `artifact_status`。AOS-C7 使 `backend-telemetry` 同时聚合 execution receipts 和 LLM failure classifications，并让 failed/unmatched `run-nightly` 不污染 success proof。14/30-day natural run 仍是后续更强 proof，不在本地 release gate 中伪装完成。
+AOS-C1~C8 已按 harness 顺序完成本地 release gate。当前本地 release evidence [AOS-C8 frozen 2026-05-24 — `bash scripts/verify.sh` 的"2439 unit tests / coverage 92%"与本行下面 3 条脚本/命令均属本行下面的 "[AOS-C8 frozen 2026-05-24]" 口径；post-2026-07-15 cleanup 后 unit + coverage 已退役，verify.sh all 现走 acceptance-only 17 fixture replay]：`bash scripts/verify.sh` PASS（2439 unit tests、coverage 92%、acceptance 17 passed）；`bash scripts/agos9_release_audit.sh` PASS `**[已删 2026-07-15 commit f4f87c7]**`；`bash scripts/agos9_dogfood_proof_status.sh` PASS `**[已删 2026-07-15 commit f4f87c7]**`（会执行 local dogfood `collect --write` 写入最新 snapshot，不删除数据、不读/打印凭据）；`bash scripts/docs_consistency_check.sh` PASS；C8 `qa-review` / `qa-runtime` PASS，`run_plan` closed-loop PASS。Dogfood latest 3-day live window 覆盖 2026-05-21/22/23，`operational_maturity.status=pass`、`receipt_integrity.status=pass`、`knowledge_compounding_proof.status=pass`、`semantic_path_observed=true`、`effective_l3_candidates=0`、`budget_violations=[]`。AOS-C3 legacy direct-note missing execution receipts 已由 warn-only `receipt_coverage` 明确解释，不作为当前 release blocker；新增 direct/local success path 已写 execution receipt；2026-05-24 P1-P5 stabilization 进一步把 report/background/direct/local success receipts 统一到 `receipt_matrix_version=1` + `run_ask_path` + `artifact_status`。AOS-C7 使 `backend-telemetry` 同时聚合 execution receipts 和 LLM failure classifications，并让 failed/unmatched `run-nightly` 不污染 success proof。14/30-day natural run 仍是后续更强 proof，不在本地 release gate 中伪装完成。
 
 ---
 
@@ -107,7 +107,7 @@ python3 scripts/dogfood_maturity_gate.py --root $AIWIKI_DOGFOOD_VAULT summarize 
 | operational maturity | live PASS | `operational_maturity.status=pass`, `budget_violations=[]`, `effective_l3_candidates=0` |
 | agentic non-core autonomy | live gate | `agentic_autonomy_report.status=pass` now requires `llm_governed_apply_count > 0`, `non_core_human_required_count=0`, and `core_auto_apply_count=0` |
 | LLM failure handling | live explicit | timeout receipts are `blocked/failed`, not fake success |
-| receipt coverage explainability | repo targeted/unit/acceptance PASS | AOS-C3 adds `receipt_coverage` snapshot field; direct/local `run-ask` success paths now write execution receipts; failure-after-run-notes paths do not leave success receipts |
+| receipt coverage explainability | repo targeted/acceptance PASS [unit 段已退 2026-07-15]  | | AOS-C3 adds `receipt_coverage` snapshot field; direct/local `run-ask` success paths now write execution receipts; failure-after-run-notes paths do not leave success receipts |
 | long-run natural proof | not-yet | 3-day live release proof is PASS; 14/30-day natural window must wait for wall-clock evidence |
 
 Historical PASS（2026-05-13~19）不当作当前 live PASS。
@@ -167,7 +167,7 @@ cd .obsidian/plugins/furnace-product-shell && npm test  # 若 node_modules 可�
 | Compile pipeline | `src/aiwiki/compile/pipeline.py` |
 | Run-ask | `src/aiwiki/runner/workflows.py` |
 | Receipts | `src/aiwiki/execution/receipts.py` |
-| Tests | `tests/` acceptance + unit |
+| Tests | `tests/` acceptance-only [unit 段已退 2026-07-15] |
 
 ### 验证命令
 
