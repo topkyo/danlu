@@ -161,7 +161,7 @@ bash scripts/verify_target_rules.sh
 按 target 验证，或跑全量：
 
 ```bash
-bash scripts/verify.sh [scripts|smoke|python-static|unit|acceptance|cli-smoke|product-shell-static|all]
+bash scripts/verify.sh [scripts|smoke|python-static|acceptance|cli-smoke|product-shell-static|all]
 ```
 
 ### Developer Guide

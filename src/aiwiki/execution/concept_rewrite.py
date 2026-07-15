@@ -238,10 +238,12 @@ def _save_concept_rewrite_proposals(root: Path, proposals: list[dict[str, Any]])
 
 
 def _evaluate_concept_rewrite_verification(root: Path, proposal: dict[str, Any]) -> dict[str, Any]:
-    # Lazy-resolve ``utc_now`` via ``app_compile`` so ``tests/test_app.py``'s
-    # ``patch("aiwiki.app_utils.utc_now", ...)`` sites still take effect on
-    # this migrated function. Module-level ``from ..app_utils import utc_now``
-    # would bind the original callable at import time and bypass the patch.
+    # Lazy-resolve ``utc_now`` via ``app_compile`` so that any
+    # ``patch("aiwiki.app_utils.utc_now", ...)`` monkeypatch sites
+    # (acceptance tests including test_acceptance_loop's _copy_case_and_fix_clock_from
+    # and downstream suites) still take effect on this migrated function.
+    # Module-level ``from ..app_utils import utc_now`` would bind the
+    # original callable at import time and bypass the patch.
     from .. import app_utils as _app_utils
 
     slug = str(proposal.get("slug") or "")

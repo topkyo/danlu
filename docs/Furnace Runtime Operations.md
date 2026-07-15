@@ -315,7 +315,7 @@ AIWIKI_MODEL_FALLBACK="deepseek-chat" \
 
 默认产品路径可以理解为：**等待投料（watch）→ 炼丹（nightly / run-*）→ 产出（wiki/output/receipt）→ 回馈（review/file-back/judgment）→ 受控学习（L0-L3/Judgment，receipt-gated）**。dogfood maturity timer 只是证明这条路径成熟度的仪表，不是路径本身。
 
-这条性质是炼丹炉与多数 RAG-first PKM（Reor / Khoj 等）的根本差异，详见 `docs/Furnace Market Scan 2026Q2.md`。
+这条性质是炼丹炉与多数 RAG-first PKM（Reor / Khoj 等）的根本差异，详见 [`docs/archive/Furnace Market Scan 2026Q2.md`](<./archive/Furnace Market Scan 2026Q2.md>)（该 doc 已 archive，需以 archive 形式查阅）。
 
 ---
 

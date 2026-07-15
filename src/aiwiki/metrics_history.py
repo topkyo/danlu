@@ -10,8 +10,9 @@ Design notes:
 - Lookup is reverse-scan over the JSONL file (KISS; expected file size is
   small — one line per metrics command invocation).
 - No third-party deps; stdlib datetime only.
-- 7 metric key names are frozen by `tests/test_metrics.py`; this module never
-  rewrites them.
+- 7 metric key names are frozen by acceptance tests in
+  `tests/test_acceptance_loop.py` (originally asserted in
+  `tests/test_metrics.py`); this module never rewrites them.
 """
 
 from __future__ import annotations

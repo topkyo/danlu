@@ -17,9 +17,9 @@ bottom of ``app_compile.py`` (``_LAZY_OWNERS`` now points these two names at
 this module). No caller needs to change.
 
 Note: ``utc_now`` is imported from ``aiwiki.app_compile`` (not
-``aiwiki.app_utils``) because ``tests/test_app.py`` patches
-``aiwiki.app_utils.utc_now`` as a hot-patch seam. Resolving through the
-re-export keeps those patches effective.
+``aiwiki.app_utils``) because acceptance tests + downstream suites
+patch ``aiwiki.app_utils.utc_now`` as a hot-patch seam. Resolving through
+the re-export keeps those patches effective.
 
 ``rank_concepts`` stays in ``aiwiki.app_compile`` (out of EP-018B scope) —
 we import it lazily via the seam for the same reason.
@@ -161,7 +161,8 @@ def _file_back_entry_seed(kind: str, title: str) -> str:
 # ``utc_now`` and ``rank_concepts`` are resolved lazily via
 # ``aiwiki.app_compile`` inside each function body. Reasons:
 #
-# - ``utc_now`` is a hot-patch target. ``tests/test_app.py`` patches it as
+# - ``utc_now`` is a hot-patch target. Acceptance tests + downstream suites
+#   patch it (originally ``tests/test_app.py``) as
 #   ``patch("aiwiki.app_utils.utc_now", ...)``. A module-level
 #   ``from ..app_compile import utc_now`` would bind ``ask.utc_now`` to the
 #   original callable at import time and defeat that patch everywhere in

@@ -51,6 +51,8 @@ updated_at: "2026-07-15"
 
 ### 2026-05-24 Release Gate 说明
 
+> **注**：本节是 AOS-C8 milestone 2026-05-24 冻结 release evidence，pytest+coverage+辅助脚本集在该日均存在。2026-07-15 清理（见 CHANGELOG [Unreleased]）后，`scripts/verify.sh all` 只走 `scripts + product-shell-static + cli-smoke + smoke + python-static + acceptance`（≈ 18 s），不再含 pytest 2509 / coverage 92%；`scripts/agos9_release_audit.sh` / `scripts/agos9_dogfood_proof_status.sh` / `scripts/dogfood_maturity_gate.py` 已删除。本节的"2439 unit tests + coverage 92%"是历史 AOS-C8 frozen 口径，不再适用于 post-cleanup verify.sh。下面的 `bash scripts/verify.sh PASS（2439 unit tests ...）` 同样标记为 [AOS-C8 frozen 2026-05-24]；post-cleanup 对应位置移到 `bash scripts/verify.sh all` 17 acceptance replay（见 8. 更新记录 2026-07-15 cross-review 段）。下方散落的 `pytest tests/test_*.py` 命令与 `dogfood_maturity_gate.py` 引用是 AOS-C8 时期的 gate 执行方式；这些脚本/测试文件已删除，现行 release gate 以 acceptance 17 fixture replay 等价，杜绝把 pytest/coverage 当作 post-cleanup 重新引入。
+
 AOS-C1~C8 已按 harness 顺序完成本地 release gate。当前本地 release evidence：`bash scripts/verify.sh` PASS（2439 unit tests、coverage 92%、acceptance 17 passed）；`bash scripts/agos9_release_audit.sh` PASS；`bash scripts/agos9_dogfood_proof_status.sh` PASS（会执行 local dogfood `collect --write` 写入最新 snapshot，不删除数据、不读/打印凭据）；`bash scripts/docs_consistency_check.sh` PASS；C8 `qa-review` / `qa-runtime` PASS，`run_plan` closed-loop PASS。Dogfood latest 3-day live window 覆盖 2026-05-21/22/23，`operational_maturity.status=pass`、`receipt_integrity.status=pass`、`knowledge_compounding_proof.status=pass`、`semantic_path_observed=true`、`effective_l3_candidates=0`、`budget_violations=[]`。AOS-C3 legacy direct-note missing execution receipts 已由 warn-only `receipt_coverage` 明确解释，不作为当前 release blocker；新增 direct/local success path 已写 execution receipt；2026-05-24 P1-P5 stabilization 进一步把 report/background/direct/local success receipts 统一到 `receipt_matrix_version=1` + `run_ask_path` + `artifact_status`。AOS-C7 使 `backend-telemetry` 同时聚合 execution receipts 和 LLM failure classifications，并让 failed/unmatched `run-nightly` 不污染 success proof。14/30-day natural run 仍是后续更强 proof，不在本地 release gate 中伪装完成。
 
 ---
@@ -128,14 +130,14 @@ Historical PASS（2026-05-13~19）不当作当前 live PASS。
 | Bundle | `.obsidian/plugins/furnace-product-shell/main.js` |
 | Source | `.obsidian/plugins/furnace-product-shell/src/` |
 | Build | `.obsidian/plugins/furnace-product-shell/build.sh` |
-| Tests | `tests/test_product_shell*.py` + plugin Jest |
+| Tests | `[已删 AOS-C8] tests/test_product_shell*.py` — post 2026-07-15 verify.sh product-shell-static 单跑 `node --check main.js`，pytest Product Shell 单测 退役；Product Shell 旧测试契约覆盖改由 `tests/test_acceptance_loop.py` 中 universal-input + today-feed acceptance 承担 |
 
 ### 验证命令
 
 ```bash
 bash scripts/verify.sh product-shell-static
 cd .obsidian/plugins/furnace-product-shell && npm test  # 若 node_modules 可用
-PYTHONPATH=src python -m pytest tests/test_product_shell*.py -q
+# [AOS-C8 frozen] PYTHONPATH=src python -m pytest tests/test_product_shell*.py -q   (已退)
 ```
 
 ### Fail gate（blocking）
@@ -143,7 +145,7 @@ PYTHONPATH=src python -m pytest tests/test_product_shell*.py -q
 - src 与 main.js 可漂移且无 gate 失败
 - Obsidian 加载的 main.js 与测试路径行为不一致
 
-### 当前状态：**PASS**（`product-shell-static` 调用 `scripts/check_product_shell_bundle.sh`）
+### 当前状态：**PASS**（`product-shell-static` 仅跑 `node --check`；`scripts/check_product_shell_bundle.sh` 与 bundle drift gating 已删；当下由 acceptance 17 fixture 间接覆盖 Product Shell 的跨链行为）
 
 ---
 
@@ -154,7 +156,7 @@ PYTHONPATH=src python -m pytest tests/test_product_shell*.py -q
 - [ ] 五层平面分层不被破坏：`raw/` 唯一事实输入
 - [ ] single-writer lock、provenance、receipt 在 run-ask / file-back / compile 路径成立
 - [ ] 无隐式跨 backend fallback；LLM 失败显式暴露
-- [ ] `bash scripts/verify.sh` unit + acceptance PASS
+- [ ] `bash scripts/verify.sh all` (acceptance 17 fixture replay) PASS（`unit` + `coverage` 段已退；以 acceptance 17 zero-fail 等价 release gate）
 
 ### 证据路径
 
@@ -199,13 +201,14 @@ bash scripts/verify.sh python-static
 | Signal stream | `.aiwiki/state/signals.jsonl` |
 | Planner log | `.aiwiki/state/planner-log.jsonl` |
 | Decision rules | `src/aiwiki/planner/log_writer.py` |
-| Tests | `tests/test_planner_log.py`, `tests/test_signals_collector.py` |
+| Tests | `[已删 AOS-C8] tests/test_planner_log.py, tests/test_signals_collector.py` — post 2026-07-15 pytest planner/signal 单测退役；planner/signal replay 行为改由 `tests/test_acceptance_loop.py` 第 12 case `test_planner_log_idempotency` + `test_signals_collector_three_scanners` 等 acceptance fixture 覆盖 |
 
 ### 验证命令
 
 ```bash
-PYTHONPATH=src python -m pytest tests/test_signals_collector.py tests/test_planner_log.py -q
+# [AOS-C8 frozen] PYTHONPATH=src python -m pytest tests/test_signals_collector.py tests/test_planner_log.py -q  (已退)
 bash scripts/run_acceptance.sh  # 含 planner/signal replay
+PYTHONPATH=src python3 -m pytest tests/test_acceptance_loop.py -k 'planner or signals' -q  # 当前 post-cleanup 等价
 ```
 
 ### Fail gate
@@ -238,7 +241,8 @@ bash scripts/run_acceptance.sh  # 含 planner/signal replay
 ### 验证命令
 
 ```bash
-PYTHONPATH=src python -m pytest tests/test_llm.py tests/test_config.py -q
+# [AOS-C8 frozen] PYTHONPATH=src python -m pytest tests/test_llm.py tests/test_config.py -q  (已退)
+PYTHONPATH=src python3 -m pytest tests/test_acceptance_loop.py -k 'backend_failure or replay' -q  # 当前 post-cleanup 等价
 # AGOS-007 完成后：telemetry report CLI
 ```
 
@@ -264,15 +268,16 @@ PYTHONPATH=src python -m pytest tests/test_llm.py tests/test_config.py -q
 
 | 证据 | 路径 |
 |------|------|
-| Maturity gate | `scripts/dogfood_maturity_gate.py` |
+| Maturity gate | `[已删 AOS-C8] scripts/dogfood_maturity_gate.py` — 改成 operator `aiwiki advanced ...` 直接 CLI 与 PROGRESS.md 手动记录 live 证据；当前 release gate 假定 maturity gate 在 dogfood vault 内 self-record |
 | L3 | `src/aiwiki/execution/l3_proposals.py` |
 | Autonomy | `src/aiwiki/autonomy_policy.py` |
 
 ### 验证命令
 
 ```bash
-PYTHONPATH=src python -m pytest tests/test_dogfood_maturity_gate.py tests/test_l3_proposals.py -q
-bash scripts/verify.sh
+# [AOS-C8 frozen] PYTHONPATH=src python -m pytest tests/test_dogfood_maturity_gate.py tests/test_l3_proposals.py -q  (已退)
+PYTHONPATH=src python3 -m pytest tests/test_acceptance_loop.py -k 'proposal_apply or l3_proposal' -q  # 当前 post-cleanup 等价
+bash scripts/verify.sh all
 ```
 
 ### 当前状态：**PASS**
@@ -306,7 +311,7 @@ P1 当前口径：hub slimming 是持续 seam enforcement，不是一次性大�
 
 ```bash
 bash scripts/verify.sh python-static
-PYTHONPATH=src python -m pytest tests/test_post_agos_risk.py -q
+# [AOS-C8 frozen] PYTHONPATH=src python -m pytest tests/test_post_agos_risk.py -q  (已退)
 ```
 
 ### 当前状态：**PASS**（seam map + ≥2 extractions：local_stats、workflows_ask）
@@ -363,7 +368,7 @@ bash scripts/verify.sh scripts
 | 3 | Full verify | `bash scripts/verify.sh` |
 | 4 | Product Shell static + drift | `bash scripts/verify.sh product-shell-static` |
 | 5 | Acceptance replay | `bash scripts/run_acceptance.sh` |
-| 6 | Live dogfood maturity | `dogfood_maturity_gate.py summarize --days 3` → pass |
+| 6 | Live dogfood maturity | `[AOS-C8 frozen] dogfood_maturity_gate.py summarize --days 3` — 脚本已删，当前为 "not-yet; 由 operator aiwiki advanced ... + PROGRESS.md 手动追踪 live 证据" |
 | 7 | LLM telemetry report | AGOS-007 CLI/report |
 | 8 | Docs consistency | AGOS-004 checklist |
 | 9 | qa-review | `.codex/gates/qa-review.md` |
@@ -377,7 +382,7 @@ bash scripts/verify.sh scripts
 
 | Gate | 结果 |
 |---|---|
-| Full verify | PASS：`bash scripts/verify.sh`，2439 unit tests，coverage 92%，acceptance 17 passed |
+| Full verify | PASS `[AOS-C8 frozen 2026-05-24]`：`bash scripts/verify.sh`，2439 unit tests，coverage 92%，acceptance 17 passed；post 2026-07-15 改为 `bash scripts/verify.sh all`，acceptance 17 fixture replay，无 pytest/coverage 段，total ~ 18 s |
 | Product Shell static/drift | PASS：bundle matches `build.sh` output |
 | Live dogfood maturity | PASS：`summarize --days 3` days 2026-05-21/22/23，`consecutive_days=true` |
 | Knowledge compounding | PASS：sample reuses `wiki/judgments/judgment-aos-c2-dogfood-live-proof-judgment.md` with `run-ask` execution receipt |

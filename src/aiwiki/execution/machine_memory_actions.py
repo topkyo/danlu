@@ -25,8 +25,9 @@ Migration invariants (same as B1..B5):
     ``..compile`` package ``__init__`` re-export (B4 oracle rule).
 - ``utc_now`` is resolved lazily at **call time** via
   ``from .. import app_utils as _app_utils; _app_utils.utc_now()``
-  so that ``patch("aiwiki.app_utils.utc_now", ...)`` in
-  ``tests/test_app.py`` continues to take effect after the owner flip.
+  so that ``patch("aiwiki.app_utils.utc_now", ...)`` patches
+  (acceptance tests + downstream suites) continue to take effect after
+  the owner flip.
 """
 
 from __future__ import annotations

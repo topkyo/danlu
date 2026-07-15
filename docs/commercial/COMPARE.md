@@ -4,7 +4,7 @@ kind: "commercial"
 status: "active"
 updated_at: "2026-07-14"
 related_docs:
-  - docs/Furnace Market Scan 2026Q2.md
+  - `docs/archive/Furnace Market Scan 2026Q2.md`
   - docs/commercial/PRICING.md
 ---
 
@@ -66,7 +66,7 @@ related_docs:
 - 单人项目与团队项目的规模对比；
 - 投资回报或性能排名。
 
-> 详细市场对标与客观弱项分析见 `docs/Furnace Market Scan 2026Q2.md`（内部 SoT，不对外销售使用）。
+> 详细市场对标与客观弱项分析见 [`docs/archive/Furnace Market Scan 2026Q2.md`](<../archive/Furnace Market Scan 2026Q2.md>)（内部 SoT，不对外销售使用；该 doc 已 archive）。
 
 ## 5. 变更记录
 

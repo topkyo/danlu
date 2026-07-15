@@ -37,6 +37,17 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
 - `docs/AGOS-9-Dogfood-Proof-Runbook.md` / `docs/AGOS-9-Investing-Preflight-Runbook.md`：移入 `docs/archive/`，标记 superseded。
 - `verify.sh all`（仅 release 用）行为不变，仍按 `coverage erase + coverage run pytest + coverage report + acceptance` 跑出 ~13 min 周期；只是被依赖的辅助脚本集已精简。
 
+### Removed (cross-review stale-ref 收口 · round 7)
+- `tests/fixtures/{planner_log, signals, signals_collector}/` 三个孤立目录共 42 文件（307 LOC）：acceptance/case_runner.py 与 `tests/test_acceptance_loop.py` 全部 17 case 均不引用此 fixtures，pure 孤立 cleanup，零风险。
+
+### Changed (cross-review stale-ref 收口 · round 7)
+- `docs/AGOS-9-Scorecard.md`：在 2026-05-24 AOS-C8 frozen evidence 段顶部加 banner 说明 "post-2026-07-15 verify.sh all 不再走 pytest/coverage"；在所有 `tests/test_*.py` 与 `dogfood_maturity_gate.py` / `agos9_*.sh` 引用行加 `[AOS-C8 frozen 2026-05-24]` / `[已删]` inline 注；保留 scorecard 的 AOS-C8 milestone frozen 史料价值。约 12 行改写。
+- `AGENTS.md` Cursor Cloud 段：删除 `coverage` / `unittest discover` stale lines（3 处）；dev deps 改写为 `ruff + pytest + beautifulsoup4`；历史 `test_obsidian_workspace.test_workspace_defaults_open_home_and_furnace_center` 与 `test_drop.test_fetch_url_raises_when_no_text_can_be_recovered` 改为 "历史（已删）" 说明并指向对应 src module 自检路径。
+- `docs/DEVELOPER.md` verify target list：`bash scripts/verify.sh [scripts|smoke|python-static|unit|...]` 删除 `unit|` 一行。
+- `docs/Furnace Runtime Operations.md:318` + `docs/commercial/COMPARE.md:7,69` 三处 stale path：`docs/Furnace Market Scan 2026Q2.md` → `docs/archive/Furnace Market Scan 2026Q2.md`。
+- `src/aiwiki/` 8 处 stale docstring / comment 提及已删 `tests/test_app.py` / `tests/test_metrics.py`：重写为 "acceptance tests + downstream suites" 描述并保留 lazy-import patch seam 语义。`src/aiwiki/execution/__init__.py` 移除 stale `_LAZY_OWNERS` PEP 562 seam 描述（该 seam 已不存在），指向 AGENTS.md 架构清理定案段。
+- `PROGRESS.md` 历史 (verify.sh all 不再跑 pytest+coverage) 条目尾部追加 `[superseded · commit a76fa66]` 标记，说明 144 pytest 文件 + 2509 单元测试随之退役，与本轮顶部 "cross-review 进一步瘦身" 条目指向同一迁移轨迹。
+
 ### Added
 - 商业化清理计划落地并已归档：`docs/archive/Furnace Commercial Grade Cleanup Plan 2026-07.md`。
 - 对外商业化文档集合：

@@ -20,9 +20,9 @@ Import policy (mirrors EP-018B1/B2):
 * The single hot-patch target used by this group — ``utc_now`` — is
   looked up lazily inside each function body via
   ``from .. import app_utils as _app_utils; _app_utils.utc_now()``
-  so that ``patch("aiwiki.app_utils.utc_now")`` in
-  ``tests/test_app.py`` still intercepts the call through the migrated
-  path.
+  so that ``patch("aiwiki.app_utils.utc_now")`` patches
+  (acceptance tests + downstream suites) still intercept the call
+  through the migrated path.
 * Intra-group calls (``retire_concept`` / ``reactivate_concept`` call
   ``refresh_knowledge_lifecycle_runtime``) resolve against the local
   module, which also guarantees the hot-patch seam works when tests
