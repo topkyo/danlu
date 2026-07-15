@@ -16,8 +16,6 @@ PROGRESS.md
 
 # Local agent scratch
 .codegraph/
-.agentstack/
-.agents/skills/agentstack-*/
 
 # Runtime state and generated outputs
 .aiwiki/state/*.json
