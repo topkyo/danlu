@@ -6,8 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from aiwiki.execution.audit_preview import AUDIT_STREAM_PATH
-from aiwiki.render.paths import execution_receipt_path
+from aiwiki.runner.alchemy_shared import _apply_paths, _capture_sizes, _rollback_truncate, _trace_summary
 
 
 def run_alchemy_review_apply_impl(
@@ -45,18 +44,12 @@ def run_alchemy_review_apply_impl(
     applied_at = deps["utc_now"]()
     action_id = deps["unique_action_id"](root, applied_at=applied_at)
 
-    receipt_path = execution_receipt_path(root, action_id)
-    history_path = deps["execution_receipt_history_path"](root)
-    audit_path = deps["relative_path"](root, history_path)
-    history_size_before = history_path.stat().st_size if history_path.exists() else 0
-    audit_jsonl_path = root / AUDIT_STREAM_PATH
-    audit_size_before = audit_jsonl_path.stat().st_size if audit_jsonl_path.exists() else 0
+    receipt_path, history_path, audit_path = _apply_paths(root, action_id, deps)
+    audit_jsonl_path, history_size_before, audit_size_before = _capture_sizes(root, history_path)
     queue_path = root / "wiki" / "indexes" / "review-queue.md"
     queue_existed_before = queue_path.exists()
     queue_snapshot = deps["snapshot_file_bytes"](queue_path)
-    trace_ids = deps["preview_trace_ids"](preview)
-    trace_id = trace_ids[0] if trace_ids else ""
-    candidate_ids = [str(item.get("candidate_id") or "") for item in candidates if item.get("candidate_id")]
+    trace_ids, trace_id, candidate_ids = _trace_summary(deps, preview, candidates)
     idempotency_key = deps["idempotency_key"](scope=scope, candidate_ids=candidate_ids, trace_ids=trace_ids)
     queue_result: dict[str, Any] = {}
     try:
@@ -101,10 +94,7 @@ def run_alchemy_review_apply_impl(
         deps["append_execution_receipt_history"](root, receipt)
     except Exception as tx_exc:
         try:
-            if history_path.exists():
-                deps["durable_truncate"](history_path, history_size_before)
-            if audit_jsonl_path.exists():
-                deps["durable_truncate"](audit_jsonl_path, audit_size_before)
+            _rollback_truncate(deps, history_path, history_size_before, audit_jsonl_path, audit_size_before)
             if receipt_path.exists():
                 receipt_path.unlink()
             if queue_existed_before:
