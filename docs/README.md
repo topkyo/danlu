@@ -20,7 +20,8 @@ updated_at: 2026-07-15
 | [INSTALL](<./INSTALL.md>) | **安装指南**：Desktop Obsidian + `PYTHONPATH=src` runtime 起步 |
 | [USER_GUIDE](<./USER_GUIDE.md>) | **用户指南**：日常 drop / compile / ask / review 路径 |
 | [DEVELOPER](<./DEVELOPER.md>) | **开发者指南**：owner map、verify targets、LLM/自动化细节 |
-| [commercial/PRICING](<./commercial/PRICING.md>) | 商业定价与 SKU（占位邮箱待替换） |
+| [commercial/PRICING](<./commercial/PRICING.md>) | 商业定价与 SKU（首发仅询价、无公开标价） |
+| [commercial/EULA](<./commercial/EULA.md>) | 商业许可条款草案与书面流程指针 |
 | [commercial/BOUNDARIES](<./commercial/BOUNDARIES.md>) | 开源版 vs 商业版边界 + 商业 license 获取 |
 | [commercial/PRIVACY](<./commercial/PRIVACY.md>) | local-first 隐私与 egress 声明 |
 | [commercial/SUPPORT](<./commercial/SUPPORT.md>) | 支持通道与响应预期 |
