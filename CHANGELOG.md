@@ -17,6 +17,8 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
 - `scripts/verify.sh` 整个 `unit` target（含 `verify_unit()` 函数 + dispatch case + usage help 一行）删除；与 `all` 唯一差别是 coverage overhead，`unit` 是 `all` 的"裸测版本"，被证实为冗余单独入口。
 - `scripts/verify.sh` 中 `all|full)` 后串行落点里 `coverage erase + coverage run pytest + coverage report` 三段（约 12 min）一并删除；`.coveragerc` 同步删，`pyproject.toml` 中 `coverage>=7.6,<8` dev 依赖同步移除。`verify.sh all` 退化为 `scripts + product-shell-static + cli-smoke + smoke + python-static + acceptance`（≈18 s daily-feasible，含 acceptance 17 fixture replay）。
 - `scripts/verify_target_rules.sh`：`.coveragerc` 路径 case 一并删除（文件已无）。
+- `tests/` 收缩到 acceptance-only：删除 118 个顶层 `tests/test_*.py`（除 `tests/test_acceptance_loop.py`） + 26 个 `tests/unit/test_*.py`，合计 144 个 pytest 单元测试文件 / 约 56k LOC 退役。`tests/` 现仅含 `tests/test_acceptance_loop.py`（acceptance loop runner）+ `tests/acceptance/`（`case_runner.py` / `llm_replay.py` / `__init__.py`）+ `tests/fixtures/`（259 个 acceptance fixture），由 `bash scripts/verify.sh all` 默认 18 s 跑 17 acceptance replay。`tests/unit/` 整目录也从 git 跟踪中清空。
+- `scripts/archive/` 整目录删除（5 文件：`dogfood-watch.sh` / `p0_operational_setup.sh` / `p1_p2_gate_review.sh` / `extract_rounds.py` + `README.md`）：它们没有 live 调用者，只在 `docs/archive/` 与 `archive/rounds/` 历史文档中作为 runbook evidence 出现，README 自白为 "new automation should not depend on archived scripts"。
 
 ### Changed
 - `scripts/install_user_service.sh` / `scripts/uninstall_user_service.sh`：删除所有 `AIWIKI_INSTALL_DOGFOOD_MATURITY` / `run_dogfood_maturity.sh` 分支，仅保留 `watch` + `nightly`；升级路径上对已存在 `aiwiki-dogfood-maturity.*` unit 做清理兜底。
@@ -24,6 +26,9 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
 - `scripts/verify_target_rules.sh`：删除对应被删脚本路径的 case 分支；移除 `unit` 在 `.coveragerc` / `schema/*.json` / `scripts/*.py` / `src/aiwiki/cli*.py` / `src/aiwiki/*.py` / `tests/*.py` 的推荐（这些路径单独改动不再自动触发全量 pytest）。
 - `scripts/run_launchd_watch.sh`：`watch …` argv 改写为 `advanced watch …`，消除 watcher 启动后 stderr `[deprecated] aiwiki watch is a legacy top-level entry` 噪音行（`run_launchd_nightly.sh` 早已用 `advanced nightly`，未动）。
 - `AGENTS.md` 验证入口：`scripts` 段补「daily / release」边界说明 + 删除 `unit`（pytest，无 coverage）条目；常用 target 列为 `scripts` / `smoke` / `python-static` / `acceptance` / `cli-smoke` / `product-shell-static` / `all`。
+- `AGENTS.md`：把 "tests/ 下 2509 单元测试作为契约保留" 一段重写为 "tests/ 收缩到 acceptance-only（test_acceptance_loop.py + tests/acceptance/ + tests/fixtures/）"，与 commit 2 的 changes 一致。
+- `docs/`：5 个 Furnace legacy docs → `docs/archive/`（git 自动 rename 100%）：`Market Scan 2026Q2.md` / `Product Shell UX Test Checklist.md` / `Investing Dogfood Plan.md` / `RuntimeClient Mobile Companion Design.md` / `Agentic Debt Autopilot.md`。活跃 docs 从 14 → 9。
+- `.gitignore`：删除 `.agentstack/` 与 `.agents/skills/agentstack-*/` defensive ignore（AGENTS.md 已禁止 agentstack 引入）；保留 `.codegraph/` 与 `.coverage`（本机仍在生成此类 local scratch）。
 - `docs/DEVELOPER.md` / `docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md` / `docs/AGOS-9-Scorecard.md` / `docs/Furnace-Optional-Deps-Matrix.md` / `docs/Furnace Product Shell UX Test Checklist.md`：同步移除对已删脚本的引用，明确 release gate 不再依赖被移除的 release-evidence / maturity pipeline。
 - `docs/AGOS-9-Dogfood-Proof-Runbook.md` / `docs/AGOS-9-Investing-Preflight-Runbook.md`：移入 `docs/archive/`，标记 superseded。
 - `verify.sh all`（仅 release 用）行为不变，仍按 `coverage erase + coverage run pytest + coverage report + acceptance` 跑出 ~13 min 周期；只是被依赖的辅助脚本集已精简。

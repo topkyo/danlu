@@ -38,7 +38,7 @@
 - 按改动路径建议 target：`bash scripts/verify_target_rules.sh`
 - 已移除：`cache_benchmark.py` / `compile_benchmark.py` / `dogfood_maturity_gate.py` / `agos9_*.sh` 等耗时辅助脚本、`verify.sh` 内的 `coverage run pytest` 段（释放 12 min）以及 `product-shell-static` 中的 bundle drift gating；脚本侧只保留 vault/runtime/install/uninstall 核心
 - 文档一致性：`bash scripts/docs_consistency_check.sh`
-- pytest 不再被任何 verify path 自动跑；`tests/` 下 2509 单元测试作为契约保留用于人工快速回归或外部 CI 调用，`coverage>=7.6,<8` 已从 dev deps 中移除
+- `tests/` 范围已收缩到 acceptance-only：`tests/test_acceptance_loop.py` + `tests/acceptance/` + `tests/fixtures/`，由 `bash scripts/verify.sh` 默认 `all` 跑 17 acceptance fixture；旧 144 个 pytest 单元测试文件（118 顶层 + 26 `tests/unit/`，约 56k LOC）作为 contract 已 retire，`coverage>=7.6,<8` 已从 dev deps 中移除
 
 ## 风格
 
