@@ -11,7 +11,7 @@
 - 分析用户实际 Product Shell 提问、报告质量、LLM receipt、run notes 或 vault 内容时，默认查 iCloud Obsidian vault，不要误用当前代码仓库的 `output/control/shell-summary.json` 代替 dogfood 证据。
 - iCloud vault 的 `scripts/aiwiki-launcher.sh` 是用户可见运行入口，当前应指向 runtime root `/Users/ht/github/danlu`；旧开发者绝对路径只属于历史记录。
 - 动态任务状态写 `PROGRESS.md`。
-- 当前阶段性执行计划：无（Commercial Grade Cleanup 已归档为 `docs/archive/Furnace Commercial Grade Cleanup Plan 2026-07.md`）；当前 SoT 以 Scorecard + `PROGRESS.md` 为准。
+- 当前阶段性执行计划：`docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md`（Commercial Go-Live WS1–WS6）；Commercial Grade Cleanup 已归档为 `docs/archive/Furnace Commercial Grade Cleanup Plan 2026-07.md`；评分 SoT 仍以 Scorecard + `PROGRESS.md` 为准。
 
 禁止长期写进本文件：
 
@@ -80,7 +80,7 @@
 
 - 项目规范：`README.md`
 - 架构 / 契约 / 运行：`docs/README.md` Active 表
-- 阶段性计划：已归档 `docs/archive/Furnace Commercial Grade Cleanup Plan 2026-07.md`（executed-reviewed-pass）
+- 阶段性计划：`docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md`；已归档 cleanup `docs/archive/Furnace Commercial Grade Cleanup Plan 2026-07.md`（executed-reviewed-pass）
 - 任务状态：`PROGRESS.md`
 - 验证入口：`bash scripts/verify.sh`
 - 运行态验证：`tests/` fixture-driven CLI smoke / acceptance

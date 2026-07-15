@@ -2,7 +2,7 @@
 title: "炼丹炉架构文档索引"
 kind: "index"
 status: "active"
-updated_at: 2026-07-14
+updated_at: 2026-07-15
 ---
 
 # 炼丹炉架构文档索引
@@ -39,14 +39,21 @@ updated_at: 2026-07-14
 
 | 文档 | 角色 |
 |---|---|
-| [Furnace Investing Demo Pack Spec](<./Furnace Investing Demo Pack Spec.md>) + [Demo Pack fixture](<../demos/investing-demo-pack/README.md>) | **商业 demo 规格与已交付 fixture**：10 分钟知识复利故事、脱敏素材类型、receipt / judgment / elixir 路径和合规话术 |
-| [Furnace RuntimeClient Mobile Companion Design](<./Furnace RuntimeClient Mobile Companion Design.md>) | **移动 companion implemented-slice**：RuntimeClient 三实现、VaultQueue 协议、desktop drain、Desktop-only 主插件边界 |
+| [Furnace Post-Cleanup Audit and Next Direction 2026-07](<./Furnace Post-Cleanup Audit and Next Direction 2026-07.md>) | **当前执行计划**：cleanup 后再审计报告 + Commercial Go-Live WS1–WS6 |
 
 > Commercial Grade Cleanup Plan 2026-07 已归档（`executed-reviewed-pass`），见下方 Archived。
+> Investing Demo Pack（`delivered-fixture`）与 RuntimeClient Mobile Companion（`implemented-slice`）已交付规格，见下方 Delivered specs；残留 go-to-market 工作并入上表 Go-Live 计划。
+
+## Delivered specs（已交付，非活跃执行）
+
+| 文档 | 角色 |
+|---|---|
+| [Furnace Investing Demo Pack Spec](<./Furnace Investing Demo Pack Spec.md>) + [Demo Pack fixture](<../demos/investing-demo-pack/README.md>) | 商业 demo 规格与已交付 fixture（截图/录屏资产见 Go-Live WS3） |
+| [Furnace RuntimeClient Mobile Companion Design](<./Furnace RuntimeClient Mobile Companion Design.md>) | 移动 companion implemented-slice；无独立 iOS 商店包（产品边界） |
 
 ## Direction context（非当前执行 SoT）
 
-历史方向与已完成执行计划已移入 [docs/archive/](<./archive/README.md>)；当前执行以 Scorecard + `PROGRESS.md` 为准。
+历史方向与已完成执行计划已移入 [docs/archive/](<./archive/README.md>)；当前执行以 [Post-Cleanup Audit](<./Furnace Post-Cleanup Audit and Next Direction 2026-07.md>) + Scorecard + `PROGRESS.md` 为准。
 `wiki/indexes/` 是 compile 生成的派生索引区；策略见 [wiki/indexes/README](<../wiki/indexes/README.md>)。
 
 ## Archived（已 superseded / 已完成，保留作史料）
@@ -70,10 +77,11 @@ updated_at: 2026-07-14
 1. 先看 [Furnace Agent Architecture](<./Furnace Agent Architecture.md>) 建立世界观。
 2. 再看 [Furnace Evolution Mechanics](<./Furnace Evolution Mechanics.md>) 建立契约与实现边界。
 3. 需要操作本机自动化时看 [Furnace Runtime Operations](<./Furnace Runtime Operations.md>)。
-4. 当前评分 / release gate 看 [AGOS-9-Scorecard](<./AGOS-9-Scorecard.md>) 和 `PROGRESS.md`；已完成的商业化清理见 [archive/Furnace Commercial Grade Cleanup Plan 2026-07](<./archive/Furnace Commercial Grade Cleanup Plan 2026-07.md>)。
-5. 商业 demo 讲法看 [Furnace Investing Demo Pack Spec](<./Furnace Investing Demo Pack Spec.md>)；移动端 companion 只看 [Furnace RuntimeClient Mobile Companion Design](<./Furnace RuntimeClient Mobile Companion Design.md>)。
-6. 需要看 Product Shell 时再看 [Furnace Product Shell](<./Furnace Product Shell.md>)（Desktop-only；iPad/iOS 不支持全功能）。
-7. 历史方向与 AGOS/AOS 执行记录见 [archive](<./archive/README.md>)，不作为当前执行 SoT。
+4. 当前评分 / release gate 看 [AGOS-9-Scorecard](<./AGOS-9-Scorecard.md>)；**下一波执行**看 [Post-Cleanup Audit and Next Direction](<./Furnace Post-Cleanup Audit and Next Direction 2026-07.md>) 与 `PROGRESS.md`。
+5. 已完成的商业化清理见 [archive/Furnace Commercial Grade Cleanup Plan 2026-07](<./archive/Furnace Commercial Grade Cleanup Plan 2026-07.md>)。
+6. 商业 demo 讲法看 [Furnace Investing Demo Pack Spec](<./Furnace Investing Demo Pack Spec.md>)；移动端 companion 只看 [Furnace RuntimeClient Mobile Companion Design](<./Furnace RuntimeClient Mobile Companion Design.md>)。
+7. 需要看 Product Shell 时再看 [Furnace Product Shell](<./Furnace Product Shell.md>)（Desktop-only；iPad/iOS 不支持全功能）。
+8. 历史方向与 AGOS/AOS 执行记录见 [archive](<./archive/README.md>)，不作为当前执行 SoT。
 
 ## 关系
 
@@ -92,11 +100,15 @@ Furnace Runtime Operations + Furnace Product Shell (Desktop-only)
          v
 AGOS-9-Scorecard + PROGRESS.md
          |
-         | 阶段性清理与商业边界
+         | 下一波执行（审计 + go-live）
          v
-Commercial Grade Cleanup Plan 2026-07
+Post-Cleanup Audit and Next Direction 2026-07
          |
-         | 商业 demo / mobile companion 规格
+         | 已归档 cleanup 史料
+         v
+Commercial Grade Cleanup Plan 2026-07 (archive)
+         |
+         | 已交付规格（非活跃执行）
          v
 Investing Demo Pack Spec + RuntimeClient Mobile Companion Design
 ```
