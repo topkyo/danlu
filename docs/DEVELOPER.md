@@ -26,7 +26,7 @@ related_docs:
 - `src/aiwiki/content/`：source / concept / derived / memory output 的主要 owner。
 - `src/aiwiki/app_lifecycle.py`：judgment / decision lifecycle、aging、review queue、knowledge lifecycle governance 的 residual owner。
 - `src/aiwiki/render/`：index / dashboard / output pack / domain pilot / judgment asset render owner。
-- `src/aiwiki/memory/`：machine memory graph、execution surfaces、trace/recall/batch 相关 owner；`app_memory.py` 仍是 legacy residual hotspot，query helpers 在 `app_memory_query.py`。
+- `src/aiwiki/memory/`：machine memory graph、execution surfaces、trace/recall/batch 相关 owner；legacy `app_memory.py` 已删除（Round 8），query helpers 在 `app_memory_query.py`。
 - `src/aiwiki/execution/`：execution bundles、receipts、apply/revert/audit、alchemy proposal mutation 的事实层 owner；`app_execution.py` 保留 receipt / bundle assembly 入口。
 - `src/aiwiki/runner/`：`run-compile` / `run-ask` / `nightly` / `watch` / alchemy 等 high-level workflow owner；`runner/alchemy.py` 是 deferred residual hotspot。
 - `src/aiwiki/planner/` 与 `src/aiwiki/signals/`：planner dry-run / log / safe primitive policy，以及 review / repair / aging / escalation signal source。
@@ -38,7 +38,7 @@ related_docs:
 - `src/aiwiki/app_vault.py`：new-vault scaffold 与 Obsidian bootstrap owner。
 - `src/aiwiki/app_types.py`：稳定 TypedDict contracts（如 `ManifestEntry` / `CompileState` / `ShellSummary`）。
 
-后续新增逻辑优先进入明确 owner package；`app_state.py`、`app_protocol.py`、`app_compile.py`、`app_memory.py`、`runner/alchemy.py` 与 Product Shell `plugin.js` 继续按 seam map 小步削薄，不做 broad rewrite。禁止再引入纯 re-export facade。
+后续新增逻辑优先进入明确 owner package；`app_state.py`、`app_protocol.py`、`app_compile.py`、`runner/alchemy.py` 与 Product Shell `plugin.js` 继续按 seam map 小步削薄，不做 broad rewrite。`app_memory.py`（Round 8 已删）+ `app_content.py` / `app_render.py` / `app_surfaces.py` / `app_memory_surfaces.py`（prior rounds）从 "削薄 hotspot" 列表毕业，不再 active 维护。禁止再引入纯 re-export facade。
 
 ### CLI command taxonomy
 
@@ -201,7 +201,6 @@ app_lifecycle.py           judgments / decisions / aging / review queue governan
 render/                    views / packs / pilots / judgment asset render owner
 
 memory/                    machine memory（graph / trace / recall / execution surfaces）
-app_memory.py              legacy residual hotspot
 app_memory_query.py        query helpers owner
 
 execution/                 execution bundles / receipts / apply / revert / audit owner

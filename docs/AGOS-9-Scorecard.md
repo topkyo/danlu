@@ -80,6 +80,8 @@ AOS-C1~C8 已按 harness 顺序完成本地 release gate。当前本地 release 
 ### 验证命令
 
 ```bash
+# [AOS-C8 frozen 2026-05-24 — scripts/dogfood_maturity_gate.py post 2026-07-15 scripts cleanup 中已删除，
+# 这两行引用属于 AOS-C8 release gate evidence 的历史快照；命令本身不再可执行。
 python3 scripts/dogfood_maturity_gate.py --root $AIWIKI_DOGFOOD_VAULT collect
 python3 scripts/dogfood_maturity_gate.py --root $AIWIKI_DOGFOOD_VAULT summarize --days 3
 ```

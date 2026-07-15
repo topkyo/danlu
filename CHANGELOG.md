@@ -19,6 +19,7 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
 - `scripts/verify_target_rules.sh`：`.coveragerc` 路径 case 一并删除（文件已无）。
 - `tests/` 收缩到 acceptance-only：删除 118 个顶层 `tests/test_*.py`（除 `tests/test_acceptance_loop.py`） + 26 个 `tests/unit/test_*.py`，合计 144 个 pytest 单元测试文件 / 约 56k LOC 退役。`tests/` 现仅含 `tests/test_acceptance_loop.py`（acceptance loop runner）+ `tests/acceptance/`（`case_runner.py` / `llm_replay.py` / `__init__.py`）+ `tests/fixtures/`（259 个 acceptance fixture），由 `bash scripts/verify.sh all` 默认 18 s 跑 17 acceptance replay。`tests/unit/` 整目录也从 git 跟踪中清空。
 - `scripts/archive/` 整目录删除（5 文件：`dogfood-watch.sh` / `p0_operational_setup.sh` / `p1_p2_gate_review.sh` / `extract_rounds.py` + `README.md`）：它们没有 live 调用者，只在 `docs/archive/` 与 `archive/rounds/` 历史文档中作为 runbook evidence 出现，README 自白为 "new automation should not depend on archived scripts"。
+- **[Round 7 cross-review]**: `tests/fixtures/{planner_log, signals, signals_collector}/` 三个孤立目录共 42 文件（307 LOC）：acceptance/case_runner.py 与 `tests/test_acceptance_loop.py` 全部 17 case 均不引用此 fixtures，pure 孤立 cleanup，零风险。
 
 ### Changed
 - `scripts/install_user_service.sh` / `scripts/uninstall_user_service.sh`：删除所有 `AIWIKI_INSTALL_DOGFOOD_MATURITY` / `run_dogfood_maturity.sh` 分支，仅保留 `watch` + `nightly`；升级路径上对已存在 `aiwiki-dogfood-maturity.*` unit 做清理兜底。
@@ -36,17 +37,18 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
 - `docs/DEVELOPER.md` / `docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md` / `docs/AGOS-9-Scorecard.md` / `docs/Furnace-Optional-Deps-Matrix.md` / `docs/Furnace Product Shell UX Test Checklist.md`：同步移除对已删脚本的引用，明确 release gate 不再依赖被移除的 release-evidence / maturity pipeline。
 - `docs/AGOS-9-Dogfood-Proof-Runbook.md` / `docs/AGOS-9-Investing-Preflight-Runbook.md`：移入 `docs/archive/`，标记 superseded。
 - `verify.sh all`（仅 release 用）行为不变，仍按 `coverage erase + coverage run pytest + coverage report + acceptance` 跑出 ~13 min 周期；只是被依赖的辅助脚本集已精简。
-
-### Removed (cross-review stale-ref 收口 · round 7)
-- `tests/fixtures/{planner_log, signals, signals_collector}/` 三个孤立目录共 42 文件（307 LOC）：acceptance/case_runner.py 与 `tests/test_acceptance_loop.py` 全部 17 case 均不引用此 fixtures，pure 孤立 cleanup，零风险。
-
-### Changed (cross-review stale-ref 收口 · round 7)
-- `docs/AGOS-9-Scorecard.md`：在 2026-05-24 AOS-C8 frozen evidence 段顶部加 banner 说明 "post-2026-07-15 verify.sh all 不再走 pytest/coverage"；在所有 `tests/test_*.py` 与 `dogfood_maturity_gate.py` / `agos9_*.sh` 引用行加 `[AOS-C8 frozen 2026-05-24]` / `[已删]` inline 注；保留 scorecard 的 AOS-C8 milestone frozen 史料价值。约 12 行改写。
-- `AGENTS.md` Cursor Cloud 段：删除 `coverage` / `unittest discover` stale lines（3 处）；dev deps 改写为 `ruff + pytest + beautifulsoup4`；历史 `test_obsidian_workspace.test_workspace_defaults_open_home_and_furnace_center` 与 `test_drop.test_fetch_url_raises_when_no_text_can_be_recovered` 改为 "历史（已删）" 说明并指向对应 src module 自检路径。
-- `docs/DEVELOPER.md` verify target list：`bash scripts/verify.sh [scripts|smoke|python-static|unit|...]` 删除 `unit|` 一行。
-- `docs/Furnace Runtime Operations.md:318` + `docs/commercial/COMPARE.md:7,69` 三处 stale path：`docs/Furnace Market Scan 2026Q2.md` → `docs/archive/Furnace Market Scan 2026Q2.md`。
-- `src/aiwiki/` 8 处 stale docstring / comment 提及已删 `tests/test_app.py` / `tests/test_metrics.py`：重写为 "acceptance tests + downstream suites" 描述并保留 lazy-import patch seam 语义。`src/aiwiki/execution/__init__.py` 移除 stale `_LAZY_OWNERS` PEP 562 seam 描述（该 seam 已不存在），指向 AGENTS.md 架构清理定案段。
-- `PROGRESS.md` 历史 (verify.sh all 不再跑 pytest+coverage) 条目尾部追加 `[superseded · commit a76fa66]` 标记，说明 144 pytest 文件 + 2509 单元测试随之退役，与本轮顶部 "cross-review 进一步瘦身" 条目指向同一迁移轨迹。
+- **[Round 7 cross-review]**: `docs/AGOS-9-Scorecard.md`：在 2026-05-24 AOS-C8 frozen evidence 段顶部加 banner 说明 "post-2026-07-15 verify.sh all 不再走 pytest/coverage"；在所有 `tests/test_*.py` 与 `dogfood_maturity_gate.py` / `agos9_*.sh` 引用行加 `[AOS-C8 frozen 2026-05-24]` / `[已删]` inline 注；保留 scorecard 的 AOS-C8 milestone frozen 史料价值。约 12 行改写。
+- **[Round 7 cross-review]**: `AGENTS.md` Cursor Cloud 段：删除 `coverage` / `unittest discover` stale lines（3 处）；dev deps 改写为 `ruff + pytest + beautifulsoup4`；历史 `test_obsidian_workspace.test_workspace_defaults_open_home_and_furnace_center` 与 `test_drop.test_fetch_url_raises_when_no_text_can_be_recovered` 改为 "历史（已删）" 说明并指向对应 src module 自检路径。
+- **[Round 7 cross-review]**: `docs/DEVELOPER.md` verify target list：`bash scripts/verify.sh [scripts|smoke|python-static|unit|...]` 删除 `unit|` 一行。
+- **[Round 7 cross-review]**: `docs/Furnace Runtime Operations.md:318` + `docs/commercial/COMPARE.md:7,69` 三处 stale path：`docs/Furnace Market Scan 2026Q2.md` → `docs/archive/Furnace Market Scan 2026Q2.md`。
+- **[Round 7 cross-review]**: `src/aiwiki/` 8 处 stale docstring / comment 提及已删 `tests/test_app.py` / `tests/test_metrics.py`：重写为 "acceptance tests + downstream suites" 描述并保留 lazy-import patch seam 语义。`src/aiwiki/execution/__init__.py` 移除 stale `_LAZY_OWNERS` PEP 562 seam 描述（该 seam 已不存在），指向 AGENTS.md 架构清理定案段。
+- **[Round 7 cross-review]**: `PROGRESS.md` 历史 (verify.sh all 不再跑 pytest+coverage) 条目尾部追加 `[superseded · commit a76fa66]` 标记，说明 144 pytest 文件 + 2509 单元测试随之退役，与本轮顶部 "cross-review 进一步瘦身" 条目指向同一迁移轨迹。
+- Commercial Grade Cleanup Plan 归档为 `executed-reviewed-pass`；AGENTS/PROGRESS 当前计划指针清空。
+- `README.md` 改为用户向入口；`PROGRESS.md` 指向当前 Commercial Grade Cleanup Plan。
+- `verify.sh all` 恢复 deterministic `smoke` + `cli-smoke`；Product Shell Jest runner 在插件目录解析依赖。
+- `atomic_append_jsonl` 失败时 truncate 回滚；CLI bulk action 对腐坏 state fail-closed。
+- `docs_consistency_check.sh` 扩展 D4 / commercial pack / indexes 死链 / `/home/` 门禁。
+- Cleanup Plan §1.6 再评估评分卡（综合 ~7.6）；Phase 5 明确 go-live 延期项。
 
 ### Added
 - 商业化清理计划落地并已归档：`docs/archive/Furnace Commercial Grade Cleanup Plan 2026-07.md`。
@@ -59,14 +61,6 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
 - 新增 `CHANGELOG.md`（本文件）。
 - `LICENSE` copyright + dual-license 获取说明；`docs/README.md` Active 表纳入 INSTALL / USER_GUIDE / commercial 文档。
 - `docs/DEVELOPER.md`：从 README 拆出的开发者 SoT（owner map / verify / LLM / 自动化）。
-
-### Changed
-- Commercial Grade Cleanup Plan 归档为 `executed-reviewed-pass`；AGENTS/PROGRESS 当前计划指针清空。
-- `README.md` 改为用户向入口；`PROGRESS.md` 指向当前 Commercial Grade Cleanup Plan。
-- `verify.sh all` 恢复 deterministic `smoke` + `cli-smoke`；Product Shell Jest runner 在插件目录解析依赖。
-- `atomic_append_jsonl` 失败时 truncate 回滚；CLI bulk action 对腐坏 state fail-closed。
-- `docs_consistency_check.sh` 扩展 D4 / commercial pack / indexes 死链 / `/home/` 门禁。
-- Cleanup Plan §1.6 再评估评分卡（综合 ~7.6）；Phase 5 明确 go-live 延期项。
 
 ### Fixed
 - 刷新 M6.1b acceptance `prompt_hash` golden（`case_happy_run_ask` / `case_backend_failure`）。
