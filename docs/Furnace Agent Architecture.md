@@ -396,7 +396,7 @@ L0（维护层）由 `AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT=1` 控制；L1-L3/Judgment
 - 具体 signal schema、planner routing rule、phase 契约细节 → 见 [[docs/Furnace Evolution Mechanics|炼丹炉进化机制]]
 - active corpus / elixir / learning / proposal 的 frontmatter 详细字段 → 见进化机制文档
 - Product Shell surface / UI contract → 当前参考归档史料 [[docs/archive/Furnace Product Shell Plugin|产品壳插件]] / [[docs/archive/Furnace Product Shell Runtime Plan|产品壳 runtime 计划]]
-- 具体 EP 实施路线 / 时间表 → 见 `PROGRESS.md` 与 `.codex/plans/active.md`
+- 具体 EP 实施路线 / 时间表 → 见 `PROGRESS.md` 与 `docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md`（历史 harness 副本 `.codex/plans/active.md` 已退役）
 
 ## 11.1 State Loader 语义边界（best-effort vs strict）
 

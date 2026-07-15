@@ -42,7 +42,7 @@ related_docs:
 本文档**不**定义：
 
 - Product Shell UI / surface 细节
-- EP 具体实施时间表（见 `PROGRESS.md` 与 `.codex/plans/active.md`）
+- EP 具体实施时间表（见 `PROGRESS.md` 与 `docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md`；历史 `.codex/plans/active.md` 已退役）
 - 终局架构愿景（见 [[docs/Furnace Agent Architecture|炼丹炉 Agent 架构]]）
 
 ## 2. Signal Taxonomy

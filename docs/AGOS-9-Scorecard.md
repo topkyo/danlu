@@ -290,12 +290,12 @@ bash scripts/verify.sh
 
 | Hub | 约行数 | 状态 |
 |-----|--------|------|
-| `runner/workflows.py` | ~1246 | compile/lint/nightly 编排（ask → `workflows_ask.py`） |
+| `runner/workflows.py` | ~1425 | compile/lint/nightly 编排（ask → `workflows_ask.py`） |
 | `runner/workflows_ask.py` | ~1320 | 已抽出 run-ask 路径 |
 | `runner/local_stats.py` | ~243 | 已抽出本地统计 intent |
 | `runner/workflow_shared.py` | ~45 | ask/compile 共享 helper |
-| `runner/alchemy.py` | 2589 | 待 slim（deferred） |
-| `app_protocol.py` | ~1750 | library 已抽出 |
+| `runner/alchemy.py` | ~917 | 待 slim（deferred；单 seam 优先） |
+| `app_protocol.py` | ~442 | library 已抽出 |
 | AOS-003/005/006 slim 记录 | `docs/archive/analysis/`, `PROGRESS.md` | local_stats + workflows_ask 完成 |
 
 P1 当前口径：hub slimming 是持续 seam enforcement，不是一次性大拆；`runner/alchemy.py` 与 Product Shell `plugin.js` 只按最高 ROI、单 hotspot、测试先行方式继续削薄。
@@ -414,3 +414,4 @@ bash scripts/verify.sh scripts
 - 2026-05-23：AOS-C3 receipt coverage done；direct/local `run-ask` success paths now have execution receipts, report/direct/local success receipt ordering is rollback-safe, and maturity `collect` exposes warn-only `receipt_coverage` for missing/legacy/background/degraded/deterministic-baseline explanations。
 - 2026-05-24：AOS-C4~C8 harness done；full verify、release audit、dogfood proof status、docs consistency、qa-review、qa-runtime、run_plan closed-loop 均 PASS，本地 scorecard 约 9.05。未 tag、未 push、未创建 GitHub Release。
 - 2026-05-24：P1-P5 stabilization pass；`run-ask` success receipt matrix v1 覆盖 report/background/direct/local，planner-log 新增向后兼容 optional `phase` proof，CLI legacy top-level 口径收敛为 compat，14/30-day natural run proof 明确 not-yet。
+- 2026-07-15：hub 行数刷新（`runner/alchemy.py` ~917、`app_protocol.py` ~442）；下一波执行计划见 `docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md`（不改变 9.0 local release 口径）。

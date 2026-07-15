@@ -10,12 +10,15 @@
 
 - 终局架构：`docs/Furnace Agent Architecture.md` + `docs/Furnace Evolution Mechanics.md`
 - 评分 / release gate：`docs/AGOS-9-Scorecard.md`
-- 当前执行计划：无 active cleanup plan（已归档 `docs/archive/Furnace Commercial Grade Cleanup Plan 2026-07.md`）；下一波 commercial go-live 未立项
+- 当前执行计划：`docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md`（审计报告 + Commercial Go-Live WS1–WS6）
+- 已归档 cleanup：`docs/archive/Furnace Commercial Grade Cleanup Plan 2026-07.md`（executed-reviewed-pass）
 - 验证入口：`bash scripts/verify.sh`
 - 改进清单：见本文件底部「改进方向」段
 
 
 ## 当前动态
+
+- 2026-07-15 (post-cleanup audit)：全量再审计落盘 `docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md`；结论：AgentOS ~9.05 与商业 ~7.6 勿混标；P0 为邮箱/EULA/价格 go-live；恢复本文件「改进方向」段；Active Plans 改为该审计计划，Demo Pack / RuntimeClient 降为 delivered specs。
 
 - 2026-07-15 (cleanup plan archive)：刷新 M6.1b acceptance prompt_hash；Commercial Grade Cleanup Plan 归档为 `docs/archive/...`（executed-reviewed-pass）；AGENTS/PROGRESS 当前计划指针改为 Scorecard + PROGRESS。
 
@@ -139,6 +142,23 @@
 - **Residual Risks**：JS grep 测试只覆盖 token 存在，不覆盖顺序 / 行为变化 → 未来 plugin 大改时回归防护偏弱；可在后续 round 补 node 真执行测试（DEFER 不在本轮 scope）。
 - **归档**：contract `.codex/contracts/archive/round-92-feed-parity.md`。
 
+
+---
+
+## 改进方向
+
+> SoT：详细缺陷表、工作流与 Done 判据见 `docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md`。此处只保留指针级清单。
+
+| 优先级 | 方向 | 状态 |
+|---|---|---|
+| P0 | Commercial go-live：真实 `commercial@` / `support@`、价格决策、商业 EULA/购买路径（替换 `@example.com`） | 未立项执行 / 需运营法律决策 |
+| P1 | 分发闭环：`pip install` 或 INSTALL 明确预览边界；版本与 tag 对齐 | 延期自 Cleanup Phase5 |
+| P1 | Jest hard-gate + env-coupled 测试隔离（workspace / Chrome drop） | soft-skip 仍在 |
+| P1 | Alchemy materialize 等裸 `write_text` → `atomic_write_text` | 已记录待修 |
+| P2 | Scorecard hub 行数刷新；PROGRESS 活跃 round 切档卫生 | 部分已在本审计 PR 启动 |
+| P2 | Demo Pack 截图/录屏资产（fixture 已交付） | WS3 |
+| 观测 | 14/30-day natural dogfood proof（不伪造 PASS） | Scorecard not-yet |
+| Out | hub 大拆、SaaS、全功能 iOS、用 AgentOS 9.05 冒充商业 9 分 | 禁止 |
 
 ---
 
