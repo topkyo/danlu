@@ -20,10 +20,6 @@ from ..app_cache import (
     record_query_cache_event,
     save_cached_query_result,
 )
-from ..app_memory import (
-    machine_memory_source_runtime_record,
-    question_signature,
-)
 from ..app_memory_query import (
     _machine_memory_query_payload_hash,
     build_machine_memory_adjacency,
@@ -32,8 +28,9 @@ from ..app_memory_query import (
 )
 from ..app_protocol import PENDING_ACTION_STATUSES, action_focus_score
 from ..app_state import DEFAULT_PROTOCOL, machine_memory_history_path
-from ..app_utils import atomic_append_jsonl, html_safe_json_literal, tokenize
+from ..app_utils import atomic_append_jsonl, html_safe_json_literal, question_signature, tokenize
 from ..content.memory import action_priority_rank, action_supports_low_risk_apply
+from ..memory.source_records import machine_memory_source_runtime_record
 from ..render.html_theme import html_meta_theme, html_theme_css
 from .scoring import machine_memory_query_time_focus
 
@@ -219,9 +216,9 @@ def build_report_subgraph(root: Path, report_path: str) -> dict[str, Any]:
 
     Stdlib only; the caller wires this into the CLI / plugin.
     """
-    from ..app_memory import build_machine_memory_graph
     from ..app_state import load_machine_memory
     from ..app_utils import parse_frontmatter
+    from ..memory.graph_builder import build_machine_memory_graph
 
     report_rel = str(report_path or "").strip()
     if not report_rel:
