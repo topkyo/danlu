@@ -6,6 +6,8 @@
 
 仓库、CLI 和底层 runtime 仍然叫 `aiwiki`；`aiwiki` 是炼丹炉的实现内核。
 
+> **品类定位**：炼丹炉是 [Karpathy LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) 模式的 **production runtime**——`raw → wiki → schema` 编译复利，外加 deterministic baseline、execution receipt / revert、多 protocol 与 Desktop Obsidian Product Shell。它不是「又一个 RAG 聊天插件」，也不是仅靠 `AGENTS.md` 驱动的 skill 包。
+
 ## 一句话理解
 
 `raw -> compile -> wiki -> ask -> output -> file-back -> review / nightly`

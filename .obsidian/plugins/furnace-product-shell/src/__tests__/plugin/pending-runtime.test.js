@@ -24,6 +24,16 @@ function loadPendingRuntimeContext() {
     Set,
     Promise,
     window: windowMock,
+    pendingHasActiveLongRunning: jest.fn((pendingSubmissions) => {
+      const pending = Array.isArray(pendingSubmissions) ? pendingSubmissions : [];
+      return pending.some(
+        (entry) =>
+          entry &&
+          (entry.status === "running" || entry.status === "received") &&
+          entry.retryArgs &&
+          entry.retryArgs.longRunning,
+      );
+    }),
   };
   const source = fs.readFileSync(path.resolve(__dirname, "../../pending_runtime.js"), "utf8");
   vm.runInNewContext(source, context, { filename: "pending_runtime.js" });
@@ -36,6 +46,7 @@ function createPlugin(overrides = {}) {
     savePluginState: jest.fn(() => Promise.resolve()),
     refreshOpenViews: jest.fn(),
     updateLongRunningPoller: jest.fn(),
+    stopLongRunningPoller: jest.fn(),
   }, overrides);
 }
 

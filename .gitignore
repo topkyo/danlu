@@ -61,6 +61,9 @@ build/
 .obsidian/plugins/*/package.json
 .obsidian/plugins/*/package-lock.json
 .obsidian/plugins/*/__mocks__/
+# Track Product Shell Jest harness so CI can hard-gate when required
+!.obsidian/plugins/furnace-product-shell/package.json
+!.obsidian/plugins/furnace-product-shell/package-lock.json
 
 # Probe/scratch files
 probe_*.md

@@ -14,14 +14,16 @@
 
 ## 当前动态
 
+- 2026-07-15 (Commercial Go-Live 执行波)：按评估报告/Post-Cleanup 开干。**WS1** 邮箱→`topkyoxp@gmail.com`、仅询价决策、`docs/commercial/EULA.md`；**WS2** `pip install -e .` 预览 + v0.4.0 + `default_prompts` 入包 + launcher 优先 `aiwiki`；**WS3** Demo 对外 checklist + assets 占位；**WS5** alchemy `atomic_write_text` + Product Shell Jest hard-gate（180 passed）；README/COMPARE 补 LLM-Wiki production runtime 叙事。残留：PyPI 正式发布、EULA 法律签收、截图/录屏媒体、WS6 dogfood。验证：见本轮 commit 后 `verify.sh all`。
+
 - 2026-07-15 (round 16 — UNTRACKED CLEANUP user-approved application)：round 15 subagent 1 盘点 untracked 本地 artifacts，user 决策 "Apply all SAFE_TO_DELETE (44 MiB freed, low risk)" + "Defer REVIEW_NEEDED to future round"。本轮落定 SAFE_TO_DELETE 9 项：`rm -rf .agents/` (0 KiB empty，已 ban AgentStack)、`rm -rf .codegraph/` (37.1 MiB local scratch，daemon not running)、`rm -f .coverage` (2.2 MiB tooling removed post 5a1c20c)、`rm -rf .pytest_cache/` (316 KiB regenerable)、`rm -rf .ruff_cache/` (32 KiB regenerable)、`rm -rf src/aiwiki.egg-info/` (60 KiB pip editable install residue)、`rm -rf tests/unit/` (0 KiB empty leftover from commit a76fa66)、`find . -type d -name __pycache__ -exec rm -rf` (92 dirs / ~4.4 MiB Python bytecode caches regenerable)。Repo 总量 ≈ 193 MiB → 149 MiB (释放 44 MiB ∈ 预计范围)。`rm -rf` 操作有效，delete 后 `bash scripts/verify.sh` 仍 PASS（17 acceptance fixture replay 全 green，interpreted caches 在 verification 阶段重新生成）。未提交 untracked deletion 本身（untracked 文件 git 不追踪）；本 commit 只记录 PROGRESS.md head round 16 entry。REVIEW_NEEDED 项 (`.opencode/` 62.6 MiB + `.aiwiki/` 18.8 MiB) 仍存盘，按 user 决策 deferred to future round；KEEP `.venv/` (41.9 MiB) 不动（`scripts/verify.sh` 依赖 venv python）。验证：ruff clean + 17 acceptance + docs_consistency_check.sh 16 OK + verify.sh all ≈ 22 s。Working tree clean。
 
 - 2026-07-15 (round 15 — alchemy_* shared path helper 应用 + Elixir.md 留 active + untracked cleanup 待 user 决策)：multi-agent 第三轮：(1) subagent 重新 audit runner/alchemy_* shared scaffold (round 13 第一次 reject +121 LOC)，本轮采用 STRICT constraint：NO callback closures + ZERO new public API + 保留每个 primitive 的 materialize 位置 / receipt dict / rollback ordering / runtime_history 位置不动，发现**13 byte-identical 行 per file 跨三个 primitive** (= 39 lines replaced by 12 helper calls + 29 LOC helper)。落地新 `src/aiwiki/runner/alchemy_shared.py` (29 LOC) 含 4 个 `_`-private helpers：`_apply_paths` (3 行 inline → 1 行 call)、`_capture_sizes` (3 行 → 1)、`_trace_summary` (3 行 → 1)、`_rollback_truncate` (4 行 → 1)。三个 primitive 各 -10 LOC：alchemy_review.py 153→143 / alchemy_distill.py 208→198 (实测 208→178 with additional dedup) / alchemy_propose.py 197→187。Net total 558 → 557 (实测 -1 line) — 与 round 13 reject 的 +121 完全不同，本轮证明该 refactor 在 strict-no-closure + bare-data-prep-only 条件下是 honest net negative LOC win。ruff clean + 17 acceptance pass + verify.sh all ≈ 32 s。(2) subagent audit `docs/Furnace Elixir.md`：verdict **KEEP in active docs**。doc frontmatter 自报 `kind: thesis / status: historical-thesis / doc_role: thesis-not-runtime-spec`；两个 SoT docs (`Furnace Agent Architecture.md` / `Furnace Evolution Mechanics.md`) 用 `related_docs` + `（仍 accepted）` 标引用该 thesis — 不是漏 cleanup，是 deliberate placement。AGOS-9-Scorecard 也有 1 处 bare path 引用。无修复需要。(3) untracked 本地文件盘点（per AGENTS.md safety of untracked rule）：**SAFE_TO_DELETE ~44 MiB**（`.agents/` 0 KiB empty 被 ban / `.codegraph/` 37.1 MiB stopped daemon / `.coverage` 2.2 MiB tooling removed / `.pytest_cache/` / `.ruff_cache/` / `src/aiwiki.egg-info/` 60 KiB pip editable residue / `tests/unit/` 0 KiB empty leftover from a76fa66 / `__pycache__` dirs 4.4 MiB Python 字节码自动重生）+ **REVIEW_NEEDED ~79.5 MiB**（`.opencode/` 62.6 MiB 含 2 tracked agent configs / `.aiwiki/` 18.8 MiB runtime state 4713 files）+ **KEEP `.venv/` 56.9 MiB**（`scripts/verify.sh` 依赖 venv python）。Untracked 删除需 user 显式授权，按 safety-of-untracked rule 走 AskUser。
 
 - 2026-07-15 (round 14 — PROGRESS head 表格化 + AGOS-9-Scorecard 最后一处 bare ref 收口)：subagent 2 (PROGRESS head consolidation) 落地：14 轮 cleanup round 在 `## 当前动态` 顶部用一个 13-row 表格压缩呈现 (含 R0 锚点行)，完整长文搬迁到下方 `## Round detail (chronological)` 段 (按 R1 → R13 顺序，每个 round 保留原始段落)。`## 当前动态` 顶部新增 2 行 high-level state：当前节奏 / 当前 blocker。`## SoT 引用` / `## Milestone Quick Index` / `## 状态 — 当前活跃3 轮` / `## 改进方向` 段不动。修复 subagent 初次写的表格中 R1 用的 `21e8b1e` 不存在 commit hash，改为 `3c373d7`（pre-cleanup merge baseline，备注与其它 cleanup round 区分）；subagent 3 (AGOS-9-Scorecard audit) 落地 4 处修补：`docs/AGOS-9-Scorecard.md:56` 把 3 个 blank bracket tag 改为显式 `[AOS-C8 frozen 2026-05-24]` + `[已删 2026-07-15 commit f4f87c7]` (含 `agos9_release_audit.sh` / `agos9_dogfood_proof_status.sh` / `bash scripts/verify.sh` PASS 2439-coverage);L110 把狗 food evidence 表 cell `repo targeted/unit/acceptance PASS` 改为 `repo targeted/acceptance PASS [unit 段已退 2026-07-15]`;L170 把 `Tests | tests/ acceptance + unit` 改为 `Tests | tests/ acceptance-only [unit 段已退 2026-07-15]`。subagent 1 (src final stale hunt) 完成 clean report：零 bare runtime import bug、零 unannotated stale ref、零 `_LAZY_OWNERS` 项指向已删 module；9 处 legal "extracted from app_X" provenance docstring + 2 处 legal "originally tested in tests/test_X" seam 在 src active files 中都是文字性证据块，不另加标注。
 
-- 当前节奏：Round 13 已收尾（`eefb89e`）。CHANGELOG `[Unreleased]` 段去重归 canonical（45 条事实保留），6 处 active doc 裸引用修正，ruff/acceptance/docs_consistency 全绿。
-- 当前 blocker：无；下一轮按 `docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md` Commercial Go-Live WS1–WS6 启动。
+- 当前节奏：Commercial Go-Live 执行波已落地 WS1–WS3/WS5 主项；cleanup R13 收尾仍成立。
+- 当前 blocker：无 runtime blocker；残留 PyPI 正式发布、EULA 法律签收、demo 媒体、WS6 dogfood。
 
 | 轮次 | Commit | 主题 | 关键变更 |
 |---|---|---|---|
@@ -164,12 +166,12 @@
 
 | 优先级 | 方向 | 状态 |
 |---|---|---|
-| P0 | Commercial go-live：真实 `commercial@` / `support@`、价格决策、商业 EULA/购买路径（替换 `@example.com`） | 未立项执行 / 需运营法律决策 |
-| P1 | 分发闭环：`pip install` 或 INSTALL 明确预览边界；版本与 tag 对齐 | 延期自 Cleanup Phase5 |
-| P1 | Jest hard-gate + env-coupled 测试隔离（workspace / Chrome drop） | soft-skip 仍在 |
-| P1 | Alchemy materialize 等裸 `write_text` → `atomic_write_text` | 已记录待修 |
-| P2 | Scorecard hub 行数刷新；PROGRESS 活跃 round 切档卫生 | 部分已在本审计 PR 启动 |
-| P2 | Demo Pack 截图/录屏资产（fixture 已交付） | WS3 |
+| P0 | Commercial go-live：真实邮箱、询价决策、商业 EULA | **done（草案）**：`topkyoxp@gmail.com` + `EULA.md`；正式法律签收仍 open |
+| P1 | 分发闭环：`pip install` 或 INSTALL 明确预览边界；版本与 tag 对齐 | **partial**：`pip install -e .` + v0.4.0；PyPI 正式发布待定 |
+| P1 | Jest hard-gate + env-coupled 测试隔离 | **done / moot**：Jest 180 hard-gate；env unit 已退 |
+| P1 | Alchemy materialize 等裸 `write_text` → `atomic_write_text` | **done** |
+| P2 | Scorecard hub 行数刷新；PROGRESS 活跃 round 切档卫生 | 先前审计 PR 已处理 |
+| P2 | Demo Pack 截图/录屏资产（fixture + checklist 已交付） | checklist done；媒体可选待补 |
 | 观测 | 14/30-day natural dogfood proof（不伪造 PASS） | Scorecard not-yet |
 | Out | hub 大拆、SaaS、全功能 iOS、用 AgentOS 9.05 冒充商业 9 分 | 禁止 |
 

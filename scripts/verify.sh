@@ -98,6 +98,29 @@ verify_product_shell_static() {
   done < <(find "$product_shell_dir" \
     \( -path "$product_shell_dir/node_modules" -o -path "$product_shell_dir/.git" \) -prune \
     -o -name '*.js' -print0)
+
+  # Jest hard-gate (package.json tracked). Set AIWIKI_SKIP_PRODUCT_SHELL_JS_TESTS=1 only for emergency local bypass.
+  if [[ "${AIWIKI_SKIP_PRODUCT_SHELL_JS_TESTS:-}" == "1" ]]; then
+    echo "warning: skipping Product Shell Jest (AIWIKI_SKIP_PRODUCT_SHELL_JS_TESTS=1)" >&2
+    return 0
+  fi
+  if [[ ! -f "$product_shell_dir/package.json" ]]; then
+    echo "Product Shell package.json missing; cannot hard-gate Jest" >&2
+    return 1
+  fi
+  if ! command -v npm >/dev/null 2>&1; then
+    echo "npm is required for Product Shell Jest hard-gate" >&2
+    return 1
+  fi
+  (
+    cd "$product_shell_dir"
+    if [[ -f package-lock.json ]]; then
+      npm ci --silent
+    else
+      npm install --silent
+    fi
+    npm test
+  )
 }
 
 case "$TARGET" in

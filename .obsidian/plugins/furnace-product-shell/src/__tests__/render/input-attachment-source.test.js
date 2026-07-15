@@ -78,11 +78,11 @@ describe("Universal Input attachment source handling", () => {
     const constantsSrc = fs.readFileSync(path.resolve(__dirname, "../../constants.js"), "utf8");
     const bundleSrc = fs.readFileSync(path.resolve(__dirname, "../../../main.js"), "utf8");
 
-    expect(constantsSrc).toContain("PDF 原件进 raw/assets；仓库快照进 raw/inbox。");
+    expect(constantsSrc).toContain("PDF 原件进 raw/assets；Markdown / 仓库快照进 raw/inbox。");
     expect(constantsSrc).toContain("图片原件进 raw/assets。");
     expect(constantsSrc).not.toContain("把 PDF 或仓库快照投进 raw/inbox。");
     expect(constantsSrc).not.toContain("把图片投进 raw/inbox。");
-    expect(bundleSrc).toContain("PDF 原件进 raw/assets；仓库快照进 raw/inbox。");
+    expect(bundleSrc).toContain("PDF 原件进 raw/assets；Markdown / 仓库快照进 raw/inbox。");
     expect(bundleSrc).toContain("图片原件进 raw/assets。");
   });
 
@@ -245,7 +245,7 @@ describe("Universal Input attachment source handling", () => {
     const bundleSrc = fs.readFileSync(path.resolve(__dirname, "../../../main.js"), "utf8");
 
     expect(bundleSrc).toMatch(/function buildAskCommandSpec/);
-    expect(bundleSrc).toMatch(/const longRunning = mode === "run-ask" && format === "report"/);
+    expect(bundleSrc).toMatch(/const longRunning = mode === "run-ask" && finalFormat === "report"/);
     expect(bundleSrc).toMatch(/const command = longRunning \? "run-ask-submit" : mode/);
     expect(bundleSrc).toMatch(/backgroundSubmit: longRunning/);
   });

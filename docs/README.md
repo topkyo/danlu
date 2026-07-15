@@ -17,7 +17,7 @@ updated_at: 2026-07-15
 | [Furnace Runtime Operations](<./Furnace Runtime Operations.md>) | **运行手册 SoT**：watcher、nightly、LLM worker、四 API 后端与 fail-closed 策略 |
 | [AGOS-9-Scorecard](<./AGOS-9-Scorecard.md>) | **AgentOS 评分与 release gate SoT**：证据分层、blocking gate、本地 release 口径 |
 | [Furnace Elixir](<./Furnace Elixir.md>) | 金丹机制产品思路 thesis（accepted） |
-| [INSTALL](<./INSTALL.md>) | **安装指南**：Desktop Obsidian + `PYTHONPATH=src` runtime 起步 |
+| [INSTALL](<./INSTALL.md>) | **安装指南**：源码安装 + `pip install -e .` 预览路径；PyPI 正式发布待定 |
 | [USER_GUIDE](<./USER_GUIDE.md>) | **用户指南**：日常 drop / compile / ask / review 路径 |
 | [DEVELOPER](<./DEVELOPER.md>) | **开发者指南**：owner map、verify targets、LLM/自动化细节 |
 | [commercial/PRICING](<./commercial/PRICING.md>) | 商业定价与 SKU（首发仅询价、无公开标价） |

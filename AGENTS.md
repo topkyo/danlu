@@ -36,7 +36,7 @@
   - 日常：`scripts` + `python-static` + `smoke`（无 coverage，单次 ~25s）；用 `bash scripts/verify_target_rules.sh` 按改动路径自动选
   - `all` 走 `scripts + product-shell-static + cli-smoke + smoke + python-static + acceptance`（≈ 18 s，**含 acceptance 17 fixture replay**）；不含 pytest / coverage gate
 - 按改动路径建议 target：`bash scripts/verify_target_rules.sh`
-- 已移除：`cache_benchmark.py` / `compile_benchmark.py` / `dogfood_maturity_gate.py` / `agos9_*.sh` 等耗时辅助脚本、`verify.sh` 内的 `coverage run pytest` 段（释放 12 min）以及 `product-shell-static` 中的 bundle drift gating；脚本侧只保留 vault/runtime/install/uninstall 核心
+- 已移除：`cache_benchmark.py` / `compile_benchmark.py` / `dogfood_maturity_gate.py` / `agos9_*.sh` 等耗时辅助脚本、`verify.sh` 内的 `coverage run pytest` 段（释放 12 min）以及旧 bundle drift gating；`product-shell-static` 现为 `node --check` + Jest hard-gate（可用 `AIWIKI_SKIP_PRODUCT_SHELL_JS_TESTS=1` 紧急旁路）；脚本侧只保留 vault/runtime/install/uninstall 核心
 - 文档一致性：`bash scripts/docs_consistency_check.sh`
 - `tests/` 范围已收缩到 acceptance-only：`tests/test_acceptance_loop.py` + `tests/acceptance/` + `tests/fixtures/`，由 `bash scripts/verify.sh` 默认 `all` 跑 17 acceptance fixture；旧 144 个 pytest 单元测试文件（118 顶层 + 26 `tests/unit/`，约 56k LOC）作为 contract 已 retire，`coverage>=7.6,<8` 已从 dev deps 中移除
 

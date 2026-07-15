@@ -12,9 +12,9 @@
 
 ## 安装方式
 
-### 方式一：开发者安装（当前推荐）
+### 方式一：源码安装（完整 Product Shell，当前推荐）
 
-目前炼丹炉主要通过源码运行，不需要你懂开发，只要会复制粘贴命令即可。
+适合要跑 Obsidian Product Shell 的用户。需要克隆本仓库作为 **runtime root**（插件模板与 vault 脚手架仍从 checkout 同步）。
 
 ```bash
 # 1. 克隆仓库
@@ -24,26 +24,45 @@ cd aiwiki
 # 2. 确认 Python 版本
 python3 --version   # 需要 3.10 及以上
 
-# 3. 后续所有命令都在 aiwiki 目录下执行，使用 PYTHONPATH=src 调用 runtime
+# 3. 可选：editable 安装，获得 `aiwiki` console script（与方式二预览一致）
+pip install -e ".[dev]" --break-system-packages   # 若无 PEP 668，可去掉 --break-system-packages
 ```
 
-这种方式适合现在就想用起来的用户。未来会提供 `pip install aiwiki` 的一键安装，见下方方式二。
+后续可用 `aiwiki ...`，或继续用 `PYTHONPATH=src python3 -m aiwiki.cli ...` / vault 内 `scripts/aiwiki-launcher.sh`。
 
-### 方式二：pip 安装（即将支持）
+### 方式二：pip 预览安装（CLI 主路径已可用；PyPI 正式发布待定）
+
+**边界（诚实预览）**：
+
+- **可用**：在克隆仓库根执行 `pip install -e .`（或 `pip install .`）后，用 `aiwiki` 做 `new-vault` / `layout` / `compile` / `today` / `drop` 等 CLI。
+- **仍依赖 checkout**：创建带 Product Shell 的 vault 需要本仓库里的 `.obsidian/plugins/furnace-product-shell/` 三件套；**尚未**发布到 PyPI 的 `pip install aiwiki` 一键包。
+- 版本与 CHANGELOG AgentOS gate 对齐为 **0.4.0**（见 `pyproject.toml` / `src/aiwiki/__init__.py`）。
 
 ```bash
-pip install aiwiki
+git clone https://github.com/topkyo/danlu.git aiwiki
+cd aiwiki
+pip install -e . --break-system-packages   # 预览；正式 PyPI 名待发布后改为 pip install aiwiki
+aiwiki --help
 ```
 
-该方式还在准备中，目前请勿用于生产 vault。等正式支持后，安装指南会同步更新。
+干净机最小验收（在仓库根执行；`--root` 指向 **runtime checkout**，vault 路径是 `new-vault` 参数）：
+
+```bash
+aiwiki advanced new-vault /tmp/furnace-preview-vault
+aiwiki --root /tmp/furnace-preview-vault advanced compile
+aiwiki --root /tmp/furnace-preview-vault today
+```
+
+> 若你的环境已有 `aiwiki` console script，vault 内 `scripts/aiwiki-launcher.sh` 会优先调用它；否则回退到 `PYTHONPATH=src python3 -m aiwiki.cli`。
 
 ## 首次创建 vault
 
 vault 是你的炼丹炉工作区，里面包含 `raw/`、`wiki/`、`output/`、`.aiwiki/` 状态目录和 Obsidian 配置。
 
 ```bash
-# 在 aiwiki 源码目录下执行
-PYTHONPATH=src python3 -m aiwiki.cli --root . advanced new-vault /path/to/your-vault
+# 在已安装 `aiwiki` 或源码目录下执行（推荐 console script）
+aiwiki --root . advanced new-vault /path/to/your-vault
+# 等价：PYTHONPATH=src python3 -m aiwiki.cli --root . advanced new-vault /path/to/your-vault
 ```
 
 把 `/path/to/your-vault` 换成你想要的路径，例如 `~/炼丹炉` 或 `~/Documents/furnace-vault`。
