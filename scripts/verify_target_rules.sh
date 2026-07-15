@@ -37,6 +37,20 @@ emit_targets_for_path() {
       echo scripts
       return 0
       ;;
+    scripts/run_product_shell_tests.sh|scripts/check_product_shell_bundle.sh|scripts/product_shell_smoke.sh)
+      echo scripts
+      echo product-shell-static
+      return 0
+      ;;
+    .coveragerc)
+      echo scripts
+      echo unit
+      return 0
+      ;;
+    LICENSE|CHANGELOG.md)
+      echo scripts
+      return 0
+      ;;
     scripts/run_acceptance.sh|tests/fixtures/acceptance/*|tests/fixtures/acceptance/**/*)
       echo scripts
       echo acceptance

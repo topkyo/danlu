@@ -24,6 +24,15 @@ updated_at: 2026-07-14
 | [Furnace Agentic Debt Autopilot](<./Furnace Agentic Debt Autopilot.md>) | **agentic 边界 SoT**：核心 manual-only 面与非核心 LLM-owned 面 |
 | [Furnace Market Scan 2026Q2](<./Furnace Market Scan 2026Q2.md>) | 2026Q2 市场对标与差异化判断 |
 | [Furnace Elixir](<./Furnace Elixir.md>) | 金丹机制产品思路 thesis（accepted） |
+| [INSTALL](<./INSTALL.md>) | **安装指南**：Desktop Obsidian + `PYTHONPATH=src` runtime 起步 |
+| [USER_GUIDE](<./USER_GUIDE.md>) | **用户指南**：日常 drop / compile / ask / review 路径 |
+| [commercial/PRICING](<./commercial/PRICING.md>) | 商业定价与 SKU（占位邮箱待替换） |
+| [commercial/BOUNDARIES](<./commercial/BOUNDARIES.md>) | 开源版 vs 商业版边界 + 商业 license 获取 |
+| [commercial/PRIVACY](<./commercial/PRIVACY.md>) | local-first 隐私与 egress 声明 |
+| [commercial/SUPPORT](<./commercial/SUPPORT.md>) | 支持通道与响应预期 |
+| [commercial/COMPARE](<./commercial/COMPARE.md>) | 与常见知识工具对照 |
+| [LICENSE](<../LICENSE>) | AGPL-3.0 / Commercial Dual License |
+| [CHANGELOG](<../CHANGELOG.md>) | 版本变更记录 |
 
 ## Active Plans（阶段性，完成后归档）
 

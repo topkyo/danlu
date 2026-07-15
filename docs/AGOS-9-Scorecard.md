@@ -296,7 +296,7 @@ bash scripts/verify.sh
 | `runner/workflow_shared.py` | ~45 | ask/compile 共享 helper |
 | `runner/alchemy.py` | 2589 | 待 slim（deferred） |
 | `app_protocol.py` | ~1750 | library 已抽出 |
-| AOS-003/005/006 slim 记录 | `docs/analysis/`, `PROGRESS.md` | local_stats + workflows_ask 完成 |
+| AOS-003/005/006 slim 记录 | `docs/archive/analysis/`, `PROGRESS.md` | local_stats + workflows_ask 完成 |
 
 P1 当前口径：hub slimming 是持续 seam enforcement，不是一次性大拆；`runner/alchemy.py` 与 Product Shell `plugin.js` 只按最高 ROI、单 hotspot、测试先行方式继续削薄。
 

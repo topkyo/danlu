@@ -12,5 +12,5 @@ ExecStart=__PROJECT_ROOT__/scripts/run_nightly.sh
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
-ReadWritePaths=__VAULT__
+ReadWritePaths="__VAULT__"
 RestrictSUIDSGID=true

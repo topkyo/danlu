@@ -128,8 +128,10 @@ file-back 会根据当前 protocol 把结论整理成 judgment、decision 或 de
 # 每晚自动巡检
 ./scripts/aiwiki-launcher.sh advanced nightly
 
-# 查看跨周期 thesis（金丹候选）
-./scripts/aiwiki-launcher.sh advanced alchemy-status
+# 启动 / 蒸馏 / 定稿金丹（跨周期 reusable thesis）
+./scripts/aiwiki-launcher.sh advanced alchemy-start --help
+./scripts/aiwiki-launcher.sh advanced alchemy-distill --help
+./scripts/aiwiki-launcher.sh advanced alchemy-finalize --help
 ```
 
 沉淀下来的 reusable thesis 会变成 `wiki/elixirs/` 中的金丹，供下一轮研究引用。

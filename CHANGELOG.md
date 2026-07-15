@@ -18,13 +18,16 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
   - `docs/commercial/SUPPORT.md` — 支持渠道、响应 tier、不支持范围。
   - `docs/commercial/COMPARE.md` — 对外竞品对比页，强调差异化价值。
 - 新增 `CHANGELOG.md`（本文件）。
+- `LICENSE` copyright + dual-license 获取说明；`docs/README.md` Active 表纳入 INSTALL / USER_GUIDE / commercial 文档。
 
 ### Changed
-- `README.md` 继续作为产品定位与开发者 SoT 入口；商业化信息集中进 `docs/commercial/`。
-- 文档一致性检查覆盖新增商业化文档。
+- `README.md` / `PROGRESS.md` 指向当前 Commercial Grade Cleanup Plan；商业入口链到 `docs/commercial/`。
+- `verify.sh all` 恢复 deterministic `smoke` + `cli-smoke`；Product Shell Jest runner 在插件目录解析依赖。
+- `atomic_append_jsonl` 失败时 truncate 回滚；CLI bulk action 对腐坏 state fail-closed。
 
 ### Fixed
 - （与商业化清理 Wave B/C 同步）脚本硬编码路径、失败测试、凭据 repr 防护等详见 `docs/Furnace Commercial Grade Cleanup Plan 2026-07.md`。
+- 交叉审查后续：断链、`alchemy-status` 虚构命令、`CLAUDE.md` 残留引用、`AIWIKI_LLM_TIMEOUT` 变量名、systemd 含空格 vault 路径渲染。
 
 ## [0.4.0-agentos-9] - 2026-05-24
 

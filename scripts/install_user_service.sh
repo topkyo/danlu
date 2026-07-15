@@ -159,34 +159,49 @@ fi
 WATCH_VAULT_ROOT="$(env_key_value "$WATCH_ENV_PATH" "AIWIKI_VAULT" "$VAULT_ROOT")"
 NIGHTLY_VAULT_ROOT="$(env_key_value "$NIGHTLY_ENV_PATH" "AIWIKI_VAULT" "$VAULT_ROOT")"
 
-sed \
-  -e "s|__PROJECT_ROOT__|$PROJECT_ROOT|g" \
-  -e "s|__ENV_FILE__|$WATCH_ENV_PATH|g" \
-  -e "s|__VAULT__|$WATCH_VAULT_ROOT|g" \
-  "$WATCH_TEMPLATE_PATH" >"$WATCH_UNIT_PATH"
+render_template() {
+  local template="$1"
+  local dest="$2"
+  shift 2
+  "$PYTHON_BIN" - "$template" "$dest" "$@" <<'PY'
+from pathlib import Path
+import sys
 
-sed \
-  -e "s|__PROJECT_ROOT__|$PROJECT_ROOT|g" \
-  -e "s|__ENV_FILE__|$NIGHTLY_ENV_PATH|g" \
-  -e "s|__VAULT__|$NIGHTLY_VAULT_ROOT|g" \
-  "$NIGHTLY_SERVICE_TEMPLATE_PATH" >"$NIGHTLY_SERVICE_PATH"
+template = Path(sys.argv[1])
+dest = Path(sys.argv[2])
+text = template.read_text(encoding="utf-8")
+args = sys.argv[3:]
+if len(args) % 2 != 0:
+    raise SystemExit("render_template expects KEY VALUE pairs")
+for i in range(0, len(args), 2):
+    text = text.replace(args[i], args[i + 1])
+dest.write_text(text, encoding="utf-8")
+PY
+}
 
-sed \
-  -e "s|__ON_CALENDAR__|$NIGHTLY_ON_CALENDAR|g" \
-  -e "s|__PERSISTENT__|$NIGHTLY_PERSISTENT|g" \
-  "$NIGHTLY_TIMER_TEMPLATE_PATH" >"$NIGHTLY_TIMER_PATH"
+render_template "$WATCH_TEMPLATE_PATH" "$WATCH_UNIT_PATH" \
+  __PROJECT_ROOT__ "$PROJECT_ROOT" \
+  __ENV_FILE__ "$WATCH_ENV_PATH" \
+  __VAULT__ "$WATCH_VAULT_ROOT"
+
+render_template "$NIGHTLY_SERVICE_TEMPLATE_PATH" "$NIGHTLY_SERVICE_PATH" \
+  __PROJECT_ROOT__ "$PROJECT_ROOT" \
+  __ENV_FILE__ "$NIGHTLY_ENV_PATH" \
+  __VAULT__ "$NIGHTLY_VAULT_ROOT"
+
+render_template "$NIGHTLY_TIMER_TEMPLATE_PATH" "$NIGHTLY_TIMER_PATH" \
+  __ON_CALENDAR__ "$NIGHTLY_ON_CALENDAR" \
+  __PERSISTENT__ "$NIGHTLY_PERSISTENT"
 
 if truthy "$INSTALL_DOGFOOD_MATURITY"; then
-  sed \
-    -e "s|__PROJECT_ROOT__|$PROJECT_ROOT|g" \
-    -e "s|__ENV_FILE__|$DOGFOOD_MATURITY_ENV_PATH|g" \
-    -e "s|__DOGFOOD_VAULT__|$DOGFOOD_MATURITY_VAULT_DEFAULT|g" \
-    "$DOGFOOD_MATURITY_SERVICE_TEMPLATE_PATH" >"$DOGFOOD_MATURITY_SERVICE_PATH"
+  render_template "$DOGFOOD_MATURITY_SERVICE_TEMPLATE_PATH" "$DOGFOOD_MATURITY_SERVICE_PATH" \
+    __PROJECT_ROOT__ "$PROJECT_ROOT" \
+    __ENV_FILE__ "$DOGFOOD_MATURITY_ENV_PATH" \
+    __DOGFOOD_VAULT__ "$DOGFOOD_MATURITY_VAULT_DEFAULT"
 
-  sed \
-    -e "s|__ON_CALENDAR__|$DOGFOOD_MATURITY_ON_CALENDAR|g" \
-    -e "s|__PERSISTENT__|$DOGFOOD_MATURITY_PERSISTENT|g" \
-    "$DOGFOOD_MATURITY_TIMER_TEMPLATE_PATH" >"$DOGFOOD_MATURITY_TIMER_PATH"
+  render_template "$DOGFOOD_MATURITY_TIMER_TEMPLATE_PATH" "$DOGFOOD_MATURITY_TIMER_PATH" \
+    __ON_CALENDAR__ "$DOGFOOD_MATURITY_ON_CALENDAR" \
+    __PERSISTENT__ "$DOGFOOD_MATURITY_PERSISTENT"
 else
   systemctl --user disable --now "$DOGFOOD_MATURITY_TIMER_NAME" >/dev/null 2>&1 || true
   systemctl --user stop "$DOGFOOD_MATURITY_SERVICE_NAME" >/dev/null 2>&1 || true

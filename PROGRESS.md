@@ -10,7 +10,7 @@
 
 - 终局架构：`docs/Furnace Agent Architecture.md` + `docs/Furnace Evolution Mechanics.md`
 - 评分 / release gate：`docs/AGOS-9-Scorecard.md`
-- 当前执行计划：`docs/Furnace Cleanup Commercial Audit Plan 2026-07.md`
+- 当前执行计划：`docs/Furnace Commercial Grade Cleanup Plan 2026-07.md`
 - 验证入口：`bash scripts/verify.sh`
 - 改进清单：见本文件底部「改进方向」段
 
@@ -18,6 +18,8 @@
 ## 当前动态
 
 > 切档：2026-05-24 及更早的大段 AGOS/AOS/C/P4 历史动态已移至 `archive/rounds/progress-2026-05-snapshot.md`；本段只保留最近状态与本轮清理。
+
+- 2026-07-15 (cleanup review fixes)：交叉审查后修复 P0–P2：`atomic_append_jsonl` 失败回滚、Jest runner cwd、`verify.sh all` 恢复 smoke、bulk CLI corrupt fail-closed、断链/SoT、LICENSE dual-license 头、systemd 空格路径。D4 README→DEVELOPER 拆分仍开放。
 
 - 2026-07-14 (Wave A residual A7/A8 docs cleanup)：PROGRESS 当前动态切档到 `archive/rounds/progress-2026-05-snapshot.md`，只保留 2026-06/05-31 近况；`wiki/indexes/README.md` 明确 indexes 为 compile 生成态、非 SoT，死链由 compile 重生或移出仓库处理。本轮仅文档/归档，未改 `src/`。
 

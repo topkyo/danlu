@@ -56,7 +56,7 @@ run_json() {
   temp_stderr="$(mktemp)"
   if [[ "$label" == "run-ask" ]]; then
     set +e
-    AIWIKI_LLM_TIMEOUT_SECONDS="${AIWIKI_LLM_TIMEOUT_SECONDS:-300}" "$LAUNCHER" "$@" >"$temp_stdout" 2>"$temp_stderr"
+    AIWIKI_LLM_TIMEOUT="${AIWIKI_LLM_TIMEOUT:-300}" "$LAUNCHER" "$@" >"$temp_stdout" 2>"$temp_stderr"
     status=$?
     set -e
   else

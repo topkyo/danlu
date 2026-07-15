@@ -110,6 +110,28 @@ class ConfigTests(unittest.TestCase):
         self.assertNotIn("sk-anthropic", repr_str)
         self.assertNotIn("sk-opencode", repr_str)
 
+    def test_llm_config_redacted_masks_keys_only(self) -> None:
+        config = LLMConfig(
+            backend="opencode-api",
+            model="deepseek-v4-pro",
+            base_url="https://example.test/v1",
+            api_key="sk-secret-key",
+            deepseek_api_key="sk-deepseek",
+            anthropic_api_key="sk-anthropic",
+            opencode_api_key="sk-opencode",
+            deepseek_api_key_source="env",
+        )
+        redacted = config.redacted()
+
+        self.assertEqual(redacted["api_key"], "***")
+        self.assertEqual(redacted["deepseek_api_key"], "***")
+        self.assertEqual(redacted["anthropic_api_key"], "***")
+        self.assertEqual(redacted["opencode_api_key"], "***")
+        self.assertEqual(redacted["backend"], "opencode-api")
+        self.assertEqual(redacted["model"], "deepseek-v4-pro")
+        self.assertEqual(redacted["base_url"], "https://example.test/v1")
+        self.assertEqual(redacted["deepseek_api_key_source"], "env")
+
     def test_status_from_env_reports_available_api_backends_only(self) -> None:
         status = self._status_from_env(
             {

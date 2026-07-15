@@ -13,7 +13,12 @@ from ..app_cache import cache_status_summary, drop_query_cache, force_rebuild_qu
 from ..app_compile import compile_wiki, lint_wiki, set_active_protocol
 from ..app_protocol import ensure_layout, load_protocol_state
 from ..app_shell import build_shell_summary, rewrite_followup_payload_for_paths, shell_search, shell_status_dashboard
-from ..app_state import load_machine_memory_action_state, load_today_snooze_state, save_today_snooze_state
+from ..app_state import (
+    load_machine_memory_action_state,
+    load_machine_memory_action_state_strict,
+    load_today_snooze_state,
+    save_today_snooze_state,
+)
 from ..app_vault import bootstrap_new_vault, sync_product_shell_plugin
 from ..content.io import ingest_source
 from ..content.memory import action_supports_low_risk_apply

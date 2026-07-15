@@ -32,6 +32,7 @@ review_page = _DispatchProxy("review_page")
 review_machine_memory_actions_batch = _DispatchProxy("review_machine_memory_actions_batch")
 apply_machine_memory_actions_batch = _DispatchProxy("apply_machine_memory_actions_batch")
 load_machine_memory_action_state = _DispatchProxy("load_machine_memory_action_state")
+load_machine_memory_action_state_strict = _DispatchProxy("load_machine_memory_action_state_strict")
 resolve_machine_memory_action_query = _DispatchProxy("resolve_machine_memory_action_query")
 action_supports_low_risk_apply = _DispatchProxy("action_supports_low_risk_apply")
 auto_process_once = _DispatchProxy("auto_process_once")
@@ -1027,7 +1028,7 @@ def _resolve_action_id(root: Path, action_query: str) -> str:
     normalized_query = action_query.strip()
     if not normalized_query:
         raise ValueError("Action id cannot be empty.")
-    state = load_machine_memory_action_state(root)
+    state = load_machine_memory_action_state_strict(root)
     actions = [action for action in state.get("actions", []) if isinstance(action, dict)]
     if not actions:
         return normalized_query
@@ -1053,7 +1054,7 @@ def _resolve_review_action_ids(
     if not normalized_kind:
         raise ValueError("review-action --all-pending requires --kind to avoid broad action triage.")
     normalized_band = (execution_band or "review-first").strip() or "review-first"
-    state = load_machine_memory_action_state(root)
+    state = load_machine_memory_action_state_strict(root)
     action_ids = [
         str(action.get("id") or "")
         for action in state.get("actions", [])
@@ -1087,7 +1088,7 @@ def _resolve_action_ids(
         return [_resolve_action_id(root, action_id)]
     if batch:
         return [_resolve_action_id(root, item) for item in batch if item.strip()]
-    state = load_machine_memory_action_state(root)
+    state = load_machine_memory_action_state_strict(root)
     action_ids = [
         str(action.get("id") or "")
         for action in state.get("actions", [])
