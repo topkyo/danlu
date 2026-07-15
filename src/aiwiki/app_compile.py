@@ -586,33 +586,6 @@ def rank_concepts(
     return [item for _score, item in ranked[:5]]
 
 
-
 # EP-018B: execution entry points live under ``aiwiki.execution.*``.
 # Import them from owner modules directly; this module no longer lazy-forwards.
 
-from .app_compile_ops import (  # noqa: E402
-    build_agent_packs,
-    promote_recurring_outputs,
-    render_protocols_dashboard,
-    set_active_protocol,
-)
-from .app_linting import (  # noqa: E402
-    Finding,
-    lint_wiki,
-    pending_source_summary_ids,
-    render_repair_backlog,
-    write_nightly_health,
-)
-from .app_queries import (  # noqa: E402
-    concept_page_requires_compile,
-    machine_memory_query_plan_lines,
-    rank_sources,
-    render_decision_memo_query,
-    render_figure_brief,
-    render_report,
-    render_slides,
-    render_sop_query,
-    source_page_is_stale,
-    source_page_requires_compile,
-    wiki_requires_compile,
-)
