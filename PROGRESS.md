@@ -1,6 +1,6 @@
 # 炼丹炉 Progress — Furnace 世代
 
-> **PROGRESS.md 是当前任务状态唯一 SoT**：archive/rounds/* 与 PROGRESS-pre-round1.md 是过去的 agenda-track 产出仓库快照，本文件不把这些路径作为 SoT 列出，只承载 round-by-round 当前条目。
+> **PROGRESS.md 是当前任务状态唯一 SoT**：docs/archive/rounds/* 与 docs/archive/rounds/progress-pre-round1.md 是过去的 agenda-track 产出仓库快照，本文件不把这些路径作为 SoT 列出，只承载 round-by-round 当前条目。
 
 ## SoT 引用
 
@@ -13,6 +13,8 @@
 
 
 ## 当前动态
+
+- 2026-07-15 (round 10 — `archive/` 顶层目录清空 + `archive/PROGRESS-pre-round1.md` 融入 `docs/archive/rounds/`)：紧接 round 9 同源 cleanup。在 round 9 完成 archive/rounds/ 统一归 `docs/archive/` 后，根 `archive/` 顶层仅剩 `PROGRESS-pre-round1.md`（1130 LOC）的 pre-Round 1 历史切档。本轮把此文件 `git mv` 到 `docs/archive/rounds/progress-pre-round1.md`（统一小写命名），它现在与 `docs/archive/rounds/progress-2026-05-snapshot.md`、`docs/archive/rounds/round-*.md` 等 round history 同居一个 tree；根 `archive/` 顶层目录 rmdir 删除（空 dir）。`PROGRESS.md` 顶部 SoT 索句显引用路径同步重写：`docs/archive/rounds/*` + `docs/archive/rounds/progress-pre-round1.md`。`docs/archive/rounds/round-53.md` 与 `docs/archive/Furnace Next Direction Post-P4.md` 历史条目仍保留 `archive/PROGRESS-pre-round1.md` 字面引用（与 round 9 同理：past-tense 历史叙事文本，不该被 anachronism 改写）。`CHANGELOG.md` line 35 描述 prior 的 "切档已 sink" 字符串保持不变（historical record）。验证：ruff clean + 17 acceptance fixture replay 全 pass + `docs_consistency_check.sh` 16 OK + `scripts/verify.sh` all ≈ 25 s。最终状态：repository 不再有顶层 `archive/` 目录；所有历史内容统一在 `docs/archive/` 单树。
 
 - 2026-07-15 (round 9 — `archive/rounds/` → `docs/archive/rounds/` 整体搬迁)：按 subagent 3 (scripts/tests/demos audit) 在 5 active refs 仅剩 2 的残留评估下执行。71 个文件（含 70 markdown + 1 `index.json` schema）通过 `git mv` 整体搬迁到 `docs/archive/rounds/`，保留完整 git history（每文件独立 rename 历史可被 `git log --follow` 查询）。`docs/archive/README.md` 不变（archive 树统一用一个顶层 README 即可）。`docs/Furnace Cleanup Commercial Audit Plan 2026-07.md` 2 处仍指向 `archive/rounds/*` 的行（line 248 A7 行 + line 298 Slim 表格行）全部改为 `docs/archive/rounds/*`。`PROGRESS.md` head 的 "档点" 与 "successors" 段仍保留 `archive/rounds/*` 作为历史叙事文本（不是当前 active refs，避免重写历史）+ 顶部 `PROGRESS.md 是 SoT` 明示也保留 "archive/rounds/* 是过去 agenda-track" 的措辞（语义对路径的指代不论位置，事实不改变）。`CHANGELOG.md` 2 处历史条目是描述 prior 的 archive 删除动作 / R68 结构 v2 退役动作的 past tense，留作 historical record 不动。验证：ruff clean + 17 acceptance fixture replay 全 pass + `docs_consistency_check.sh` 16 OK + `scripts/verify.sh` all ≈ 30 s。最终状态：repository 不再需要 `archive/` 顶层目录除开 `archive/PROGRESS-pre-round1.md`（与 round 9 同步仍存在，等后跟一轮清理）。
 
