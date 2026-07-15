@@ -14,6 +14,8 @@
 
 ## 当前动态
 
+- 2026-07-15 (round 9 — `archive/rounds/` → `docs/archive/rounds/` 整体搬迁)：按 subagent 3 (scripts/tests/demos audit) 在 5 active refs 仅剩 2 的残留评估下执行。71 个文件（含 70 markdown + 1 `index.json` schema）通过 `git mv` 整体搬迁到 `docs/archive/rounds/`，保留完整 git history（每文件独立 rename 历史可被 `git log --follow` 查询）。`docs/archive/README.md` 不变（archive 树统一用一个顶层 README 即可）。`docs/Furnace Cleanup Commercial Audit Plan 2026-07.md` 2 处仍指向 `archive/rounds/*` 的行（line 248 A7 行 + line 298 Slim 表格行）全部改为 `docs/archive/rounds/*`。`PROGRESS.md` head 的 "档点" 与 "successors" 段仍保留 `archive/rounds/*` 作为历史叙事文本（不是当前 active refs，避免重写历史）+ 顶部 `PROGRESS.md 是 SoT` 明示也保留 "archive/rounds/* 是过去 agenda-track" 的措辞（语义对路径的指代不论位置，事实不改变）。`CHANGELOG.md` 2 处历史条目是描述 prior 的 archive 删除动作 / R68 结构 v2 退役动作的 past tense，留作 historical record 不动。验证：ruff clean + 17 acceptance fixture replay 全 pass + `docs_consistency_check.sh` 16 OK + `scripts/verify.sh` all ≈ 30 s。最终状态：repository 不再需要 `archive/` 顶层目录除开 `archive/PROGRESS-pre-round1.md`（与 round 9 同步仍存在，等后跟一轮清理）。
+
 - 2026-07-15 (round 8 整体收口 — `app_memory.py` 整体删除 + 13 importers 迁 owner)：在 29ed655 Phase 1 (graph.py facade回环 break) 基础上，按 AGENTS.md "要做就一轮做完不拖" 原则，本轮一次性整体迁完 `app_memory.py` 的 13 importers：
   - 2 个真实函数（`concept_page_path`, `concept_lifecycle_entry`）hoist 到 `execution/lifecycle.py`（主要 consumer，原本就在此模块调用），同时让 7 个其他 importer 通过 `from (..|.)execution.lifecycle import ...` 重新取这 2 个函数（无 `__all__` re-export，纯传递 import）。
   - 11 个 thin wrapper + `_LAZY_OWNERS` PEP 562 60 入口 + 6 个 module-level re-exports（包括 `question_signature` / `protocol_hints_for_material` 等 5 个 `memory.scoring` re-export）全部重新映射回原 module：脚本驱动生成按 owner 分组的 direct-import，需求量随之从 12 ~ 36 names/files 不等。

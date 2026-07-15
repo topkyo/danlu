@@ -245,7 +245,7 @@ Obsidian UI → Node spawn → aiwiki-launcher.sh → Python CLI → vault write
 | A4 | `automation.py` LLM 失败改为 **fail-closed**（或仅在显式 `deterministic_only` 时 deterministic）；去掉“失败后假装继续成功” | `src/aiwiki/runner/automation.py`, 相关 tests | 中 | `pytest` automation/runner/watch 相关；`verify --target auto` | 否 |
 | A5 | 删除 `backend_fallback_*` 死字段/空函数；同步 shell summary / preflight / tests | `config.py`, `preflight.py`, `app_shell/summary.py`, tests | 中 | `pytest tests/test_config.py tests/test_preflight.py tests/test_app_shell.py` | 否 |
 | A6 | 清理跨 backend failover 测试保护；旧 backend fixture 改名为 stub/historical，避免伪装生产路径 | `tests/test_runner.py` 等 | 中 | runner/llm/preflight pytest + acceptance 抽样 | 否 |
-| A7 | `PROGRESS.md` 切档：只留近期 active；旧 AGOS/C 段进 `archive/rounds/` | `PROGRESS.md`, `archive/rounds/*` | 中 | scripts | 否 |
+| A7 | `PROGRESS.md` 切档：只留近期 active；旧 AGOS/C 段进 `docs/archive/rounds/` | `PROGRESS.md`, `docs/archive/rounds/*` | 中 | scripts | 否 |
 | A8 | `wiki/indexes/` 策略：生成态不入 SoT；破链修复或改为 compile 产物 / fixture，不手写维护 | `wiki/indexes/*` | 中 | compile smoke 或明确移出 | 否 |
 | A9 | AgentStack scaffold 已移除；文档与验证入口改回 canonical verify | `.agentstack/*`, `scripts/agentstack*`, docs | 低 | `bash scripts/verify.sh scripts` | 是 |
 | A10 | Product Shell README / 商业文档写明 Desktop-only 与移动端非目标（本阶段） | Product Shell docs + 本计划 §3 | 低 | product-shell-static | 是 |
@@ -295,7 +295,7 @@ Obsidian UI → Node spawn → aiwiki-launcher.sh → Python CLI → vault write
 | `src/aiwiki/runner/automation.py` | Fix fail-closed | 清隐式兜底 |
 | `src/aiwiki/config.py` (+ callers/tests) | Remove dead backend_fallback | 清死代码 |
 | `tests/test_runner.py` 等 | Retarget fixtures | 防死路径复活 |
-| `PROGRESS.md` / `archive/rounds/*` | Slim + archive | 清状态噪音 |
+| `PROGRESS.md` / `docs/archive/rounds/*` | Slim + archive | 清状态噪音 |
 | `wiki/indexes/*` | Policy + cleanup | 清生成态污染 |
 | `.obsidian/plugins/furnace-product-shell/manifest.json` + docs | Keep desktop-only; document | 全平台边界 |
 | Product Shell `src/bridge/*`（未来） | Extract RuntimeClient | 移动端前置，不在 Wave A 强制 |
