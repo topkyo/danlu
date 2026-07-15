@@ -37,10 +37,6 @@ emit_targets_for_path() {
       echo scripts
       return 0
       ;;
-    .coveragerc)
-      echo scripts
-      return 0
-      ;;
     LICENSE|CHANGELOG.md)
       echo scripts
       return 0

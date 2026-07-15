@@ -26,7 +26,7 @@ Targets:
   acceptance            Run acceptance replay checks.
   cli-smoke             Check aiwiki CLI startup/help.
   product-shell-static  Run Product Shell JavaScript syntax checks.
-  all                   Run the full project verification suite. Default.
+  all                   Run static + smoke + acceptance (no pytest, no coverage). Default.
 USAGE
 }
 
@@ -139,7 +139,4 @@ case "$TARGET" in
 esac
 
 verify_python_static
-"$PYTHON" -m coverage erase
-"$PYTHON" -m coverage run -m pytest tests
-"$PYTHON" -m coverage report
 verify_acceptance

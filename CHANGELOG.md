@@ -15,6 +15,8 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
 - `tests/`：删除 `test_compile_benchmark_smoke.py` / `test_long_window_proof_probe.py` / `test_local_worktree.py` / `test_product_shell_smoke.py` / `test_dogfood_maturity_gate.py` / `test_cache_benchmark_script_outputs_status_and_timings`；`test_app_runtime.py` / `test_app_misc.py` / `test_deploy_defaults.py` 同步剪除 dogfood maturity / product shell smoke 相关断言。
 - `tests/fixtures/acceptance/M6.1b/README.md`：refresh 工具条目从「脚本调用」改为「手动 hash 重命名」，因为 refresh 脚本已删除。
 - `scripts/verify.sh` 整个 `unit` target（含 `verify_unit()` 函数 + dispatch case + usage help 一行）删除；与 `all` 唯一差别是 coverage overhead，`unit` 是 `all` 的"裸测版本"，被证实为冗余单独入口。
+- `scripts/verify.sh` 中 `all|full)` 后串行落点里 `coverage erase + coverage run pytest + coverage report` 三段（约 12 min）一并删除；`.coveragerc` 同步删，`pyproject.toml` 中 `coverage>=7.6,<8` dev 依赖同步移除。`verify.sh all` 退化为 `scripts + product-shell-static + cli-smoke + smoke + python-static + acceptance`（≈18 s daily-feasible，含 acceptance 17 fixture replay）。
+- `scripts/verify_target_rules.sh`：`.coveragerc` 路径 case 一并删除（文件已无）。
 
 ### Changed
 - `scripts/install_user_service.sh` / `scripts/uninstall_user_service.sh`：删除所有 `AIWIKI_INSTALL_DOGFOOD_MATURITY` / `run_dogfood_maturity.sh` 分支，仅保留 `watch` + `nightly`；升级路径上对已存在 `aiwiki-dogfood-maturity.*` unit 做清理兜底。
