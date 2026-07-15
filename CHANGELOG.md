@@ -10,7 +10,7 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
 ## [Unreleased]
 
 ### Added
-- 商业化清理计划落地：`docs/Furnace Commercial Grade Cleanup Plan 2026-07.md`。
+- 商业化清理计划落地并已归档：`docs/archive/Furnace Commercial Grade Cleanup Plan 2026-07.md`。
 - 对外商业化文档集合：
   - `docs/commercial/PRICING.md` — 产品包装、定价 tier、包含/不包含矩阵、不可宣称清单。
   - `docs/commercial/BOUNDARIES.md` — 开源版与商业版边界、明确不卖清单。
@@ -19,14 +19,19 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
   - `docs/commercial/COMPARE.md` — 对外竞品对比页，强调差异化价值。
 - 新增 `CHANGELOG.md`（本文件）。
 - `LICENSE` copyright + dual-license 获取说明；`docs/README.md` Active 表纳入 INSTALL / USER_GUIDE / commercial 文档。
+- `docs/DEVELOPER.md`：从 README 拆出的开发者 SoT（owner map / verify / LLM / 自动化）。
 
 ### Changed
-- `README.md` / `PROGRESS.md` 指向当前 Commercial Grade Cleanup Plan；商业入口链到 `docs/commercial/`。
+- Commercial Grade Cleanup Plan 归档为 `executed-reviewed-pass`；AGENTS/PROGRESS 当前计划指针清空。
+- `README.md` 改为用户向入口；`PROGRESS.md` 指向当前 Commercial Grade Cleanup Plan。
 - `verify.sh all` 恢复 deterministic `smoke` + `cli-smoke`；Product Shell Jest runner 在插件目录解析依赖。
 - `atomic_append_jsonl` 失败时 truncate 回滚；CLI bulk action 对腐坏 state fail-closed。
+- `docs_consistency_check.sh` 扩展 D4 / commercial pack / indexes 死链 / `/home/` 门禁。
+- Cleanup Plan §1.6 再评估评分卡（综合 ~7.6）；Phase 5 明确 go-live 延期项。
 
 ### Fixed
-- （与商业化清理 Wave B/C 同步）脚本硬编码路径、失败测试、凭据 repr 防护等详见 `docs/Furnace Commercial Grade Cleanup Plan 2026-07.md`。
+- 刷新 M6.1b acceptance `prompt_hash` golden（`case_happy_run_ask` / `case_backend_failure`）。
+- （与商业化清理 Wave B/C 同步）脚本硬编码路径、失败测试、凭据 repr 防护等详见 `docs/archive/Furnace Commercial Grade Cleanup Plan 2026-07.md`。
 - 交叉审查后续：断链、`alchemy-status` 虚构命令、`CLAUDE.md` 残留引用、`AIWIKI_LLM_TIMEOUT` 变量名、systemd 含空格 vault 路径渲染。
 
 ## [0.4.0-agentos-9] - 2026-05-24

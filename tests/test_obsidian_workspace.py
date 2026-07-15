@@ -43,29 +43,25 @@ class ObsidianWorkspaceTests(unittest.TestCase):
         self.assertIn("输入端", home)
         self.assertIn("输出端", home)
         self.assertIn("更多工具", home)
-        self.assertNotIn("[[docs/", home)
-        self.assertIn("[[wiki/indexes/furnace-center|", home)
-        wiki_hub = (self.root / "wiki" / "indexes" / "Wiki Hub.md").read_text(encoding="utf-8")
-        self.assertNotIn("[[docs/", wiki_hub)
-        self.assertIn("[[wiki/indexes/Outputs|", home)
-        self.assertIn("[[wiki/indexes/judgment-assets|", home)
+        self.assertIn("[[wiki/indexes/README|", home)
+        self.assertIn("compile", home)
+        self.assertNotIn("[[wiki/indexes/furnace-center|", home)
+        self.assertNotIn("[[wiki/indexes/Outputs|", home)
         self.assertNotIn("## 今日信号", home)
 
     def test_index_notes_exist(self) -> None:
+        # Generated wiki/indexes pages are compile outputs and are not tracked in git.
+        # Only the handwritten strategy page remains checked in.
+        self.assertTrue((self.root / "wiki" / "indexes" / "README.md").exists())
         for relative in (
-            "wiki/indexes/Raw Inbox.md",
-            "wiki/indexes/Wiki Hub.md",
             "wiki/indexes/furnace-center.md",
-            "wiki/indexes/protocols.md",
-            "wiki/indexes/review-center.md",
-            "wiki/indexes/graph-view.md",
-            "wiki/indexes/graph-health.md",
-            "wiki/indexes/repair-backlog.md",
-            "wiki/indexes/review-queue.md",
             "wiki/indexes/Outputs.md",
-            "wiki/indexes/Search Presets.md",
+            "wiki/indexes/Wiki Hub.md",
         ):
-            self.assertTrue((self.root / relative).exists(), relative)
+            # May exist after a local compile, but must not be required as committed SoT.
+            path = self.root / relative
+            if path.exists():
+                self.assertTrue(path.is_file())
 
     def test_folder_label_snippet_hides_docs_from_file_tree(self) -> None:
         from aiwiki.app_vault import _render_folder_label_snippet

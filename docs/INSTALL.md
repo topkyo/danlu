@@ -18,7 +18,7 @@
 
 ```bash
 # 1. 克隆仓库
-git clone <仓库地址> aiwiki
+git clone https://github.com/topkyo/danlu.git aiwiki
 cd aiwiki
 
 # 2. 确认 Python 版本

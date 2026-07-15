@@ -25,9 +25,9 @@ kind: "dashboard"
 ## 关键入口
 
 - [[README|使用说明]]
-- [[wiki/indexes/furnace-center|炉心面板索引]]
-- [[wiki/indexes/Outputs|输出面板]]
-- [[wiki/indexes/judgment-assets|判断资产]]
+- [[wiki/indexes/README|索引策略（compile 后生成面板页）]]
+
+`wiki/indexes/` 下的炉心 / 审阅 / 判断资产等面板页由 `compile` 生成，不入库；先跑 compile 再打开。
 
 ## 备用命令
 
@@ -39,3 +39,5 @@ kind: "dashboard"
 ```
 
 写操作遵守单写约束：不要同时在 Obsidian 和终端里各跑一个 `compile / nightly / apply / revert`。
+
+日常优先用 Product Shell；命令行只作备用。

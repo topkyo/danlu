@@ -26,6 +26,7 @@ updated_at: 2026-07-14
 | [Furnace Elixir](<./Furnace Elixir.md>) | 金丹机制产品思路 thesis（accepted） |
 | [INSTALL](<./INSTALL.md>) | **安装指南**：Desktop Obsidian + `PYTHONPATH=src` runtime 起步 |
 | [USER_GUIDE](<./USER_GUIDE.md>) | **用户指南**：日常 drop / compile / ask / review 路径 |
+| [DEVELOPER](<./DEVELOPER.md>) | **开发者指南**：owner map、verify targets、LLM/自动化细节 |
 | [commercial/PRICING](<./commercial/PRICING.md>) | 商业定价与 SKU（占位邮箱待替换） |
 | [commercial/BOUNDARIES](<./commercial/BOUNDARIES.md>) | 开源版 vs 商业版边界 + 商业 license 获取 |
 | [commercial/PRIVACY](<./commercial/PRIVACY.md>) | local-first 隐私与 egress 声明 |
@@ -38,13 +39,14 @@ updated_at: 2026-07-14
 
 | 文档 | 角色 |
 |---|---|
-| [Furnace Commercial Grade Cleanup Plan 2026-07](<./Furnace Commercial Grade Cleanup Plan 2026-07.md>) | **当前商业化级别代码与文档清理计划**：P0 修复 + P1 加固 + P2 基础设施；完成后归档 |
 | [Furnace Investing Demo Pack Spec](<./Furnace Investing Demo Pack Spec.md>) + [Demo Pack fixture](<../demos/investing-demo-pack/README.md>) | **商业 demo 规格与已交付 fixture**：10 分钟知识复利故事、脱敏素材类型、receipt / judgment / elixir 路径和合规话术 |
 | [Furnace RuntimeClient Mobile Companion Design](<./Furnace RuntimeClient Mobile Companion Design.md>) | **移动 companion implemented-slice**：RuntimeClient 三实现、VaultQueue 协议、desktop drain、Desktop-only 主插件边界 |
 
+> Commercial Grade Cleanup Plan 2026-07 已归档（`executed-reviewed-pass`），见下方 Archived。
+
 ## Direction context（非当前执行 SoT）
 
-历史方向与已完成执行计划已移入 [docs/archive/](<./archive/README.md>)；当前执行以 Scorecard + Commercial Grade Cleanup Plan + `PROGRESS.md` 为准。
+历史方向与已完成执行计划已移入 [docs/archive/](<./archive/README.md>)；当前执行以 Scorecard + `PROGRESS.md` 为准。
 `wiki/indexes/` 是 compile 生成的派生索引区；策略见 [wiki/indexes/README](<../wiki/indexes/README.md>)。
 
 ## Archived（已 superseded / 已完成，保留作史料）
@@ -52,13 +54,15 @@ updated_at: 2026-07-14
 见 [docs/archive/README.md](<./archive/README.md>)。
 
 近期归档：
-- [Furnace Next Direction P0-P3](<./archive/Furnace Next Direction P0-P3.md>) → 历史上由 Post-P4 接续；当前执行以 Cleanup Plan + Scorecard 为准
+- [Furnace Commercial Grade Cleanup Plan 2026-07](<./archive/Furnace Commercial Grade Cleanup Plan 2026-07.md>) → **executed-reviewed-pass**；商业化清理 Waves A–D + Phase5/D4 已收口
+- [Furnace Next Direction P0-P3](<./archive/Furnace Next Direction P0-P3.md>) → 历史上由 Post-P4 接续；当前执行以 Scorecard + `PROGRESS.md` 为准
 - [Furnace Next Direction P4](<./archive/Furnace Next Direction P4.md>) → P4-1~15 已完成，保留 dogfood F-fix 史料
 - [Furnace Product UX Assessment](<./archive/Furnace Product UX Assessment.md>) → M-UX.1 已落地，当前 Product Shell 事实以 `Furnace Product Shell` 为准
-- [Furnace Next Direction Post-P4](<./archive/Furnace Next Direction Post-P4.md>) → 当前方向以 Cleanup Plan + Scorecard + `PROGRESS.md` 为准
+- [Furnace Next Direction Post-P4](<./archive/Furnace Next Direction Post-P4.md>) → 当前方向以 Scorecard + `PROGRESS.md` 为准
 - [AGOS-9-Execution-Plan](<./archive/AGOS-9-Execution-Plan.md>) → release gate 以 Scorecard 为准
 - [Furnace AgentOS Completion Plan](<./archive/Furnace AgentOS Completion Plan.md>) → 完成记录保留作史料
-- [Furnace Agent OS Slimdown Plan](<./archive/Furnace Agent OS Slimdown Plan.md>) → 后续只按 Cleanup Plan 做 targeted seam
+- [Furnace Agent OS Slimdown Plan](<./archive/Furnace Agent OS Slimdown Plan.md>) → 后续只按 Scorecard / 新计划做 targeted seam
+- [Furnace-90-Plus-Context-Provenance-Hardening-Plan](<./archive/Furnace-90-Plus-Context-Provenance-Hardening-Plan.md>) → 已归档；context/provenance 口径以 Architecture + Scorecard 为准
 - [deepseek-comprehensive-evaluation-2026-05-03](<./archive/deepseek-comprehensive-evaluation-2026-05-03.md>) → LLM/运行口径以 Runtime Ops + Scorecard 为准
 
 ## 阅读顺序
@@ -66,7 +70,7 @@ updated_at: 2026-07-14
 1. 先看 [Furnace Agent Architecture](<./Furnace Agent Architecture.md>) 建立世界观。
 2. 再看 [Furnace Evolution Mechanics](<./Furnace Evolution Mechanics.md>) 建立契约与实现边界。
 3. 需要操作本机自动化时看 [Furnace Runtime Operations](<./Furnace Runtime Operations.md>)。
-4. 当前清理 / 商业 / 全平台边界看 [Furnace Commercial Grade Cleanup Plan 2026-07](<./Furnace Commercial Grade Cleanup Plan 2026-07.md>) 和 `PROGRESS.md`。
+4. 当前评分 / release gate 看 [AGOS-9-Scorecard](<./AGOS-9-Scorecard.md>) 和 `PROGRESS.md`；已完成的商业化清理见 [archive/Furnace Commercial Grade Cleanup Plan 2026-07](<./archive/Furnace Commercial Grade Cleanup Plan 2026-07.md>)。
 5. 商业 demo 讲法看 [Furnace Investing Demo Pack Spec](<./Furnace Investing Demo Pack Spec.md>)；移动端 companion 只看 [Furnace RuntimeClient Mobile Companion Design](<./Furnace RuntimeClient Mobile Companion Design.md>)。
 6. 需要看 Product Shell 时再看 [Furnace Product Shell](<./Furnace Product Shell.md>)（Desktop-only；iPad/iOS 不支持全功能）。
 7. 历史方向与 AGOS/AOS 执行记录见 [archive](<./archive/README.md>)，不作为当前执行 SoT。

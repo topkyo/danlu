@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Docs consistency scan for AGOS-004 / P2-B gate.
+# Docs consistency scan for AGOS-004 / P2-B gate + commercial cleanup residuals.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,13 +11,24 @@ FAIL=0
 check_no_match() {
   local label="$1"
   local pattern="$2"
-  local glob="$3"
-  if rg -n "$pattern" $glob >/tmp/docs-consistency-hits.txt 2>/dev/null; then
+  shift 2
+  if rg -n "$pattern" "$@" >/tmp/docs-consistency-hits.txt 2>/dev/null; then
     echo "[FAIL] $label"
     cat /tmp/docs-consistency-hits.txt
     FAIL=1
   else
     echo "[OK] $label"
+  fi
+}
+
+check_exists() {
+  local label="$1"
+  local path="$2"
+  if [[ -e "$path" ]]; then
+    echo "[OK] $label"
+  else
+    echo "[FAIL] $label (missing: $path)" >&2
+    FAIL=1
   fi
 }
 
@@ -31,6 +42,42 @@ if rg -n "opencode-api" docs/Furnace-Optional-Deps-Matrix.md docs/Furnace\ Runti
 else
   echo "[FAIL] missing explicit backend documentation" >&2
   FAIL=1
+fi
+
+# Post-A5: README/HOME must not link to untracked generated wiki/indexes pages.
+check_no_match "README does not hard-link generated wiki/indexes pages" \
+  "wiki/indexes/(furnace-center|execution-center|review-center|graph-view|protocols|review-queue)" \
+  README.md HOME.md
+
+# D4 structural gate: developer content lives in docs/DEVELOPER.md.
+check_exists "docs/DEVELOPER.md exists" "docs/DEVELOPER.md"
+check_no_match "README has no owner map section" \
+  "^## 当前 runtime 实现" README.md
+check_no_match "README has no Developer Guide section" \
+  "^### Developer Guide" README.md
+
+# Commercial pack presence.
+for path in \
+  LICENSE \
+  CHANGELOG.md \
+  docs/INSTALL.md \
+  docs/USER_GUIDE.md \
+  docs/commercial/PRICING.md \
+  docs/commercial/BOUNDARIES.md \
+  docs/commercial/PRIVACY.md \
+  docs/commercial/SUPPORT.md \
+  docs/commercial/COMPARE.md
+do
+  check_exists "commercial pack: $path" "$path"
+done
+
+# Active docs/scripts should not hard-code developer home paths (archive exempt).
+if git grep -nE "^/home/" -- scripts/ docs/ ':!docs/archive/' >/tmp/docs-consistency-hits.txt 2>/dev/null; then
+  echo "[FAIL] no /home/ hard paths in active docs/scripts"
+  cat /tmp/docs-consistency-hits.txt
+  FAIL=1
+else
+  echo "[OK] no /home/ hard paths in active docs/scripts"
 fi
 
 exit "$FAIL"

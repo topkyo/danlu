@@ -478,9 +478,9 @@ def _render_vault_home() -> str:
                 "## 关键入口",
                 "",
                 "- [[README|使用说明]]",
-                "- [[wiki/indexes/furnace-center|炉心面板索引]]",
-                "- [[wiki/indexes/Outputs|输出面板]]",
-                "- [[wiki/indexes/judgment-assets|判断资产]]",
+                "- [[wiki/indexes/README|索引策略（compile 后生成面板页）]]",
+                "",
+                "`wiki/indexes/` 下的炉心 / 审阅 / 判断资产等面板页由 `compile` 生成；先跑 compile 再打开。",
                 "",
                 "## 备用命令",
                 "",
@@ -691,6 +691,27 @@ def _write_json(path: Path, payload: dict[str, Any] | list[Any]) -> bool:
     return write_if_changed(path, text.replace('{\n  "items": ', "").rstrip("}\n") + "\n")
 
 
+def _render_indexes_readme() -> str:
+    return (
+        "\n".join(
+            [
+                "# wiki/indexes 策略",
+                "",
+                "`wiki/indexes/` 保存由 `aiwiki compile` 生成的派生索引页和看板页。",
+                "",
+                "- 这些文件不是 SoT。事实来源仍是 `raw/`、`wiki/sources/`、受控回流的 `wiki/derived/`、schema 文件，以及 runtime state / receipts。",
+                "- 不要靠手改生成索引正文来修数据；应重新运行 compile，让索引从底层状态再生成。",
+                "- 如果生成索引持续产出破链或 stale 页面，应修正发出该链接的 compile 输入或规则。",
+                "- 如果生成索引对仓库太吵，应明确把生成输出移出版本控制；不要临时删除整个目录。",
+                "",
+                "本 README 是该目录的人读策略说明，可以手写维护。",
+                "",
+            ]
+        )
+        + "\n"
+    )
+
+
 def bootstrap_new_vault(runtime_root: Path, target_root: Path, *, force: bool = False) -> dict[str, Any]:
     runtime_root = runtime_root.resolve()
     target_root = target_root.resolve()
@@ -703,6 +724,7 @@ def bootstrap_new_vault(runtime_root: Path, target_root: Path, *, force: bool = 
     managed_text_files = {
         "README.md": _render_vault_readme(runtime_root),
         "HOME.md": _render_vault_home(),
+        "wiki/indexes/README.md": _render_indexes_readme(),
         "scripts/aiwiki-launcher.sh": _render_launcher_script(runtime_root),
         f".obsidian/snippets/{FOLDER_LABEL_SNIPPET_NAME}.css": _render_folder_label_snippet(),
     }
