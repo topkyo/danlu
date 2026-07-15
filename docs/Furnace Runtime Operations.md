@@ -28,7 +28,8 @@ related_docs:
 | `aiwiki-watch.service` | 长驻 daemon | 每 5 秒 inbox 扫描 | **否**（默认 `--deterministic-only`）| `Restart=always` |
 | `aiwiki-nightly.timer` → `aiwiki-nightly.service` | 定时 oneshot | 每天 00:00 | **是**（默认 full local furnace profile）| `Persistent=true` 错过补跑 |
 | 用户/agent 显式 `run-compile` / `run-ask` / `run-lint` | 手动 worker | 按需 | 是 | 无（手动调用） |
-| `aiwiki-dogfood-maturity.timer` | 验证 harness（opt-in） | 验证期定时 | 条件 LLM / deterministic | 验证结束应移除 |
+
+> 2026-07-15 清理：原 `aiwiki-dogfood-maturity.timer` 行已删除（属于历史验证 harness，本轮 scripts + systemd 一并删除 `install_user_service.sh` 的 `AIWIKI_INSTALL_DOGFOOD_MATURITY` 分支）。如升级机器上的旧 unit，自动 cleanup 由 `scripts/install_user_service.sh` / `uninstall_user_service.sh` 兜底。
 
 **含义**：炼丹炉在用户睡觉时也在工作，但工作内容受三条硬约束：
 
@@ -56,7 +57,7 @@ related_docs:
 └── aiwiki-nightly.env             ← nightly env vars
 ```
 
-模板源在 `systemd/aiwiki-*.template`，由 `scripts/install_user_service.sh` 渲染落地。`aiwiki-dogfood-maturity.*` 模板仍保留，但默认不安装；仅在 `AIWIKI_INSTALL_DOGFOOD_MATURITY=1` 的验证运行中渲染。
+模板源在 `systemd/aiwiki-*.template`，由 `scripts/install_user_service.sh` 渲染落地。本轮清理已删除 `aiwiki-dogfood-maturity.*` 模板；`scripts/install_user_service.sh` 仅渲染 `aiwiki-watch.service` + `aiwiki-nightly.{service,timer}`。升级路径上，对已存在 `aiwiki-dogfood-maturity.*` unit 做清理兜底。
 
 macOS 没有 user-level systemd 时，用 launchd 脚本安装同等产品主线：
 
@@ -147,21 +148,9 @@ else:
 - `AIWIKI_NIGHTLY_NO_SEMANTIC_LINT=0` —— 是否跑 semantic lint
 - `scripts/run_nightly.sh` 不再配置跨 backend fallback；需要换模型或后端时显式设置 `AIWIKI_LLM_BACKEND` / `AIWIKI_LLM_MODEL` 后重跑
 
-### 2.4 dogfood maturity 验证 harness（opt-in）
+### 2.4 （自 2026-07-15 起：dogfood maturity 验证 harness 已废弃）
 
-`aiwiki-dogfood-maturity.service/timer` 只用于成熟度 proof / dogfood 验证，不属于默认产品服务链。安装验证 timer：
-
-```bash
-AIWIKI_INSTALL_DOGFOOD_MATURITY=1 scripts/install_user_service.sh
-```
-
-验证结束后移除 unit，但保留 vault 数据、receipt 与 env 文件：
-
-```bash
-scripts/uninstall_user_service.sh --dogfood-maturity-only
-```
-
-这条验证 harness 会写 maturity receipt，并默认要求 LLM nightly path 可用（禁用 deterministic nightly fallback），用来证明“人只看异常”的成熟度；它不应长期混在默认 watcher/nightly 服务状态里。
+> 原 `AIWIKI_INSTALL_DOGFOOD_MATURITY=1` 启用 `aiwiki-dogfood-maturity.{service,timer}` 与 `--dogfood-maturity-only` 卸载 flag 已随 `scripts/install_user_service.sh` / `uninstall_user_service.sh` 一并删除。`systemd/aiwiki-dogfood-maturity.{service,timer}.template` 也已删除。本仓库当前不存在「成熟度自动 verdict timer」；成熟度以人盯 `output/control/execution-receipts/` 与 `output/control/llm-receipts.jsonl` 异常事件为准。若机器上保留有旧 unit，`scripts/install_user_service.sh` / `scripts/uninstall_user_service.sh` 仍主动清理。
 
 ### 2.5 状态查询
 
@@ -169,7 +158,6 @@ scripts/uninstall_user_service.sh --dogfood-maturity-only
 # 当前活动状态
 systemctl --user status aiwiki-watch.service
 systemctl --user status aiwiki-nightly.timer
-systemctl --user status aiwiki-dogfood-maturity.timer  # 仅验证期应存在
 
 # 下次触发时间
 systemctl --user list-timers --all | grep aiwiki
@@ -190,9 +178,6 @@ systemctl --user start aiwiki-watch.service aiwiki-nightly.timer
 
 # 永久禁用（不推荐）
 systemctl --user disable --now aiwiki-watch.service aiwiki-nightly.timer
-
-# 只移除 dogfood maturity 验证 timer
-scripts/uninstall_user_service.sh --dogfood-maturity-only
 ```
 
 ---
@@ -312,7 +297,7 @@ AIWIKI_MODEL_FALLBACK="deepseek-chat" \
 |---|---|
 | watcher 不响应新投料 | `systemctl --user status aiwiki-watch.service` 看是否 active；`journalctl --user -u aiwiki-watch.service -n 50` |
 | nightly 没跑 | `systemctl --user list-timers --all` 看 trigger；`journalctl --user -u aiwiki-nightly.service --since today` |
-| dogfood maturity timer 还在跑 | `scripts/uninstall_user_service.sh --dogfood-maturity-only`；不要删除 vault receipt/data |
+| dogfood maturity timer 还在跑（2026-07-15 清理前遗留） | `scripts/uninstall_user_service.sh` 会自动清理；保留 vault receipt/data |
 | run-compile 报 `Compile response is missing frontmatter` | backend 输出有装饰；用 `aiwiki llm-check --probe --format human` 确认；切到 compatible backend |
 | LLM 调用 `unavailable / requires_credential` | 跑 `aiwiki llm-check --probe-all`，按 §4 表选 compatible backend；按 §5 切换 |
 | 多写者抢锁 | `cat .aiwiki/state/runtime.lock` 看 pid；停 watcher 或确认 Obsidian / CLI 是否同时在写 |

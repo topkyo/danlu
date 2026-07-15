@@ -1154,13 +1154,13 @@ class MiscFlowTests(AppFlowTestBase):
         self.assertIn("AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS=${AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS:-${AUTO_ADOPT_JUDGMENTS:-0}}", content)
         self.assertIn("AIWIKI_NIGHTLY_AUTO_APPLY_HEAVY_SEMANTIC=${AIWIKI_NIGHTLY_AUTO_APPLY_HEAVY_SEMANTIC:-0}", content)
         self.assertIn("AIWIKI_NIGHTLY_AUTO_ADOPT_CORE_L3=${AIWIKI_NIGHTLY_AUTO_ADOPT_CORE_L3:-0}", content)
-        self.assertIn('INSTALL_DOGFOOD_MATURITY="${AIWIKI_INSTALL_DOGFOOD_MATURITY:-0}"', content)
-        self.assertIn("AIWIKI_DOGFOOD_MATURITY_PREVIEW_LIMIT=1000", content)
-        self.assertIn("AIWIKI_DOGFOOD_MATURITY_L3_LIMIT=1000", content)
-        self.assertIn("AIWIKI_DOGFOOD_MATURITY_COMPILE_LIMIT=0", content)
-        self.assertIn("AIWIKI_DOGFOOD_MATURITY_NO_SEMANTIC_LINT=1", content)
-        self.assertIn("AIWIKI_DOGFOOD_MATURITY_ENVRC", content)
-        self.assertIn('set_env_key "$DOGFOOD_MATURITY_ENV_PATH" "AIWIKI_DOGFOOD_MATURITY_ENVRC"', content)
+        self.assertNotIn("AIWIKI_INSTALL_DOGFOOD_MATURITY", content)
+        self.assertNotIn("AIWIKI_DOGFOOD_MATURITY_PREVIEW_LIMIT", content)
+        self.assertNotIn("AIWIKI_DOGFOOD_MATURITY_L3_LIMIT", content)
+        self.assertNotIn("AIWIKI_DOGFOOD_MATURITY_COMPILE_LIMIT", content)
+        self.assertNotIn("run_dogfood_maturity.sh", content)
+        self.assertIn("aiwiki-dogfood-maturity.timer", content)
+        self.assertIn("aiwiki-dogfood-maturity.service", content)
         self.assertNotIn("AIWIKI_LLM_BACKEND=opencode-api", content)
         self.assertNotIn("AIWIKI_LLM_MODEL=deepseek-v4-pro", content)
 
@@ -1169,28 +1169,30 @@ class MiscFlowTests(AppFlowTestBase):
         content = script.read_text(encoding="utf-8")
         self.assertIn("aiwiki-nightly.service", content)
         self.assertIn("aiwiki-nightly.timer", content)
-        self.assertIn("aiwiki-dogfood-maturity.service", content)
-        self.assertIn("aiwiki-dogfood-maturity.timer", content)
-        self.assertIn("aiwiki-dogfood-maturity.env", content)
         self.assertIn("AIWIKI_NIGHTLY_COMPILE_LIMIT", content)
         self.assertIn("Product Shell UI via scripts/aiwiki-launcher.sh", content)
         self.assertNotIn("AIWIKI_NIGHTLY_FALLBACK_ENV", content)
-        self.assertIn("AIWIKI_DOGFOOD_MATURITY_ON_CALENDAR", content)
-        self.assertIn("*-*-* 00:15:00 UTC", content)
-        self.assertIn("AIWIKI_INSTALL_DOGFOOD_MATURITY=1", content)
-        self.assertIn("maturity:      not installed", content)
-        self.assertIn("dogfood maturity is a validation harness", content)
-        self.assertIn('rm -f "$DOGFOOD_MATURITY_SERVICE_PATH" "$DOGFOOD_MATURITY_TIMER_PATH"', content)
+        self.assertNotIn("AIWIKI_INSTALL_DOGFOOD_MATURITY=1", content)
+        self.assertNotIn("DOGFOOD_MATURITY_SERVICE_PATH", content)
+        self.assertNotIn("DOGFOOD_MATURITY_TIMER_PATH", content)
+        self.assertNotIn("maturity:      not installed", content)
         self.assertIn("ensure_env_key", content)
 
-    def test_uninstall_user_service_mentions_dogfood_maturity_cleanup(self) -> None:
+    def test_user_service_install_cleans_up_legacy_dogfood_units(self) -> None:
+        script = PROJECT_ROOT / "scripts/install_user_service.sh"
+        content = script.read_text(encoding="utf-8")
+        self.assertIn("cleanup", content.lower())
+        self.assertIn("aiwiki-dogfood-maturity.timer", content)
+        self.assertIn("aiwiki-dogfood-maturity.service", content)
+
+    def test_uninstall_user_service_cleans_up_legacy_dogfood_units(self) -> None:
         script = PROJECT_ROOT / "scripts/uninstall_user_service.sh"
         content = script.read_text(encoding="utf-8")
         self.assertIn('systemctl --user disable --now "$DOGFOOD_MATURITY_TIMER_NAME"', content)
         self.assertIn('systemctl --user stop "$DOGFOOD_MATURITY_SERVICE_NAME"', content)
         self.assertIn("DOGFOOD_MATURITY_SERVICE_PATH", content)
         self.assertIn("DOGFOOD_MATURITY_TIMER_PATH", content)
-        self.assertIn("--dogfood-maturity-only", content)
+        self.assertNotIn("--dogfood-maturity-only", content)
         self.assertIn("env files and vault data preserved", content)
 
     def test_collect_machine_memory_actions_respects_active_protocol_focus(self) -> None:

@@ -9,6 +9,21 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
 
 ## [Unreleased]
 
+### Removed
+- `scripts/`：删除耗时 / niche 脚本 16 个 — `cache_benchmark.py`、`compile_benchmark.py`、`long_window_proof_probe.py`、`dogfood_maturity_gate.py`、`run_dogfood_maturity.sh`、`agos9_release_audit.sh`、`agos9_dogfood_proof_status.sh`、`backend_probe_matrix.sh`、`investing_dogfood_preflight.sh`、`product_shell_smoke.sh`、`run_product_shell_tests.sh`、`check_product_shell_bundle.sh`、`configure_local_worktree.sh`、`stop_line_audit.sh`、`stop_line_audit.py`、`refresh_acceptance_fixture.py`，仅保留 `verify.sh` / `verify_target_rules.sh` / `docs_consistency_check.sh` / `aiwiki-launcher.sh` / install/uninstall + scheduler + `run_acceptance.sh` / `__init__.py` 核心。
+- `systemd/`：删除 `aiwiki-dogfood-maturity.service.template` 与 `.timer.template`。
+- `tests/`：删除 `test_compile_benchmark_smoke.py` / `test_long_window_proof_probe.py` / `test_local_worktree.py` / `test_product_shell_smoke.py` / `test_dogfood_maturity_gate.py` / `test_cache_benchmark_script_outputs_status_and_timings`；`test_app_runtime.py` / `test_app_misc.py` / `test_deploy_defaults.py` 同步剪除 dogfood maturity / product shell smoke 相关断言。
+- `tests/fixtures/acceptance/M6.1b/README.md`：refresh 工具条目从「脚本调用」改为「手动 hash 重命名」，因为 refresh 脚本已删除。
+
+### Changed
+- `scripts/install_user_service.sh` / `scripts/uninstall_user_service.sh`：删除所有 `AIWIKI_INSTALL_DOGFOOD_MATURITY` / `run_dogfood_maturity.sh` 分支，仅保留 `watch` + `nightly`；升级路径上对已存在 `aiwiki-dogfood-maturity.*` unit 做清理兜底。
+- `scripts/verify.sh`：`product-shell-static` 不再调 `check_product_shell_bundle.sh` / `run_product_shell_tests.sh`，只跑 `node --check main.js`。
+- `scripts/verify_target_rules.sh`：删除对应被删脚本路径的 case 分支。
+- `AGENTS.md` 验证入口：`scripts` 段补「daily / release」边界说明。
+- `docs/DEVELOPER.md` / `docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md` / `docs/AGOS-9-Scorecard.md` / `docs/Furnace-Optional-Deps-Matrix.md` / `docs/Furnace Product Shell UX Test Checklist.md`：同步移除对已删脚本的引用，明确 release gate 不再依赖被移除的 release-evidence / maturity pipeline。
+- `docs/AGOS-9-Dogfood-Proof-Runbook.md` / `docs/AGOS-9-Investing-Preflight-Runbook.md`：移入 `docs/archive/`，标记 superseded。
+- `verify.sh all`（仅 release 用）行为不变，仍按 `coverage erase + coverage run pytest + coverage report + acceptance` 跑出 ~13 min 周期；只是被依赖的辅助脚本集已精简。
+
 ### Added
 - 商业化清理计划落地并已归档：`docs/archive/Furnace Commercial Grade Cleanup Plan 2026-07.md`。
 - 对外商业化文档集合：

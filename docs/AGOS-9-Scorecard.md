@@ -112,11 +112,13 @@ Historical PASS（2026-05-13~19）不当作当前 live PASS。
 
 ## 2. Product Shell（权重 12%）
 
+> 2026-07-15 scripts 清理：`scripts/check_product_shell_bundle.sh` 与 `scripts/product_shell_smoke.sh` 已删除；`bash scripts/verify.sh product-shell-static` 当前只跑 `node --check main.js`，不再做 bundle drift gating。bundle drift 现行入口为 operator 在本地手工对比 `.obsidian/plugins/furnace-product-shell/src/*.js` 与 `main.js`。
+
 ### 9.0 PASS 条件
 
-- [ ] `scripts/check_product_shell_bundle.sh` 能发现 `src/` 与 `main.js` bundle drift
+- [ ] （历史）`scripts/check_product_shell_bundle.sh` 能发现 `src/` 与 `main.js` bundle drift（已删除）
 - [ ] Universal Input、Ctrl+Enter、pending card、report open、raw 导航有 contract 测试
-- [ ] `bash scripts/verify.sh product-shell-static` 封装 bundle drift check，不只 `node --check`
+- [ ] `bash scripts/verify.sh product-shell-static` 仅跑 `node --check`；bundle drift 由 operator 手工验证
 - [ ] 默认用户面只强调 drop + today；operator 能力在 Advanced
 
 ### 证据路径
@@ -381,8 +383,8 @@ bash scripts/verify.sh scripts
 | Knowledge compounding | PASS：sample reuses `wiki/judgments/judgment-aos-c2-dogfood-live-proof-judgment.md` with `run-ask` execution receipt |
 | LLM/backend telemetry | PASS：`llm-telemetry` + `backend-telemetry` expose recent N backend/model/status and failure classes |
 | Docs consistency | PASS：`bash scripts/docs_consistency_check.sh` |
-| Release audit | PASS：`bash scripts/agos9_release_audit.sh` |
-| Dogfood proof status | PASS：`bash scripts/agos9_dogfood_proof_status.sh`（会写 local dogfood snapshot via `collect --write`） |
+| Release audit | PASS（历史）：`bash scripts/agos9_release_audit.sh` — **本轮 scripts 清理已删除**；改由 `bash scripts/verify.sh all` + docs/consistency 单点负责 release gate；dogfood maturity 不再 auto-run |
+| Dogfood proof status | PASS（历史）：`bash scripts/agos9_dogfood_proof_status.sh` — **已删除**；改为 `PROGRESS.md` 手动记录当前最显著 live 证据 |
 | qa-review / qa-runtime | PASS：C8 gate artifacts refreshed and `run_plan` closed-loop passed |
 
 ---

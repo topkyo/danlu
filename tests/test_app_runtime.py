@@ -1806,20 +1806,10 @@ exit 0
     def test_nightly_systemd_templates_exist(self) -> None:
         service_template = PROJECT_ROOT / "systemd/aiwiki-nightly.service.template"
         timer_template = PROJECT_ROOT / "systemd/aiwiki-nightly.timer.template"
-        dogfood_service_template = PROJECT_ROOT / "systemd/aiwiki-dogfood-maturity.service.template"
-        dogfood_timer_template = PROJECT_ROOT / "systemd/aiwiki-dogfood-maturity.timer.template"
         self.assertTrue(service_template.exists())
         self.assertTrue(timer_template.exists())
-        self.assertTrue(dogfood_service_template.exists())
-        self.assertTrue(dogfood_timer_template.exists())
         self.assertIn("ExecStart=__PROJECT_ROOT__/scripts/run_nightly.sh", service_template.read_text(encoding="utf-8"))
         self.assertIn("OnCalendar=__ON_CALENDAR__", timer_template.read_text(encoding="utf-8"))
-        self.assertIn(
-            "ExecStart=__PROJECT_ROOT__/scripts/run_dogfood_maturity.sh",
-            dogfood_service_template.read_text(encoding="utf-8"),
-        )
-        self.assertIn("EnvironmentFile=__ENV_FILE__", dogfood_service_template.read_text(encoding="utf-8"))
-        self.assertIn("OnCalendar=__ON_CALENDAR__", dogfood_timer_template.read_text(encoding="utf-8"))
 
     def test_execution_protocol_stays_stable_across_active_protocol_switch(self) -> None:
         entry = ingest_source(self.root, str(self.sample), title="Transformer Scaling")

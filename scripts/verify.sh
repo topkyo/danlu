@@ -93,8 +93,6 @@ verify_product_shell_static() {
     return 1
   fi
 
-  bash "$SCRIPT_DIR/check_product_shell_bundle.sh"
-
   if ! command -v node >/dev/null 2>&1; then
     echo "node is required for target: product-shell-static" >&2
     return 1
@@ -105,8 +103,6 @@ verify_product_shell_static() {
   done < <(find "$product_shell_dir" \
     \( -path "$product_shell_dir/node_modules" -o -path "$product_shell_dir/.git" \) -prune \
     -o -name '*.js' -print0)
-
-  bash "$SCRIPT_DIR/run_product_shell_tests.sh"
 }
 
 case "$TARGET" in

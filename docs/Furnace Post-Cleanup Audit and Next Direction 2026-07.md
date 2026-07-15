@@ -70,7 +70,7 @@ supersedes: []
 | ID | 缺陷 | 证据 | 影响 | 本 PR |
 |---|---|---|---|---|
 | D4 | `PROGRESS.md`「改进方向」段曾缺失 | 曾仅有 L15 指针 | 任务 SoT 断链 | **fixed**：已恢复底部「改进方向」段 |
-| D5 | Product Shell Jest 默认可 soft-skip | `scripts/run_product_shell_tests.sh` | `verify` 可绿但 UI 回归未跑 | open → WS5 |
+| D5 | Product Shell Jest 默认可 soft-skip | `scripts/run_product_shell_tests.sh`（本轮清理删除） | `verify` 可绿但 UI 回归未跑 | 推迟（不在本计划主轴） |
 | D6 | Alchemy materialize 等路径裸 `Path.write_text` | `runner/alchemy_materialize.py` L53/127/156 | 有锁仍可能崩溃半写 | open → WS5 附加 |
 | D7 | Env-coupled 单测可假失败/挂起 | workspace / Chrome drop 用例 | CI/cloud 噪音 | open → WS5 |
 | D8 | Active 架构文档曾指向不存在的 `.codex/plans/active.md` | Architecture / Evolution Mechanics | 执行入口误导 | **fixed**：改为本计划 + PROGRESS |
@@ -194,9 +194,9 @@ supersedes: []
 
 | 项 | 内容 |
 |---|---|
-| **In** | 真实 wall-clock 继续跑 maturity；`long_window_proof_probe` 报告 not-yet/pass |
-| **Out** | 移动商店包、RemoteHttpClient |
-| **Done** | Scorecard long-run 仅在有 live 证据时标 PASS |
+| **In** | 真实 wall-clock 自然日观察；不再依赖 `long_window_proof_probe` / maturity gate（脚本本轮清理已移除），改为由 PROGRESS 手动记录实证 |
+| **Out** | 移动商店包、RemoteHttpClient、自动 PoC 仅供参考 |
+| **Done** | Scorecard long-run 仅在有 live 证据时标 PASS，缺则诚实写 not-yet |
 
 ### 建议附加小修（可并入 WS4/WS5，非独立 Wave）
 
@@ -222,16 +222,18 @@ supersedes: []
 
 ```bash
 bash scripts/docs_consistency_check.sh
+bash scripts/verify_target_rules.sh   # 按改动路径选 daily target
 bash scripts/verify.sh scripts
 bash scripts/verify.sh python-static
 bash scripts/verify.sh smoke
-bash scripts/verify.sh product-shell-static
-# Jest hard-gate 启用后：
-AIWIKI_REQUIRE_PRODUCT_SHELL_JS_TESTS=1 bash scripts/run_product_shell_tests.sh
+bash scripts/verify.sh cli-smoke
+# 当前 plan 不再 require Product Shell Jest hard-gate；如未来恢复，使用 Product Shell 自带 `npm test`
 # go-live 文档门禁：
 ! git grep -E 'commercial@example\.com|support@example\.com' -- LICENSE docs/commercial/
 bash scripts/verify.sh all   # 推送/发布前
 ```
+
+> 备注：本轮（2026-07-15 scripts cleanup）已删除 `scripts/run_product_shell_tests.sh` 与 `scripts/check_product_shell_bundle.sh` 等耗时的 JS bundle drift gate。`verify.sh product-shell-static` 现在只跑 `node --check main.js`，不再调被删除脚本。Release evidence pipeline（`scripts/agos9_*.sh` / `scripts/dogfood_maturity_gate.py` / `scripts/run_dogfood_maturity.sh`）也已删除，不再作为 release gate 的硬证据。
 
 Review gate：编码 PR 独立 read-only reviewer（correctness / scope / missing verify）。
 

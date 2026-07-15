@@ -15,7 +15,6 @@ Related:
 - `docs/Furnace Product Shell.md`
 - `docs/Furnace Agent Architecture.md`
 - `.obsidian/plugins/furnace-product-shell/`
-- `scripts/product_shell_smoke.sh`
 
 ## 0. 验证原则
 
@@ -39,17 +38,7 @@ cd ../../..
 bash scripts/verify.sh
 ```
 
-涉及 launcher、LLM settings、Universal Input、pending reconcile、真实 vault 时，再跑：
-
-```bash
-bash scripts/product_shell_smoke.sh
-```
-
-涉及真实投料写路径时，再跑：
-
-```bash
-bash scripts/product_shell_smoke.sh --with-note-write
-```
+> 2026-07-15 scripts 清理备注：`scripts/product_shell_smoke.sh`（含 `--with-note-write`）已删除。Launcher / Universal Input / pending reconcile 的真实-vault 验证由 operator 在本地 vault 内手动跑 `bash scripts/verify.sh smoke`、`PYTHONPATH=src python3 -m aiwiki.cli advanced drop markdown ...`、`PYTHONPATH=src python3 -m aiwiki.cli advanced compile` 等逐一确认。
 
 ## 2. 单元测试 Checklist
 
@@ -166,9 +155,12 @@ bash scripts/product_shell_smoke.sh --with-note-write
 命令：
 
 ```bash
-bash scripts/product_shell_smoke.sh
-bash scripts/product_shell_smoke.sh --with-note-write
+bash scripts/verify.sh smoke
+PYTHONPATH=src python3 -m aiwiki.cli --root <vault> advanced drop markdown --title "<note>" --text "<body>"
+PYTHONPATH=src python3 -m aiwiki.cli --root <vault> advanced compile
 ```
+
+> 2026-07-15 scripts 清理：原 `bash scripts/product_shell_smoke.sh [ --with-note-write ]` 已删除；上述命令替代其语义。
 
 ## 6. 人工 UX Checklist
 
@@ -238,11 +230,13 @@ bash scripts/product_shell_smoke.sh --with-note-write
 一次 Product Shell UX / 产品改造可以认为完成，需要同时满足：
 
 - [ ] `npm test -- --runInBand` PASS。
-- [ ] `bash scripts/verify.sh` PASS。
-- [ ] 涉及 runtime/launcher 时，`bash scripts/product_shell_smoke.sh` PASS。
-- [ ] 涉及投料写路径时，`bash scripts/product_shell_smoke.sh --with-note-write` PASS。
+- [ ] `bash scripts/verify.sh` PASS（`product-shell-static` 至少跑通）。
+- [ ] 涉及 runtime/launcher 时，本地手跑 `bash scripts/verify.sh smoke` 与 direct `aiwiki advanced ...` 命令。
+- [ ] 涉及投料写路径时，本地手跑 `advanced drop markdown ...` → `advanced compile` → `today` 链。
 - [ ] 首屏仍符合“一个输入端 + 一个输出端”。
 - [ ] Advanced 能找到原 operator 能力。
 - [ ] 失败时输入不丢，错误可读。
 - [ ] 没有新增 runtime SoT 字段，除非 contract 和 tests 同步更新。
 - [ ] 没有让 UI 绕过 CLI / receipt / audit 边界。
+
+> 2026-07-15 scripts 清理：`product_shell_smoke(.sh --with-note-write)` smoke 入口已删除；DoD 改用本地 `verify.sh smoke` + `aiwiki advanced ...` direct command 替代。

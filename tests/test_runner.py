@@ -2599,37 +2599,6 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual((self.root / raw_response_path).read_text(encoding="utf-8"), raw_text)
         self.assertEqual(entry["title"], "Transformer Scaling")
 
-    def test_cache_benchmark_script_outputs_status_and_timings(self) -> None:
-        script = Path(__file__).resolve().parent.parent / "scripts" / "cache_benchmark.py"
-
-        completed = subprocess.run(
-            [
-                "python3",
-                str(script),
-                "--fixture-count",
-                "6",
-                "--question",
-                "Compare cache rebuild observability",
-            ],
-            cwd=self.root,
-            check=True,
-            capture_output=True,
-            text=True,
-            env={**os.environ, "PYTHONPATH": str((Path(__file__).resolve().parent.parent / "src").resolve())},
-        )
-
-        payload = json.loads(completed.stdout)
-        self.assertEqual(payload["fixture_count"], 6)
-        self.assertIn("cold_cache", payload["timings_ms"])
-        self.assertIn("warm_cache", payload["timings_ms"])
-        self.assertIn("no_cache", payload["timings_ms"])
-        self.assertIn("query_shapes", payload)
-        self.assertIn("cold_cache_sources", payload["query_shapes"])
-        self.assertTrue(payload["cache_status"]["enabled"])
-        self.assertGreaterEqual(payload["cache_status"]["schema_version"], 1)
-        self.assertIn("stats", payload["cache_status"])
-        self.assertIn("last_query", payload["cache_status"])
-
     def test_run_lint_records_audit_fields_and_summary(self) -> None:
         class _LintFallbackClient:
             def __init__(self) -> None:

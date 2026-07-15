@@ -13,11 +13,7 @@
 
 ## 刷新方式
 
-```bash
-python3 scripts/refresh_acceptance_fixture.py --case M6.1b/<case_name>
-```
-
-脚本只重算 `prompt_hash` 并重命名 `backend_responses/000N-<hash>.json`，保留既有 `response_text`、`response_id`、`usage`、`backend`、`model`，并保留 backend-failure fixture 的 `failure` 字段。
+刷新脚本 `scripts/refresh_acceptance_fixture.py` 已在本轮 scripts 清理中移除。如需重算 `prompt_hash`，手动编辑对应的 `backend_responses/000N-<hash>.json`：保留既有 `response_text`、`response_id`、`usage`、`backend`、`model`，并保留 backend-failure fixture 的 `failure` 字段；用 runtime 当前 `_build_ask_prompt` 输出的 `compute_prompt_hash` 替换 filename 中的 hash 段。
 
 ## Review 重点
 

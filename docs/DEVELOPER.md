@@ -71,7 +71,9 @@ related_docs:
 - `systemd --user` watcher + nightly timer
 - macOS `launchd` watcher + nightly calendar job
 
-默认本机服务只安装两条产品主线：`aiwiki-watch.service` 常驻等待投料，`aiwiki-nightly.timer` 每晚炼化。安装 systemd 服务必须显式提供 vault：`AIWIKI_VAULT=/path/to/vault scripts/install_user_service.sh`，不会把代码仓库当默认 vault。服务安装/更新会把仓库中的 Product Shell release 文件同步到目标 vault，但保留本机插件 `data.json`。`dogfood maturity` timer 是成熟度验证 harness，不是默认产品服务；需要验证时显式 `AIWIKI_VAULT=/path/to/vault AIWIKI_INSTALL_DOGFOOD_MATURITY=1 scripts/install_user_service.sh`，验证结束后用 `scripts/uninstall_user_service.sh --dogfood-maturity-only` 移除 unit，保留 vault 数据和 receipt。
+默认本机服务只安装两条产品主线：`aiwiki-watch.service` 常驻等待投料，`aiwiki-nightly.timer` 每晚炼化。安装 systemd 服务必须显式提供 vault：`AIWIKI_VAULT=/path/to/vault scripts/install_user_service.sh`，不会把代码仓库当默认 vault。服务安装/更新会把仓库中的 Product Shell release 文件同步到目标 vault，但保留本机插件 `data.json`。
+
+> 2026-07-15 scripts 清理：历史 `dogfood maturity` timer 与 `AIWIKI_INSTALL_DOGFOOD_MATURITY=1` / `--dogfood-maturity-only` 路径已删除。`scripts/install_user_service.sh` 默认只安装 watcher + nightly timer；即使机器上残留旧 unit，install / uninstall 也会主动清理。
 
 macOS 上没有 `systemd --user` 时，使用 launchd 安装同样的两条产品主线；launchd plist 只保存 vault 路径和运行参数，LLM key 仍由 vault launcher 从 Product Shell 本机 `data.json` 或当前环境读取，不写入 plist；安装/更新同样会同步 Product Shell release 文件：
 
@@ -96,7 +98,9 @@ LLM enrichment 仍然是炼丹炉主路径，但放在受控 worker 入口：`ru
 - **判断层**：counter-evidence / judgment review — LLM 驱动的语义复核，自动分析反证、写出审阅结论；judgment page、标准 execution receipt、execution history、audit stream 必须可互证，写失败回滚。通过 `AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS=1` 显式开启。
 - **策略层**：L3 proposal / prompt 变更 / schema 变更 — 非核心/metadata-only 学习默认由 agentic nightly 登记和消化；写回核心 prompt/policy/schema 前必须 `review proposal <id> --status accepted` 人工确认，再手动 `apply <proposal-id>` hash-gated 写 receipt。`AIWIKI_NIGHTLY_AUTO_ADOPT_CORE_L3=0` 是核心自改红线，不允许无人值守改核心 prompt/policy/schema。
 
-runtime policy 缺省采用 `autonomy_profile=agentic`：未写 `.aiwiki/state/autonomy-policy.json` 时，runtime 内部 profile 允许维护、治理、judgment review、metadata-only L3 和 heavy semantic 非核心自动化，但 `auto_adopt_core_l3` 默认关闭。新安装的 systemd nightly env 仍写入 `AIWIKI_AUTONOMY_PROFILE=agentic` 以保持 receipt 记账口径一致，但写入型 auto flags 默认写 `0`，必须由 operator 显式 opt-in；watcher 仍 deterministic-only，不再配置跨 backend unattended fallback。是否已经达到“人只需事后审计 receipt 和异常”的成熟运行状态，以 `scripts/dogfood_maturity_gate.py summarize --days 3` 的 `operational_maturity.human_only_exceptions`、`agentic_autonomy_report.llm_governed_apply_count > 0`、`core_auto_apply_count=0`、`debt_autopilot_report.debt_remaining_count`、`debt_autopilot_report.debt_auto_resolved_count`、`elixir_quality_status` 和连续 receipt 为准。
+runtime policy 缺省采用 `autonomy_profile=agentic`：未写 `.aiwiki/state/autonomy-policy.json` 时，runtime 内部 profile 允许维护、治理、judgment review、metadata-only L3 和 heavy semantic 非核心自动化，但 `auto_adopt_core_l3` 默认关闭。新安装的 systemd nightly env 仍写入 `AIWIKI_AUTONOMY_PROFILE=agentic` 以保持 receipt 记账口径一致，但写入型 auto flags 默认写 `0`，必须由 operator 显式 opt-in；watcher 仍 deterministic-only，不再配置跨 backend unattended fallback。
+
+> 2026-07-15 scripts 清理：本节早先引用的 `scripts/dogfood_maturity_gate.py summarize --days 3` 等 heuristic 已删除。当前以 **manual 仅异常审计** 为成熟度观察口径：人盯 `output/control/execution-receipts/` 与 `output/control/llm-receipts.jsonl` 中的异常事件；不依赖自动 3-day verdict 给出"成熟"宣称。
 
 ## LLM 后端
 

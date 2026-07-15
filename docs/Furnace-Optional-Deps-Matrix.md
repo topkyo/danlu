@@ -44,8 +44,8 @@ updated_at: "2026-07-15"
 
 ## Backend 探测结果（operator 填写）
 
-> `bash scripts/backend_probe_matrix.sh` 默认只读；需要生成证据时显式 `BACKEND_PROBE_WRITE=1`。勿提交 secrets。默认无 compatible backend 只告警，`BACKEND_PROBE_STRICT=1` 时才 exit 1。
+> 2026-07-15 scripts 清理：`scripts/backend_probe_matrix.sh` 已删除（属于耗时 auxiliary probe）。当前 backend 探测请在本机手动执行 `aiwiki advanced llm-check --probe`，结果写在本节。
 
 | 日期 (UTC) | 命令 | compatible | 备注 |
 |------------|------|------------|------|
-| 2026-05-21 | `backend_probe_matrix.sh` | 视本机凭据 | sandbox 无 DNS/凭据时多为 `requires_credential`；dogfood 实跑前在本机重探 |
+| (历史 2026-05-21) | `backend_probe_matrix.sh`（已删除） | 视本机凭据 | sandbox 无 DNS/凭据时多为 `requires_credential` |
