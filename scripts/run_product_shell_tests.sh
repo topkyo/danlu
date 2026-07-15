@@ -6,14 +6,18 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PRODUCT_SHELL_DIR="$PROJECT_ROOT/.obsidian/plugins/furnace-product-shell"
 TEST_DIR="$PRODUCT_SHELL_DIR/src/__tests__"
 
-if [[ ! -d "$TEST_DIR" ]]; then
-  echo "[SKIP] No Product Shell test directory: $TEST_DIR"
-  exit 0
-fi
-
 if [[ ! -d "$PRODUCT_SHELL_DIR" ]]; then
   echo "[FAIL] Product Shell directory missing: $PRODUCT_SHELL_DIR" >&2
   exit 1
+fi
+
+if [[ ! -d "$TEST_DIR" ]]; then
+  if [[ "${AIWIKI_REQUIRE_PRODUCT_SHELL_JS_TESTS:-0}" == "1" ]]; then
+    echo "[FAIL] No Product Shell test directory: $TEST_DIR (AIWIKI_REQUIRE_PRODUCT_SHELL_JS_TESTS=1)" >&2
+    exit 1
+  fi
+  echo "[SKIP] No Product Shell test directory: $TEST_DIR"
+  exit 0
 fi
 
 cd "$PRODUCT_SHELL_DIR"

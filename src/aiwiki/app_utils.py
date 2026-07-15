@@ -483,16 +483,22 @@ def atomic_append_jsonl(
                 raise OSError(f"partial write: {written}/{len(line)} bytes")
             if fsync:
                 os.fsync(fd)
-        except Exception:
+        except Exception as append_exc:
             os.close(fd)
             fd = -1
-            if created and size_before == 0:
-                try:
-                    path.unlink(missing_ok=True)
-                except OSError:
-                    _durable_truncate(path, 0)
-            else:
-                _durable_truncate(path, size_before)
+            try:
+                if created and size_before == 0:
+                    try:
+                        path.unlink(missing_ok=True)
+                    except OSError:
+                        _durable_truncate(path, 0)
+                else:
+                    _durable_truncate(path, size_before)
+            except Exception as rollback_exc:
+                raise OSError(
+                    "atomic_append_jsonl failed and rollback also failed: "
+                    f"append={append_exc!r}; rollback={rollback_exc!r}"
+                ) from append_exc
             raise
     finally:
         if fd >= 0:
