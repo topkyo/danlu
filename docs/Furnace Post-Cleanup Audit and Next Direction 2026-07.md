@@ -186,7 +186,7 @@ supersedes: []
 
 | 项 | 内容 |
 |---|---|
-| **In** | Jest soft-skip → hard-gate（CI 有 npm 缓存时 `AIWIKI_REQUIRE_PRODUCT_SHELL_JS_TESTS=1`）；mock/隔离 env-coupled drop/workspace 测试；可选 coverage `fail_under` 基线拉回 |
+| **In** | Jest soft-skip → hard-gate（`package.json` 入库后由 `verify_product_shell_static` 默认跑）；mock/隔离 env-coupled drop/workspace 测试；可选 coverage `fail_under` 基线拉回 |
 | **Out** | 伪造 long-run proof；broad rewrite |
 | **Done** | 干净 CI `verify.sh all` 无 Jest 盲区；已知 env 失败有明确 mock/skip 策略 |
 
