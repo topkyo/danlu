@@ -1,5 +1,21 @@
-炼丹炉 (aiwiki) - AGPL-3.0 Open Source / Commercial Dual License
-For commercial license: see docs/commercial/BOUNDARIES.md
+炼丹炉 (aiwiki)
+Copyright (C) 2026 炼丹炉 authors
+
+Licensing
+---------
+This software is dual-licensed:
+
+1) Open Source: GNU Affero General Public License v3.0 (AGPL-3.0),
+   the full text of which follows below.
+
+2) Commercial: a separate proprietary license that removes AGPL
+   copyleft obligations for licensed use. Commercial terms are not
+   embedded in this file; see docs/commercial/BOUNDARIES.md §5 for
+   how to obtain a commercial license (contact placeholder:
+   commercial@example.com).
+
+Unless you have a signed commercial license, you must use this
+software under AGPL-3.0.
 
                     GNU AFFERO GENERAL PUBLIC LICENSE
                        Version 3, 19 November 2007

@@ -55,7 +55,7 @@ DEFAULT_SCHEMA_FILES = {
             "",
             "## 边界",
             "",
-            "- `AGENTS.md` 和 `CLAUDE.md` 是仓库/开发侧文件。",
+            "- `AGENTS.md` 是仓库/开发侧 agent protocol SoT。",
             "- 运行时行为应由这个目录和 `prompts/` 共同驱动。",
         ]
     )

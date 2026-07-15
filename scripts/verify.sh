@@ -141,6 +141,8 @@ case "$TARGET" in
   all|full)
     verify_scripts
     verify_product_shell_static
+    verify_cli_smoke
+    verify_smoke
     ;;
   *)
     echo "Unknown verify target: $TARGET" >&2

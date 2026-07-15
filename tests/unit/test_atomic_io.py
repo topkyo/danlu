@@ -146,6 +146,61 @@ def test_atomic_append_jsonl_partial_failure_no_corruption(tmp_path, monkeypatch
     assert json.loads(lines[0]) == {"a": 1}
 
 
+def test_atomic_append_jsonl_short_write_rolls_back(tmp_path, monkeypatch):
+    """os.write returning fewer bytes than requested must truncate back."""
+    path = tmp_path / "history.jsonl"
+    atomic_append_jsonl(path, {"a": 1})
+    before = path.read_bytes()
+    original_write = os.write
+
+    def short_write(fd, data):
+        # Persist a real truncated fragment, then report short count.
+        fragment = data[: max(1, len(data) // 2)]
+        original_write(fd, fragment)
+        return len(fragment)
+
+    monkeypatch.setattr(os, "write", short_write)
+    with pytest.raises(OSError, match="partial write"):
+        atomic_append_jsonl(path, {"b": 2})
+
+    assert path.read_bytes() == before
+    assert json.loads(path.read_text(encoding="utf-8").strip().split("\n")[0]) == {"a": 1}
+
+
+def test_atomic_append_jsonl_rollback_failure_preserves_cause(tmp_path, monkeypatch):
+    path = tmp_path / "history.jsonl"
+    atomic_append_jsonl(path, {"keep": True})
+
+    def fail_fsync(_fd):
+        raise OSError("jsonl fsync failed")
+
+    def fail_truncate(_path, _size):
+        raise OSError("truncate failed")
+
+    monkeypatch.setattr(os, "fsync", fail_fsync)
+    monkeypatch.setattr("aiwiki.app_utils._durable_truncate", fail_truncate)
+    with pytest.raises(OSError, match="rollback also failed") as ctx:
+        atomic_append_jsonl(path, {"event": "boom"})
+    assert "jsonl fsync failed" in str(ctx.value)
+    assert isinstance(ctx.value.__cause__, OSError)
+
+
+def test_atomic_append_jsonl_fsync_failure_rolls_back(tmp_path, monkeypatch):
+    path = tmp_path / "history.jsonl"
+    atomic_append_jsonl(path, {"keep": True})
+    before = path.read_bytes()
+
+    def fail_fsync(_fd):
+        raise OSError("jsonl fsync failed")
+
+    monkeypatch.setattr(os, "fsync", fail_fsync)
+
+    with pytest.raises(OSError, match="jsonl fsync failed"):
+        atomic_append_jsonl(path, {"event": "boom"})
+
+    assert path.read_bytes() == before
+
+
 def test_atomic_append_jsonl_fsync_failure_propagates(tmp_path, monkeypatch):
     path = tmp_path / "history.jsonl"
 
@@ -157,6 +212,7 @@ def test_atomic_append_jsonl_fsync_failure_propagates(tmp_path, monkeypatch):
     with pytest.raises(OSError, match="jsonl fsync failed"):
         atomic_append_jsonl(path, {"event": "boom"})
 
+    assert not path.exists() or path.read_text(encoding="utf-8") == ""
 
 def test_atomic_append_line_happy_path_round_trip(tmp_path):
     path = tmp_path / "history.jsonl"

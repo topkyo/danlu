@@ -402,6 +402,7 @@ def load_tests(
         test_drop_repo_remote_requires_env,
         test_drop_repo_local_path_unaffected,
         test_clone_repo_subprocess_timeout,
+        test_dogfood_envrc_stays_git_ignored,
     ]:
         suite.addTest(unittest.FunctionTestCase(test_fn))
 

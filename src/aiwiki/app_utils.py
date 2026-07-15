@@ -458,11 +458,14 @@ def atomic_append_jsonl(
 ) -> None:
     """Append a JSON object as a single line, fsync before return.
 
-    Uses a single ``os.write`` syscall with ``O_APPEND`` so that, for
-    regular files and line sizes <= PIPE_BUF (typically 4096 bytes on
-    POSIX), the append is atomic with respect to other writers. The
-    caller remains responsible for holding ``runtime_write_lock`` when
-    needed; this function does not acquire it.
+    Uses a single ``os.write`` syscall with ``O_APPEND``. Concurrent
+    writers are **not** made safe by PIPE_BUF size; callers that share a
+    JSONL stream must hold ``runtime_write_lock`` (single-writer model).
+    This function does not acquire the lock.
+
+    On partial write / fsync / I/O failure after bytes were appended, the
+    file is truncated back to the pre-call size so callers never observe
+    a half-written JSONL line from a failed append.
 
     Raises on non-dict, encode failure, partial write, or I/O failure.
     """
@@ -470,15 +473,36 @@ def atomic_append_jsonl(
         raise TypeError(f"atomic_append_jsonl expects dict, got {type(record).__name__}")
     path.parent.mkdir(parents=True, exist_ok=True)
     line = (json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8")
+    size_before = path.stat().st_size if path.exists() else 0
+    created = not path.exists()
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
     try:
-        written = os.write(fd, line)
-        if written != len(line):
-            raise OSError(f"partial write: {written}/{len(line)} bytes")
-        if fsync:
-            os.fsync(fd)
+        try:
+            written = os.write(fd, line)
+            if written != len(line):
+                raise OSError(f"partial write: {written}/{len(line)} bytes")
+            if fsync:
+                os.fsync(fd)
+        except Exception as append_exc:
+            os.close(fd)
+            fd = -1
+            try:
+                if created and size_before == 0:
+                    try:
+                        path.unlink(missing_ok=True)
+                    except OSError:
+                        _durable_truncate(path, 0)
+                else:
+                    _durable_truncate(path, size_before)
+            except Exception as rollback_exc:
+                raise OSError(
+                    "atomic_append_jsonl failed and rollback also failed: "
+                    f"append={append_exc!r}; rollback={rollback_exc!r}"
+                ) from append_exc
+            raise
     finally:
-        os.close(fd)
+        if fd >= 0:
+            os.close(fd)
 
 
 def atomic_append_line(

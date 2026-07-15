@@ -12,5 +12,5 @@ ExecStart=__PROJECT_ROOT__/scripts/run_dogfood_maturity.sh
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
-ReadWritePaths=__DOGFOOD_VAULT__
+ReadWritePaths="__DOGFOOD_VAULT__"
 RestrictSUIDSGID=true

@@ -319,46 +319,46 @@ supersedes:
 
 ### Phase 1 — Wave A 零风险垃圾清理
 
-- [ ] A1-A2 删除 `.agentstack/` + 空目录 + `.gitignore`
-- [ ] A3 删除 `.gitignore` 死规则
-- [ ] A4 删除 `CLAUDE.md`
-- [ ] A5 `wiki/indexes/*.md` 移出 git
-- [ ] A6 `docs/analysis/` 归档
-- [ ] A7 删除 AGENTS.md 过期断言
-- [ ] targeted verify + `git status` 干净
+- [x] A1-A2 删除 `.agentstack/` + 空目录 + `.gitignore`
+- [x] A3 删除 `.gitignore` 死规则
+- [x] A4 删除 `CLAUDE.md`
+- [x] A5 `wiki/indexes/*.md` 移出 git
+- [x] A6 `docs/analysis/` 归档
+- [x] A7 删除 AGENTS.md 过期断言
+- [x] targeted verify + `git status` 干净
 
 ### Phase 2 — Wave B P0 修复
 
-- [ ] B1 修复 2 个失败测试
-- [ ] B2-B3 修复脚本硬编码路径
-- [ ] B4-B5 修正 Cleanup Plan 红线 + 归档
-- [ ] B6 补齐 docs/README.md Active 表
-- [ ] B7 修复 18 处 旧开发者 home 路径 过期路径
-- [ ] B8 归档 Superseded/已完成文档
-- [ ] targeted verify + docs consistency
+- [x] B1 修复 2 个失败测试
+- [x] B2-B3 修复脚本硬编码路径
+- [x] B4-B5 修正 Cleanup Plan 红线 + 归档
+- [x] B6 补齐 docs/README.md Active 表
+- [x] B7 修复 18 处 旧开发者 home 路径 过期路径
+- [x] B8 归档 Superseded/已完成文档
+- [x] targeted verify + docs consistency
 
 ### Phase 3 — Wave C 代码加固 + 商业化文档
 
-- [ ] C-1: C1 凭据 repr 防护
-- [ ] C-1: C2 atomic_append_jsonl 原子化
-- [ ] C-1: C3 load_manifest 损坏保护
-- [ ] C-1: C4 静默吞错修复
-- [ ] C-1: C5 deterministic 锁合并
-- [ ] C-2: C6 LICENSE（需用户确认 license 选择）
-- [ ] C-2: C7-C8 INSTALL.md + USER_GUIDE.md
-- [ ] C-2: C9-C10 PRICING.md + BOUNDARIES.md
-- [ ] C-2: C11 CHANGELOG.md
-- [ ] C-2: C12-C14 PRIVACY.md + SUPPORT.md + COMPARE.md
-- [ ] targeted verify + 独立 review
+- [x] C-1: C1 凭据 repr 防护
+- [x] C-1: C2 atomic_append_jsonl 原子化
+- [x] C-1: C3 load_manifest 损坏保护
+- [x] C-1: C4 静默吞错修复
+- [x] C-1: C5 deterministic 锁合并
+- [x] C-2: C6 LICENSE（需用户确认 license 选择）
+- [x] C-2: C7-C8 INSTALL.md + USER_GUIDE.md
+- [x] C-2: C9-C10 PRICING.md + BOUNDARIES.md
+- [x] C-2: C11 CHANGELOG.md
+- [x] C-2: C12-C14 PRIVACY.md + SUPPORT.md + COMPARE.md
+- [x] targeted verify + 独立 review
 
 ### Phase 4 — Wave D 测试基础设施 + 文档完善
 
-- [ ] D1 .coveragerc + verify.sh coverage 调整
-- [ ] D2 Product Shell JS 测试纳入 CI
-- [ ] D3 verify.sh smoke 改真实链路 + 去重
+- [x] D1 .coveragerc + verify.sh coverage 调整
+- [x] D2 Product Shell JS 测试纳入 CI
+- [x] D3 verify.sh smoke 改真实链路 + 去重
 - [ ] D4 README.md 重写 + docs/DEVELOPER.md
-- [ ] D5 11 个 docs 补 frontmatter
-- [ ] D6-D8 状态明确化 + MEMORY.md 引用处理
+- [x] D5 11 个 docs 补 frontmatter
+- [x] D6-D8 状态明确化 + MEMORY.md 引用处理
 - [ ] full verify + docs consistency
 
 ### Phase 5 — 收口

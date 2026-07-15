@@ -165,10 +165,12 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . advanced nightly
 
 - Obsidian 工作台：[HOME.md](./HOME.md)
 - AgentOS 9.0 评分与 release gate：[AGOS-9-Scorecard.md](<./docs/AGOS-9-Scorecard.md>)（历史执行计划：[archive/AGOS-9-Execution-Plan.md](<./docs/archive/AGOS-9-Execution-Plan.md>)）
-- 当前清理 / 商业 / 全平台计划：[Furnace Cleanup Commercial Audit Plan 2026-07.md](<./docs/Furnace Cleanup Commercial Audit Plan 2026-07.md>)
+- 当前清理 / 商业计划：[Furnace Commercial Grade Cleanup Plan 2026-07.md](<./docs/Furnace Commercial Grade Cleanup Plan 2026-07.md>)
+- 安装与用户指南：[INSTALL.md](<./docs/INSTALL.md>) · [USER_GUIDE.md](<./docs/USER_GUIDE.md>)
+- 商业文档：[docs/commercial/](./docs/commercial/) · [LICENSE](./LICENSE) · [CHANGELOG.md](./CHANGELOG.md)
 - 炼丹炉 Agent 架构（终局 SoT）：[Furnace Agent Architecture.md](<./docs/Furnace Agent Architecture.md>)
 - 炼丹炉进化机制（实现契约 SoT）：[Furnace Evolution Mechanics.md](<./docs/Furnace Evolution Mechanics.md>)
-- 运行机制与 nightly fallback：[Furnace Runtime Operations.md](<./docs/Furnace Runtime Operations.md>)
+- 运行机制与 fail-closed nightly：[Furnace Runtime Operations.md](<./docs/Furnace Runtime Operations.md>)
 - 金丹机制 thesis：[Furnace Elixir.md](<./docs/Furnace Elixir.md>)
 - Product Shell 插件设计史料：[Furnace Product Shell Plugin.md](<./docs/archive/Furnace Product Shell Plugin.md>)
 - 归档文档索引：[docs/archive/](./docs/archive/)
