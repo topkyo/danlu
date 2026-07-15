@@ -1,2 +1,0 @@
-{"created_at":"2026-04-24T08:02:30+00:00","event":"run-ask","status":"failed","target":"output/reports/no-protocol.md"}
-{"created_at":"2026-04-24T08:03:00+00:00","event":"run-compile","status":"failed","protocol":"ops","target":"wiki/sources/src-latency.md"}
