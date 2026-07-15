@@ -25,7 +25,7 @@ emit_targets_for_path() {
   local path="$1"
 
   case "$path" in
-    AGENTS.md|CLAUDE.md|PROGRESS.md|README.md|docs/*|docs/**/*|*.md)
+    AGENTS.md|PROGRESS.md|README.md|docs/*|docs/**/*|*.md)
       echo scripts
       return 0
       ;;

@@ -26,6 +26,7 @@ updated_at: 2026-07-14
 | [Furnace Elixir](<./Furnace Elixir.md>) | 金丹机制产品思路 thesis（accepted） |
 | [INSTALL](<./INSTALL.md>) | **安装指南**：Desktop Obsidian + `PYTHONPATH=src` runtime 起步 |
 | [USER_GUIDE](<./USER_GUIDE.md>) | **用户指南**：日常 drop / compile / ask / review 路径 |
+| [DEVELOPER](<./DEVELOPER.md>) | **开发者指南**：owner map、verify targets、LLM/自动化细节 |
 | [commercial/PRICING](<./commercial/PRICING.md>) | 商业定价与 SKU（占位邮箱待替换） |
 | [commercial/BOUNDARIES](<./commercial/BOUNDARIES.md>) | 开源版 vs 商业版边界 + 商业 license 获取 |
 | [commercial/PRIVACY](<./commercial/PRIVACY.md>) | local-first 隐私与 egress 声明 |
@@ -59,6 +60,7 @@ updated_at: 2026-07-14
 - [AGOS-9-Execution-Plan](<./archive/AGOS-9-Execution-Plan.md>) → release gate 以 Scorecard 为准
 - [Furnace AgentOS Completion Plan](<./archive/Furnace AgentOS Completion Plan.md>) → 完成记录保留作史料
 - [Furnace Agent OS Slimdown Plan](<./archive/Furnace Agent OS Slimdown Plan.md>) → 后续只按 Cleanup Plan 做 targeted seam
+- [Furnace-90-Plus-Context-Provenance-Hardening-Plan](<./archive/Furnace-90-Plus-Context-Provenance-Hardening-Plan.md>) → 已归档；context/provenance 口径以 Architecture + Scorecard 为准
 - [deepseek-comprehensive-evaluation-2026-05-03](<./archive/deepseek-comprehensive-evaluation-2026-05-03.md>) → LLM/运行口径以 Runtime Ops + Scorecard 为准
 
 ## 阅读顺序

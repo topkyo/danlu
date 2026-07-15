@@ -19,11 +19,14 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
   - `docs/commercial/COMPARE.md` — 对外竞品对比页，强调差异化价值。
 - 新增 `CHANGELOG.md`（本文件）。
 - `LICENSE` copyright + dual-license 获取说明；`docs/README.md` Active 表纳入 INSTALL / USER_GUIDE / commercial 文档。
+- `docs/DEVELOPER.md`：从 README 拆出的开发者 SoT（owner map / verify / LLM / 自动化）。
 
 ### Changed
-- `README.md` / `PROGRESS.md` 指向当前 Commercial Grade Cleanup Plan；商业入口链到 `docs/commercial/`。
+- `README.md` 改为用户向入口；`PROGRESS.md` 指向当前 Commercial Grade Cleanup Plan。
 - `verify.sh all` 恢复 deterministic `smoke` + `cli-smoke`；Product Shell Jest runner 在插件目录解析依赖。
 - `atomic_append_jsonl` 失败时 truncate 回滚；CLI bulk action 对腐坏 state fail-closed。
+- `docs_consistency_check.sh` 扩展 D4 / commercial pack / indexes 死链 / `/home/` 门禁。
+- Cleanup Plan §1.6 再评估评分卡（综合 ~7.6）；Phase 5 明确 go-live 延期项。
 
 ### Fixed
 - （与商业化清理 Wave B/C 同步）脚本硬编码路径、失败测试、凭据 repr 防护等详见 `docs/Furnace Commercial Grade Cleanup Plan 2026-07.md`。
