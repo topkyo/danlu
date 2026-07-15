@@ -39,7 +39,6 @@ emit_targets_for_path() {
       ;;
     .coveragerc)
       echo scripts
-      echo unit
       return 0
       ;;
     LICENSE|CHANGELOG.md)
@@ -53,7 +52,6 @@ emit_targets_for_path() {
       ;;
     scripts/*.py)
       echo scripts
-      echo unit
       return 0
       ;;
     scripts/*.sh)
@@ -62,7 +60,6 @@ emit_targets_for_path() {
       ;;
     schema/*.json|schema/**/*.json)
       echo python-static
-      echo unit
       return 0
       ;;
     .obsidian/plugins/furnace-product-shell/package.json|.obsidian/plugins/furnace-product-shell/package-lock.json|.obsidian/plugins/furnace-product-shell/build.sh|.obsidian/plugins/furnace-product-shell/*.js|.obsidian/plugins/furnace-product-shell/src/*|.obsidian/plugins/furnace-product-shell/src/**/*|.obsidian/plugins/furnace-product-shell/*.css)
@@ -71,18 +68,15 @@ emit_targets_for_path() {
       ;;
     src/aiwiki/cli.py|src/aiwiki/cli/*|src/aiwiki/cli/**/*)
       echo python-static
-      echo unit
       echo cli-smoke
       return 0
       ;;
     src/aiwiki/*.py|src/aiwiki/*/*.py|src/aiwiki/*/*/*.py)
       echo python-static
-      echo unit
       return 0
       ;;
     tests/*.py|tests/*/*.py|tests/*/*/*.py)
       echo python-static
-      echo unit
       return 0
       ;;
     *)

@@ -23,7 +23,6 @@ Targets:
   scripts               Check project shell scripts only.
   smoke                 Run lightweight aiwiki CLI smoke.
   python-static         Run Python lint and bytecode compile checks.
-  unit                  Run Python unit tests without coverage reporting.
   acceptance            Run acceptance replay checks.
   cli-smoke             Check aiwiki CLI startup/help.
   product-shell-static  Run Product Shell JavaScript syntax checks.
@@ -59,10 +58,6 @@ verify_scripts() {
 verify_python_static() {
   "$PYTHON" -m ruff check src tests
   "$PYTHON" -m compileall src tests >/dev/null
-}
-
-verify_unit() {
-  "$PYTHON" -m pytest tests
 }
 
 verify_acceptance() {
@@ -116,10 +111,6 @@ case "$TARGET" in
     ;;
   python-static)
     verify_python_static
-    exit 0
-    ;;
-  unit)
-    verify_unit
     exit 0
     ;;
   acceptance)

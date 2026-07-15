@@ -17,6 +17,7 @@ INTERVAL="${AIWIKI_WATCH_INTERVAL:-5}"
 COMPILE_LIMIT="${AIWIKI_WATCH_COMPILE_LIMIT:-5}"
 
 ARGS=(
+  advanced
   watch
   --interval "$INTERVAL"
   --compile-limit "$COMPILE_LIMIT"

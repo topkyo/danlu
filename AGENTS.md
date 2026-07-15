@@ -32,10 +32,9 @@
 ## 验证入口
 
 - 主验证入口：`bash scripts/verify.sh [target]`
-- 常用 target：`scripts`、`smoke`、`python-static`、`unit`、`acceptance`、`cli-smoke`、`product-shell-static`、`all`
+- 常用 target：`scripts`、`smoke`、`python-static`、`acceptance`、`cli-smoke`、`product-shell-static`、`all`
   - 日常：`scripts` + `python-static` + `smoke`（无 coverage，单次 ~25s）；用 `bash scripts/verify_target_rules.sh` 按改动路径自动选
   - `all` 含 `coverage erase + coverage run pytest + coverage report + acceptance`，约 13 min，仅推送/发布前用
-  - `unit`（pytest，无 coverage）也可单独 ~2 min 跑回归
 - 按改动路径建议 target：`bash scripts/verify_target_rules.sh`
 - 已移除：`cache_benchmark.py` / `compile_benchmark.py` / `dogfood_maturity_gate.py` / `agos9_*.sh` 等耗时辅助脚本及 `verify.sh product-shell-static` 中的 bundle drift gating；脚本侧只保留 vault/runtime/install/uninstall 核心
 - 文档一致性：`bash scripts/docs_consistency_check.sh`

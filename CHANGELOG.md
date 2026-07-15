@@ -14,12 +14,14 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
 - `systemd/`：删除 `aiwiki-dogfood-maturity.service.template` 与 `.timer.template`。
 - `tests/`：删除 `test_compile_benchmark_smoke.py` / `test_long_window_proof_probe.py` / `test_local_worktree.py` / `test_product_shell_smoke.py` / `test_dogfood_maturity_gate.py` / `test_cache_benchmark_script_outputs_status_and_timings`；`test_app_runtime.py` / `test_app_misc.py` / `test_deploy_defaults.py` 同步剪除 dogfood maturity / product shell smoke 相关断言。
 - `tests/fixtures/acceptance/M6.1b/README.md`：refresh 工具条目从「脚本调用」改为「手动 hash 重命名」，因为 refresh 脚本已删除。
+- `scripts/verify.sh` 整个 `unit` target（含 `verify_unit()` 函数 + dispatch case + usage help 一行）删除；与 `all` 唯一差别是 coverage overhead，`unit` 是 `all` 的"裸测版本"，被证实为冗余单独入口。
 
 ### Changed
 - `scripts/install_user_service.sh` / `scripts/uninstall_user_service.sh`：删除所有 `AIWIKI_INSTALL_DOGFOOD_MATURITY` / `run_dogfood_maturity.sh` 分支，仅保留 `watch` + `nightly`；升级路径上对已存在 `aiwiki-dogfood-maturity.*` unit 做清理兜底。
 - `scripts/verify.sh`：`product-shell-static` 不再调 `check_product_shell_bundle.sh` / `run_product_shell_tests.sh`，只跑 `node --check main.js`。
-- `scripts/verify_target_rules.sh`：删除对应被删脚本路径的 case 分支。
-- `AGENTS.md` 验证入口：`scripts` 段补「daily / release」边界说明。
+- `scripts/verify_target_rules.sh`：删除对应被删脚本路径的 case 分支；移除 `unit` 在 `.coveragerc` / `schema/*.json` / `scripts/*.py` / `src/aiwiki/cli*.py` / `src/aiwiki/*.py` / `tests/*.py` 的推荐（这些路径单独改动不再自动触发全量 pytest）。
+- `scripts/run_launchd_watch.sh`：`watch …` argv 改写为 `advanced watch …`，消除 watcher 启动后 stderr `[deprecated] aiwiki watch is a legacy top-level entry` 噪音行（`run_launchd_nightly.sh` 早已用 `advanced nightly`，未动）。
+- `AGENTS.md` 验证入口：`scripts` 段补「daily / release」边界说明 + 删除 `unit`（pytest，无 coverage）条目；常用 target 列为 `scripts` / `smoke` / `python-static` / `acceptance` / `cli-smoke` / `product-shell-static` / `all`。
 - `docs/DEVELOPER.md` / `docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md` / `docs/AGOS-9-Scorecard.md` / `docs/Furnace-Optional-Deps-Matrix.md` / `docs/Furnace Product Shell UX Test Checklist.md`：同步移除对已删脚本的引用，明确 release gate 不再依赖被移除的 release-evidence / maturity pipeline。
 - `docs/AGOS-9-Dogfood-Proof-Runbook.md` / `docs/AGOS-9-Investing-Preflight-Runbook.md`：移入 `docs/archive/`，标记 superseded。
 - `verify.sh all`（仅 release 用）行为不变，仍按 `coverage erase + coverage run pytest + coverage report + acceptance` 跑出 ~13 min 周期；只是被依赖的辅助脚本集已精简。
