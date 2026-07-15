@@ -37,7 +37,7 @@ check_no_match "no implicit cross-backend fallback in README" \
   "automatically fall back to|auto.?fallback.*backend" README.md
 
 # Active ops doc should document explicit backend selection.
-if rg -n "opencode-api" docs/Furnace-Optional-Deps-Matrix.md docs/Furnace\ Runtime\ Operations.md README.md >/dev/null; then
+if rg -n "opencode-api" docs/Furnace\ Runtime\ Operations.md README.md >/dev/null; then
   echo "[OK] explicit backend docs present"
 else
   echo "[FAIL] missing explicit backend documentation" >&2

@@ -16,13 +16,6 @@ updated_at: 2026-07-15
 | [Furnace Product Shell](<./Furnace Product Shell.md>) | **Obsidian Product Shell SoT**：一个输入端 + 一个输出端 + Advanced 抽屉；**Desktop-only** |
 | [Furnace Runtime Operations](<./Furnace Runtime Operations.md>) | **运行手册 SoT**：watcher、nightly、LLM worker、四 API 后端与 fail-closed 策略 |
 | [AGOS-9-Scorecard](<./AGOS-9-Scorecard.md>) | **AgentOS 评分与 release gate SoT**：证据分层、blocking gate、本地 release 口径 |
-| [AGOS-9-Dogfood-Proof-Runbook](<./AGOS-9-Dogfood-Proof-Runbook.md>) | **运行手册**：AGOS-9 连续 3 日 maturity proof 与 compounding 实跑 |
-| [AGOS-9-Investing-Preflight-Runbook](<./AGOS-9-Investing-Preflight-Runbook.md>) | **运行手册**：Investing 协议预检与链路 smoke |
-| [Furnace Investing Dogfood Plan](<./Furnace Investing Dogfood Plan.md>) | investing 协议 dogfood flow 与 receipt index（历史 contract + 实跑索引） |
-| [Furnace Product Shell UX Test Checklist](<./Furnace Product Shell UX Test Checklist.md>) | **UX 验证清单**：Product Shell 单元 / 功能 / 真实 vault smoke |
-| [Furnace-Optional-Deps-Matrix](<./Furnace-Optional-Deps-Matrix.md>) | **依赖矩阵 SoT**：Python 可选包、LLM backend、凭据与遥测 |
-| [Furnace Agentic Debt Autopilot](<./Furnace Agentic Debt Autopilot.md>) | **agentic 边界 SoT**：核心 manual-only 面与非核心 LLM-owned 面 |
-| [Furnace Market Scan 2026Q2](<./Furnace Market Scan 2026Q2.md>) | 2026Q2 市场对标与差异化判断 |
 | [Furnace Elixir](<./Furnace Elixir.md>) | 金丹机制产品思路 thesis（accepted） |
 | [INSTALL](<./INSTALL.md>) | **安装指南**：Desktop Obsidian + `PYTHONPATH=src` runtime 起步 |
 | [USER_GUIDE](<./USER_GUIDE.md>) | **用户指南**：日常 drop / compile / ask / review 路径 |
@@ -49,7 +42,6 @@ updated_at: 2026-07-15
 | 文档 | 角色 |
 |---|---|
 | [Furnace Investing Demo Pack Spec](<./Furnace Investing Demo Pack Spec.md>) + [Demo Pack fixture](<../demos/investing-demo-pack/README.md>) | 商业 demo 规格与已交付 fixture（截图/录屏资产见 Go-Live WS3） |
-| [Furnace RuntimeClient Mobile Companion Design](<./Furnace RuntimeClient Mobile Companion Design.md>) | 移动 companion implemented-slice；无独立 iOS 商店包（产品边界） |
 
 ## Direction context（非当前执行 SoT）
 
@@ -79,7 +71,7 @@ updated_at: 2026-07-15
 3. 需要操作本机自动化时看 [Furnace Runtime Operations](<./Furnace Runtime Operations.md>)。
 4. 当前评分 / release gate 看 [AGOS-9-Scorecard](<./AGOS-9-Scorecard.md>)；**下一波执行**看 [Post-Cleanup Audit and Next Direction](<./Furnace Post-Cleanup Audit and Next Direction 2026-07.md>) 与 `PROGRESS.md`。
 5. 已完成的商业化清理见 [archive/Furnace Commercial Grade Cleanup Plan 2026-07](<./archive/Furnace Commercial Grade Cleanup Plan 2026-07.md>)。
-6. 商业 demo 讲法看 [Furnace Investing Demo Pack Spec](<./Furnace Investing Demo Pack Spec.md>)；移动端 companion 只看 [Furnace RuntimeClient Mobile Companion Design](<./Furnace RuntimeClient Mobile Companion Design.md>)。
+6. 商业 demo 讲法看 [Furnace Investing Demo Pack Spec](<./Furnace Investing Demo Pack Spec.md>)。
 7. 需要看 Product Shell 时再看 [Furnace Product Shell](<./Furnace Product Shell.md>)（Desktop-only；iPad/iOS 不支持全功能）。
 8. 历史方向与 AGOS/AOS 执行记录见 [archive](<./archive/README.md>)，不作为当前执行 SoT。
 
@@ -110,5 +102,5 @@ Commercial Grade Cleanup Plan 2026-07 (archive)
          |
          | 已交付规格（非活跃执行）
          v
-Investing Demo Pack Spec + RuntimeClient Mobile Companion Design
+Investing Demo Pack Spec
 ```

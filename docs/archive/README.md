@@ -35,3 +35,11 @@ updated_at: 2026-07-15
 | [Furnace AOS-003 Compat Shim Audit](<./Furnace AOS-003 Compat Shim Audit.md>) | [AGENTS.md](<../../AGENTS.md>) 架构清理定案；纯 facade 已清除 |
 | [Furnace Post-AGOS Risk Plan](<./Furnace Post-AGOS Risk Plan.md>) | [AGOS-9-Scorecard](<../AGOS-9-Scorecard.md>) + `PROGRESS.md` |
 | [Furnace-90-Plus-Context-Provenance-Hardening-Plan](<./Furnace-90-Plus-Context-Provenance-Hardening-Plan.md>) | [Furnace Runtime Operations](<../Furnace Runtime Operations.md>) + [AGOS-9-Scorecard](<../AGOS-9-Scorecard.md>)；四项 hardening 已落地 |
+| [AGOS-9-Dogfood-Proof-Runbook](<./AGOS-9-Dogfood-Proof-Runbook.md>) | `scripts/run_dogfood_maturity.sh` + systemd dogfood maturity harness 已删；AGOS-9 maturity gate 逻辑以 Scorecard 为准 |
+| [AGOS-9-Investing-Preflight-Runbook](<./AGOS-9-Investing-Preflight-Runbook.md>) | `scripts/investing_dogfood_preflight.sh` 已删；新 investing 上线预检走 `aiwiki advanced ...` 路径 |
+| [Furnace Investing Dogfood Plan](<./Furnace Investing Dogfood Plan.md>) | 老 investing 协议 plan，被 Post-Cleanup Audit + Investing Demo Pack Spec 取代 |
+| [Furnace Product Shell UX Test Checklist](<./Furnace Product Shell UX Test Checklist.md>) | [Furnace Product Shell](<../Furnace Product Shell.md>)（Desktop-only）已为现行事实；UX 验证通过 `bash scripts/verify.sh smoke` + acceptance 17 fixture 覆盖 |
+| [Furnace-Optional-Deps-Matrix](<./Furnace-Optional-Deps-Matrix.md>) | 可选包矩阵被 acceptance-only verify + `tests/fixtures/` 兑现；动态依赖通过把 `failed-llm` 等 hint 写到 receipts，矩阵本体的 SoT 角色已弱化 |
+| [Furnace Agentic Debt Autopilot](<./Furnace Agentic Debt Autopilot.md>) | autopilot 在 2026-06 dogfood proof 后无新推进；`scripts/dogfood_maturity_gate.py` 已删；Scorecard / PROGRESS 当前已不依赖 autopilot 路径 |
+| [Furnace Market Scan 2026Q2](<./Furnace Market Scan 2026Q2.md>) | 季度对标（2026 Q2）已过；与活跃 shipped-feature 一线不一致，史料保留 |
+| [Furnace RuntimeClient Mobile Companion Design](<./Furnace RuntimeClient Mobile Companion Design.md>) | 移动 companion implemented-slice 已交付；无独立 iOS 商店包（产品边界），进一步产品形态以后另起 plan |

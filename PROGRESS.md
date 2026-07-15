@@ -1,10 +1,6 @@
 # 炼丹炉 Progress — Furnace 世代
 
-> **结构 v2** (R68, 2026-05-04): PROGRESS.md 仅保留 Quick Index + 活跃 3 轮 + 改进方向指针。
-> **PROGRESS.md 仍是当前任务状态唯一 SoT；archive/rounds/ 只是历史延伸。**
-> 历史 round 详情：`archive/rounds/round-*.md` / `archive/rounds/p4-*.md`
-> 机器索引：`archive/rounds/index.json`
-> 切档历史：pre-Round 1 在 `archive/PROGRESS-pre-round1.md`（注意：里面也包含 Round 24/25 的早期记录，已重新落入 `archive/rounds/round-24.md` 和 `round-25.md`）
+> **PROGRESS.md 是当前任务状态唯一 SoT**：archive/rounds/* 与 PROGRESS-pre-round1.md 是过去的 agenda-track 产出仓库快照，本文件不把这些路径作为 SoT 列出，只承载 round-by-round 当前条目。
 
 ## SoT 引用
 
@@ -17,6 +13,8 @@
 
 
 ## 当前动态
+
+- 2026-07-15 (optional-deps matrix archive + PROGRESS structure v2 退役)：跨 review 第三轮紧随 `Furnace Post-Cleanup Audit` 落地后清理 stale SoT 指针。`docs/Furnace-Optional-Deps-Matrix.md` → `docs/archive/`（矩阵的 SoT 角色被 acceptance-only verify + `tests/fixtures/` byte-stable 兑现弱化）。`docs/README.md` "Active" 表 7 行已 archive doc 全部剪掉（runbooks + 5 Furnace legacy + matrix），剩 16 entry；"Delivered specs" 段也只留 `Furnace Investing Demo Pack Spec`；"Reading order" 与 "关系图" 段同步。`docs/archive/README.md` 加入 8 个新 archive 项替代关系。`PROGRESS.md` head 删 R68 "结构 v2" 备注 + `archive/rounds/round-*.md` round pointers + `archive/rounds/index.json` 机器索引指针 + `archive/PROGRESS-pre-round1.md` 切档指针，只保留 "PROGRESS.md 是当前 SoT" 的 explicit note + `## SoT 引用` 段；CHANGELOG [Unreleased] 段对应条目同步记录。验证：ruff + scripts + python-static + smoke + cli-smoke + product-shell-static + acceptance 全绿 + docs_consistency 16 OK；git status dirty doc / 轻 doc edits only。
 
 - 2026-07-15 (cross-review 进一步瘦身)：按 user "A + B + C-all" 决策执行。(A1) `.gitignore` 删 `.agentstack` + `.agents/skills/agentstack-*/` defensive ignores，保留 `.codegraph/` 与 `.coverage` 行因为本机这两个 artifacts 仍在生成；(A2) `scripts/archive/` 整目录删除（5 文件，引用面只剩 docs/archive/、archive/rounds/ 历史）；(B) 5 个 legacy Furnace docs 移入 `docs/archive/`：`Furnace Market Scan 2026Q2.md`、`Furnace Product Shell UX Test Checklist.md`、`Furnace Investing Dogfood Plan.md`、`Furnace RuntimeClient Mobile Companion Design.md`、`Furnace Agentic Debt Autopilot.md`，活跃 docs 从 14 → 9；(C) `tests/` 大瘦身：删 118 个顶层 `tests/test_*.py`（除 `test_acceptance_loop.py`）+ 26 个 `tests/unit/test_*.py`，合计 144 个文件（旧 ~56k LOC）退役；`tests/` 收缩到 acceptance-only（`test_acceptance_loop.py` + `tests/acceptance/` + `tests/fixtures/`），由 `bash scripts/verify.sh all` 默认 18s 跑 17 acceptance。再加 AGENTS.md 同步说明，CHANGELOG [Unreleased] 段同步更新。验证：ruff clean + scripts + python-static + smoke + cli-smoke + product-shell-static + acceptance 全绿 + docs_consistency 16 OK。
 
