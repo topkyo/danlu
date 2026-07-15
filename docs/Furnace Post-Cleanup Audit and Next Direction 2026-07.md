@@ -82,8 +82,8 @@ supersedes: []
 |---|---|---|---|---|
 | D10 | Scorecard hub 行数曾过期 | 曾写 alchemy 2589 / protocol ~1750 | Maintainability 证据失真 | **fixed**：刷新为 ~917 / ~442 |
 | D11 | Demo Pack / RuntimeClient 曾挂 Active Plans | `docs/README.md` | 假活跃 | **fixed**：降为 Delivered specs |
-| D12 | coverage `fail_under=89` + omit `legacy_argv` | `.coveragerc` | 门禁偏松 | open（刻意延期） |
-| D13 | PROGRESS「活跃 3 轮」名实不符 | 仅 Round 92.8 | 结构债 | open（切档卫生，非阻断） |
+| D12 | coverage `fail_under=89` + omit `legacy_argv` | `.coveragerc` | 门禁偏松 | **closed**：Round 2 (commit `5a1c20c`) 删 `.coveragerc` + `pyproject.toml` dev-dep `coverage>=7.6,<8` + `verify.sh all` coverage block；coverage hard gate 不再触发 |
+| D13 | PROGRESS「活跃 3 轮」名实不符 | 仅 Round 92.8 | 结构债 | **closed**：Round 9 (`b4e160f`) + Round 10 (`e69bc4a`) archive 树统一进 `docs/archive/`，顶级 `archive/` 清空；PROGRESS head 重写 + SoT 索句 explicit |
 | D14 | JS 行为测试偏弱（grep token） | Round 92.8 Residual | plugin 大改回归弱 | open → WS5 |
 | D15 | 14/30-day natural dogfood proof | Scorecard `not-yet` | 长期证据不足 | 诚实 defer → WS6 |
 
