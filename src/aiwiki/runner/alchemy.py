@@ -20,8 +20,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from aiwiki.app_compile import compile_wiki, lint_wiki
 from aiwiki.app_execution import append_execution_receipt_history, compute_file_sha256
+from aiwiki.app_linting.core import lint_wiki
 from aiwiki.app_protocol import ensure_layout
 from aiwiki.app_state import append_runtime_history, execution_receipt_history_path
 from aiwiki.app_utils import (
@@ -39,6 +39,7 @@ from aiwiki.app_utils import (
     strip_frontmatter,
     utc_now,
 )
+from aiwiki.compile.pipeline import compile_wiki
 from aiwiki.execution import machine_memory_batch as _machine_memory_batch
 from aiwiki.execution.audit_preview import AUDIT_STREAM_PATH
 from aiwiki.execution.runtime_surfaces import nightly_health

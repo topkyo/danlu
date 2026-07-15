@@ -10,7 +10,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from ..app_cache import cache_status_summary, drop_query_cache, force_rebuild_query_cache
-from ..app_compile import compile_wiki, lint_wiki, set_active_protocol
+from ..app_compile_ops import set_active_protocol
+from ..app_linting.core import lint_wiki
 from ..app_protocol import ensure_layout, load_protocol_state
 from ..app_shell import build_shell_summary, rewrite_followup_payload_for_paths, shell_search, shell_status_dashboard
 from ..app_state import (
@@ -20,6 +21,7 @@ from ..app_state import (
     save_today_snooze_state,
 )
 from ..app_vault import bootstrap_new_vault, sync_product_shell_plugin
+from ..compile.pipeline import compile_wiki
 from ..content.io import ingest_source
 from ..content.memory import action_supports_low_risk_apply
 from ..drop import drop_image, drop_note, drop_pdf, drop_repo, drop_url

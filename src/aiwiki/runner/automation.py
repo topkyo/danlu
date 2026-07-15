@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from aiwiki.app_compile import compile_wiki, lint_wiki
+from aiwiki.app_linting.core import lint_wiki
 from aiwiki.app_protocol import ensure_layout
 from aiwiki.app_state import load_manifest
 from aiwiki.app_utils import (
@@ -19,6 +19,7 @@ from aiwiki.app_utils import (
     runtime_write_lock,
     sha256_bytes,
 )
+from aiwiki.compile.pipeline import compile_wiki
 from aiwiki.runner.clients import llm_status
 from aiwiki.runner.interfaces import SupportsComplete
 from aiwiki.runner.receipts import _append_log
