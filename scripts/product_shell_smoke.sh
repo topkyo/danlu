@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-DEFAULT_ROOT="/home/tim/danlu/炼丹炉"
+DEFAULT_ROOT="${AIWIKI_DOGFOOD_VAULT:-}"
 WITH_NOTE_WRITE=0
 ROOT=""
 
@@ -24,6 +24,12 @@ while [[ $# -gt 0 ]]; do
 done
 
 ROOT="${ROOT:-$DEFAULT_ROOT}"
+
+if [[ -z "$ROOT" ]]; then
+  echo "error: vault root is required (set AIWIKI_DOGFOOD_VAULT or pass path as argument)" >&2
+  exit 1
+fi
+
 LAUNCHER="$ROOT/scripts/aiwiki-launcher.sh"
 
 if [[ ! -x "$LAUNCHER" ]]; then

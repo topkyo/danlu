@@ -14,7 +14,12 @@
 set -euo pipefail
 
 SESSION="danlu-dogfood"
-VAULT="${AIWIKI_DOGFOOD_VAULT:-/home/tim/danlu/炼丹炉}"
+VAULT="${AIWIKI_DOGFOOD_VAULT:-}"
+
+if [[ -z "$VAULT" ]]; then
+  echo "error: AIWIKI_DOGFOOD_VAULT is required" >&2
+  exit 1
+fi
 
 if [[ "${1:-start}" == "stop" ]]; then
   tmux kill-session -t "$SESSION" 2>/dev/null && echo "stopped: $SESSION" || echo "no session: $SESSION"

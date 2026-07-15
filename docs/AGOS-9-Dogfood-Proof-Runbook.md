@@ -1,17 +1,24 @@
+---
+title: "AGOS-9 线上 Dogfood 证明运行手册"
+kind: "runbook"
+status: "active"
+updated_at: "2026-07-15"
+---
+
 # AGOS-9 线上 Dogfood 证明运行手册
 
 > 解除 [AGOS-9-Scorecard.md](./AGOS-9-Scorecard.md) 发布门禁：连续 3 个 UTC 日的 maturity receipt + knowledge compounding 样本。
 
 ## 前置条件
 
-- Vault：`/home/tim/danlu/炼丹炉`（或 `AIWIKI_DOGFOOD_VAULT`）
+- Vault：`$AIWIKI_DOGFOOD_VAULT`（或 `AIWIKI_DOGFOOD_VAULT`）
 - 为显式 `run-ask` 与 maturity nightly 配置 LLM 凭据（无跨 backend fallback；release proof 禁用 deterministic nightly fallback）
 - 可选：`AIWIKI_INSTALL_DOGFOOD_MATURITY=1` 启用 systemd timer
 
 ## 每日循环（3 个 UTC 日）
 
 ```bash
-export AIWIKI_DOGFOOD_VAULT=/home/tim/danlu/炼丹炉
+export AIWIKI_DOGFOOD_VAULT=$AIWIKI_DOGFOOD_VAULT
 source .envrc.dogfood  # 可选加速器
 
 # 每个 UTC 日一次（若已有 receipt 则跳过，除非 FORCE=1）
@@ -61,8 +68,8 @@ python3 scripts/dogfood_maturity_gate.py --root "$AIWIKI_DOGFOOD_VAULT" summariz
 
 ```bash
 AIWIKI_INSTALL_DOGFOOD_MATURITY=1 \
-AIWIKI_DOGFOOD_MATURITY_ENVRC=/home/tim/ai-wiki/.envrc.dogfood \
-AIWIKI_DOGFOOD_VAULT=/home/tim/danlu/炼丹炉 \
+AIWIKI_DOGFOOD_MATURITY_ENVRC=/Users/ht/github/danlu/.envrc.dogfood \
+AIWIKI_DOGFOOD_VAULT=$AIWIKI_DOGFOOD_VAULT \
 bash scripts/install_user_service.sh
 ```
 

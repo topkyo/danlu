@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 DEFAULT_BACKEND = "opencode-api"
@@ -51,11 +51,11 @@ class LLMConfig:
     model: str = ""
     model_requested: str = ""
     model_fallback_chain: tuple[str, ...] = ()
-    api_key: str = ""
-    deepseek_api_key: str = ""
+    api_key: str = field(default="", repr=False)
+    deepseek_api_key: str = field(default="", repr=False)
     deepseek_api_key_source: str = ""
-    anthropic_api_key: str = ""
-    opencode_api_key: str = ""
+    anthropic_api_key: str = field(default="", repr=False)
+    opencode_api_key: str = field(default="", repr=False)
     opencode_api_key_source: str = ""
     base_url: str = DEFAULT_BASE_URL
     deepseek_base_url: str = DEFAULT_DEEPSEEK_BASE_URL

@@ -47,7 +47,7 @@ based_on:
 
 | 红线 | 原因 |
 |---|---|
-| 不删 `src/aiwiki/app.py` shim | README / AOS-003 外部兼容承诺 |
+| `app.py` 已删（2026-07）；AOS-003 红线已解除 | 纯 facade 已按 AGENTS.md 一次清除 |
 | 不破坏 `raw/` 唯一事实输入与 `wiki/sources` vs `wiki/derived` 分层 | 事实层污染不可逆 |
 | 不弱化 receipt / revert / audit 语义 | 可售卖差异化核心 |
 | 不整删 `tests/fixtures/acceptance/**` | 回归 SoT；golden 变更需行为理由 |

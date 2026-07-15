@@ -458,18 +458,27 @@ def atomic_append_jsonl(
 ) -> None:
     """Append a JSON object as a single line, fsync before return.
 
-    Raises on non-dict, encode failure, or I/O failure. Does NOT acquire
-    runtime_write_lock — caller must hold it.
+    Uses a single ``os.write`` syscall with ``O_APPEND`` so that, for
+    regular files and line sizes <= PIPE_BUF (typically 4096 bytes on
+    POSIX), the append is atomic with respect to other writers. The
+    caller remains responsible for holding ``runtime_write_lock`` when
+    needed; this function does not acquire it.
+
+    Raises on non-dict, encode failure, partial write, or I/O failure.
     """
     if not isinstance(record, dict):
         raise TypeError(f"atomic_append_jsonl expects dict, got {type(record).__name__}")
     path.parent.mkdir(parents=True, exist_ok=True)
-    line = json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n"
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(line)
-        handle.flush()
+    line = (json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8")
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+    try:
+        written = os.write(fd, line)
+        if written != len(line):
+            raise OSError(f"partial write: {written}/{len(line)} bytes")
         if fsync:
-            os.fsync(handle.fileno())
+            os.fsync(fd)
+    finally:
+        os.close(fd)
 
 
 def atomic_append_line(

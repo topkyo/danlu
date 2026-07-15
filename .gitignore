@@ -3,7 +3,6 @@
 
 # Agent local settings
 .claude/*.local.json
-.codex/*.local.json
 CLAUDE.local.md
 AGENTS.local.md
 PROGRESS.md
@@ -17,6 +16,8 @@ PROGRESS.md
 
 # Local agent scratch
 .codegraph/
+.agentstack/
+.agents/skills/agentstack-*/
 
 # Runtime state and generated outputs
 .aiwiki/state/*.json
@@ -29,6 +30,11 @@ PROGRESS.md
 .aiwiki/logs/*.jsonl
 .aiwiki/llm-responses/
 output/
+
+# wiki/indexes generated files (compile output, not source of truth)
+wiki/indexes/*.md
+!wiki/indexes/README.md
+
 !tests/fixtures/acceptance/M6.1b/case_heavy_after_llm/root/output/
 !tests/fixtures/acceptance/M6.1b/case_heavy_after_llm/root/output/_candidates/
 !tests/fixtures/acceptance/M6.1b/case_heavy_after_llm/root/output/_candidates/elixirs/

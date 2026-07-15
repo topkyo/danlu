@@ -117,7 +117,7 @@ def test_launchd_wrappers_use_vault_launcher() -> None:
     assert 'LAUNCHER="$TARGET_ROOT/scripts/aiwiki-launcher.sh"' in systemd_watch_content
     assert 'LAUNCHER="$TARGET_ROOT/scripts/aiwiki-launcher.sh"' in systemd_nightly_content
     assert 'exec "$LAUNCHER"' in systemd_watch_content
-    assert '"$LAUNCHER" llm-check' in systemd_nightly_content
+    assert '"$LAUNCHER" advanced llm-check' in systemd_nightly_content
     assert "--with-llm" in watch_content
     assert "run-nightly" in nightly_content
 

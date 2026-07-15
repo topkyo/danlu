@@ -126,8 +126,7 @@ def load_manifest(root: Path) -> dict[str, Any]:
     path = manifest_path(root)
     if not path.exists():
         return default_manifest()
-    with path.open("r", encoding="utf-8") as handle:
-        return json.load(handle)
+    return load_json_document_strict(path)
 
 
 def load_json_document(path: Path) -> dict[str, Any]:

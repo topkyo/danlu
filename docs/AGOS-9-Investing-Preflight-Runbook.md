@@ -1,3 +1,10 @@
+---
+title: "AGOS-9 Investing 预检运行手册"
+kind: "runbook"
+status: "active"
+updated_at: "2026-07-15"
+---
+
 # AGOS-9 Investing 预检运行手册
 
 > **性质**：P1-C 预检；验证 investing 链路可启动。**不等于** P0 三日 maturity 或 compounding pass。
@@ -12,13 +19,13 @@
 
 ## 前置
 
-- Vault：`/home/tim/danlu/炼丹炉`（或 `AIWIKI_DOGFOOD_VAULT`）
+- Vault：`$AIWIKI_DOGFOOD_VAULT`（或 `AIWIKI_DOGFOOD_VAULT`）
 - 可选：`source .envrc.dogfood`
 
 ## 命令
 
 ```bash
-export AIWIKI_DOGFOOD_VAULT=/home/tim/danlu/炼丹炉
+export AIWIKI_DOGFOOD_VAULT=$AIWIKI_DOGFOOD_VAULT
 bash scripts/backend_probe_matrix.sh
 bash scripts/investing_dogfood_preflight.sh
 # 可选：写一条 note 并 compile

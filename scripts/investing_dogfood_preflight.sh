@@ -4,8 +4,13 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
-VAULT="${AIWIKI_DOGFOOD_VAULT:-/home/tim/danlu/炼丹炉}"
+VAULT="${AIWIKI_DOGFOOD_VAULT:-}"
 SMOKE_DROP=0
+
+if [[ -z "$VAULT" ]]; then
+  echo "error: AIWIKI_DOGFOOD_VAULT is required" >&2
+  exit 1
+fi
 
 usage() {
   echo "Usage: $0 [--smoke-drop-markdown]" >&2

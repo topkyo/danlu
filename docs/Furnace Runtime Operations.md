@@ -84,9 +84,9 @@ macOS wrapper 走 vault 内 `scripts/aiwiki-launcher.sh`，所以 Product Shell 
 ```ini
 [Service]
 Type=simple
-WorkingDirectory=/home/tim/ai-wiki
-EnvironmentFile=/home/tim/.config/aiwiki/aiwiki-watch.env
-ExecStart=/home/tim/ai-wiki/scripts/run_watch.sh
+WorkingDirectory=/Users/ht/github/danlu
+EnvironmentFile=/Users/ht/.config/aiwiki/aiwiki-watch.env
+ExecStart=/Users/ht/github/danlu/scripts/run_watch.sh
 Restart=always
 RestartSec=5
 ```
@@ -99,7 +99,7 @@ python3 -m aiwiki.cli --root "$AIWIKI_VAULT" watch \
 ```
 
 关键 env：
-- `AIWIKI_VAULT=/home/tim/danlu/炼丹炉` —— 监听目标 vault
+- `AIWIKI_VAULT=$AIWIKI_DOGFOOD_VAULT` —— 监听目标 vault
 - `AIWIKI_WATCH_INTERVAL=5` —— 5s 轮询 inbox
 - `AIWIKI_WATCH_DETERMINISTIC_ONLY=1` —— 默认禁 LLM；设 `0` 才会 inline 跑 LLM compile（**不推荐**，会持锁太久阻塞投料）
 - `AIWIKI_WATCH_NO_SEMANTIC_LINT=0` —— 默认跑 semantic lint

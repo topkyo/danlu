@@ -129,6 +129,23 @@ def test_atomic_append_jsonl_typeerror_does_not_create_file(tmp_path):
     assert not path.exists()
 
 
+def test_atomic_append_jsonl_partial_failure_no_corruption(tmp_path, monkeypatch):
+    """A failed os.write must not leave a half-written line behind."""
+    import unittest.mock as mock
+
+    path = tmp_path / "history.jsonl"
+
+    atomic_append_jsonl(path, {"a": 1})
+
+    with mock.patch("os.write", side_effect=OSError("simulated crash")):
+        with pytest.raises(OSError, match="simulated crash"):
+            atomic_append_jsonl(path, {"b": 2})
+
+    lines = path.read_text(encoding="utf-8").strip().split("\n")
+    assert len(lines) == 1
+    assert json.loads(lines[0]) == {"a": 1}
+
+
 def test_atomic_append_jsonl_fsync_failure_propagates(tmp_path, monkeypatch):
     path = tmp_path / "history.jsonl"
 
