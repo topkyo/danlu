@@ -7,7 +7,7 @@ related_docs:
   - docs/commercial/BOUNDARIES.md
   - docs/commercial/SUPPORT.md
   - docs/commercial/PRIVACY.md
-  - docs/Furnace Commercial Grade Cleanup Plan 2026-07.md
+  - docs/archive/Furnace Commercial Grade Cleanup Plan 2026-07.md
 ---
 
 # 炼丹炉产品定价与包装
@@ -101,7 +101,7 @@ related_docs:
 | **离线全功能** | Local-first 不等于 offline-only；LLM provider、web fetching（`drop-url`）、notification webhook 等需要网络。 |
 | **确定性收益或性能承诺** | 不承诺研究产出数量、判断准确率或任何可量化的投资/研发回报。 |
 
-> 以上清单从 `docs/Furnace Commercial Grade Cleanup Plan 2026-07.md` §2.5 及 `demos/investing-demo-pack/COMPLIANCE.md` 迁入，是商业化沟通的底线。
+> 以上清单从 `docs/archive/Furnace Commercial Grade Cleanup Plan 2026-07.md` §2.5 及 `demos/investing-demo-pack/COMPLIANCE.md` 迁入，是商业化沟通的底线。
 
 ## 6. 购买路径
 

@@ -15,7 +15,7 @@ updated_at: "2026-07-15"
 
 - **当前正式支持：Desktop Obsidian only**（Mac / Linux；Windows 同桌面模型）。`manifest.json` 中 `isDesktopOnly: true`。
 - 插件通过 Node `child_process.spawn` 调用 vault-local / absolute `aiwiki-launcher.sh`，再进入 Python CLI；因此依赖本机 shell、文件系统绝对路径与 Python runtime。
-- **iPad / iOS Obsidian：不支持全功能直移植。** 移动端无 Node/Electron/任意 shell，不能本地执行 aiwiki。若未来做移动端，只能是 thin client（只读 summary + 提交 queue/API），见 [Commercial Grade Cleanup Plan 2026-07 Out/Non-goals](./Furnace%20Commercial%20Grade%20Cleanup%20Plan%202026-07.md)。
+- **iPad / iOS Obsidian：不支持全功能直移植。** 移动端无 Node/Electron/任意 shell，不能本地执行 aiwiki。若未来做移动端，只能是 thin client（只读 summary + 提交 queue/API），见 [Commercial Grade Cleanup Plan 2026-07 Out/Non-goals](./archive/Furnace%20Commercial%20Grade%20Cleanup%20Plan%202026-07.md)。
 - 商业口径：Mac desktop 是主产品面；不要对外宣称“炼丹炉插件已支持 iPhone/iPad 全功能炼化”。
 
 ## 0. 第一性原理

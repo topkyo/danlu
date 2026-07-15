@@ -71,7 +71,7 @@ cd ../demo-furnace-vault
 - 商业文档：[docs/commercial/](./docs/commercial/) · [LICENSE](./LICENSE) · [CHANGELOG.md](./CHANGELOG.md)
 - 架构 SoT：[Furnace Agent Architecture](./docs/Furnace%20Agent%20Architecture.md) · [Evolution Mechanics](./docs/Furnace%20Evolution%20Mechanics.md)
 - 运行手册：[Runtime Operations](./docs/Furnace%20Runtime%20Operations.md)
-- 当前清理计划：[Commercial Grade Cleanup Plan 2026-07](./docs/Furnace%20Commercial%20Grade%20Cleanup%20Plan%202026-07.md)
+- 当前清理计划（已归档）：[Commercial Grade Cleanup Plan 2026-07](./docs/archive/Furnace%20Commercial%20Grade%20Cleanup%20Plan%202026-07.md)
 - Obsidian 工作台：[HOME.md](./HOME.md)
 - 文档索引：[docs/README.md](./docs/README.md)
 

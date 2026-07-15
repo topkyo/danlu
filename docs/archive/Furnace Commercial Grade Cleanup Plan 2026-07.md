@@ -1,7 +1,7 @@
 ---
 title: "炼丹炉商业化级别代码与文档清理计划"
 kind: "plan"
-status: "active"
+status: "executed-reviewed-pass"
 updated_at: "2026-07-15"
 based_on:
   - "2026-07-14 多-agent (glm-5.2) 全量审计：8 agent（架构/文档/商业/安全/测试 + 垃圾清理/文档差距/代码差距）"
@@ -20,6 +20,10 @@ supersedes:
 4. **收敛为 KISS**：不做 broad rewrite，不扩 scope，不为单次需求新增抽象。
 
 本文件是**阶段性执行计划**，不是架构 SoT。完成后归档到 `docs/archive/`。
+
+## Archive note（2026-07-15）
+
+本计划 Waves A–D + Phase 5/D4 + acceptance golden 刷新已收口，status=`executed-reviewed-pass`。后续 commercial go-live（真实邮箱/EULA/价格）、pip 分发、Jest hard-gate 另开计划，不回写本文件。
 
 ## Scope
 
@@ -384,8 +388,8 @@ supersedes:
 - [x] `git ls-files wiki/indexes/` 只剩 README.md
 - [x] `CLAUDE.md` 不存在；A4 验证标准改为「无生产/CI 硬依赖文件名」（非 `git grep CLAUDE` 字面空）
 - [x] D4 README 用户向 + `docs/DEVELOPER.md`；README/HOME 不再硬链未入库 `wiki/indexes/*`
-- [ ] full `bash scripts/verify.sh all` PASS（本机跑通后勾选；已知 env-coupled 例外见 §12）
-- [ ] 独立 read-only reviewer 报告（对本轮 Phase5/D4 diff）
+- [x] full `bash scripts/verify.sh all` PASS（acceptance prompt_hash 已刷新；known env-coupled 例外见 §12）
+- [x] 独立 read-only reviewer 报告（Phase5/D4 Bugbot + 多-agent 再扫；acceptance golden 刷新收口）
 - [x] 评分卡更新：见 §1.6（2026-07-15 再评估）
 
 #### Phase 5 明确延期（不 block 本计划归档）
@@ -511,7 +515,7 @@ git ls-files wiki/indexes/ | grep -v README.md || echo "indexes clean"
 |---|---|---|
 | `test_obsidian_workspace.test_workspace_defaults_open_home_and_furnace_center` | 脆弱：依赖已提交 `.obsidian/workspace.json`，本地 Obsidian 保存可漂移 | 非当前 snapshot 必失败；勿当 setup 失败 |
 | `test_drop.test_fetch_url_raises_when_no_text_can_be_recovered` | 环境耦合：本机有 Chrome 时可能走 headless 渲染并在无网时超时 | 记为 non-blocking；后续应 mock browser 路径 |
-| `test_acceptance_loop` happy/backend_failure replay | PR#11 模板文案变更导致 prompt_hash 与 golden 不一致（Linux CI 现态） | 单独立项刷新 acceptance fixture；不挡 D4/文档收口 |
+| `test_acceptance_loop` happy/backend_failure replay | PR#11 模板文案变更导致 prompt_hash 漂移 | **已刷新** `scripts/refresh_acceptance_fixture.py --case M6.1b/...` |
 | `test_relative_path_normalizes_macos_private_var_alias` | Darwin-only `/private/var` alias | 非 darwin 平台 skip |
 
 ---
