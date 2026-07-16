@@ -85,7 +85,7 @@ supersedes: []
 | D12 | coverage `fail_under=89` + omit `legacy_argv` | `.coveragerc` | 门禁偏松 | **closed**：Round 2 (commit `5a1c20c`) 删 `.coveragerc` + `pyproject.toml` dev-dep `coverage>=7.6,<8` + `verify.sh all` coverage block；coverage hard gate 不再触发 |
 | D13 | PROGRESS「活跃 3 轮」名实不符 | 仅 Round 92.8 | 结构债 | **closed**：Round 9 (`b4e160f`) + Round 10 (`e69bc4a`) archive 树统一进 `docs/archive/`，顶级 `archive/` 清空；PROGRESS head 重写 + SoT 索句 explicit |
 | D14 | JS 行为测试偏弱（grep token） | Round 92.8 Residual | plugin 大改回归弱 | **improved 2026-07-15**：Jest 180 tests hard-gate；行为覆盖仍可加深 |
-| D15 | 14/30-day natural dogfood proof | Scorecard `not-yet` | 长期证据不足 | 诚实 defer → WS6 |
+| D15 | 14/30-day natural dogfood proof | Scorecard `not-yet` | 长期证据不足 | **observing 2026-07-16**：窗口已开（见 Long-Run Window 文档）；仍 not-yet PASS |
 
 ### P3 — 低优先 / 刻意不做
 
@@ -195,8 +195,9 @@ supersedes: []
 | 项 | 内容 |
 |---|---|
 | **In** | 真实 wall-clock 自然日观察；不再依赖 `long_window_proof_probe` / maturity gate（脚本本轮清理已移除），改为由 PROGRESS 手动记录实证 |
-| **Out** | 移动商店包、RemoteHttpClient、自动 PoC 仅供参考 |
+| **Out** | 移动商店包、RemoteHttpClient、自动 PoC 仅供参考；禁止伪造 14/30 PASS |
 | **Done** | Scorecard long-run 仅在有 live 证据时标 PASS，缺则诚实写 not-yet |
+| **2026-07-16 状态** | **observing**：窗口 `ws6-2026-07` 已开；协议 + `scripts/dogfood_long_run_checkin.sh` 已落地；Scorecard 仍 **not-yet**；待 operator 在真实 `$AIWIKI_DOGFOOD_VAULT` 日更 |
 
 ### 建议附加小修（可并入 WS4/WS5，非独立 Wave）
 
@@ -262,6 +263,7 @@ Review gate：编码 PR 独立 read-only reviewer（correctness / scope / missin
 
 ## 11. 更新记录
 
+- 2026-07-16：WS6 开窗（observing）— `docs/Furnace Dogfood Long-Run Window 2026-07.md` + check-in 脚本；不伪造 14/30 PASS。
 - 2026-07-15：Commercial Go-Live 执行波 — WS1（邮箱/询价/EULA）、WS2（`pip install -e .` 预览 + v0.4.0 + launcher 优先 console script）、WS3（对外 checklist）、WS5（Jest hard-gate + alchemy atomic_write）、LLM-Wiki 叙事补丁；PyPI 正式发布与 EULA 法律签收仍 open。
 - 2026-07-15：初版。基于 Cleanup executed-reviewed-pass 后再审计；现场 scripts/python-static/smoke/docs PASS；立项 Commercial Go-Live WS1–WS6。
 - 2026-07-15：同 PR 落地 WS4 子集 — D4/D8/D10/D11 marked **fixed**；缺陷表增加「本 PR」列避免与修复矛盾。

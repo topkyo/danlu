@@ -108,7 +108,7 @@ python3 scripts/dogfood_maturity_gate.py --root $AIWIKI_DOGFOOD_VAULT summarize 
 | agentic non-core autonomy | live gate | `agentic_autonomy_report.status=pass` now requires `llm_governed_apply_count > 0`, `non_core_human_required_count=0`, and `core_auto_apply_count=0` |
 | LLM failure handling | live explicit | timeout receipts are `blocked/failed`, not fake success |
 | receipt coverage explainability | repo targeted/acceptance PASS [unit 段已退 2026-07-15]  | | AOS-C3 adds `receipt_coverage` snapshot field; direct/local `run-ask` success paths now write execution receipts; failure-after-run-notes paths do not leave success receipts |
-| long-run natural proof | not-yet | 3-day live release proof is PASS; 14/30-day natural window must wait for wall-clock evidence |
+| long-run natural proof | **not-yet**（WS6 observing） | 窗口 `ws6-2026-07` 已于 2026-07-16 UTC 开窗；协议见 `docs/Furnace Dogfood Long-Run Window 2026-07.md`。14/30-day PASS 仍需真实 vault 跨自然日 check-in；**禁止**提前标 PASS |
 
 Historical PASS（2026-05-13~19）不当作当前 live PASS。
 
@@ -423,4 +423,5 @@ bash scripts/verify.sh scripts
 - 2026-05-23：AOS-C3 receipt coverage done；direct/local `run-ask` success paths now have execution receipts, report/direct/local success receipt ordering is rollback-safe, and maturity `collect` exposes warn-only `receipt_coverage` for missing/legacy/background/degraded/deterministic-baseline explanations。
 - 2026-05-24：AOS-C4~C8 harness done；full verify、release audit、dogfood proof status、docs consistency、qa-review、qa-runtime、run_plan closed-loop 均 PASS，本地 scorecard 约 9.05。未 tag、未 push、未创建 GitHub Release。
 - 2026-05-24：P1-P5 stabilization pass；`run-ask` success receipt matrix v1 覆盖 report/background/direct/local，planner-log 新增向后兼容 optional `phase` proof，CLI legacy top-level 口径收敛为 compat，14/30-day natural run proof 明确 not-yet。
+- 2026-07-16：WS6 长期 dogfood 窗口 `ws6-2026-07` 开窗（observing）；`long-run natural proof` 仍 **not-yet**；协议 `docs/Furnace Dogfood Long-Run Window 2026-07.md` + `scripts/dogfood_long_run_checkin.sh`。
 - 2026-07-15：hub 行数刷新（`runner/alchemy.py` ~917、`app_protocol.py` ~442）；下一波执行计划见 `docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md`（不改变 9.0 local release 口径）。

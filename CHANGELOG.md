@@ -11,6 +11,7 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
 
 ### Added
 - Commercial Go-Live：`docs/commercial/EULA.md`；Product Shell `package.json` / Jest hard-gate；`src/aiwiki/default_prompts/` 随包分发；Demo Pack 对外 checklist + `assets/README.md`。
+- WS6：`docs/Furnace Dogfood Long-Run Window 2026-07.md` + `scripts/dogfood_long_run_checkin.sh`（观测打卡；不宣称 14/30 PASS）。
 
 ### Changed
 - Commercial Go-Live WS1–WS5：商务邮箱→`topkyoxp@gmail.com`；首发仅询价；`pip install -e .` 预览路径与 v0.4.0；launcher 优先 `aiwiki` console script；alchemy materialize 改 `atomic_write_text`；README/COMPARE 明确 LLM-Wiki production runtime 定位。

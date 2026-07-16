@@ -48,6 +48,7 @@ updated_at: 2026-07-15
 
 | 文档 | 角色 |
 |---|---|
+| [Furnace Dogfood Long-Run Window 2026-07](<./Furnace Dogfood Long-Run Window 2026-07.md>) | **WS6 观测日志/协议**：14/30-day natural dogfood；未达 Done 前 Scorecard 保持 not-yet |
 | [Furnace First-Principles Evaluation Report 2026-07](<./Furnace First-Principles Evaluation Report 2026-07.md>) | **方向评估**：多 agent 全量扫描 + 开源 LLM-Wiki 对标 + 第一性原理建议；**不替代** Post-Cleanup 执行计划 |
 
 历史方向与已完成执行计划已移入 [docs/archive/](<./archive/README.md>)；当前执行以 [Post-Cleanup Audit](<./Furnace Post-Cleanup Audit and Next Direction 2026-07.md>) + Scorecard + `PROGRESS.md` 为准。

@@ -14,6 +14,8 @@
 
 ## 当前动态
 
+- 2026-07-16 (WS6 long-run dogfood window opened)：按 Post-Cleanup WS6 **开窗 observing**，**不**标 14/30 PASS。落地 `docs/Furnace Dogfood Long-Run Window 2026-07.md` + `scripts/dogfood_long_run_checkin.sh`；Scorecard `long-run natural proof` 仍 not-yet。Cloud 无 `AIWIKI_DOGFOOD_VAULT`/iCloud，Day 0 live check-in 需本机 operator：`export AIWIKI_DOGFOOD_VAULT=... && bash scripts/dogfood_long_run_checkin.sh`。14-day 目标约 2026-07-30；30-day 约 2026-08-15。
+
 - 2026-07-15 (Commercial Go-Live 执行波)：按评估报告/Post-Cleanup 开干。**WS1** 邮箱→`topkyoxp@gmail.com`、仅询价决策、`docs/commercial/EULA.md`；**WS2** `pip install -e .` 预览 + v0.4.0 + `default_prompts` 入包 + launcher 优先 `aiwiki`；**WS3** Demo 对外 checklist + assets 占位；**WS5** alchemy `atomic_write_text` + Product Shell Jest hard-gate（180 passed）；README/COMPARE 补 LLM-Wiki production runtime 叙事。残留：PyPI 正式发布、EULA 法律签收、截图/录屏媒体、WS6 dogfood。验证：见本轮 commit 后 `verify.sh all`。
 - 2026-07-15 (first-principles evaluation)：多 agent 全量扫描代码/文档 + 网络调研 Karpathy LLM-Wiki 生态（atomicstrata / nvk / sage-wiki / Obsidian 插件等）+ SoT 交叉验证，落盘 `docs/Furnace First-Principles Evaluation Report 2026-07.md`（Direction context，**非**执行 SoT）。结论与 Post-Cleanup 对齐：AgentOS ~9.05 ≠ 商业可售 ~7.6；品类定位正确稀缺；最优下一刀仍是 Commercial Go-Live WS1→WS2/WS3，不重开 cleanup、不把 runtime 降级为 skill 包。docs/README Direction context 已挂索引。
 
@@ -23,8 +25,8 @@
 
 - 2026-07-15 (round 14 — PROGRESS head 表格化 + AGOS-9-Scorecard 最后一处 bare ref 收口)：subagent 2 (PROGRESS head consolidation) 落地：14 轮 cleanup round 在 `## 当前动态` 顶部用一个 13-row 表格压缩呈现 (含 R0 锚点行)，完整长文搬迁到下方 `## Round detail (chronological)` 段 (按 R1 → R13 顺序，每个 round 保留原始段落)。`## 当前动态` 顶部新增 2 行 high-level state：当前节奏 / 当前 blocker。`## SoT 引用` / `## Milestone Quick Index` / `## 状态 — 当前活跃3 轮` / `## 改进方向` 段不动。修复 subagent 初次写的表格中 R1 用的 `21e8b1e` 不存在 commit hash，改为 `3c373d7`（pre-cleanup merge baseline，备注与其它 cleanup round 区分）；subagent 3 (AGOS-9-Scorecard audit) 落地 4 处修补：`docs/AGOS-9-Scorecard.md:56` 把 3 个 blank bracket tag 改为显式 `[AOS-C8 frozen 2026-05-24]` + `[已删 2026-07-15 commit f4f87c7]` (含 `agos9_release_audit.sh` / `agos9_dogfood_proof_status.sh` / `bash scripts/verify.sh` PASS 2439-coverage);L110 把狗 food evidence 表 cell `repo targeted/unit/acceptance PASS` 改为 `repo targeted/acceptance PASS [unit 段已退 2026-07-15]`;L170 把 `Tests | tests/ acceptance + unit` 改为 `Tests | tests/ acceptance-only [unit 段已退 2026-07-15]`。subagent 1 (src final stale hunt) 完成 clean report：零 bare runtime import bug、零 unannotated stale ref、零 `_LAZY_OWNERS` 项指向已删 module；9 处 legal "extracted from app_X" provenance docstring + 2 处 legal "originally tested in tests/test_X" seam 在 src active files 中都是文字性证据块，不另加标注。
 
-- 当前节奏：Commercial Go-Live 执行波已落地 WS1–WS3/WS5 主项；cleanup R13 收尾仍成立。
-- 当前 blocker：无 runtime blocker；残留 PyPI 正式发布、EULA 法律签收、demo 媒体、WS6 dogfood。
+- 当前节奏：WS6 长期 dogfood 已开窗（observing）；Go-Live WS1–WS5 主项已合入 main。
+- 当前 blocker：无 runtime blocker；WS6 等真实 vault 日更；残留 PyPI 正式发布、EULA 法律签收、demo 媒体。
 
 | 轮次 | Commit | 主题 | 关键变更 |
 |---|---|---|---|
@@ -173,7 +175,7 @@
 | P1 | Alchemy materialize 等裸 `write_text` → `atomic_write_text` | **done** |
 | P2 | Scorecard hub 行数刷新；PROGRESS 活跃 round 切档卫生 | 先前审计 PR 已处理 |
 | P2 | Demo Pack 截图/录屏资产（fixture + checklist 已交付） | checklist done；媒体可选待补 |
-| 观测 | 14/30-day natural dogfood proof（不伪造 PASS） | Scorecard not-yet |
+| 观测 | 14/30-day natural dogfood proof（不伪造 PASS） | **observing**：窗口 `ws6-2026-07` 已开；Scorecard not-yet |
 | Out | hub 大拆、SaaS、全功能 iOS、用 AgentOS 9.05 冒充商业 9 分 | 禁止 |
 
 ## Round detail (chronological)
