@@ -23,14 +23,17 @@ related_docs:
 | 字段 | 值 |
 |---|---|
 | 窗口 ID | `ws6-2026-07` |
-| 状态 | **observing**（已开窗；14/30-day **not-yet PASS**） |
+| 状态 | **observing**（已开窗；Day0 live check-in 已写入；14/30-day **not-yet PASS**） |
 | 开窗 UTC | `2026-07-16T00:36:00Z` |
-| 14-day 目标日 | `2026-07-30`（含开窗日计 15 个日历日边界以自然日连续为准，见 §3） |
+| Day0 live check-in | `2026-07-16T01:55:44Z`（cloud home vault） |
+| 14-day 目标日 | `2026-07-30` |
 | 30-day 目标日 | `2026-08-15` |
-| Live vault | `$AIWIKI_DOGFOOD_VAULT`（默认本机 dogfood：iCloud「炼丹炉」或 operator 指定路径） |
-| Cloud agent 限制 | **无** iCloud / 无 `AIWIKI_DOGFOOD_VAULT`；云端只能维护协议，不能代填 live 日更 |
+| Live vault | **`/home/ubuntu/炼丹炉`**（`AIWIKI_DOGFOOD_VAULT`；Cursor Cloud home） |
+| Obsidian | `/home/ubuntu/.local/bin/obsidian`（AppImage extract；`DISPLAY=:1` 已打开该 vault） |
+| 日更调度 | tmux `ws6-dogfood-scheduler` → `/home/ubuntu/bin/ws6-dogfood-scheduler.sh`（每 UTC 日自动 check-in + compile） |
+| 身份说明 | 这是 **cloud home live dogfood**，不是 iCloud 个人 vault，也不是 Demo Pack；仍属 `live` 证据层（本机 wall-clock），但与个人 iCloud 狗粮分列 |
 
-开窗事实：2026-07-16 由 cloud agent 在仓库落地协议与 check-in 脚本；**Day 0 live check-in 必须由持有真实 vault 的 operator 在本机执行**。
+> 环境必须保持存活才能累积自然日。环境销毁则窗口中断，需诚实记入日志并决定重置/延长。
 
 ---
 

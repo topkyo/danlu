@@ -14,6 +14,8 @@
 
 ## 当前动态
 
+- 2026-07-16 (WS6 cloud home live Day0)：纠正「云端不能 dogfood」——在 `/home/ubuntu/炼丹炉` 建 live vault；`drop`+`compile`+`nightly`+`dogfood_long_run_checkin`；安装 Obsidian AppImage（extract，无 FUSE）并 `DISPLAY=:1` 打开该 vault；tmux `ws6-dogfood-scheduler` 挂 UTC 日更。Scorecard long-run 仍 **not-yet**（需 14/30 自然日）。证据：vault `output/control/dogfood-long-run/checkin-20260716.*` + `DOGFOOD-CLOUD.md`。
+
 - 2026-07-16 (WS6 long-run dogfood window opened)：按 Post-Cleanup WS6 **开窗 observing**，**不**标 14/30 PASS。落地 `docs/Furnace Dogfood Long-Run Window 2026-07.md` + `scripts/dogfood_long_run_checkin.sh`；Scorecard `long-run natural proof` 仍 not-yet。Cloud 无 `AIWIKI_DOGFOOD_VAULT`/iCloud，Day 0 live check-in 需本机 operator：`export AIWIKI_DOGFOOD_VAULT=... && bash scripts/dogfood_long_run_checkin.sh`。14-day 目标约 2026-07-30；30-day 约 2026-08-15。
 
 - 2026-07-15 (Commercial Go-Live 执行波)：按评估报告/Post-Cleanup 开干。**WS1** 邮箱→`topkyoxp@gmail.com`、仅询价决策、`docs/commercial/EULA.md`；**WS2** `pip install -e .` 预览 + v0.4.0 + `default_prompts` 入包 + launcher 优先 `aiwiki`；**WS3** Demo 对外 checklist + assets 占位；**WS5** alchemy `atomic_write_text` + Product Shell Jest hard-gate（180 passed）；README/COMPARE 补 LLM-Wiki production runtime 叙事。残留：PyPI 正式发布、EULA 法律签收、截图/录屏媒体、WS6 dogfood。验证：见本轮 commit 后 `verify.sh all`。

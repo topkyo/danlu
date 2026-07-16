@@ -108,7 +108,7 @@ python3 scripts/dogfood_maturity_gate.py --root $AIWIKI_DOGFOOD_VAULT summarize 
 | agentic non-core autonomy | live gate | `agentic_autonomy_report.status=pass` now requires `llm_governed_apply_count > 0`, `non_core_human_required_count=0`, and `core_auto_apply_count=0` |
 | LLM failure handling | live explicit | timeout receipts are `blocked/failed`, not fake success |
 | receipt coverage explainability | repo targeted/acceptance PASS [unit 段已退 2026-07-15]  | | AOS-C3 adds `receipt_coverage` snapshot field; direct/local `run-ask` success paths now write execution receipts; failure-after-run-notes paths do not leave success receipts |
-| long-run natural proof | **not-yet**（WS6 observing） | 窗口 `ws6-2026-07` 已于 2026-07-16 UTC 开窗；协议见 `docs/Furnace Dogfood Long-Run Window 2026-07.md`。14/30-day PASS 仍需真实 vault 跨自然日 check-in；**禁止**提前标 PASS |
+| long-run natural proof | **not-yet**（WS6 observing · Day0 live） | 窗口 `ws6-2026-07`；live vault=`/home/ubuntu/炼丹炉`（Cursor Cloud home）；Day0 check-in 2026-07-16 已写入；14/30 仍需跨自然日累积。协议：`docs/Furnace Dogfood Long-Run Window 2026-07.md` |
 
 Historical PASS（2026-05-13~19）不当作当前 live PASS。
 

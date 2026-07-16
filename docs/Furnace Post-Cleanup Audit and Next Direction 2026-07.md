@@ -197,7 +197,7 @@ supersedes: []
 | **In** | 真实 wall-clock 自然日观察；不再依赖 `long_window_proof_probe` / maturity gate（脚本本轮清理已移除），改为由 PROGRESS 手动记录实证 |
 | **Out** | 移动商店包、RemoteHttpClient、自动 PoC 仅供参考；禁止伪造 14/30 PASS |
 | **Done** | Scorecard long-run 仅在有 live 证据时标 PASS，缺则诚实写 not-yet |
-| **2026-07-16 状态** | **observing**：窗口 `ws6-2026-07` 已开；协议 + `scripts/dogfood_long_run_checkin.sh` 已落地；Scorecard 仍 **not-yet**；待 operator 在真实 `$AIWIKI_DOGFOOD_VAULT` 日更 |
+| **2026-07-16 状态** | **observing + Day0 live**：vault=`/home/ubuntu/炼丹炉`；Obsidian 已开；UTC scheduler 已挂；Scorecard 仍 **not-yet** |
 
 ### 建议附加小修（可并入 WS4/WS5，非独立 Wave）
 
