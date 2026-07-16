@@ -9,6 +9,12 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
 
 ## [Unreleased]
 
+### Added
+- Commercial Go-Live：`docs/commercial/EULA.md`；Product Shell `package.json` / Jest hard-gate；`src/aiwiki/default_prompts/` 随包分发；Demo Pack 对外 checklist + `assets/README.md`。
+
+### Changed
+- Commercial Go-Live WS1–WS5：商务邮箱→`topkyoxp@gmail.com`；首发仅询价；`pip install -e .` 预览路径与 v0.4.0；launcher 优先 `aiwiki` console script；alchemy materialize 改 `atomic_write_text`；README/COMPARE 明确 LLM-Wiki production runtime 定位。
+
 ### Removed
 - `scripts/`：删除耗时 / niche 脚本 16 个 — `cache_benchmark.py`、`compile_benchmark.py`、`long_window_proof_probe.py`、`dogfood_maturity_gate.py`、`run_dogfood_maturity.sh`、`agos9_release_audit.sh`、`agos9_dogfood_proof_status.sh`、`backend_probe_matrix.sh`、`investing_dogfood_preflight.sh`、`product_shell_smoke.sh`、`run_product_shell_tests.sh`、`check_product_shell_bundle.sh`、`configure_local_worktree.sh`、`stop_line_audit.sh`、`stop_line_audit.py`、`refresh_acceptance_fixture.py`，仅保留 `verify.sh` / `verify_target_rules.sh` / `docs_consistency_check.sh` / `aiwiki-launcher.sh` / install/uninstall + scheduler + `run_acceptance.sh` / `__init__.py` 核心。
 - `systemd/`：删除 `aiwiki-dogfood-maturity.service.template` 与 `.timer.template`。

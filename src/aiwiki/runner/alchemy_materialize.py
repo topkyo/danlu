@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from aiwiki.app_utils import (
+    atomic_write_text,
     parse_frontmatter,
     relative_path,
     render_frontmatter,
@@ -50,7 +51,7 @@ def materialize_alchemy_judge_refresh(
     updated = f"{render_frontmatter(frontmatter)}\n\n{updated_body.strip()}\n"
     changed = updated != original
     if changed:
-        target.write_text(updated, encoding="utf-8")
+        atomic_write_text(target, updated)
     after_hash = sha256_bytes(updated.encode("utf-8"))
     return {
         "status": "refreshed",
@@ -124,7 +125,7 @@ def materialize_alchemy_judge_proposal(
         before_hash=before_hash,
     )
     proposal_path.parent.mkdir(parents=True, exist_ok=True)
-    proposal_path.write_text(proposal, encoding="utf-8")
+    atomic_write_text(proposal_path, proposal)
     return {
         "status": "generated",
         "candidate_id": candidate_id,
@@ -153,7 +154,7 @@ def materialize_alchemy_review_queue(
     changed = after != before
     path.parent.mkdir(parents=True, exist_ok=True)
     if changed or not path.exists():
-        path.write_text(after, encoding="utf-8")
+        atomic_write_text(path, after)
     after_hash = sha256_bytes(after.encode("utf-8"))
     return {
         "path": relative_path(root, path),

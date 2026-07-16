@@ -2,9 +2,10 @@
 title: "炼丹炉产品定价与包装"
 kind: "commercial"
 status: "active"
-updated_at: "2026-07-14"
+updated_at: "2026-07-15"
 related_docs:
   - docs/commercial/BOUNDARIES.md
+  - docs/commercial/EULA.md
   - docs/commercial/SUPPORT.md
   - docs/commercial/PRIVACY.md
   - docs/archive/Furnace Commercial Grade Cleanup Plan 2026-07.md
@@ -12,7 +13,7 @@ related_docs:
 
 # 炼丹炉产品定价与包装
 
-> 本文件说明炼丹炉的 SKU 结构、license 边界与服务选项。具体价格以销售页面或邮件报价为准；本文只给出 tier 结构与包含/不包含矩阵。
+> **运营决策（首发）**：仅询价、无公开标价。本文不提供任何数字价目或价目表；没有公开销售页价目。Personal / Pro / 陪跑等具体报价一律通过邮件询价取得：`topkyoxp@gmail.com`。本文只给出 SKU / tier 结构与包含/不包含矩阵。
 
 ## 1. 产品包装
 
@@ -44,20 +45,20 @@ related_docs:
 - 适用：愿意开源合规、自行维护的个人开发者或研究者
 
 ### Personal — 商业 license
-- 费用：一次性或年度订阅（具体见销售页）
-- License：商业 license，免 copyleft 约束
+- 费用：一次性或年度订阅（**仅询价，无公开标价**）
+- License：商业 license，免 copyleft 约束（见 `docs/commercial/EULA.md`）
 - 包含：Free 版全部功能 + 商业 license 授权
 - 支持：邮件支持，48 小时响应
 - 适用：个人用户，需要闭源/商业使用场景
 
 ### Pro — 商业 license + 优先支持 + Demo Pack 模板
-- 费用：年度订阅（具体见销售页）
+- 费用：年度订阅（**仅询价，无公开标价**）
 - License：商业 license
 - 包含：Personal 版全部权益 + Investing Demo Pack 模板 + 邮件 24 小时响应 + 优先 LLM 配置支持
 - 适用：需要快速上手投研工作流、需要模板参考的小团队或专业个人
 
 ### 陪跑服务 — 安装配置 + dogfood 陪跑
-- 费用：按次计费（具体见销售页或邮件询价）
+- 费用：按次计费（**仅询价，无公开标价**）
 - 内容：
   - 新 vault 搭建与 Obsidian 基础配置
   - LLM provider（deepseek-api / opencode-api / openai-api / anthropic-api）配置指导
@@ -106,9 +107,10 @@ related_docs:
 ## 6. 购买路径
 
 - 开源版：直接克隆仓库，遵守 AGPL-3.0。
-- 商业 license / Pro / 陪跑服务：邮件联系 `commercial@example.com`（占位符，待替换为真实地址）。
-- 企业批量授权或行业 protocol pack 定制：邮件询价。
+- 商业 license / Pro / 陪跑服务：邮件联系 `topkyoxp@gmail.com` 询价（无公开价目）；许可条款见 `docs/commercial/EULA.md`。
+- 企业批量授权或行业 protocol pack 定制：同一邮箱询价。
 
 ## 7. 变更记录
 
+- 2026-07-15：运营决策落盘——首发仅询价、无公开标价；联系邮箱改为 `topkyoxp@gmail.com`；交叉引用 `EULA.md`。
 - 2026-07-14：初版，与商业化清理计划同步落盘。

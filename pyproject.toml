@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aiwiki"
-version = "0.1.0"
+version = "0.4.0"
 description = "Local-first knowledge compiler scaffold"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -25,6 +25,9 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+aiwiki = ["default_prompts/*.md"]
 
 [tool.ruff]
 line-length = 120

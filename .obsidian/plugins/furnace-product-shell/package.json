@@ -1,0 +1,23 @@
+{
+  "name": "furnace-product-shell",
+  "private": true,
+  "version": "0.4.0",
+  "description": "Obsidian Product Shell Jest harness for Furnace / aiwiki",
+  "scripts": {
+    "test": "jest --ci"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0"
+  },
+  "jest": {
+    "testEnvironment": "jest-environment-jsdom",
+    "testMatch": [
+      "**/src/__tests__/**/*.test.js"
+    ],
+    "clearMocks": true,
+    "moduleNameMapper": {
+      "^obsidian$": "<rootDir>/src/__tests__/mocks/obsidian.js"
+    }
+  }
+}

@@ -66,7 +66,8 @@ for path in \
   docs/commercial/BOUNDARIES.md \
   docs/commercial/PRIVACY.md \
   docs/commercial/SUPPORT.md \
-  docs/commercial/COMPARE.md
+  docs/commercial/COMPARE.md \
+  docs/commercial/EULA.md
 do
   check_exists "commercial pack: $path" "$path"
 done

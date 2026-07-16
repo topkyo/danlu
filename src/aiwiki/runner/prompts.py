@@ -708,10 +708,16 @@ def _load_prompt(root: Path, name: str) -> str:
     path = root / "prompts" / name
     if path.exists():
         return path.read_text(encoding="utf-8")
-    fallback = Path(__file__).resolve().parents[3] / "prompts" / name
-    if fallback.exists():
-        return fallback.read_text(encoding="utf-8")
-    raise FileNotFoundError(f"Missing prompt template `{name}` in `{path}` or runtime fallback `{fallback}`.")
+    here = Path(__file__).resolve()
+    candidates = (
+        here.parent.parent / "default_prompts" / name,  # installed / editable package
+        here.parents[3] / "prompts" / name,  # repo checkout fallback
+    )
+    for fallback in candidates:
+        if fallback.exists():
+            return fallback.read_text(encoding="utf-8")
+    tried = ", ".join(str(item) for item in (path, *candidates))
+    raise FileNotFoundError(f"Missing prompt template `{name}` (tried: {tried}).")
 
 
 def _schema_context(root: Path, names: tuple[str, ...], max_chars: int = 2200) -> str:

@@ -59,22 +59,22 @@ supersedes: []
 
 ### P0 — 商业 go-live 阻断（非 runtime crash）
 
-| ID | 缺陷 | 证据 | 影响 |
-|---|---|---|---|
-| D1 | 销售/支持邮箱仍为 `@example.com` | `LICENSE`；`docs/commercial/PRICING.md`；`SUPPORT.md`；`BOUNDARIES.md` | 无法真实询价/支持；LICENSE 明文写了 placeholder |
-| D2 | 无商业 EULA 正文 / 购买页 | Cleanup Plan Phase5 延期表；BOUNDARIES §5 仅描述「签书面协议」 | 不能合法开售商业 license |
-| D3 | 具体价格缺失（仅 tier 结构） | `PRICING.md`「具体见销售页」但仓库无销售页 | 销售转化无锚点（可接受询价制，但须显式运营决策） |
+| ID | 缺陷 | 证据 | 影响 | 状态 |
+|---|---|---|---|---|
+| D1 | 销售/支持邮箱仍为 `@example.com` | `LICENSE`；commercial pack | 无法真实询价/支持 | **fixed 2026-07-15**：`topkyoxp@gmail.com` |
+| D2 | 无商业 EULA 正文 / 购买页 | BOUNDARIES §5 曾仅描述流程 | 不能合法开售商业 license | **fixed 2026-07-15**：`docs/commercial/EULA.md` 草案（待法律审阅） |
+| D3 | 具体价格缺失（仅 tier 结构） | `PRICING.md` 曾写「见销售页」但无页 | 销售转化无锚点 | **fixed 2026-07-15**：显式「仅询价、无公开标价」 |
 
 ### P1 — 高优先（可信度 / 可靠性 / SoT）
 
 | ID | 缺陷 | 证据 | 影响 | 本 PR |
 |---|---|---|---|---|
 | D4 | `PROGRESS.md`「改进方向」段曾缺失 | 曾仅有 L15 指针 | 任务 SoT 断链 | **fixed**：已恢复底部「改进方向」段 |
-| D5 | Product Shell Jest 默认可 soft-skip | `scripts/run_product_shell_tests.sh`（本轮清理删除） | `verify` 可绿但 UI 回归未跑 | 推迟（不在本计划主轴） |
-| D6 | Alchemy materialize 等路径裸 `Path.write_text` | `runner/alchemy_materialize.py` L53/127/156 | 有锁仍可能崩溃半写 | open → WS5 附加 |
-| D7 | Env-coupled 单测可假失败/挂起 | workspace / Chrome drop 用例 | CI/cloud 噪音 | open → WS5 |
+| D5 | Product Shell Jest 默认可 soft-skip | `scripts/run_product_shell_tests.sh`（本轮清理删除） | `verify` 可绿但 UI 回归未跑 | **fixed 2026-07-15**：`package.json` 入库 + `verify_product_shell_static` Jest hard-gate（180 tests） |
+| D6 | Alchemy materialize 等路径裸 `Path.write_text` | `runner/alchemy_materialize.py` L53/127/156 | 有锁仍可能崩溃半写 | **fixed 2026-07-15**：改 `atomic_write_text` |
+| D7 | Env-coupled 单测可假失败/挂起 | workspace / Chrome drop 用例 | CI/cloud 噪音 | **moot**：unit 网已退；acceptance 不跑这些用例 |
 | D8 | Active 架构文档曾指向不存在的 `.codex/plans/active.md` | Architecture / Evolution Mechanics | 执行入口误导 | **fixed**：改为本计划 + PROGRESS |
-| D9 | `pip install` / 分发未闭环 | `INSTALL.md`；`pyproject` `0.1.0` | 安装摩擦；版本叙事分裂 | open → WS2 |
+| D9 | `pip install` / 分发未闭环 | `INSTALL.md`；`pyproject` `0.1.0` | 安装摩擦；版本叙事分裂 | **partial 2026-07-15**：`pip install -e .` 预览 + v0.4.0；PyPI 正式发布仍待 |
 
 ### P2 — 中优先（维护性 / 证据卫生）
 
@@ -84,7 +84,7 @@ supersedes: []
 | D11 | Demo Pack / RuntimeClient 曾挂 Active Plans | `docs/README.md` | 假活跃 | **fixed**：降为 Delivered specs |
 | D12 | coverage `fail_under=89` + omit `legacy_argv` | `.coveragerc` | 门禁偏松 | **closed**：Round 2 (commit `5a1c20c`) 删 `.coveragerc` + `pyproject.toml` dev-dep `coverage>=7.6,<8` + `verify.sh all` coverage block；coverage hard gate 不再触发 |
 | D13 | PROGRESS「活跃 3 轮」名实不符 | 仅 Round 92.8 | 结构债 | **closed**：Round 9 (`b4e160f`) + Round 10 (`e69bc4a`) archive 树统一进 `docs/archive/`，顶级 `archive/` 清空；PROGRESS head 重写 + SoT 索句 explicit |
-| D14 | JS 行为测试偏弱（grep token） | Round 92.8 Residual | plugin 大改回归弱 | open → WS5 |
+| D14 | JS 行为测试偏弱（grep token） | Round 92.8 Residual | plugin 大改回归弱 | **improved 2026-07-15**：Jest 180 tests hard-gate；行为覆盖仍可加深 |
 | D15 | 14/30-day natural dogfood proof | Scorecard `not-yet` | 长期证据不足 | 诚实 defer → WS6 |
 
 ### P3 — 低优先 / 刻意不做
@@ -186,7 +186,7 @@ supersedes: []
 
 | 项 | 内容 |
 |---|---|
-| **In** | Jest soft-skip → hard-gate（CI 有 npm 缓存时 `AIWIKI_REQUIRE_PRODUCT_SHELL_JS_TESTS=1`）；mock/隔离 env-coupled drop/workspace 测试；可选 coverage `fail_under` 基线拉回 |
+| **In** | Jest soft-skip → hard-gate（`package.json` 入库后由 `verify_product_shell_static` 默认跑）；mock/隔离 env-coupled drop/workspace 测试；可选 coverage `fail_under` 基线拉回 |
 | **Out** | 伪造 long-run proof；broad rewrite |
 | **Done** | 干净 CI `verify.sh all` 无 Jest 盲区；已知 env 失败有明确 mock/skip 策略 |
 
@@ -227,13 +227,14 @@ bash scripts/verify.sh scripts
 bash scripts/verify.sh python-static
 bash scripts/verify.sh smoke
 bash scripts/verify.sh cli-smoke
-# 当前 plan 不再 require Product Shell Jest hard-gate；如未来恢复，使用 Product Shell 自带 `npm test`
+# Product Shell：`product-shell-static` = node --check + Jest hard-gate（180 tests）
+# 紧急旁路：AIWIKI_SKIP_PRODUCT_SHELL_JS_TESTS=1
 # go-live 文档门禁：
 ! git grep -E 'commercial@example\.com|support@example\.com' -- LICENSE docs/commercial/
 bash scripts/verify.sh all   # 推送/发布前
 ```
 
-> 备注：本轮（2026-07-15 scripts cleanup）已删除 `scripts/run_product_shell_tests.sh` 与 `scripts/check_product_shell_bundle.sh` 等耗时的 JS bundle drift gate。`verify.sh product-shell-static` 现在只跑 `node --check main.js`，不再调被删除脚本。Release evidence pipeline（`scripts/agos9_*.sh` / `scripts/dogfood_maturity_gate.py` / `scripts/run_dogfood_maturity.sh`）也已删除，不再作为 release gate 的硬证据。
+> 备注：2026-07-15 scripts cleanup 删除了旧 `run_product_shell_tests.sh` / bundle drift gate；Go-Live 波已把 Product Shell `package.json` 入库，并由 `verify_product_shell_static` 直接 `npm ci && npm test` 硬门禁。Release evidence pipeline（`agos9_*.sh` / `dogfood_maturity_gate.py`）仍已删除。
 
 Review gate：编码 PR 独立 read-only reviewer（correctness / scope / missing verify）。
 
@@ -241,15 +242,13 @@ Review gate：编码 PR 独立 read-only reviewer（correctness / scope / missin
 
 ## 9. 成功定义
 
-- [ ] 商务零商务 `@example.com` 占位
-- [ ] 商业 EULA 或等价书面许可流程可指向真实材料
-- [ ] INSTALL 存在一条非开发者可完成的安装路径（pip 或明确的预览边界）
-- [ ] Demo 对外 checklist 可跑通且合规
-- [ ] Jest 在 release CI 为 hard-gate
-- [ ] PROGRESS / docs Active Plans / Architecture 无断链 SoT 指针
-- [ ] 商业审计综合可诚实宣称 ≥ **8.0（可售门槛）**；AgentOS 分数不混标
-
----
+- [x] 仓库零商务 `@example.com` 占位（2026-07-15：`topkyoxp@gmail.com`）
+- [x] 商业 EULA 或等价书面许可流程可指向真实材料（`docs/commercial/EULA.md`；待正式法律审阅）
+- [x] INSTALL 存在一条非开发者可完成的安装路径（`pip install -e .` 预览；PyPI `pip install aiwiki` 仍待发布）
+- [x] Demo 对外 checklist 可跑通且合规（fixture + README checklist；截图/录屏媒体可选待补）
+- [x] Jest 在 release CI 为 hard-gate（`verify.sh product-shell-static`；180 passed）
+- [x] PROGRESS / docs Active Plans / Architecture 无断链 SoT 指针
+- [ ] 商业审计综合可诚实宣称 ≥ **8.0（可售门槛）**；AgentOS 分数不混标 — 触点/EULA/询价/安装预览已齐后复评；正式法律签收与 PyPI 发布可再抬一档
 
 ## 10. 本审计未覆盖 / 限制
 
@@ -257,10 +256,12 @@ Review gate：编码 PR 独立 read-only reviewer（correctness / scope / missin
 - **未跑完整 `verify.sh all` / unit / acceptance**（本轮收集 scripts/static/smoke + docs；全量作为合并前建议）。
 - Linear MCP 未认证，未同步外部 issue tracker。
 - 商务邮箱/价格/EULA 需人类决策，本文件只立项不伪造。
+- 2026-07-15 Go-Live 波已用真实 owner 邮箱落地触点与询价决策，并提交 EULA 草案；正式法律签收与 PyPI 发布仍属人类/运营步骤。
 
 ---
 
 ## 11. 更新记录
 
+- 2026-07-15：Commercial Go-Live 执行波 — WS1（邮箱/询价/EULA）、WS2（`pip install -e .` 预览 + v0.4.0 + launcher 优先 console script）、WS3（对外 checklist）、WS5（Jest hard-gate + alchemy atomic_write）、LLM-Wiki 叙事补丁；PyPI 正式发布与 EULA 法律签收仍 open。
 - 2026-07-15：初版。基于 Cleanup executed-reviewed-pass 后再审计；现场 scripts/python-static/smoke/docs PASS；立项 Commercial Go-Live WS1–WS6。
 - 2026-07-15：同 PR 落地 WS4 子集 — D4/D8/D10/D11 marked **fixed**；缺陷表增加「本 PR」列避免与修复矛盾。

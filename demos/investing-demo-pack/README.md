@@ -33,6 +33,20 @@ Recommended entry points:
    - Open `vault/wiki/elixirs/example-semiconductor-a-supply-cycle-candidate.md`.
    - Show `derived_from`, then open `vault/output/reports/demo-investing-report.md` and one receipt under `vault/output/control/execution-receipts/`.
 
+## 对外 demo checklist
+
+销售 / 陪跑演示前勾选（约 10 分钟；只用本 fixture + `COMPLIANCE.md`）：
+
+- [ ] Act 1–5 按上方 walkthrough 走完（raw → sources → judgment → cycle trail → elixir/report/receipt）
+- [ ] 打开 `COMPLIANCE.md`，口头声明：非投顾、虚构脱敏、不构成收益证明
+- [ ] 未宣称真实发行人/客户/仓位/价格
+- [ ] 未宣称 14/30-day natural dogfood PASS
+- [ ] 未宣称「local-first = 完全离线」
+- [ ] （可选）对照 `scripts/screenshot-script.md` 镜号 1–9 检查 `assets/` 截图是否齐全
+- [ ] （可选）按 `scripts/video-script-10min.md` 完成 ≤10 分钟录屏
+
+截图/录屏媒体资产落盘目录见 [`assets/README.md`](./assets/README.md)。脚本指引已交付；**二进制截图/录屏仍可能待补**——缺媒体时仍可用 vault fixture 完成 checklist 前五项。
+
 ## What this pack demonstrates
 
 - `raw/` keeps fictional redacted input material.

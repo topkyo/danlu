@@ -2,23 +2,24 @@
 title: "炼丹炉支持服务说明"
 kind: "commercial"
 status: "active"
-updated_at: "2026-07-14"
+updated_at: "2026-07-15"
 related_docs:
   - docs/commercial/PRICING.md
   - docs/commercial/BOUNDARIES.md
+  - docs/commercial/EULA.md
   - AGENTS.md
 ---
 
 # 炼丹炉支持服务说明
 
-> 本文说明不同 tier 用户的支持渠道、响应时间与不支持的边界。
+> 本文说明不同 tier 用户的支持渠道、响应时间与不支持的边界。商业询价与付费支持统一联系：`topkyoxp@gmail.com`。
 
 ## 1. 支持渠道
 
 | 渠道 | 适用对象 | 说明 |
 |------|----------|------|
 | **GitHub issues** | 开源用户 | 仓库公开 issue tracker，用于 bug 报告、功能讨论与社区问答。 |
-| **邮件支持** | Personal / Pro / 陪跑用户 | 联系 `support@example.com`（占位符，待替换为真实地址）。 |
+| **邮件支持** | Personal / Pro / 陪跑用户 | 联系 `topkyoxp@gmail.com`（商业询价与支持同一地址）。 |
 | **陪跑专属会话** | 购买陪跑服务的用户 | 预约线上 60–90 分钟会话，含配置摘要。 |
 
 ## 2. 响应 Tier
@@ -68,6 +69,9 @@ related_docs:
 4. 相关日志或 receipt 文件路径（注意脱敏 API key）。
 5. 已尝试的排查步骤。
 
+商业 license / 询价相关事项亦发至同一邮箱，条款指针见 `docs/commercial/EULA.md`。
+
 ## 6. 变更记录
 
+- 2026-07-15：支持/询价邮箱改为 `topkyoxp@gmail.com`；去掉占位符表述；交叉引用 `EULA.md`。
 - 2026-07-14：初版，定义 Free/Personal/Pro/陪跑四级支持响应与不支持范围。

@@ -2,9 +2,10 @@
 title: "炼丹炉开源版与商业版边界"
 kind: "commercial"
 status: "active"
-updated_at: "2026-07-14"
+updated_at: "2026-07-15"
 related_docs:
   - docs/commercial/PRICING.md
+  - docs/commercial/EULA.md
   - docs/commercial/PRIVACY.md
   - docs/commercial/SUPPORT.md
   - AGENTS.md
@@ -76,12 +77,12 @@ related_docs:
 
 ## 5. 商业 license 获取方式
 
-商业 license **不**写在本仓库 `LICENSE` 文件的 AGPL 正文里；开源默认条款始终是 AGPL-3.0。
+商业 license **不**写在本仓库 `LICENSE` 文件的 AGPL 正文里；开源默认条款始终是 AGPL-3.0。条款草案与流程指针见 `docs/commercial/EULA.md`。
 
 获取流程：
 
-1. 邮件联系 `commercial@example.com`（占位符，待替换为真实地址），说明用途、用户数、是否需要行业 pack。
-2. 收到报价与商业许可草案后，签署书面协议。
+1. 邮件联系 `topkyoxp@gmail.com`，说明用途、用户数、是否需要行业 pack。
+2. 收到报价与商业许可草案后，签署书面协议（首发仅询价、无公开标价，见 `PRICING.md`）。
 3. 持有生效商业许可期间，可按该协议使用本软件，而不受 AGPL copyleft 约束。
 4. 未签署商业许可前，必须遵守仓库 `LICENSE` 中的 AGPL-3.0。
 
@@ -91,5 +92,6 @@ related_docs:
 
 ## 6. 变更记录
 
+- 2026-07-15：§5 指向 `docs/commercial/EULA.md` 与真实邮箱 `topkyoxp@gmail.com`；去掉占位符表述。
 - 2026-07-15：补充商业 license 获取流程与 `LICENSE` copyright / dual-license 头说明。
 - 2026-07-14：初版，明确开源版功能完整、商业版增量为 license / 模板 / 服务。
