@@ -35,7 +35,7 @@ from .app_utils import (
     utc_now,
 )
 from .config import LLMConfig, _backend_supports_image_analysis
-from .drop_helpers import timestamped_stem
+from .drop_helpers import strip_leading_title_echo, timestamped_stem
 from .llm import LLMError, create_backend_client
 from .render.paths import append_wiki_log
 
@@ -213,6 +213,43 @@ def _validate_url_collection(collection: dict[str, Any]) -> None:
     del collection
 
 
+def _prior_url_drop_hints(root: Path, *, original_url: str, final_url: str) -> list[dict[str, str]]:
+    """List earlier url-drop manifest entries for the same original/final URL (non-blocking)."""
+    targets = {
+        str(original_url or "").strip(),
+        str(final_url or "").strip(),
+    }
+    targets.discard("")
+    if not targets:
+        return []
+    hints: list[dict[str, str]] = []
+    for entry in load_manifest(root).get("entries") or []:
+        if not isinstance(entry, dict):
+            continue
+        if str(entry.get("source_type") or "") != "url-drop":
+            continue
+        meta = entry.get("ingest_metadata") if isinstance(entry.get("ingest_metadata"), dict) else {}
+        prior_urls = {
+            str(meta.get("original_url") or "").strip(),
+            str(meta.get("final_url") or "").strip(),
+            str(entry.get("original_path") or "").strip(),
+        }
+        prior_urls.discard("")
+        if not (targets & prior_urls):
+            continue
+        stored = str(entry.get("stored_path") or "").strip()
+        if not stored:
+            continue
+        hints.append(
+            {
+                "entry_id": str(entry.get("id") or "").strip(),
+                "stored_path": stored,
+                "title": str(entry.get("title") or "").strip(),
+            }
+        )
+    return hints
+
+
 def _materialize_url(root: Path, url: str, title: str | None, collection: dict[str, Any]) -> dict[str, Any]:
     fetched = collection["fetched"]
     display_title = title or fetched["title"] or _label_from_url(fetched["final_url"])
@@ -221,6 +258,11 @@ def _materialize_url(root: Path, url: str, title: str | None, collection: dict[s
     asset_dir = root / "raw" / "assets"
     stem = timestamped_stem(display_title)
     note_path = _unique_path(root / "raw" / "inbox", stem, ".md")
+    prior_url_drops = _prior_url_drop_hints(
+        root,
+        original_url=url,
+        final_url=str(fetched.get("final_url") or ""),
+    )
     append_file_sizes = _snapshot_append_files(root)
     try:
         for index, image in enumerate(collection["inline_images"], start=1):
@@ -286,13 +328,25 @@ def _materialize_url(root: Path, url: str, title: str | None, collection: dict[s
         "final_url": fetched["final_url"],
         "asset_paths": asset_paths,
         "title": display_title,
+        "prior_url_drop_count": len(prior_url_drops),
+        **(
+            {
+                "prior_url_drops": prior_url_drops,
+                "duplicate_url_hint": (
+                    f"URL already present in raw ({len(prior_url_drops)} earlier drop(s)); "
+                    "new note created without merging."
+                ),
+            }
+            if prior_url_drops
+            else {}
+        ),
     }
 
 
 def _write_url_note_body(display_title: str, fetched: dict[str, Any], asset_paths: list[str]) -> str:
     """Write fetched page text to raw/inbox without frontmatter or capture-metadata sections."""
     lines = [f"# {display_title}", ""]
-    body = str(fetched.get("text") or "").strip()
+    body = strip_leading_title_echo(str(fetched.get("text") or ""), display_title)
     if body:
         lines.append(body)
         lines.append("")
@@ -312,7 +366,7 @@ def _write_url_note_body(display_title: str, fetched: dict[str, Any], asset_path
 def _write_repo_note_body(display_title: str, snapshot: dict[str, Any]) -> str:
     """Write repo snapshot text to raw/inbox without frontmatter or capture-metadata sections."""
     lines = [f"# {display_title}", ""]
-    readme = str(snapshot.get("readme") or "").strip()
+    readme = strip_leading_title_echo(str(snapshot.get("readme") or ""), display_title)
     if readme:
         lines.append(readme)
         lines.append("")

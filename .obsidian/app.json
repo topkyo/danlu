@@ -5,7 +5,7 @@
   "newFileFolderPath": "raw/inbox",
   "newFileLocation": "folder",
   "promptDelete": false,
-  "showInlineTitle": true,
+  "showInlineTitle": false,
   "showUnsupportedFiles": true,
   "useMarkdownLinks": true,
   "userIgnoreFilters": [

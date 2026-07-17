@@ -27,7 +27,8 @@ DEFAULT_OBSIDIAN_APP = {
     "newFileFolderPath": "raw/inbox",
     "newFileLocation": "folder",
     "promptDelete": False,
-    "showInlineTitle": True,
+    # Raw/inbox notes always start with `# {title}`; inline title would duplicate that heading.
+    "showInlineTitle": False,
     "showUnsupportedFiles": True,
     "useMarkdownLinks": False,
     "userIgnoreFilters": [
