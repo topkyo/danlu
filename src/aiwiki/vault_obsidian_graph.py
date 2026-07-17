@@ -11,10 +11,13 @@ from .app_utils import parse_frontmatter, render_json_document, upsert_markdown_
 
 OBSIDIAN_EVIDENCE_GRAPH_HUB = "wiki/evidence-graph.md"
 
+# Evidence chain only: report → source → raw note (+ judgments / hub).
+# Exclude concepts/derived/elixirs/indexes (furnace-internal) and raw/assets (binaries).
 OBSIDIAN_NATIVE_GRAPH_SEARCH = (
     '(path:"output/reports" OR path:"wiki/sources" OR path:"wiki/judgments" '
-    'OR path:"raw/inbox" OR path:"raw/assets" OR path:"wiki/evidence-graph") '
-    '-path:"wiki/concepts" -path:"wiki/derived" -path:"wiki/elixirs" -path:"wiki/indexes"'
+    'OR path:"raw/inbox" OR path:"wiki/evidence-graph") '
+    '-path:"wiki/concepts" -path:"wiki/derived" -path:"wiki/elixirs" '
+    '-path:"wiki/indexes" -path:"raw/assets"'
 )
 
 _CONCEPT_WIKILINK_RE = re.compile(r"\[\[wiki/concepts/([^\]|]+)(?:\|([^\]]+))?\]\]")
@@ -26,15 +29,15 @@ DEFAULT_OBSIDIAN_GRAPH = {
     "search": OBSIDIAN_NATIVE_GRAPH_SEARCH,
     "showTags": False,
     "showAttachments": False,
-    "hideUnresolved": False,
-    "showOrphans": True,
+    # Product policy: no dangling drop-body paths (.nvmrc / site.ts / …) and no isolates.
+    "hideUnresolved": True,
+    "showOrphans": False,
     "collapse-color-groups": False,
     "colorGroups": [
         {"query": 'path:"output/reports"', "color": {"a": 1, "rgb": 14701138}},
         {"query": 'path:"wiki/sources"', "color": {"a": 1, "rgb": 5025616}},
         {"query": 'path:"wiki/judgments"', "color": {"a": 1, "rgb": 12000251}},
         {"query": 'path:"raw/inbox"', "color": {"a": 1, "rgb": 7041664}},
-        {"query": 'path:"raw/assets"', "color": {"a": 1, "rgb": 9671577}},
         {"query": 'path:"wiki/evidence-graph"', "color": {"a": 1, "rgb": 10181046}},
     ],
     "collapse-display": True,
@@ -69,6 +72,11 @@ def sync_obsidian_native_graph_config(root: Path) -> bool:
     payload = dict(DEFAULT_OBSIDIAN_GRAPH)
     payload["search"] = OBSIDIAN_NATIVE_GRAPH_SEARCH
     payload["colorGroups"] = list(DEFAULT_OBSIDIAN_GRAPH["colorGroups"])
+    # Authoritative display policy (do not inherit looser vault-local toggles).
+    payload["hideUnresolved"] = True
+    payload["showOrphans"] = False
+    payload["showAttachments"] = False
+    payload["showTags"] = False
     for key in ("centerStrength", "repelStrength", "linkStrength", "linkDistance", "scale", "close"):
         if key in existing:
             payload[key] = existing[key]

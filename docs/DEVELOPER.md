@@ -88,7 +88,7 @@ LLM enrichment 仍然是炼丹炉主路径，但放在受控 worker 入口：`ru
 
 默认 unattended 路径按“**等待投料 → 炼丹 → 产出 → 回馈 → 受控学习**”运行：watcher 负责等待投料和最低可用 compile；nightly 负责每天炼化、巡检、修复、回馈和学习；产物写到 `wiki/`、`output/`、receipt / audit；所有会改写系统行为的学习都必须保留 receipt、可审计、可回滚，不允许覆盖 `raw/` 或隐式切 backend。
 
-图谱分两种视图，不要混用。**证据关系图**（Obsidian 侧边栏 Graph）是用户默认视图：只展示报告、来源、原料与可选判断（`output/reports` → `wiki/sources` → `raw/`），打开 Graph 即可，**不需要手动筛选**；`compile` / 打开 vault 会自动恢复 `.obsidian/graph.json`，概念页属于炉子内部维护，不进该图。**机器记忆图谱**（`output/graph/machine-memory.html`）供维护与深挖：含 `source / concept / judgment / elixir(金丹)` 等完整关系。说明见 [wiki/indexes/README.md](../wiki/indexes/README.md)（indexes 由 compile 生成）。
+图谱分两种视图，不要混用。**证据关系图**（Obsidian 侧边栏 Graph）是用户默认视图：只展示报告、来源、原料笔记与可选判断（`output/reports` → `wiki/sources` → `raw/inbox`），打开 Graph 即可，**不需要手动筛选**；默认隐藏未解析链接与孤儿节点，且不含 `raw/assets` / 概念 / 金丹 / derived / indexes。`compile` / 打开 vault 会自动恢复 `.obsidian/graph.json`。**机器记忆图谱**（`output/graph/machine-memory.html`）供维护与深挖：含 `source / concept / judgment / elixir(金丹)` 等完整关系。说明见 [wiki/indexes/README.md](../wiki/indexes/README.md)（indexes 由 compile 生成）。
 
 治理债的目标是自动消化，符合炼丹炉"人只看异常"的设计哲学。分层按**影响范围 × 可逆性**定义：
 
