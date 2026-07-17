@@ -36,7 +36,14 @@ CONCEPT_RENDER_SCHEMA_VERSION = 4
 # Bump when concept extraction noise floor (STOP_WORDS, length filter, digit filter, etc.)
 # changes, to invalidate cached `concept-build-state.json` entries and force retroactive
 # re-extraction on the next compile. See F-new-13 (Round 6) / P4-INV-2 (Round 57).
-CONCEPT_NOISE_FLOOR_VERSION = 8
+# v12: drop generic verbs/adjectives (build, queryable, agents) from single-token concepts
+# and introduce _PHRASE_WEAK_TOKENS to stop filename-derived title-prefix phrases
+# (e.g. plugin-llm-vault, obsidian-framework-agents) from becoming concept slugs.
+# v13: extend with gerund/past-participle verb forms and pronouns that leak from
+# ingested article titles (building, powered, maintain, you, base, systems).
+# v14: drop generic adjectives/adverbs and duplicate plurals from article titles
+# (digital, personal, privately, llms, local, ideas, component, systems).
+CONCEPT_NOISE_FLOOR_VERSION = 14
 
 CAUSAL_RELATION_LABELS = {
     "causes": "→ causes",
@@ -62,19 +69,149 @@ def concept_label_to_title(label: str) -> str:
     if not words:
         return "Concept"
     return " ".join(word.capitalize() for word in words)
+_GENERIC_SOURCE_TITLE_TERMS = {
+    "readme",
+    "readmemd",
+    "file",
+    "document",
+    "untitled",
+    "notes",
+    "note",
+    "github",
+    "ar9av",
+}
+
+# Auxiliary / modal verbs and other common tokens that tokenize() does not drop
+# but which are not useful as concept slugs.
+_CONCEPT_EXTRA_STOP_WORDS = {
+    "are",
+    "was",
+    "were",
+    "been",
+    "being",
+    "have",
+    "has",
+    "had",
+    "do",
+    "does",
+    "did",
+    "will",
+    "would",
+    "should",
+    "could",
+    "can",
+    "may",
+    "might",
+    "shall",
+    "must",
+    "new",
+    "turn",
+    "through",
+    "using",
+    "based",
+    "via",
+    "your",
+    "our",
+    "them",
+    "they",
+    "make",
+    "made",
+    "use",
+    "used",
+    "uses",
+    "get",
+    "gets",
+    "got",
+    # v12: empirically observed noise tokens from dogfood vault concept pages.
+    # "build" is a generic verb that fires on every "how to build X" title;
+    # "queryable" is a technical adjective that adds no concept weight;
+    # "agents" is the plural of a domain noun already covered by the singular
+    # "agent" concept and by specific agent-* phrases when they are meaningful.
+    # v13: gerund/past-participle verb forms and pronouns leaking from article
+    # titles ("building", "powered", "maintain", "you") plus the generic noun
+    # "base" which fires on every "X knowledge base" title.
+    # v14: generic adjectives/adverbs and duplicate plurals from article titles
+    # ("digital", "personal", "privately", "llms", "local", "ideas",
+    # "component", "systems") that add no concept weight in this domain.
+    "build",
+    "building",
+    "queryable",
+    "agents",
+    "powered",
+    "maintain",
+    "maintaining",
+    "maintained",
+    "you",
+    "yourself",
+    "base",
+    "bases",
+    "digital",
+    "personal",
+    "privately",
+    "llms",
+    "local",
+    "ideas",
+    "component",
+    "components",
+    "systems",
+}
+
+# Broad domain labels that are meaningful as standalone single-token concepts
+# but create noise when jammed together into a multi-word phrase slug from a
+# filename-derived title prefix (e.g. "plugin llm vault" -> plugin-llm-vault,
+# "obsidian framework agents" -> obsidian-framework-agents). When building a
+# title-prefix phrase, if ANY constituent token is phrase-weak the phrase is
+# skipped so the individual tokens compete on their own merit instead.
+_PHRASE_WEAK_TOKENS = {
+    "plugin",
+    "llm",
+    "vault",
+    "obsidian",
+    "framework",
+    "wiki",
+    "data",
+    "api",
+    "systems",
+    "knowledge",
+}
+
+
+def _valid_concept_term(term: str) -> bool:
+    if not term or len(term) < 3:
+        return False
+    if term.isdigit():
+        return False
+    if term in STOP_WORDS or term in _CONCEPT_EXTRA_STOP_WORDS:
+        return False
+    if term in _GENERIC_SOURCE_TITLE_TERMS:
+        return False
+    if _CONCEPT_QUARTER_TAG_PATTERN.match(term):
+        return False
+    return True
+
+
 def entry_concept_terms(entry: dict[str, Any], context: str, max_terms: int = 5) -> list[str]:
     scores: dict[str, int] = {}
-    title_tokens = tokenize(entry["title"])
+    title_tokens = [t for t in tokenize(entry["title"]) if _valid_concept_term(t)]
     deduped_title_tokens = list(dict.fromkeys(title_tokens))
     phrase_tokens = deduped_title_tokens[:3]
-    if len(phrase_tokens) >= 2:
+    # v12: skip title-prefix phrases that are just filename-derived concatenations
+    # of broad domain labels (e.g. "plugin llm vault"). If any constituent token
+    # is phrase-weak, the phrase is noise; let the tokens compete individually.
+    if len(phrase_tokens) >= 2 and not any(token in _PHRASE_WEAK_TOKENS for token in phrase_tokens):
         phrase = " ".join(phrase_tokens)
         scores[phrase] = scores.get(phrase, 0) + 8
     for token in deduped_title_tokens[:4]:
         scores[token] = scores.get(token, 0) + 5
+    title_token_set = set(deduped_title_tokens)
+    context_counts: dict[str, int] = {}
     for token in tokenize(context):
-        scores[token] = scores.get(token, 0) + 1
-    ranked = sorted(scores.items(), key=lambda item: (-item[1], len(item[0]), item[0]))
+        if _valid_concept_term(token):
+            context_counts[token] = context_counts.get(token, 0) + 1
+    for token, count in context_counts.items():
+        if token in title_token_set or count >= 2:
+            scores[token] = scores.get(token, 0) + count
+    ranked = sorted(scores.items(), key=lambda item: (-item[1], -len(item[0]), item[0]))
     return [label for label, _score in ranked[:max_terms]]
 def concept_source_input_signature(entry: dict[str, Any], context: str, manual_slugs: list[str]) -> str:
     payload = {

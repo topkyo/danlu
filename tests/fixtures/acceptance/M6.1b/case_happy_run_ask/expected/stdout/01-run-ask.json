@@ -7,11 +7,7 @@
   "fallback_used": false,
   "format": "report",
   "graph_anchor_node_ids": [
-    "source:source-a",
-    "concept:acceptance",
-    "concept:establishes",
-    "concept:replay",
-    "concept:should"
+    "source:source-a"
   ],
   "index_pages": [
     "wiki/indexes/index.md",
@@ -43,23 +39,7 @@
     "schema/protocols/index.md"
   ],
   "machine_memory_query": {
-    "archive_recall_hints": [
-      {
-        "archive_status": "suggested",
-        "entry_id": "source-a",
-        "path": "wiki/sources/source-a.md",
-        "reason_codes": [
-          "no-active-corpus",
-          "stale-no-query-hit",
-          "stale-no-touch",
-          "low-routing-score",
-          "already-cold"
-        ],
-        "recommended_temperature": "archived",
-        "temperature": "cold",
-        "title": "Source A"
-      }
-    ],
+    "archive_recall_hints": [],
     "bridge_concept_slugs": [],
     "direct_concept_slugs": [],
     "direct_source_ids": [
@@ -72,221 +52,35 @@
     "matched_terms": [
       "deterministic"
     ],
-    "planner_next_action": {},
-    "planner_priority_queue": [],
+    "planner_next_action": {
+      "action_id": "isolated-source-source-a",
+      "blocked": false,
+      "depends_on": [],
+      "impact_score": 37,
+      "priority": "medium",
+      "priority_score": 45,
+      "status": "proposed",
+      "title": "\u8fde\u63a5\u5b64\u7acb\u6765\u6e90 Source A"
+    },
+    "planner_priority_queue": [
+      {
+        "action_id": "isolated-source-source-a",
+        "blocked": false,
+        "depends_on": [],
+        "impact_score": 37,
+        "priority": "medium",
+        "priority_score": 45,
+        "status": "proposed",
+        "title": "\u8fde\u63a5\u5b64\u7acb\u6765\u6e90 Source A"
+      }
+    ],
     "protocol_shard_source_ids": [
       "source-a"
     ],
-    "query_routes": [
-      {
-        "edges": [
-          {
-            "left": "source-a",
-            "right": "acceptance",
-            "type": "HAS_CONCEPT"
-          }
-        ],
-        "goal": {
-          "kind": "concept",
-          "path": "wiki/concepts/acceptance.md",
-          "slug": "acceptance",
-          "title": "Acceptance"
-        },
-        "length": 1,
-        "nodes": [
-          {
-            "id": "source-a",
-            "kind": "source",
-            "path": "wiki/sources/source-a.md",
-            "title": "Source A"
-          },
-          {
-            "kind": "concept",
-            "path": "wiki/concepts/acceptance.md",
-            "slug": "acceptance",
-            "title": "Acceptance"
-          }
-        ],
-        "start": {
-          "id": "source-a",
-          "kind": "source",
-          "path": "wiki/sources/source-a.md",
-          "title": "Source A"
-        },
-        "strategy": "source-first"
-      },
-      {
-        "edges": [
-          {
-            "left": "source-a",
-            "right": "establishes",
-            "type": "HAS_CONCEPT"
-          }
-        ],
-        "goal": {
-          "kind": "concept",
-          "path": "wiki/concepts/establishes.md",
-          "slug": "establishes",
-          "title": "Establishes"
-        },
-        "length": 1,
-        "nodes": [
-          {
-            "id": "source-a",
-            "kind": "source",
-            "path": "wiki/sources/source-a.md",
-            "title": "Source A"
-          },
-          {
-            "kind": "concept",
-            "path": "wiki/concepts/establishes.md",
-            "slug": "establishes",
-            "title": "Establishes"
-          }
-        ],
-        "start": {
-          "id": "source-a",
-          "kind": "source",
-          "path": "wiki/sources/source-a.md",
-          "title": "Source A"
-        },
-        "strategy": "source-first"
-      },
-      {
-        "edges": [
-          {
-            "left": "source-a",
-            "right": "replay",
-            "type": "HAS_CONCEPT"
-          }
-        ],
-        "goal": {
-          "kind": "concept",
-          "path": "wiki/concepts/replay.md",
-          "slug": "replay",
-          "title": "Replay"
-        },
-        "length": 1,
-        "nodes": [
-          {
-            "id": "source-a",
-            "kind": "source",
-            "path": "wiki/sources/source-a.md",
-            "title": "Source A"
-          },
-          {
-            "kind": "concept",
-            "path": "wiki/concepts/replay.md",
-            "slug": "replay",
-            "title": "Replay"
-          }
-        ],
-        "start": {
-          "id": "source-a",
-          "kind": "source",
-          "path": "wiki/sources/source-a.md",
-          "title": "Source A"
-        },
-        "strategy": "source-first"
-      },
-      {
-        "edges": [
-          {
-            "left": "acceptance",
-            "right": "establishes",
-            "type": "RELATED_CONCEPT"
-          }
-        ],
-        "goal": {
-          "kind": "concept",
-          "path": "wiki/concepts/establishes.md",
-          "slug": "establishes",
-          "title": "Establishes"
-        },
-        "length": 1,
-        "nodes": [
-          {
-            "kind": "concept",
-            "path": "wiki/concepts/acceptance.md",
-            "slug": "acceptance",
-            "title": "Acceptance"
-          },
-          {
-            "kind": "concept",
-            "path": "wiki/concepts/establishes.md",
-            "slug": "establishes",
-            "title": "Establishes"
-          }
-        ],
-        "start": {
-          "kind": "concept",
-          "path": "wiki/concepts/acceptance.md",
-          "slug": "acceptance",
-          "title": "Acceptance"
-        },
-        "strategy": "source-first"
-      }
-    ],
+    "query_routes": [],
     "query_subgraph": {
-      "concepts": [
-        {
-          "path": "wiki/concepts/acceptance.md",
-          "slug": "acceptance",
-          "title": "Acceptance"
-        },
-        {
-          "path": "wiki/concepts/establishes.md",
-          "slug": "establishes",
-          "title": "Establishes"
-        },
-        {
-          "path": "wiki/concepts/replay.md",
-          "slug": "replay",
-          "title": "Replay"
-        },
-        {
-          "path": "wiki/concepts/should.md",
-          "slug": "should",
-          "title": "Should"
-        },
-        {
-          "path": "wiki/concepts/stay.md",
-          "slug": "stay",
-          "title": "Stay"
-        }
-      ],
-      "edges": [
-        {
-          "left": "source-a",
-          "right": "acceptance",
-          "type": "HAS_CONCEPT"
-        },
-        {
-          "left": "source-a",
-          "right": "establishes",
-          "type": "HAS_CONCEPT"
-        },
-        {
-          "left": "source-a",
-          "right": "replay",
-          "type": "HAS_CONCEPT"
-        },
-        {
-          "left": "source-a",
-          "right": "should",
-          "type": "HAS_CONCEPT"
-        },
-        {
-          "left": "source-a",
-          "right": "stay",
-          "type": "HAS_CONCEPT"
-        },
-        {
-          "left": "acceptance",
-          "right": "establishes",
-          "type": "RELATED_CONCEPT"
-        }
-      ],
+      "concepts": [],
+      "edges": [],
       "sources": [
         {
           "id": "source-a",
@@ -295,17 +89,32 @@
         }
       ]
     },
-    "ranked_concept_slugs": [
-      "acceptance",
-      "establishes",
-      "replay",
-      "should",
-      "stay"
-    ],
+    "ranked_concept_slugs": [],
     "ranked_source_ids": [
       "source-a"
     ],
-    "relevant_actions": [],
+    "relevant_actions": [
+      {
+        "apply_ready": "false",
+        "command_hint": "PYTHONPATH=src python3 -m aiwiki.cli --root . review-action isolated-source-source-a --status accepted --note \"Accepted for manual repair.\"",
+        "execution_policy": "triage",
+        "focus_score": 0,
+        "id": "isolated-source-source-a",
+        "kind": "connect-isolated-source",
+        "next_step": "\u628a\u5b64\u7acb\u6765\u6e90\u63a5\u5165\u81f3\u5c11\u4e00\u4e2a\u7a33\u5b9a\u6982\u5ff5\u3002",
+        "primary_path": "wiki/sources/source-a.md",
+        "priority": "medium",
+        "proposal_kind": "connect-source",
+        "proposal_summary": "\u628a\u5b64\u7acb\u6765\u6e90\u63a5\u5165\u81f3\u5c11\u4e00\u4e2a\u7a33\u5b9a\u6982\u5ff5\uff0c\u5e76\u663e\u5f0f\u8bb0\u5f55\u4f9d\u636e\u3002",
+        "proposal_targets": [
+          "wiki/sources/source-a.md"
+        ],
+        "reason": "\u6765\u6e90\u8282\u70b9\u5f53\u524d\u6ca1\u6709\u63a5\u5165\u4efb\u4f55\u6982\u5ff5\u3002",
+        "secondary_path": "",
+        "status": "proposed",
+        "title": "\u8fde\u63a5\u5b64\u7acb\u6765\u6e90 Source A"
+      }
+    ],
     "route_config": {
       "default_strategy": "concept-first",
       "graph_markers": [
@@ -345,20 +154,14 @@
       "matched_terms": [
         "deterministic"
       ],
-      "planner_next_action_id": "",
+      "planner_next_action_id": "isolated-source-source-a",
       "protocol": "general",
       "query_signature": "sha256:b78c37f7f322b689dfc4c93133c504b1dacd6ca78996165d6bcf5c4195af5430",
-      "ranked_concept_slugs": [
-        "acceptance",
-        "establishes",
-        "replay",
-        "should",
-        "stay"
-      ],
+      "ranked_concept_slugs": [],
       "ranked_source_ids": [
         "source-a"
       ],
-      "route_count": 4,
+      "route_count": 0,
       "selected_strategy": "source-first",
       "selection_reason": "source-markers",
       "touched_component_ids": [
@@ -367,38 +170,7 @@
     },
     "selected_strategy": "source-first",
     "selection_reason": "source-markers",
-    "supporting_edges": [
-      {
-        "left": "source-a",
-        "right": "acceptance",
-        "type": "HAS_CONCEPT"
-      },
-      {
-        "left": "source-a",
-        "right": "establishes",
-        "type": "HAS_CONCEPT"
-      },
-      {
-        "left": "source-a",
-        "right": "replay",
-        "type": "HAS_CONCEPT"
-      },
-      {
-        "left": "source-a",
-        "right": "should",
-        "type": "HAS_CONCEPT"
-      },
-      {
-        "left": "source-a",
-        "right": "stay",
-        "type": "HAS_CONCEPT"
-      },
-      {
-        "left": "acceptance",
-        "right": "establishes",
-        "type": "RELATED_CONCEPT"
-      }
-    ],
+    "supporting_edges": [],
     "time_focus": "",
     "time_focus_markers": [],
     "time_shard_source_ids": [],
@@ -407,16 +179,10 @@
     ],
     "touched_components": [
       {
-        "concept_slugs": [
-          "acceptance",
-          "establishes",
-          "replay",
-          "should",
-          "stay"
-        ],
+        "concept_slugs": [],
         "id": "component-1",
         "judgment_ids": [],
-        "size": 6,
+        "size": 1,
         "source_ids": [
           "source-a"
         ]
@@ -440,13 +206,7 @@
     "schema/protocols/general/nightly.md",
     "schema/protocols/general/query.md"
   ],
-  "ranked_concepts": [
-    "acceptance",
-    "establishes",
-    "replay",
-    "should",
-    "stay"
-  ],
+  "ranked_concepts": [],
   "ranked_sources": [
     "source-a"
   ],

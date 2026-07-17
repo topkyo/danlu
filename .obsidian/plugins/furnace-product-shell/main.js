@@ -9542,17 +9542,30 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     this.registerPublicCommands();
     this.registerAdvancedCommands();
 
+    // Debounce vault change events: a compile burst writes many files in
+    // seconds and would otherwise trigger dozens of full UI re-renders.
+    this._vaultChangeTimer = null;
+    this._debouncedVaultChange = (relativePath) => {
+      if (this._vaultChangeTimer) {
+        clearTimeout(this._vaultChangeTimer);
+      }
+      this._vaultChangeTimer = setTimeout(() => {
+        this._vaultChangeTimer = null;
+        void this.handleVaultChange(relativePath);
+      }, 300);
+    };
+
     this.registerEvent(this.app.vault.on("modify", (file) => {
-      void this.handleVaultChange(file.path);
+      this._debouncedVaultChange(file.path);
     }));
     this.registerEvent(this.app.vault.on("create", (file) => {
-      void this.handleVaultChange(file.path);
+      this._debouncedVaultChange(file.path);
     }));
     this.registerEvent(this.app.vault.on("delete", (file) => {
-      void this.handleVaultChange(file.path);
+      this._debouncedVaultChange(file.path);
     }));
     this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
-      void this.handleVaultChange(file.path || oldPath);
+      this._debouncedVaultChange(file.path || oldPath);
     }));
 
     await this.loadShellSummaryFromDisk();
@@ -9563,6 +9576,10 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   async onunload() {
     this.stopLongRunningPoller();
+    if (this._vaultChangeTimer) {
+      clearTimeout(this._vaultChangeTimer);
+      this._vaultChangeTimer = null;
+    }
     this.openViews.clear();
   }
 
