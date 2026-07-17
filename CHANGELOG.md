@@ -9,10 +9,25 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
 
 ## [Unreleased]
 
+### Removed
+- `output/agents/`、`output/packs/`、`output/pilots/`：迁到 `.aiwiki/derived/`（operator 包装物，非用户交付）。
+- Per-action `output/control/execution-receipts/*.json`：迁到 `.aiwiki/state/execution-receipts/`（Obsidian 不可见）；历史流仍为 `execution-receipts.jsonl`。
+- `output/lint/` lint 报告：迁到 `.aiwiki/lint/`（Obsidian 不可见）；`semantic-lint-*.md` 与 `lint-*.md` 仍共用保留最近 10 份轮转。
+- `output/control/execution-bundles/` 执行包与 dry-run preview：迁到 `.aiwiki/state/execution-bundles/`；dry-run 保留最近 20 份。
+- `output/control/execution-batches/` batch receipt：迁到 `.aiwiki/state/execution-batches/`。
+- `output/control/runs/*/thinking.md` run notes：`write_run_notes` no-op；Product Shell 去掉「打开进度笔记」入口。进度看气泡状态，审计看报告/receipt。
+- `wiki/indexes/log.md` Obsidian-visible operation log：`append_wiki_log` / `ensure_wiki_log` 改为 no-op；不再写入 vault。权威历史仍为 `.aiwiki/state/runtime-history.jsonl` + receipts/audit（大 `log.md` 会拖死 Obsidian 索引）。
+- `output/control/plugin-runs/*.md`：Product Shell 不再落盘 Obsidian 可见 run log；`persistProductShellRunLog` no-op。权威仍为 `.aiwiki/logs/runs.jsonl` + 内存 recentRuns。
+- Judgment/Decision 页内无界 `## Review History` append：`append_review_history_entry` 与 auto-adopt 页内 mutate 改为 no-op；审阅仍更新 Review Status/Notes，权威事件进 runtime-history / receipts。
+
 ### Added
 - Commercial Go-Live：`docs/commercial/EULA.md`；Product Shell `package.json` / Jest hard-gate；`src/aiwiki/default_prompts/` 随包分发；Demo Pack 对外 checklist + `assets/README.md`。
 
 ### Changed
+- Obsidian dump P1：lint / execution-bundles / execution-batches 迁入 `.aiwiki`；planner lane `apply_contract` write_surfaces 同步；dry-run 保留最近 20 份。
+- Obsidian dump P2 staging：`output/_candidates/elixirs/` → `.aiwiki/staging/elixirs/`；`output/_proposals/{prompt,policy,judge}/` → `.aiwiki/staging/proposals/{prompt,policy,judge}/`；`LAYOUT_DIRS`、`app_vault` ignore/hidden 列表与 vault README 同步；dry-run `write_surfaces` 与 acceptance golden 已更新。
+- Obsidian dump P3 derived：`output/agents|packs|pilots` → `.aiwiki/derived/{agents,packs,pilots}`；rewrite-proposals 清理 state 外孤儿页。
+- `.aiwiki/lint/` 下 `semantic-lint-*.md` 与 `lint-*.md` 共用保留最近 10 份轮转（`_rotate_lint_reports`）。
 - Commercial Go-Live WS1–WS5：商务邮箱→`topkyoxp@gmail.com`；首发仅询价；`pip install -e .` 预览路径与 v0.4.0；launcher 优先 `aiwiki` console script；alchemy materialize 改 `atomic_write_text`；README/COMPARE 明确 LLM-Wiki production runtime 定位。
 
 ### Removed

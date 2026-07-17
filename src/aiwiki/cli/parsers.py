@@ -718,7 +718,7 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
     revert_parser = subparsers.add_parser("revert", help="Revert an L3 proposal apply receipt.")
     revert_parser.add_argument(
         "receipt_id",
-        help="Receipt id of the L3 proposal apply receipt (action_id field inside output/control/execution-receipts/l3-proposal-apply-<proposal_id>.json; or full receipt path; or receipt JSON basename).",
+        help="Receipt id of the L3 proposal apply receipt (action_id field inside .aiwiki/state/execution-receipts/l3-proposal-apply-<proposal_id>.json; or full receipt path; or receipt JSON basename).",
     )
     revert_parser.add_argument("--note")
 

@@ -322,7 +322,6 @@ function renderPendingSubmissionsGroup(plugin, section) {
 
     aiBubble.createDiv({ cls: "furnace-bubble-status-text", text: statusLabel });
     renderPendingProgressSteps(plugin, aiBubble, entry);
-    renderPendingRunNotesLink(plugin, aiBubble, entry);
 
     if (entry.status === "failed") {
       const exceptionCard = aiBubble.createDiv({ cls: "furnace-inline-exception-card furnace-inline-exception-failed" });
@@ -437,9 +436,6 @@ function renderPendingSubmissionsGroup(plugin, section) {
       hydratePendingArtifactSnippet(plugin, snippet, entry);
       const meta = resultCard.createDiv({ cls: "furnace-artifact-meta" });
       meta.createSpan({ text: pendingSubmissionArtifactMeta(plugin, entry) });
-      if (entry.runNotesPath || entry.run_notes_path) {
-        meta.createSpan({ text: plugin.t("有进度笔记") });
-      }
       const actions = aiBubble.createDiv({ cls: "furnace-bubble-actions furnace-artifact-actions" });
       const degradedOutput = target === "outputs" && pendingSubmissionIsDegraded(entry);
       const openReceiptTarget = () => plugin.openPendingDoneTarget("receipts", reconcilePath);
@@ -556,20 +552,6 @@ function pendingSubmissionArtifactMeta(plugin, entry) {
   if (target === "receipts") return plugin.t("保留 provenance / audit 线索");
   if (target === "raw") return plugin.t("后续 compile 会沉淀到 wiki/output");
   return plugin.t("本地可审计交付物");
-}
-
-function renderPendingRunNotesLink(plugin, aiBubble, entry) {
-  const runNotesPath = String(entry && entry.runNotesPath || entry && entry.run_notes_path || "").trim();
-  if (!runNotesPath) return;
-  const details = aiBubble.createEl("details", { cls: "furnace-run-notes-details" });
-  details.createEl("summary", { text: plugin.t("查看进度笔记") });
-  details.createDiv({
-    cls: "furnace-run-notes-boundary",
-    text: plugin.t("只包含外部化阶段记录，不包含模型内部过程。"),
-  });
-  const actions = details.createDiv({ cls: "furnace-bubble-actions" });
-  const openBtn = actions.createEl("button", { cls: "furnace-run-notes-open-btn", text: plugin.t("打开进度笔记") });
-  openBtn.addEventListener("click", async () => plugin.openWorkspacePath(runNotesPath));
 }
 
 function pendingSubmissionStageLabel(plugin, entry) {
@@ -762,7 +744,7 @@ function workspaceTargetDisplayLabel(plugin, target, entry) {
   if (text.startsWith("wiki/judgments/")) {
     return plugin.t("Judgment page");
   }
-  if (text.startsWith("wiki/rewrite-proposals/") || text.startsWith("output/_proposals/")) {
+  if (text.startsWith("wiki/rewrite-proposals/") || text.startsWith(".aiwiki/staging/proposals/") || text.startsWith("output/_proposals/")) {
     return plugin.t("Proposal page");
   }
   if (text.startsWith("output/graph/") || text.startsWith("wiki/indexes/graph")) {

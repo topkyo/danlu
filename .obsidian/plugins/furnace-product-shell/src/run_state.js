@@ -35,7 +35,7 @@ function createProductShellRunRecord({ label, args, llm, protocol }) {
     stderrRaw: "",
     resultPath: "",
     receiptPath: "",
-    logPath: `output/control/plugin-runs/${runId}.md`,
+    logPath: "",
     exitCode: "",
     errorSummary: "",
     fallbackFrom: "",

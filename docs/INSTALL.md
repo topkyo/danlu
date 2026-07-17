@@ -228,4 +228,4 @@ git pull
 
 1. 先看 `output/control/shell-summary.json` 里的状态摘要。
 2. 再跑 `./scripts/aiwiki-launcher.sh advanced lint`，看是否有健康度问题。
-3. 最后看 `output/control/execution-receipts/` 下的 receipt，定位最近失败的命令。
+3. 最后看 `.aiwiki/state/execution-receipts/` 下的 receipt，定位最近失败的命令。

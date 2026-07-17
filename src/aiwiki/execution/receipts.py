@@ -9,6 +9,7 @@ from typing import Any
 
 from ..app_execution import append_execution_receipt_history
 from ..app_utils import atomic_write_text, next_available_stem, relative_path, slugify, utc_now
+from ..render.paths import execution_receipts_dir
 
 _CORE_RECEIPT_FIELDS = {
     "version",
@@ -67,7 +68,7 @@ def write_execution_receipt(
     """
 
     _validate_execution_receipt_fields(operation=operation, status=status, target_file=target_file)
-    receipt_dir = root / "output" / "control" / "execution-receipts"
+    receipt_dir = execution_receipts_dir(root)
     receipt_dir.mkdir(parents=True, exist_ok=True)
     seed_target = Path(target_file).stem or subject_id or operation
     seed = slugify(f"{operation}-{seed_target}") or slugify(operation) or "execution-receipt"

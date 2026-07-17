@@ -35,9 +35,14 @@ from ..app_utils import (
 )
 from ..autonomy_domains import classify_l3_proposal
 from ..autonomy_policy import load_policy
-from ..render.paths import append_wiki_log, execution_receipt_path
+from ..render.paths import append_wiki_log, execution_receipt_path, resolve_execution_receipt_path
 from .alchemy import _restore_file_bytes, _snapshot_file_bytes
 from .audit_preview import AUDIT_STREAM_PATH
+
+STAGING_PROPOSALS_DIR = ".aiwiki/staging/proposals"
+STAGING_PROMPT_PROPOSAL_DIR = f"{STAGING_PROPOSALS_DIR}/prompt"
+STAGING_POLICY_PROPOSAL_DIR = f"{STAGING_PROPOSALS_DIR}/policy"
+STAGING_JUDGE_PROPOSAL_DIR = f"{STAGING_PROPOSALS_DIR}/judge"
 
 L3_PROPOSAL_KINDS = ("prompt_proposal", "policy_proposal")
 L3_PROPOSAL_STATES = ("candidate", "accepted", "rejected", "reverted", "stale", "revert_conflict")
@@ -132,9 +137,9 @@ def save_l3_proposal_state(root: Path, proposals: list[dict[str, Any]]) -> None:
 
 def l3_proposal_dir(root: Path, kind: str) -> Path:
     if kind == "prompt_proposal":
-        return root / "output" / "_proposals" / "prompt"
+        return root / STAGING_PROMPT_PROPOSAL_DIR
     if kind == "policy_proposal":
-        return root / "output" / "_proposals" / "policy"
+        return root / STAGING_POLICY_PROPOSAL_DIR
     raise ValueError(f"Unsupported L3 proposal kind: {kind}")
 
 
@@ -1040,7 +1045,7 @@ def _resolve_l3_receipt_path(root: Path, receipt_id: str) -> Path:
         return path
     if "/" in candidate or candidate.endswith(".json"):
         return root / candidate
-    return execution_receipt_path(root, candidate)
+    return resolve_execution_receipt_path(root, candidate)
 
 
 @runtime_write_operation
@@ -1048,7 +1053,7 @@ def revert_l3_proposal(root: Path, receipt_id: str, *, note: str | None = None) 
     receipt_path = _resolve_l3_receipt_path(root, receipt_id)
     receipt = load_json_document_strict(receipt_path)
     actionable_hint = (
-        "Expected receipt JSON under output/control/execution-receipts/ with kind=execution-receipt "
+        "Expected receipt JSON under .aiwiki/state/execution-receipts/ with kind=execution-receipt "
         "and generated_by=aiwiki-l3-proposal. Try `aiwiki revert l3-proposal-apply-<proposal_id>`."
     )
     if not isinstance(receipt, dict) or str(receipt.get("kind") or "") != "execution-receipt":

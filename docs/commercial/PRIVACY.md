@@ -23,7 +23,7 @@ related_docs:
 | 结构化 wiki | `<vault>/wiki/` | 否 |
 | 派生输出（报告、图表等） | `<vault>/output/` | 否 |
 | 机器记忆与状态 | `<vault>/.aiwiki/` | 否 |
-| Execution receipt / audit | `<vault>/.aiwiki/` 与 `<vault>/output/control/execution-receipts/` | 否 |
+| Execution receipt / audit | `<vault>/.aiwiki/` 与 `<vault>/.aiwiki/state/execution-receipts/` | 否 |
 | Product Shell 配置 | `<vault>/.obsidian/plugins/furnace-product-shell/data.json` | 否 |
 
 > 炼丹炉没有中央服务器来存储用户 vault 内容。所有写入都发生在用户本地文件系统。

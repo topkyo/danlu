@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from aiwiki import autonomy_policy
-from aiwiki.execution.l3_proposals import create_l3_proposal, load_l3_proposal_state
+from aiwiki.execution.l3_proposals import STAGING_PROMPT_PROPOSAL_DIR, create_l3_proposal, load_l3_proposal_state
 from aiwiki.runner.alchemy_shared import _apply_paths, _capture_sizes, _rollback_truncate, _trace_summary
 
 
@@ -112,7 +112,7 @@ def run_alchemy_propose_apply_impl(
         "subject_id": f"propose:{scope}",
         "apply_mode": "alchemy-propose",
         "note": note or "",
-        "primary_path": "output/_proposals/prompt",
+        "primary_path": STAGING_PROMPT_PROPOSAL_DIR,
         "secondary_path": ".aiwiki/state/l3-proposals.json",
         "receipt_path": deps["relative_path"](root, receipt_path),
         "scope": scope,

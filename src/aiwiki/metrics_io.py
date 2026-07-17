@@ -11,7 +11,10 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from aiwiki.app_utils import parse_frontmatter, relative_path
+from aiwiki.execution.alchemy import CANDIDATE_ELIXIR_DIR
+from aiwiki.execution.l3_proposals import STAGING_PROPOSALS_DIR
 from aiwiki.metrics import MetricsSnapshot, OutputMeta, ProposalMeta, ReceiptMeta, WikiPageMeta
+from aiwiki.render.paths import execution_receipts_dir, legacy_execution_receipt_path
 
 _PAGE_REVIEW_CLOSE_STATUSES = {
     "approved": "approve",
@@ -172,7 +175,7 @@ def _read_page_review_receipts(root: Path) -> Iterable[ReceiptMeta]:
 
 def _read_elixir_reference_receipts(root: Path) -> Iterable[ReceiptMeta]:
     seen_refs: set[tuple[str, str]] = set()
-    for directory in (root / "wiki" / "elixirs", root / "output" / "_candidates" / "elixirs"):
+    for directory in (root / "wiki" / "elixirs", root / CANDIDATE_ELIXIR_DIR):
         try:
             paths = sorted(directory.glob("*.md")) if directory.exists() else []
         except OSError:
@@ -257,12 +260,24 @@ def _read_judgment_review_receipts_from_page(
 
 
 def _receipt_json_paths(root: Path) -> list[Path]:
-    candidates = [root / "output" / "control" / "execution-receipts", root / "output" / "control" / "receipts"]
+    candidates = [
+        execution_receipts_dir(root),
+        legacy_execution_receipt_path(root, "_").parent,
+        root / "output" / "control" / "receipts",
+    ]
     paths: list[Path] = []
+    seen: set[Path] = set()
     for directory in candidates:
         try:
-            if directory.exists():
-                paths.extend(path for path in directory.glob("**/*.json") if path.is_file() and "reverts" not in path.relative_to(directory).parts)
+            if not directory.exists():
+                continue
+            for path in directory.glob("**/*.json"):
+                if not path.is_file() or "reverts" in path.relative_to(directory).parts:
+                    continue
+                if path in seen:
+                    continue
+                seen.add(path)
+                paths.append(path)
         except OSError:
             continue
     return sorted(paths)
@@ -297,7 +312,7 @@ def _read_proposals(root: Path) -> Iterable[ProposalMeta]:
                 yielded_ids.add(proposal.proposal_id)
             yield proposal
 
-    for directory in (root / "output" / "_proposals", root / "output" / "control" / "proposals"):
+    for directory in (root / STAGING_PROPOSALS_DIR, root / "output" / "control" / "proposals"):
         try:
             paths = sorted(directory.glob("**/*.md")) if directory.exists() else []
         except OSError:

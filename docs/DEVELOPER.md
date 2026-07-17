@@ -100,7 +100,7 @@ LLM enrichment 仍然是炼丹炉主路径，但放在受控 worker 入口：`ru
 
 runtime policy 缺省采用 `autonomy_profile=agentic`：未写 `.aiwiki/state/autonomy-policy.json` 时，runtime 内部 profile 允许维护、治理、judgment review、metadata-only L3 和 heavy semantic 非核心自动化，但 `auto_adopt_core_l3` 默认关闭。新安装的 systemd nightly env 仍写入 `AIWIKI_AUTONOMY_PROFILE=agentic` 以保持 receipt 记账口径一致，但写入型 auto flags 默认写 `0`，必须由 operator 显式 opt-in；watcher 仍 deterministic-only，不再配置跨 backend unattended fallback。
 
-> 2026-07-15 scripts 清理：本节早先引用的 `scripts/dogfood_maturity_gate.py summarize --days 3` 等 heuristic 已删除。当前以 **manual 仅异常审计** 为成熟度观察口径：人盯 `output/control/execution-receipts/` 与 `output/control/llm-receipts.jsonl` 中的异常事件；不依赖自动 3-day verdict 给出"成熟"宣称。
+> 2026-07-15 scripts 清理：本节早先引用的 `scripts/dogfood_maturity_gate.py summarize --days 3` 等 heuristic 已删除。当前以 **manual 仅异常审计** 为成熟度观察口径：人盯 `.aiwiki/state/execution-receipts/` 与 `output/control/llm-receipts.jsonl` 中的异常事件；不依赖自动 3-day verdict 给出"成熟"宣称。
 
 ## LLM 后端
 
@@ -116,7 +116,7 @@ runtime policy 缺省采用 `autonomy_profile=agentic`：未写 `.aiwiki/state/a
 - `llm-check`、`shell-summary.json`、Product Shell 会显示 requested/effective backend/model、model fallback 链，以及 usage 可见性/计费口径；backend fallback 链默认为空
 - 默认 `llm-check` 只做静态路由检查；显式加 `--probe` 后才会发一个极小真实请求，区分“backend 能解析出来”和“当前账号真能跑”
 - API provider 会尽量透传响应里的 usage
-- `run-ask` 现在会先用 balanced prompt；如果碰到 timeout，会自动再试一次 lean prompt；失败时写出可审计失败说明和 run notes，不再伪装为 deterministic fallback 成功
+- `run-ask` 现在会先用 balanced prompt；如果碰到 timeout，会自动再试一次 lean prompt；失败时写出可审计失败说明和 receipt，不再伪装为 deterministic fallback 成功
 - `run-ask` 现在也支持显式 `--lean` 与 `--timeout <seconds>`，用于直接选择稳优先 prompt 或覆盖单次调用 timeout，而不改动全局环境变量
 - 默认不做隐式 model fallback；需要同 backend 多模型 fallback 时必须显式传 `--model-fallback model_a,model_b`（可重复）或设置 `AIWIKI_MODEL_FALLBACK=model_a,model_b`，CLI 参数优先于 env
 - 默认不做跨 backend fallback；`AIWIKI_BACKEND_FALLBACK` / `AIWIKI_BACKEND_FALLBACK_MODEL` 不再驱动普通 CLI/runtime 的隐藏 backend routing。需要重跑到另一个 backend 时，显式设置 `AIWIKI_LLM_BACKEND` / `AIWIKI_LLM_MODEL` 后重新执行

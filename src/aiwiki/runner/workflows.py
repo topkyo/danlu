@@ -17,6 +17,7 @@ from aiwiki.app_linting.nightly import write_nightly_health
 from aiwiki.app_protocol import ensure_layout
 from aiwiki.app_shell import rewrite_followup_payload_for_paths
 from aiwiki.app_state import load_machine_memory, load_manifest, nightly_health_state_path
+from aiwiki.app_state_paths import lint_reports_dir
 from aiwiki.app_utils import (
     atomic_write_text,
     parse_frontmatter,
@@ -31,6 +32,7 @@ from aiwiki.execution.audit_reconciliation import reconcile_execution_receipts
 from aiwiki.execution.receipts import write_execution_receipt
 from aiwiki.llm import CompletionResult, LLMError
 from aiwiki.memory.rewrite_candidates import store_concept_rewrite_candidate
+from aiwiki.render.paths import execution_receipts_dir
 from aiwiki.runner.clients import (
     _append_fallback_stage,
     _client_model_name,
@@ -259,12 +261,12 @@ def _unique_run_compile_action_id(root: Path, started_at_ms: int) -> str:
 
     Mirrors the alchemy pattern (``<kind>-<epoch_ms>`` + ``-<n>`` suffix on
     same-millisecond collisions) so receipt filenames are stable and unique
-    inside ``output/control/execution-receipts/``.
+    inside ``.aiwiki/state/execution-receipts/``.
     """
 
     candidate = f"run-compile-{started_at_ms}"
     n = 2
-    while (root / "output" / "control" / "execution-receipts" / f"{candidate}.json").exists():
+    while (execution_receipts_dir(root) / f"{candidate}.json").exists():
         candidate = f"run-compile-{started_at_ms}-{n}"
         n += 1
     return candidate
@@ -289,7 +291,7 @@ def _write_run_compile_failure_receipt(
     extra: dict[str, Any] | None = None,
 ) -> str:
     """Persist a per-job ``run-compile-<id>.json`` receipt to
-    ``output/control/execution-receipts/`` on fail-fast.
+    ``.aiwiki/state/execution-receipts/`` on fail-fast.
 
     Returns the vault-relative receipt path (empty string on write failure)
     so callers can stamp it into the JSONL record. Never raises — the
@@ -299,7 +301,7 @@ def _write_run_compile_failure_receipt(
     try:
         with runtime_write_lock(root):
             action_id = _unique_run_compile_action_id(root, started_at_ms)
-            receipt_path = root / "output" / "control" / "execution-receipts" / f"{action_id}.json"
+            receipt_path = execution_receipts_dir(root) / f"{action_id}.json"
             applied_at = datetime.fromtimestamp(started_at_ms / 1000.0, tz=timezone.utc).isoformat()
             receipt: dict[str, Any] = {
                 "version": 1,
@@ -1063,7 +1065,9 @@ def run_lint(root: Path, client: SupportsComplete | None = None) -> dict[str, An
     ensure_layout(root)
     deterministic = lint_wiki(root)
     report_id = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    target = root / "output" / "lint" / f"semantic-lint-{report_id}.md"
+    lint_dir = lint_reports_dir(root)
+    lint_dir.mkdir(parents=True, exist_ok=True)
+    target = lint_dir / f"semantic-lint-{report_id}.md"
     effective_client = client or create_client(root)
     model_selected = _client_model_name(effective_client)
     prompt_profile = _initial_lint_prompt_profile(effective_client)
@@ -1137,6 +1141,9 @@ def run_lint(root: Path, client: SupportsComplete | None = None) -> dict[str, An
         raise
     with runtime_write_lock(root):
         atomic_write_text(target, updated)
+        from aiwiki.app_linting.core import _rotate_lint_reports
+
+        _rotate_lint_reports(target.parent)
     llm_audit = _build_llm_audit(
         effective_client,
         model_selected=model_selected,

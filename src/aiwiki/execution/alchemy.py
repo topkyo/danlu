@@ -41,11 +41,12 @@ from ..app_utils import (
     strip_frontmatter,
     utc_now,
 )
+from ..render.paths import execution_receipts_dir
 from .alchemy_helpers import validate_promote_gate
 from .audit_preview import AUDIT_STREAM_PATH
 
 ELIXIR_DIR = "wiki/elixirs"
-CANDIDATE_ELIXIR_DIR = "output/_candidates/elixirs"
+CANDIDATE_ELIXIR_DIR = ".aiwiki/staging/elixirs"
 ELIXIR_STATE_VALUES = {"draft", "distilling", "candidate", "settled", "superseded"}
 _ACTIVE_ELIXIR_STATES = {"draft", "distilling", "candidate"}
 _PROMOTION_TS_FIELD = "promoted_at"
@@ -458,7 +459,7 @@ def _build_legacy_migration_receipt(
     note: str | None,
 ) -> dict[str, Any]:
     action_id = _unique_legacy_migration_action_id(root, applied_at)
-    receipt_path = root / "output" / "control" / "execution-receipts" / f"{action_id}.json"
+    receipt_path = execution_receipts_dir(root) / f"{action_id}.json"
     return {
         "version": 1,
         "kind": "execution-receipt",
@@ -489,7 +490,7 @@ def _unique_legacy_migration_action_id(root: Path, applied_at: datetime) -> str:
     epoch_ms = int(applied_at.timestamp() * 1000)
     candidate = f"elixir-legacy-migration-{epoch_ms}"
     n = 2
-    while (root / "output" / "control" / "execution-receipts" / f"{candidate}.json").exists():
+    while (execution_receipts_dir(root) / f"{candidate}.json").exists():
         candidate = f"elixir-legacy-migration-{epoch_ms}-{n}"
         n += 1
     return candidate
@@ -700,7 +701,7 @@ def _build_superseded_cleanup_receipt(
     note: str | None,
 ) -> dict[str, Any]:
     action_id = _unique_superseded_cleanup_action_id(root, applied_at)
-    receipt_path = root / "output" / "control" / "execution-receipts" / f"{action_id}.json"
+    receipt_path = execution_receipts_dir(root) / f"{action_id}.json"
     return {
         "version": 1,
         "kind": "execution-receipt",
@@ -731,7 +732,7 @@ def _unique_superseded_cleanup_action_id(root: Path, applied_at: datetime) -> st
     epoch_ms = int(applied_at.timestamp() * 1000)
     candidate = f"elixir-superseded-cleanup-{epoch_ms}"
     n = 2
-    while (root / "output" / "control" / "execution-receipts" / f"{candidate}.json").exists():
+    while (execution_receipts_dir(root) / f"{candidate}.json").exists():
         candidate = f"elixir-superseded-cleanup-{epoch_ms}-{n}"
         n += 1
     return candidate

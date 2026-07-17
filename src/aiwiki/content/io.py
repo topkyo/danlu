@@ -340,14 +340,17 @@ def curated_asset_section_snapshot(markdown: str, heading: str, *, revisit_after
 
 
 def append_review_history_entry(markdown: str, *, reviewed_at: str, status: str, note: str | None = None, confidence: str | None = None) -> str:
-    existing_lines = normalized_markdown_section_lines(markdown, "Review History")
-    history_lines = [line for line in existing_lines if line != "- No review history yet."]
-    entry_parts = [f"- `{reviewed_at}` | status `{status}`"]
-    if confidence:
-        entry_parts.append(f"confidence `{confidence}`")
-    entry_parts.append(f"note {note}" if note else "note none")
-    history_lines.insert(0, " | ".join(entry_parts))
-    return upsert_markdown_section(markdown, "Review History", "\n".join(history_lines))
+    """No-op: do not append unbounded Review History into Obsidian pages.
+
+    Page-local history grew without bound (same failure mode as retired
+    ``wiki/indexes/log.md``). Canonical review events live in
+    ``.aiwiki/state/runtime-history.jsonl`` and execution receipts.
+    ``reviewed_at`` / ``status`` / ``note`` / ``confidence`` are kept for
+    call-site compatibility.
+    """
+
+    _ = (reviewed_at, status, note, confidence)
+    return markdown
 
 
 def review_history_entries(markdown: str) -> list[str]:

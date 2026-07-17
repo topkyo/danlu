@@ -49,7 +49,7 @@ test("resolveProductShellRunLogPath preserves existing workspace-relative behavi
   expect(context.resolveProductShellRunLogPath("/vault", "")).toBe("");
 });
 
-test("persistProductShellRunLog renders and writes run log", () => {
+test("persistProductShellRunLog is a no-op and does not write plugin-runs md", () => {
   const context = loadRunLogPersistenceContext();
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), "furnace-run-log-"));
   const record = {
@@ -62,6 +62,7 @@ test("persistProductShellRunLog renders and writes run log", () => {
     exitCode: 0,
     startedAt: "2026-05-25T00:00:00Z",
     finishedAt: "2026-05-25T00:00:01Z",
+    logPath: "output/control/plugin-runs/run-1.md",
     timeline: [{ at: "2026-05-25T00:00:00Z", stage: "Submitted", summary: "run-ask hello" }],
   };
 
@@ -72,11 +73,7 @@ test("persistProductShellRunLog renders and writes run log", () => {
     repoRoot,
   });
 
-  expect(logPath).toBe("output/control/plugin-runs/run-1.md");
-  expect(record.logPath).toBe(logPath);
-  const content = fs.readFileSync(path.join(repoRoot, logPath), "utf8");
-  expect(content).toContain("# Product Shell Run Log");
-  expect(content).toContain("- Working directory: " + repoRoot);
-  expect(content).toContain("## Standard output");
-  expect(content).toContain("ok");
+  expect(logPath).toBe("");
+  expect(record.logPath).toBe("");
+  expect(fs.existsSync(path.join(repoRoot, "output/control/plugin-runs/run-1.md"))).toBe(false);
 });

@@ -98,7 +98,7 @@ from ..render.paths import (
 )
 from .audit_preview import AUDIT_STREAM_PATH
 
-AUTO_RESOLUTION_RECEIPTS_DIR = Path("output") / "control" / "execution-receipts" / "auto-resolution"
+AUTO_RESOLUTION_RECEIPTS_DIR = Path(".aiwiki") / "state" / "execution-receipts" / "auto-resolution"
 AUTO_RESOLUTION_GENERATED_BY = "aiwiki-auto-resolve-actions"
 AUTO_RESOLUTION_RULE_ID = "machine-memory:auto-resolution:v1"
 

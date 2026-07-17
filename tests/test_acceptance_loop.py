@@ -276,11 +276,11 @@ def test_replay_idempotency_and_presentation_acceptance(  # pragma: no cover - e
     case, vault = _copy_case_and_fix_clock("case_idempotency_shell", tmp_path, monkeypatch)
     stdout_dir = case / "expected" / "stdout"
     out1, out2, out3 = _run_b1_chain(vault)
-    before_today = _snapshot_paths(vault, ("output/control", ".aiwiki/state", "wiki", "output/_candidates"))
+    before_today = _snapshot_paths(vault, ("output/control", ".aiwiki/state", ".aiwiki/staging", "wiki"))
     shell_summary_path = vault / "output/control/shell-summary.json"
     shell_summary_before = _read_optional_bytes(shell_summary_path)
     out4 = _run_cli(vault, ["today"])
-    after_today = _snapshot_paths(vault, ("output/control", ".aiwiki/state", "wiki", "output/_candidates"))
+    after_today = _snapshot_paths(vault, ("output/control", ".aiwiki/state", ".aiwiki/staging", "wiki"))
     assert after_today == before_today
     assert _read_optional_bytes(shell_summary_path) == shell_summary_before
 
@@ -288,9 +288,9 @@ def test_replay_idempotency_and_presentation_acceptance(  # pragma: no cover - e
     planner_first = (vault / ".aiwiki/state/planner-log.jsonl").read_bytes()
 
     out1b, out2b, out3b = _run_b1_chain(vault)
-    before_today2 = _snapshot_paths(vault, ("output/control", ".aiwiki/state", "wiki", "output/_candidates"))
+    before_today2 = _snapshot_paths(vault, ("output/control", ".aiwiki/state", ".aiwiki/staging", "wiki"))
     out4b = _run_cli(vault, ["today"])
-    after_today2 = _snapshot_paths(vault, ("output/control", ".aiwiki/state", "wiki", "output/_candidates"))
+    after_today2 = _snapshot_paths(vault, ("output/control", ".aiwiki/state", ".aiwiki/staging", "wiki"))
 
     assert (vault / ".aiwiki/state/signals.jsonl").read_bytes() == signals_first
     assert (vault / ".aiwiki/state/planner-log.jsonl").read_bytes() == planner_first
@@ -377,10 +377,10 @@ def test_heavy_primitives_receipt_acceptance(  # pragma: no cover - explicit pyt
     assert all("#L" in str(record["source_ref"]) for record in audit)
     assert (vault / "prompts/ask.md").read_bytes() == prompt_before
     assert "aiwiki:alchemy-review-enqueue:start" in (vault / "wiki/indexes/review-queue.md").read_text(encoding="utf-8")
-    assert "distill_history" in (vault / "output/_candidates/elixirs/elixir-b3.md").read_text(encoding="utf-8")
+    assert "distill_history" in (vault / ".aiwiki/staging/elixirs/elixir-b3.md").read_text(encoding="utf-8")
     assert (vault / ".aiwiki/state/l3-proposals.json").exists()
-    assert list((vault / "output/_proposals/prompt").glob("*.md"))
-    assert not (vault / "output/_proposals/policy").exists()
+    assert list((vault / ".aiwiki/staging/proposals/prompt").glob("*.md"))
+    assert not list((vault / ".aiwiki/staging/proposals/policy").glob("*.md"))
     assert len(_load_jsonl(vault / ".aiwiki/logs/llm-receipts.jsonl")) == 1
 
     _assert_files_byte_equal(
@@ -1017,7 +1017,6 @@ def test_drop_url_writes_raw_note_and_logs(  # pragma: no cover - explicit pytes
 
     Asserts byte-stable artifacts for url-drop materialization:
     - raw/inbox/<slug>.md (frontmatter + sections)
-    - wiki/indexes/log.md (ingest entry)
     - .aiwiki/state/runtime-history.jsonl (raw-added event)
     - .aiwiki/state/audit.jsonl (auto-mirrored from runtime-history)
 
@@ -1039,7 +1038,6 @@ def test_drop_url_writes_raw_note_and_logs(  # pragma: no cover - explicit pytes
         case / "expected",
         [
             result["note_path"],
-            "wiki/indexes/log.md",
             ".aiwiki/state/runtime-history.jsonl",
             ".aiwiki/state/audit.jsonl",
         ],
@@ -1059,7 +1057,7 @@ def test_l3_proposal_apply_then_revert(  # pragma: no cover - explicit pytest ac
     `create_l3_proposal`, `apply_l3_proposal`, then `revert_l3_proposal`
     against `prompts/test-prompt.md`. After revert the target bytes are
     restored to the original seed, and two execution receipts plus matching
-    runtime-history / audit / wiki-log entries exist.
+    runtime-history / audit entries exist.
 
     `aiwiki.execution.l3_proposals.utc_now` is patched by
     `_copy_case_and_fix_clock_from` (module-local binding via
@@ -1097,11 +1095,10 @@ def test_l3_proposal_apply_then_revert(  # pragma: no cover - explicit pytest ac
         [
             "prompts/test-prompt.md",
             ".aiwiki/state/l3-proposals.json",
-            "output/control/execution-receipts/l3-proposal-apply-prop-test-prompt.json",
-            "output/control/execution-receipts/l3-proposal-revert-prop-test-prompt.json",
+            ".aiwiki/state/execution-receipts/l3-proposal-apply-prop-test-prompt.json",
+            ".aiwiki/state/execution-receipts/l3-proposal-revert-prop-test-prompt.json",
             ".aiwiki/state/runtime-history.jsonl",
             ".aiwiki/state/audit.jsonl",
-            "wiki/indexes/log.md",
         ],
     )
 

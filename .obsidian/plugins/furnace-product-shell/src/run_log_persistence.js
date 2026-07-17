@@ -10,21 +10,15 @@ function resolveProductShellRunLogPath(repoRoot, relativePath) {
 }
 
 function persistProductShellRunLog({ record, details = {}, t, repoRoot = "" }) {
-  const rendered = renderProductShellRunLog({
-    record,
-    details,
-    t,
-    repoRoot: repoRoot || ".",
-  });
-  if (!rendered) {
-    return "";
+  // Retired: do not write Obsidian-visible output/control/plugin-runs/*.md.
+  // Unbounded per-run markdown (stdout dumps) bloated the vault and fought
+  // Obsidian indexing. Canonical run history lives in .aiwiki/logs/runs.jsonl
+  // plus in-memory recentRuns; renderProductShellRunLog remains for tests.
+  void details;
+  void t;
+  void repoRoot;
+  if (record && typeof record === "object") {
+    record.logPath = "";
   }
-  const absolutePath = resolveProductShellRunLogPath(repoRoot, rendered.logPath);
-  if (!absolutePath) {
-    return "";
-  }
-  record.logPath = rendered.logPath;
-  fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
-  fs.writeFileSync(absolutePath, rendered.content, "utf8");
-  return rendered.logPath;
+  return "";
 }

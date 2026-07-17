@@ -183,7 +183,7 @@ def aggregate_backend_telemetry(root: Path, *, limit: int = 100) -> dict[str, An
         "kind": "backend-telemetry-report",
         "version": 2,
         "receipt_sources": [
-            "output/control/execution-receipts/*.json",
+            ".aiwiki/state/execution-receipts/*.json",
             ".aiwiki/state/execution-receipts.jsonl",
             ".aiwiki/logs/llm-receipts.jsonl",
         ],

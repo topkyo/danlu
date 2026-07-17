@@ -35,6 +35,7 @@ from aiwiki.execution.run_notes import run_id_for_artifact, write_run_notes, wri
 from aiwiki.input_router import is_obsidian_open_link
 from aiwiki.llm import CompletionResult, LLMError, classify_backend_error
 from aiwiki.notify import notify_report_generated
+from aiwiki.render.paths import execution_receipts_dir
 from aiwiki.runner.background import (
     job_manifest_path,
     new_job_id,
@@ -976,7 +977,7 @@ def _write_run_ask_output_receipt(
 
 
 def _planned_run_ask_output_receipt_ref(root: Path, *, artifact_ref: str, run_id: str) -> str:
-    receipt_dir = root / "output" / "control" / "execution-receipts"
+    receipt_dir = execution_receipts_dir(root)
     seed_target = Path(artifact_ref).stem or run_id or "run-ask"
     seed = slugify(f"run-ask-{seed_target}") or slugify("run-ask") or "execution-receipt"
     action_id = next_available_stem(receipt_dir, seed, suffix=".json")

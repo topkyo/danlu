@@ -150,7 +150,7 @@ else:
 
 ### 2.4 （自 2026-07-15 起：dogfood maturity 验证 harness 已废弃）
 
-> 原 `AIWIKI_INSTALL_DOGFOOD_MATURITY=1` 启用 `aiwiki-dogfood-maturity.{service,timer}` 与 `--dogfood-maturity-only` 卸载 flag 已随 `scripts/install_user_service.sh` / `uninstall_user_service.sh` 一并删除。`systemd/aiwiki-dogfood-maturity.{service,timer}.template` 也已删除。本仓库当前不存在「成熟度自动 verdict timer」；成熟度以人盯 `output/control/execution-receipts/` 与 `output/control/llm-receipts.jsonl` 异常事件为准。若机器上保留有旧 unit，`scripts/install_user_service.sh` / `scripts/uninstall_user_service.sh` 仍主动清理。
+> 原 `AIWIKI_INSTALL_DOGFOOD_MATURITY=1` 启用 `aiwiki-dogfood-maturity.{service,timer}` 与 `--dogfood-maturity-only` 卸载 flag 已随 `scripts/install_user_service.sh` / `uninstall_user_service.sh` 一并删除。`systemd/aiwiki-dogfood-maturity.{service,timer}.template` 也已删除。本仓库当前不存在「成熟度自动 verdict timer」；成熟度以人盯 `.aiwiki/state/execution-receipts/` 与 `output/control/llm-receipts.jsonl` 异常事件为准。若机器上保留有旧 unit，`scripts/install_user_service.sh` / `scripts/uninstall_user_service.sh` 仍主动清理。
 
 ### 2.5 状态查询
 
@@ -266,7 +266,7 @@ journalctl --user -u aiwiki-nightly.service --since "1 minute ago"
 
 | Artifact | 路径 | 策略 |
 |----------|------|------|
-| execution receipt | `output/control/execution-receipts/*.json` + `.aiwiki/state/execution-receipts.jsonl` | 保留；回滚依赖 |
+| execution receipt | `.aiwiki/state/execution-receipts/*.json` + `.aiwiki/state/execution-receipts.jsonl` | 保留；回滚依赖 |
 | planner-log | `.aiwiki/state/planner-log.jsonl` | 保留；rollback marker 追加 |
 | LLM receipt | `.aiwiki/logs/llm-receipts.jsonl` | 保留；`llm-telemetry` 只读聚合 |
 | LLM raw response | receipt 内 `raw_response_path` | 按路径引用；清理需显式 operator 策略 |

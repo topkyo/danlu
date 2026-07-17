@@ -320,14 +320,18 @@ def _audit_execution_source_refs(root: Path, audit_path: Path) -> Iterator[tuple
 
 
 def _execution_receipt_file_paths(root: Path) -> set[str]:
-    receipt_dir = root / "output" / "control" / "execution-receipts"
-    if not receipt_dir.exists():
-        return set()
-    return {
-        path.relative_to(root).as_posix()
-        for path in receipt_dir.rglob("*.json")
-        if (path.is_file() or path.is_symlink()) and not path.name.startswith(".")
-    }
+    from ..render.paths import execution_receipts_dir, legacy_execution_receipt_path
+
+    paths: set[str] = set()
+    for receipt_dir in (execution_receipts_dir(root), legacy_execution_receipt_path(root, "_").parent):
+        if not receipt_dir.exists():
+            continue
+        paths.update(
+            path.relative_to(root).as_posix()
+            for path in receipt_dir.rglob("*.json")
+            if (path.is_file() or path.is_symlink()) and not path.name.startswith(".")
+        )
+    return paths
 
 
 def _path_within_root(root: Path, path: Path) -> bool:

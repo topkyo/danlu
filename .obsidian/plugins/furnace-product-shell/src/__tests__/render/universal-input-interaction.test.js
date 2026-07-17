@@ -736,10 +736,6 @@ test("chat-style pending stream covers artifact cards failed and escalated bubbl
   expect(container.querySelector(".furnace-pending-open-report-btn")).toBeTruthy();
   container.querySelector(".furnace-pending-quote-report-btn").click();
   expect(plugin.quoteFileToComposer).toHaveBeenCalledWith("output/reports/r.md");
-  expect(container.textContent).toContain("查看进度笔记");
-  expect(container.textContent).toContain("只包含外部化阶段记录，不包含模型内部过程。");
-  container.querySelector(".furnace-run-notes-open-btn").click();
-  expect(plugin.openWorkspacePath).toHaveBeenCalledWith("output/control/runs/ask-r/thinking.md");
   expect(container.textContent).toContain("回执已就绪");
   expect(container.textContent).toContain("执行回执 Receipt");
   expect(container.querySelector(".furnace-pending-open-receipt-btn")).toBeTruthy();

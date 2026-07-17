@@ -54,8 +54,8 @@ Demo 截图或视频中必须露出路径类型，但不得露出敏感内容：
 |---|---|---|
 | Source provenance | `wiki/sources/*.md` | 证明结论可追溯到脱敏原料 |
 | Judgment asset | `wiki/judgments/*.md` | 展示 thesis / risk / invalidation 的结构化沉淀 |
-| Elixir asset | `wiki/elixirs/*.md` 或 `output/_candidates/elixirs/*.md` | 展示可复用判断资产或待升级候选 |
-| Execution receipt | `output/control/execution-receipts/*.json` | 证明一次生成 / promote / review 有可审计 receipt |
+| Elixir asset | `wiki/elixirs/*.md` 或 `.aiwiki/staging/elixirs/*.md` | 展示可复用判断资产或待升级候选 |
+| Execution receipt | `.aiwiki/state/execution-receipts/*.json` | 证明一次生成 / promote / review 有可审计 receipt |
 | Run output | `output/reports/*.md` 或相关 `output/control/*.json` | 展示 Product Shell 可打开的结果入口 |
 
 ## 合规话术
@@ -81,8 +81,8 @@ Demo Pack 必须显式出现以下口径：
    - Product Shell 输入端：投料 / ask / today。
    - `wiki/sources/` provenance。
    - `wiki/judgments/` thesis 与 review 状态。
-   - `wiki/elixirs/` 或 `output/_candidates/elixirs/` 的复用关系。
-   - `output/control/execution-receipts/` 的 receipt 索引或单条脱敏 receipt。
+   - `wiki/elixirs/` 或 `.aiwiki/staging/elixirs/` 的复用关系。
+   - `.aiwiki/state/execution-receipts/` 的 receipt 索引或单条脱敏 receipt。
 2. **10 分钟视频脚本**
    - 0:00-2:00 投入材料与 source provenance。
    - 2:00-4:00 thesis / catalyst / risk / invalidation。

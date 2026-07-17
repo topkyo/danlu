@@ -763,12 +763,17 @@ def remove_stale_generated_execution_bundle_files(root: Path, active_action_ids:
         return 0
     active_slugs = {slugify(action_id) for action_id in active_action_ids if action_id}
     for path in sorted(directory.glob("*.json")):
-        if path.stem in active_slugs or path.stem.endswith("-dry-run"):
+        if path.stem.endswith("-dry-run"):
+            continue
+        if path.stem in active_slugs:
             continue
         if (directory / f"{path.stem}-dry-run.json").exists():
             continue
         path.unlink()
         removed += 1
+    from ..app_execution import rotate_execution_dry_runs
+
+    rotate_execution_dry_runs(directory)
     return removed
 
 

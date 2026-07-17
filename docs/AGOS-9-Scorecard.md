@@ -74,7 +74,7 @@ AOS-C1~C8 已按 harness 顺序完成本地 release gate。当前本地 release 
 |------|------|------|
 | Maturity receipts | `$AIWIKI_DOGFOOD_VAULT/output/control/maturity-gate/run-*.json` | live |
 | Compounding snapshot | `.../maturity-gate/snapshot-*.json` | live |
-| Execution receipts | `.../output/control/execution-receipts/*.json` | live |
+| Execution receipts | `.../.aiwiki/state/execution-receipts/*.json` | live |
 | 历史记录 | git log + `PROGRESS.md` | historical |
 
 ### 验证命令

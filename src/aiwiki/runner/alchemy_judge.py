@@ -9,6 +9,7 @@ from typing import Any, Callable
 from aiwiki.app_execution import append_execution_receipt_history
 from aiwiki.app_state import append_runtime_history, execution_receipt_history_path
 from aiwiki.app_utils import atomic_write_text, relative_path, utc_now
+from aiwiki.execution.l3_proposals import STAGING_JUDGE_PROPOSAL_DIR
 from aiwiki.render.paths import execution_receipt_path
 from aiwiki.runner import alchemy_materialize as materialize
 from aiwiki.runner import alchemy_support as support
@@ -241,7 +242,7 @@ def run_judge_propose(
         "subject_id": f"judge-proposal:{scope}",
         "apply_mode": "alchemy-judge-propose",
         "note": note or "",
-        "primary_path": "output/_proposals/judge",
+        "primary_path": STAGING_JUDGE_PROPOSAL_DIR,
         "secondary_path": "",
         "receipt_path": relative_path(root, receipt_path),
         "scope": scope,

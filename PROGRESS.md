@@ -14,6 +14,13 @@
 
 ## 当前动态
 
+- 2026-07-17 (Obsidian dump P3 derived)：`output/agents|packs|pilots` → `.aiwiki/derived/`；`wiki/rewrite-proposals` 对 state 外孤儿页 unlink；indexes 遥测页保持 KEEP+ignore（已在 userIgnoreFilters，非白屏级）。
+- 2026-07-17 (Obsidian dump P2 staging)：`output/_candidates/elixirs/` → `.aiwiki/staging/elixirs/`；`output/_proposals/{prompt,policy,judge}/` → `.aiwiki/staging/proposals/{prompt,policy,judge}/`；`CANDIDATE_ELIXIR_DIR`、L3/judge writers、`LAYOUT_DIRS`、`app_vault` 列表与 dry-run `write_surfaces`、acceptance golden 同步。P1 未动 `execution-bundles`/`lint`/`wiki/indexes`/`agents/packs`。
+- 2026-07-17 (run notes 退役)：确认用户不需要「打开进度笔记」入口（气泡已有进度，报告/receipt 才是交付与审计）。`write_run_notes` no-op，Shell UI 去掉进度笔记入口，dogfood 清 `output/control/runs/`。
+- 2026-07-17 (Obsidian dump P1 完成)：lint 报告迁入 `.aiwiki/lint/`；execution-bundles / dry-run previews 与 execution-batches 迁入 `.aiwiki/state/`；dry-run 保留最近 20 份；planner lane `apply_contract` write_surfaces 同步。
+- 2026-07-17 (Obsidian dump P0+P1)：`execution-receipts` 单文件 JSON 迁入 `.aiwiki/state/execution-receipts/`；dogfood 清 vault 侧旧 receipts + 超额 semantic-lint。
+- 2026-07-17 (Obsidian dump P0)：审计后停写另两类 vault 可见无界 dump——(1) Product Shell `output/control/plugin-runs/*.md`（`persistProductShellRunLog` no-op）；(2) judgment/decision 页内 `## Review History` append（`append_review_history_entry` + auto-adopt mutate no-op）。dogfood 清 plugin-runs + 超额 lint 报告。权威仍为 `.aiwiki` jsonl / receipts。
+- 2026-07-17 (wiki log 退役)：Obsidian 索引白屏根因坐实为膨胀的 `wiki/indexes/log.md`（~1.4MB）。最优解落地：`append_wiki_log` / `ensure_wiki_log` no-op，lint 不再要求该文件，acceptance golden 去掉 log.md；dogfood vault 已删 quarantine 副本。操作历史只保留 `runtime-history.jsonl` / receipts / audit。
 - 2026-07-15 (Commercial Go-Live 执行波)：按评估报告/Post-Cleanup 开干。**WS1** 邮箱→`topkyoxp@gmail.com`、仅询价决策、`docs/commercial/EULA.md`；**WS2** `pip install -e .` 预览 + v0.4.0 + `default_prompts` 入包 + launcher 优先 `aiwiki`；**WS3** Demo 对外 checklist + assets 占位；**WS5** alchemy `atomic_write_text` + Product Shell Jest hard-gate（180 passed）；README/COMPARE 补 LLM-Wiki production runtime 叙事。残留：PyPI 正式发布、EULA 法律签收、截图/录屏媒体、WS6 dogfood。验证：见本轮 commit 后 `verify.sh all`。
 - 2026-07-15 (first-principles evaluation)：多 agent 全量扫描代码/文档 + 网络调研 Karpathy LLM-Wiki 生态（atomicstrata / nvk / sage-wiki / Obsidian 插件等）+ SoT 交叉验证，落盘 `docs/Furnace First-Principles Evaluation Report 2026-07.md`（Direction context，**非**执行 SoT）。结论与 Post-Cleanup 对齐：AgentOS ~9.05 ≠ 商业可售 ~7.6；品类定位正确稀缺；最优下一刀仍是 Commercial Go-Live WS1→WS2/WS3，不重开 cleanup、不把 runtime 降级为 skill 包。docs/README Direction context 已挂索引。
 

@@ -16,26 +16,33 @@ from pathlib import Path
 from ..app_protocol import ensure_layout
 from ..app_utils import parse_frontmatter, slugify, utc_now
 
+# Kept bound for acceptance monkeypatch: `aiwiki.render.paths.utc_now`.
+_ = utc_now
+
 
 def ensure_wiki_log(root: Path) -> Path:
+    """Return the legacy wiki log path without creating it.
+
+    Obsidian-visible ``wiki/indexes/log.md`` is retired: unbounded append
+    crashed Obsidian indexing. Canonical history lives in
+    ``.aiwiki/state/runtime-history.jsonl`` (plus receipts / audit).
+    Call sites may still call this for compatibility; it only ensures layout.
+    """
+
     ensure_layout(root)
-    path = root / "wiki" / "indexes" / "log.md"
-    if not path.exists():
-        path.write_text("# 知识库日志\n\n", encoding="utf-8")
-    return path
+    return root / "wiki" / "indexes" / "log.md"
 
 
 def append_wiki_log(root: Path, category: str, title: str, details: list[str]) -> None:
-    path = ensure_wiki_log(root)
-    timestamp = utc_now()
-    lines = [
-        f"## [{timestamp}] {category} | {title}",
-        "",
-        *[f"- {detail}" for detail in details],
-        "",
-    ]
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write("\n".join(lines))
+    """No-op: do not write Obsidian-visible ``wiki/indexes/log.md``.
+
+    Operation history belongs in runtime-history.jsonl / receipts / audit.
+    ``category``, ``title``, and ``details`` are retained for call-site
+    compatibility and are intentionally unused.
+    """
+
+    _ = (root, category, title, details)
+    return
 
 
 def remove_stale_generated_concept_pages(root: Path, active_slugs: set[str]) -> int:
@@ -71,15 +78,15 @@ def remove_stale_generated_concept_pages_detailed(
 
 
 def review_packs_dir(root: Path) -> Path:
-    return root / "output" / "packs" / "review"
+    return root / ".aiwiki" / "derived" / "packs" / "review"
 
 
 def decision_memos_dir(root: Path) -> Path:
-    return root / "output" / "packs" / "decision-memos"
+    return root / ".aiwiki" / "derived" / "packs" / "decision-memos"
 
 
 def sop_drafts_dir(root: Path) -> Path:
-    return root / "output" / "packs" / "sop-drafts"
+    return root / ".aiwiki" / "derived" / "packs" / "sop-drafts"
 
 
 def pack_stem(seed: str) -> str:
@@ -108,7 +115,12 @@ def execution_proposal_path(root: Path, action_id: str) -> Path:
 
 
 def execution_bundles_dir(root: Path) -> Path:
-    return root / "output" / "control" / "execution-bundles"
+    """Per-action execution bundle JSON directory (not Obsidian-visible).
+
+    Legacy vault path ``output/control/execution-bundles/`` is retired.
+    """
+
+    return root / ".aiwiki" / "state" / "execution-bundles"
 
 
 def execution_bundle_path(root: Path, action_id: str) -> Path:
@@ -116,8 +128,33 @@ def execution_bundle_path(root: Path, action_id: str) -> Path:
 
 
 def execution_receipts_dir(root: Path) -> Path:
-    return root / "output" / "control" / "execution-receipts"
+    """Per-action receipt JSON directory (not Obsidian-visible).
+
+    History stream remains ``.aiwiki/state/execution-receipts.jsonl``.
+    Legacy vault path ``output/control/execution-receipts/`` is retired.
+    """
+
+    return root / ".aiwiki" / "state" / "execution-receipts"
 
 
 def execution_receipt_path(root: Path, action_id: str) -> Path:
     return execution_receipts_dir(root) / f"{slugify(action_id)}.json"
+
+
+def legacy_execution_receipt_path(root: Path, action_id: str) -> Path:
+    """Pre-2026-07 Obsidian-visible receipt path (read fallback only)."""
+
+    return root / "output" / "control" / "execution-receipts" / f"{slugify(action_id)}.json"
+
+
+def resolve_execution_receipt_path(root: Path, action_id: str) -> Path:
+    """Prefer ``.aiwiki`` receipts; fall back to legacy vault copies for reads."""
+
+    primary = execution_receipt_path(root, action_id)
+    if primary.exists():
+        return primary
+    legacy = legacy_execution_receipt_path(root, action_id)
+    if legacy.exists():
+        return legacy
+    return primary
+

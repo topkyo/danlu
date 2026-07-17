@@ -34,7 +34,6 @@
     "wiki/indexes/graph-health.md",
     "wiki/indexes/drift-report.md",
     "wiki/indexes/repair-backlog.md",
-    "wiki/indexes/log.md",
     "schema/index.md",
     "schema/protocols/index.md"
   ],
@@ -212,6 +211,6 @@
   ],
   "retry_prompt_profile": "",
   "run_id": "ask-output-reports-deterministic-source-a",
-  "run_notes_path": "output/control/runs/ask-output-reports-deterministic-source-a/thinking.md",
+  "run_notes_path": "",
   "timeout_seconds": 120
 }

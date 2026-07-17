@@ -151,9 +151,22 @@ def write_execution_bundle_document(path: Path, bundle: dict[str, Any]) -> None:
     atomic_write_text(path, json.dumps(bundle, ensure_ascii=False, indent=2, sort_keys=True) + "\n", fsync=True)
 
 
+_EXECUTION_DRY_RUN_KEEP = 20
+
+
+def rotate_execution_dry_runs(directory: Path) -> None:
+    """Keep only the most recent _EXECUTION_DRY_RUN_KEEP dry-run preview files."""
+    dry_runs = sorted(directory.glob("*-dry-run.json"))
+    if len(dry_runs) <= _EXECUTION_DRY_RUN_KEEP:
+        return
+    for old in dry_runs[: len(dry_runs) - _EXECUTION_DRY_RUN_KEEP]:
+        old.unlink(missing_ok=True)
+
+
 def write_execution_dry_run_document(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_text(path, json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", fsync=True)
+    rotate_execution_dry_runs(path.parent)
 
 
 def build_execution_batch_receipt(

@@ -94,11 +94,11 @@ describe("Universal Input attachment source handling", () => {
       path: "wiki/sources/source.md",
       original_path: "/home/tim/private/report.pdf",
       report_path: "output/reports/report.md",
-      receipt_path: "output/control/execution-receipts/r.json",
+      receipt_path: ".aiwiki/state/execution-receipts/r.json",
       result: {
         materials: [
           { state_path: ".aiwiki/state/a.json" },
-          { index_path: "wiki/indexes/log.md" },
+          { index_path: "wiki/indexes/compile-status.md" },
         ],
       },
       asset_paths: ["raw/assets/a.pdf", "raw/assets/b.pdf"],
@@ -109,10 +109,10 @@ describe("Universal Input attachment source handling", () => {
       "raw/assets/a.pdf",
       "wiki/sources/source.md",
       "output/reports/report.md",
-      "output/control/execution-receipts/r.json",
+      ".aiwiki/state/execution-receipts/r.json",
       "raw/assets/b.pdf",
       ".aiwiki/state/a.json",
-      "wiki/indexes/log.md",
+      "wiki/indexes/compile-status.md",
     ]);
     expect(paths).not.toContain("/home/tim/private/report.pdf");
   });

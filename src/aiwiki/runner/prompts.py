@@ -26,7 +26,6 @@ ASK_INDEX_PAGES_BASE = (
     "wiki/indexes/concepts.md",
     "wiki/indexes/concept-quality.md",
     "wiki/indexes/machine-memory.md",
-    "wiki/indexes/log.md",
     "schema/index.md",
     "schema/protocols/index.md",
 )
@@ -51,7 +50,6 @@ ASK_PROMPT_PROFILES = {
     "balanced": {
         "max_total_chars": 28000,
         "index_page_chars": 1200,
-        "log_page_chars": 900,
         "protocol_page_chars": 900,
         "concept_page_chars": 1000,
         "source_page_chars": 4200,
@@ -63,7 +61,6 @@ ASK_PROMPT_PROFILES = {
     "lean": {
         "max_total_chars": 16000,
         "index_page_chars": 800,
-        "log_page_chars": 600,
         "protocol_page_chars": 700,
         "concept_page_chars": 700,
         "source_page_chars": 3200,
@@ -94,7 +91,6 @@ LINT_PROMPT_PROFILES = {
         "schema_page_chars": 1300,
         "protocol_page_chars": 1100,
         "index_page_chars": 1400,
-        "log_page_chars": 1100,
         "wiki_page_chars": 1400,
         "max_index_pages": 8,
         "max_wiki_pages": 5,
@@ -381,11 +377,7 @@ def _build_ask_prompt(
             if index >= profile["max_index_pages"]:
                 omitted = len(selected_index_pages) - index
                 break
-            excerpt = (
-                _fit_log_prompt_section(content, max_chars=profile["log_page_chars"])
-                if relative.endswith("/log.md")
-                else _fit_prompt_section(content, max_chars=profile["index_page_chars"])
-            )
+            excerpt = _fit_prompt_section(content, max_chars=profile["index_page_chars"])
             block = "\n".join([f"### {relative}", excerpt, ""])
             if included_chars + len(block) > profile["max_total_chars"]:
                 omitted = len(selected_index_pages) - index
@@ -651,7 +643,6 @@ def _build_lint_prompt(root: Path, deterministic_report: str, prompt_profile: st
         "wiki/indexes/machine-memory-actions.md",
         "wiki/indexes/graph-health.md",
         "wiki/indexes/drift-report.md",
-        "wiki/indexes/log.md",
     )
     omitted_indexes = 0
     for index, relative in enumerate(index_pages):
@@ -662,7 +653,7 @@ def _build_lint_prompt(root: Path, deterministic_report: str, prompt_profile: st
                 continue
             excerpt = _read_context(
                 path,
-                max_chars=profile["log_page_chars"] if relative.endswith("/log.md") else profile["index_page_chars"],
+                max_chars=profile["index_page_chars"],
             )
             block = f"### {relative}\n{excerpt}\n"
             if included_chars + len(block) > max_total_chars:
@@ -873,19 +864,6 @@ def _fit_prompt_section(text: str, max_chars: int, tail: bool = False) -> str:
     if tail:
         return "...[truncated earlier content]\n" + text[-max_chars:].lstrip()
     return text[:max_chars].rstrip() + "\n...[truncated]"
-
-
-def _fit_log_prompt_section(text: str, max_chars: int) -> str:
-    if len(text) <= max_chars:
-        return text
-    headings = [match.start() for match in re.finditer(r"(?m)^## ", text)]
-    if headings:
-        start = headings[max(0, len(headings) - 3)]
-        excerpt = text[start:]
-        if len(excerpt) <= max_chars:
-            return "...[truncated earlier log entries]\n" + excerpt.lstrip()
-        return "...[truncated earlier log entries]\n" + excerpt[-max_chars:].lstrip()
-    return _fit_prompt_section(text, max_chars=max_chars, tail=True)
 
 
 def _extract_related_concept_slugs(markdown: str) -> list[str]:

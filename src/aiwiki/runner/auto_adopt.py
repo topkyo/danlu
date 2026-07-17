@@ -57,7 +57,7 @@ from ..config import l3_auto_adopt_min_evidence_from_env
 from ..execution.lifecycle import review_concepts_batch
 from ..execution.machine_memory_actions import review_machine_memory_actions_batch
 from ..execution.machine_memory_batch import apply_machine_memory_actions_batch
-from ..render.paths import execution_receipt_path
+from ..render.paths import execution_receipt_path, resolve_execution_receipt_path
 from .receipts import record_llm_attempt
 from .workflow_shared import _raw_response_path, _receipt_error_class
 
@@ -1025,28 +1025,11 @@ def _write_review_entry(
     now = utc_now()
     conclusion_text = str(conclusion.get("conclusion") or "unknown")
     confidence_text = str(conclusion.get("confidence") or "unknown")
-    findings = conclusion.get("key_findings", [])
-    if isinstance(findings, list):
-        findings_str = "; ".join(str(f) for f in findings[:3])
-    else:
-        findings_str = ""
-    recommendation = str(conclusion.get("recommendation") or "")
-
-    entry = (
-        f"- {now} | AI-reviewed (counter-evidence) | conclusion: {conclusion_text} "
-        f"| confidence: {confidence_text} | review_id={review_id}"
-    )
-    if findings_str:
-        entry += f" | findings: {findings_str}"
-    if recommendation:
-        entry += f" | recommendation: {recommendation}"
 
     def mutate(existing: str) -> str:
-        if "## Review History" in existing:
-            return existing.replace("## Review History", f"## Review History\n{entry}", 1)
-        if "## 审阅历史" in existing:
-            return existing.replace("## 审阅历史", f"## 审阅历史\n{entry}", 1)
-        return existing + f"\n\n## Review History\n{entry}\n"
+        # Page-local Review History append is retired (Obsidian-visible unbounded
+        # growth). Receipt + runtime-history remain the canonical audit trail.
+        return existing
 
     result = _apply_judgment_review_with_receipt(
         page,
@@ -1074,7 +1057,7 @@ def revert_judgment_review_receipt(root: Path, receipt_id: str, *, note: str | N
     candidate = receipt_id.strip().strip("'\"`")
     if not candidate:
         raise ValueError("receipt_id is required.")
-    receipt_path = root / candidate if "/" in candidate or candidate.endswith(".json") else execution_receipt_path(root, candidate)
+    receipt_path = root / candidate if "/" in candidate or candidate.endswith(".json") else resolve_execution_receipt_path(root, candidate)
     receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
     if not isinstance(receipt, dict) or str(receipt.get("subject_kind") or "") != "judgment_review":
         raise RuntimeError("Only judgment review receipts can be reverted.")

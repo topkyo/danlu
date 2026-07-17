@@ -55,6 +55,7 @@ from ..content.memory import (
     safe_apply_preview,
 )
 from ..render.html_theme import html_meta_theme, html_theme_css
+from ..render.paths import execution_bundle_path
 from .execution_surface_helpers import concept_quality_summary_lines
 
 
@@ -202,8 +203,9 @@ def render_execution_center(root: Path, memory: dict[str, Any], *, compiled_at: 
         lines.append("- 当前没有可直接 `apply-action` 的低风险动作。")
     else:
         for action in apply_ready_actions[:10]:
+            bundle_path = relative_path(root, execution_bundle_path(root, str(action.get("id") or "")))
             lines.append(
-                f"- `{action['title']}` | band `{action.get('execution_band', 'bundle-safe-apply')}` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {action.get('id', '')} --bundle output/control/execution-bundles/{slugify(str(action.get('id') or ''))}.json` | primary `{action.get('primary_path', '')}`"
+                f"- `{action['title']}` | band `{action.get('execution_band', 'bundle-safe-apply')}` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {action.get('id', '')} --bundle {bundle_path}` | primary `{action.get('primary_path', '')}`"
             )
     lines.extend(["", "## Revert Safe Apply"])
     if not revert_ready_actions:
@@ -1141,6 +1143,13 @@ def reconcile_concept_rewrite_proposals(
         "proposals": active_records + inactive_records,
     }
     save_concept_rewrite_state(root, document)
+    known_slugs = {str(item.get("slug") or "").strip() for item in active_records + inactive_records}
+    known_slugs.discard("")
+    proposal_dir = root / "wiki" / "rewrite-proposals"
+    if proposal_dir.is_dir():
+        for path in proposal_dir.glob("*.md"):
+            if path.stem not in known_slugs:
+                path.unlink(missing_ok=True)
     counts = {
         "active": len(active_records),
         "inactive": len(inactive_records),

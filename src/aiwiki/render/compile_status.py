@@ -259,7 +259,7 @@ def render_compile_status(
         "- 漂移报告位于 `drift-report.md`。",
         "- 修复待办位于 `repair-backlog.md`。",
         "- derived、decision、judgment 页面通过 `aiwiki file-back` 显式回流。",
-        "- lint 结果输出在 `output/lint/`。",
+        "- lint 结果输出在 `.aiwiki/lint/`。",
         "",
         "## Compile Phases",
         *compile_phase_lines(phase_summary),

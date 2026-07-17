@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from aiwiki.execution.alchemy import CANDIDATE_ELIXIR_DIR
 from aiwiki.runner.alchemy_shared import _apply_paths, _capture_sizes, _rollback_truncate, _trace_summary
 
 
@@ -70,7 +71,7 @@ def run_alchemy_distill_apply_impl(
         "subject_id": f"distill:{scope}",
         "apply_mode": "alchemy-distill",
         "note": note or "",
-        "primary_path": "output/_candidates/elixirs",
+        "primary_path": CANDIDATE_ELIXIR_DIR,
         "secondary_path": "",
         "receipt_path": deps["relative_path"](root, receipt_path),
         "scope": scope,
@@ -99,7 +100,7 @@ def run_alchemy_distill_apply_impl(
             if not target_id:
                 skipped.append({"candidate_id": candidate_id, "target_ref": target_ref, "reason": "missing_target_ref"})
                 continue
-            candidate_path = root / "output" / "_candidates" / "elixirs" / f"{target_id}.md"
+            candidate_path = root / CANDIDATE_ELIXIR_DIR / f"{target_id}.md"
             if not candidate_path.exists():
                 skipped.append(
                     {

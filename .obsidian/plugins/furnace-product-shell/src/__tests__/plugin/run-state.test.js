@@ -61,7 +61,7 @@ test("createProductShellRunRecord initializes command context and timeline", () 
     exitCode: "",
     deliveryMode: "",
   });
-  expect(record.logPath).toBe(`output/control/plugin-runs/${record.id}.md`);
+  expect(record.logPath).toBe("");
   expect(record.timeline.map((event) => event.stage)).toEqual(["Submitted", "Runtime selected"]);
 });
 

@@ -483,15 +483,15 @@ def render_agent_workbench(
     dispatch_hints: list[str] = []
     if concept_backlog:
         dispatch_hints.append(
-            f"先调 [Review Agent](../../output/agents/review-agent.md)，处理 `{len(concept_backlog)}` 个 lifecycle concept backlog。"
+            f"先调 [Review Agent](../../.aiwiki/derived/agents/review-agent.md)，处理 `{len(concept_backlog)}` 个 lifecycle concept backlog。"
         )
     if lifecycle_counts.get("review_concepts", 0) or lifecycle_counts.get("revisit_concepts", 0):
         dispatch_hints.append(
-            f"需要概念整理时，再调 [Concept Agent](../../output/agents/concept-agent.md)，消化 `{lifecycle_counts.get('review_concepts', 0) + lifecycle_counts.get('revisit_concepts', 0)}` 个 review / revisit concept。"
+            f"需要概念整理时，再调 [Concept Agent](../../.aiwiki/derived/agents/concept-agent.md)，消化 `{lifecycle_counts.get('review_concepts', 0) + lifecycle_counts.get('revisit_concepts', 0)}` 个 review / revisit concept。"
         )
     if retired_concepts:
         dispatch_hints.append(
-            f"确认 `{min(len(retired_concepts), 3)}` 个 retired concept 是否要恢复进入工作面，优先走 [Review Agent](../../output/agents/review-agent.md)。"
+            f"确认 `{min(len(retired_concepts), 3)}` 个 retired concept 是否要恢复进入工作面，优先走 [Review Agent](../../.aiwiki/derived/agents/review-agent.md)。"
         )
     if not dispatch_hints:
         dispatch_hints.append("当前 lifecycle governance 较干净，按输出、执行或 ingest 压力决定要调度哪个角色。")

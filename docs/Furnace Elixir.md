@@ -13,7 +13,7 @@ related_docs:
 
 > **文档状态（2026-05-20）**：本文件保留金丹终局 thesis 与历史设计动机；**当前 runtime 行为以** [Furnace Agent Architecture.md](./Furnace%20Agent%20Architecture.md) **与** [Furnace Evolution Mechanics.md](./Furnace%20Evolution%20Mechanics.md) **为准**。CLI 已实现 `alchemy-start/distill/finalize/promote` 最小链路，不等同于本文全部愿景已落地。
 
-> **当前实现校准（2026-05-26）**：金丹最小主链路已经实现并有 acceptance 覆盖：`output/_candidates/elixirs/` 候选平面、`wiki/elixirs/` settled 平面、DAG/provenance gate、promote/revert/demote receipt，以及 Stage-3 “新丹引用旧丹 + wiki/derived anchor + trace up” 复利验证。本文剩余愿景主要指 LLM-backed semantic distillation、更高自治的金丹演化和长期自然运行 proof，不应再把基础金丹机制理解为纯计划态。
+> **当前实现校准（2026-05-26）**：金丹最小主链路已经实现并有 acceptance 覆盖：`.aiwiki/staging/elixirs/` 候选平面、`wiki/elixirs/` settled 平面、DAG/provenance gate、promote/revert/demote receipt，以及 Stage-3 “新丹引用旧丹 + wiki/derived anchor + trace up” 复利验证。本文剩余愿景主要指 LLM-backed semantic distillation、更高自治的金丹演化和长期自然运行 proof，不应再把基础金丹机制理解为纯计划态。
 
 ## 背景与设计动机 (Why)
 
@@ -89,7 +89,7 @@ aiwiki ask "新主题" --elixir <old-elixir-id>
 炼丹炉的演进分为三个层级，本 Thesis 明确各层级的系统边界：
 
 1. **半自动反哺 (Q1)**
-   - 所有的产出（无论是多轮问答的 output 还是提纯后的 elixir candidate）默认只进入 `output/_candidates/` 候选区。
+   - 所有的产出（无论是多轮问答的 output 还是提纯后的 elixir candidate）默认只进入 `.aiwiki/staging/` 候选区。
    - **绝不自动写入 wiki**。必须经过用户的人工 review 或 nightly process 的显式评估后，通过 `aiwiki promote` 才能正式进入 `wiki/` 目录。
    - nightly 的角色从“自动晋升者”降级为“候选区管理员”（负责老化、降级、淘汰 candidate，将值得关注的候选推给人工）。
 
@@ -122,7 +122,7 @@ aiwiki ask "新主题" --elixir <old-elixir-id>
 
 2. **LLM 幻觉污染 Wiki**
    - *风险*：LLM 生成看似合理实则谬误的“伪共识”。
-   - *缓解*：强制启用 `output/_candidates/` 缓冲；晋升必须通过显式人审或 nightly 的高阈值复审；要求所有的 elixir 必须保留 citations 和 counter-evidence。
+   - *缓解*：强制启用 `.aiwiki/staging/` 缓冲；晋升必须通过显式人审或 nightly 的高阈值复审；要求所有的 elixir 必须保留 citations 和 counter-evidence。
 
 3. **金丹自循环 (Circular Reference)**
    - *风险*：新丹引用旧丹，旧丹的推演基础已被证伪，导致“空中楼阁”式的知识坍塌。
@@ -134,7 +134,7 @@ aiwiki ask "新主题" --elixir <old-elixir-id>
    - *缓解*：只在 `wiki/protocol-learnings/` 记录经验，绝对不自动更新核心 schema 或系统 prompt；协议经验的采用必须是条件触发或显式挂载的。
 
 5. **候选区堆积失控**
-   - *风险*：由于半自动机制，`output/_candidates/` 中积累大量无人过问的废弃物。
+   - *风险*：由于半自动机制，`.aiwiki/staging/` 中积累大量无人过问的废弃物。
    - *缓解*：赋权 nightly process 进行 aging 处理，定期降级、淘汰或归档过期 candidate。
 
 ## 非目标 (Non-Goals)

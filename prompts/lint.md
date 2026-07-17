@@ -15,5 +15,5 @@ Inspect the wiki for contradictions, missing links, unsupported claims, and wort
 
 ## Output
 
-Write findings into `output/lint/` and cite the affected file paths directly.
+Write findings into `.aiwiki/lint/` and cite the affected file paths directly.
 Return markdown only, with no surrounding commentary or code fences.

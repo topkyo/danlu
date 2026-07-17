@@ -103,7 +103,6 @@ from aiwiki.runner.prompts import (  # noqa: F401
     _context_budget,
     _dedupe_report_citations,
     _extract_related_concept_slugs,
-    _fit_log_prompt_section,
     _fit_prompt_section,
     _initial_ask_prompt_profile,
     _initial_compile_prompt_profile,

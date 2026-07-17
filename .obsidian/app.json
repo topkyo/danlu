@@ -22,7 +22,6 @@
     "output/review/",
     "output/slides/",
     "output/figures/",
-    "output/_proposals/",
     ".aiwiki/"
   ]
 }

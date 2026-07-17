@@ -9,15 +9,15 @@
       "human_accept_required": true,
       "human_accepted_at": "2026-04-27T00:00:00+00:00",
       "kind": "prompt_proposal",
-      "last_receipt_path": "output/control/execution-receipts/l3-proposal-apply-prop-test-prompt.json",
-      "last_revert_receipt_path": "output/control/execution-receipts/l3-proposal-revert-prop-test-prompt.json",
+      "last_receipt_path": ".aiwiki/state/execution-receipts/l3-proposal-apply-prop-test-prompt.json",
+      "last_revert_receipt_path": ".aiwiki/state/execution-receipts/l3-proposal-revert-prop-test-prompt.json",
       "patch": {
         "before_hash": "sha256:bd13ffc1253b79016029c10d6e4823ff93ec0686ee8c4ec8a494684e66bc5e3b",
         "content": "Revised prompt body.\n",
         "kind": "full_replace"
       },
       "proposal_id": "prop-test-prompt",
-      "proposal_path": "output/_proposals/prompt/prop-test-prompt.md",
+      "proposal_path": ".aiwiki/staging/proposals/prompt/prop-test-prompt.md",
       "rationale": "acceptance fixture",
       "revert_hint_path": "",
       "revert_plan": {

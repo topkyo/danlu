@@ -283,8 +283,8 @@ test("buildTodayFeed hides degraded and placeholder reports", () => {
 test("buildTodayFeed surfaces elixir entries for today", () => {
   const summary = makeSummary({
     recent_receipts: [
-      { title: "Elixir NVDA settled", operation: "promote-elixir", subject_kind: "elixir", subject_id: "nvda", receipt_path: "output/control/execution-receipts/X.json", applied_at: "2026-05-03T08:00:00Z" },
-      { title: "Old receipt", operation: "compile", subject_kind: "source", subject_id: "src1", receipt_path: "output/control/execution-receipts/Y.json", applied_at: "2026-05-01T08:00:00Z" },
+      { title: "Elixir NVDA settled", operation: "promote-elixir", subject_kind: "elixir", subject_id: "nvda", receipt_path: ".aiwiki/state/execution-receipts/X.json", applied_at: "2026-05-03T08:00:00Z" },
+      { title: "Old receipt", operation: "compile", subject_kind: "source", subject_id: "src1", receipt_path: ".aiwiki/state/execution-receipts/Y.json", applied_at: "2026-05-01T08:00:00Z" },
     ],
   });
   const feed = buildTodayFeed(summary);

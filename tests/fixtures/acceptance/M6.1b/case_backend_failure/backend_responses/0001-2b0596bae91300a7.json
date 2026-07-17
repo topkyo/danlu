@@ -2,7 +2,7 @@
   "backend": "opencode-api",
   "failure": "simulated backend timeout",
   "model": "stub-model",
-  "prompt_hash": "a5bfd7f3567a15d1",
+  "prompt_hash": "2b0596bae91300a7",
   "response_id": "",
   "response_text": "",
   "sequence": 1,

@@ -35,7 +35,7 @@ def domain_pilots_index_path(root: Path) -> Path:
 
 
 def pilot_scorecards_dir(root: Path) -> Path:
-    return root / "output" / "pilots"
+    return root / ".aiwiki" / "derived" / "pilots"
 
 
 def pilot_scorecard_path(root: Path, protocol: str) -> Path:

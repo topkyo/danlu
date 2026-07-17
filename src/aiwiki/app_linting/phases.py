@@ -389,7 +389,6 @@ def _lint_layout_phase(context: _LintContext) -> None:
         "wiki/indexes/machine-memory-repair-plan.md": "Missing machine memory repair plan page.",
         "wiki/indexes/graph-health.md": "Missing machine memory graph health page.",
         "wiki/indexes/drift-report.md": "Missing machine memory drift report.",
-        "wiki/indexes/log.md": "Missing wiki operation log.",
     }
     for relative, message in required_indexes.items():
         page = context.root / relative
@@ -1026,8 +1025,6 @@ def _lint_curated_phase(context: _LintContext) -> None:
                         and not snapshot["meaningful"]
                     ):
                         context.add("warn", page, f"Decision page still has placeholder `{heading}` content.")
-                    elif heading == "Review History" and frontmatter.get("reviewed_at") and not snapshot["meaningful"]:
-                        context.add("warn", page, "Decision page is reviewed but has no populated `Review History`.")
                 if frontmatter.get("status") in {"approved", "needs-revisit", "superseded"} and not frontmatter.get(
                     "reviewed_at"
                 ):
@@ -1066,8 +1063,6 @@ def _lint_curated_phase(context: _LintContext) -> None:
                         and not snapshot["meaningful"]
                     ):
                         context.add("warn", page, f"Judgment page still has placeholder `{heading}` content.")
-                    elif heading == "Review History" and frontmatter.get("reviewed_at") and not snapshot["meaningful"]:
-                        context.add("warn", page, "Judgment page is reviewed but has no populated `Review History`.")
                 if frontmatter.get("status") in {"tracking", "confirmed", "rejected"} and not frontmatter.get(
                     "reviewed_at"
                 ):

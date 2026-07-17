@@ -14,6 +14,7 @@ from aiwiki.app_utils import (
     slugify,
     strip_frontmatter,
 )
+from aiwiki.execution.l3_proposals import STAGING_JUDGE_PROPOSAL_DIR
 from aiwiki.runner import alchemy_support as support
 
 ALCHEMY_JUDGE_REFRESH_START = support.ALCHEMY_JUDGE_REFRESH_START
@@ -74,7 +75,7 @@ def materialize_alchemy_judge_proposal(
     target_ref = str(candidate.get("target_ref") or "")
     candidate_id = str(candidate.get("candidate_id") or "")
     proposal_id = slugify(f"alchemy-judge-proposal-{candidate_id or target_ref or 'candidate'}")
-    proposal_path = root / "output" / "_proposals" / "judge" / f"{proposal_id}.md"
+    proposal_path = root / STAGING_JUDGE_PROPOSAL_DIR / f"{proposal_id}.md"
     target = (root / target_ref).resolve()
     try:
         target.relative_to(root.resolve())
@@ -171,7 +172,7 @@ def resolve_alchemy_judge_proposal_path(root: Path, proposal: str | Path) -> Pat
         raise ValueError("judge proposal path or id is required.")
     candidate = Path(raw)
     if not candidate.suffix and "/" not in raw and "\\" not in raw:
-        candidate = Path("output") / "_proposals" / "judge" / f"{slugify(raw)}.md"
+        candidate = Path(STAGING_JUDGE_PROPOSAL_DIR) / f"{slugify(raw)}.md"
     resolved = candidate if candidate.is_absolute() else root / candidate
     resolved = resolved.resolve()
     try:

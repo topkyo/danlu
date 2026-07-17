@@ -9,6 +9,7 @@ from urllib.parse import unquote
 
 from aiwiki.app_queries import human_query_title
 from aiwiki.app_utils import parse_frontmatter, relative_path, render_frontmatter, strip_frontmatter
+from aiwiki.execution.alchemy import CANDIDATE_ELIXIR_DIR
 
 OUTPUT_OBSIDIAN_CSSCLASS = "aiwiki-output"
 OUTPUT_REPORT_LEAF_CSSCLASS = "aiwiki-report-leaf"
@@ -199,7 +200,7 @@ def collect_elixir_counts(root: Path) -> dict[str, Any]:
                 "state": state or "settled",
             }
         )
-    candidate_dir = root / "output" / "_candidates" / "elixirs"
+    candidate_dir = root / CANDIDATE_ELIXIR_DIR
     candidates = [relative_path(root, path) for path in sorted(candidate_dir.glob("*.md"))] if candidate_dir.exists() else []
     return {"settled": settled, "candidates": candidates}
 
@@ -235,7 +236,7 @@ def local_elixir_count_artifact_markdown(
         "",
         "## 回答",
         f"- 当前 vault 已沉淀金丹 **{len(settled)} 个**。",
-        f"- 另有候选金丹 **{len(candidates)} 个**，位于 `output/_candidates/elixirs/`。",
+        f"- 另有候选金丹 **{len(candidates)} 个**，位于 `{CANDIDATE_ELIXIR_DIR}/`。",
         "",
         "## 已沉淀金丹",
     ]
@@ -255,7 +256,7 @@ def local_elixir_count_artifact_markdown(
             "",
             "## 口径",
             "- settled 金丹：`wiki/elixirs/*.md` 且 `elixir_state` 为空或 `settled`。",
-            "- 候选金丹：`output/_candidates/elixirs/*.md`。",
+            f"- 候选金丹：`{CANDIDATE_ELIXIR_DIR}/*.md`。",
             "- 本回答由本地文件系统确定性统计生成，没有调用 LLM。",
         ]
     )

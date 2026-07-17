@@ -876,7 +876,7 @@ def _cleanup_tmp_dir(tmp_dir: Path) -> None:
 
 
 def _snapshot_append_files(root: Path) -> dict[Path, tuple[bool, int]]:
-    candidates = [root / "wiki" / "indexes" / "log.md", runtime_history_path(root), manifest_path(root)]
+    candidates = [runtime_history_path(root), manifest_path(root)]
     sizes: dict[Path, tuple[bool, int]] = {}
     for path in candidates:
         try:

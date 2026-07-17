@@ -22,6 +22,8 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from aiwiki.app_utils import parse_frontmatter
+from aiwiki.execution.alchemy import CANDIDATE_ELIXIR_DIR
+from aiwiki.execution.l3_proposals import STAGING_PROPOSALS_DIR
 
 # 资产种类 — 用前缀 / 路径形态识别
 AssetKind = str  # "raw" | "source" | "concept" | "derived" | "judgment" | "decision" | "elixir" | "proposal" | "receipt" | "unknown"
@@ -104,9 +106,9 @@ def _classify(asset_id: str) -> AssetKind:
         return "judgment"
     if text.startswith("wiki/decisions/") or text.startswith("decision-"):
         return "decision"
-    if text.startswith("wiki/elixirs/") or text.startswith("output/_candidates/elixirs/") or text.startswith("elixir-"):
+    if text.startswith("wiki/elixirs/") or text.startswith(f"{CANDIDATE_ELIXIR_DIR}/") or text.startswith("elixir-"):
         return "elixir"
-    if text.startswith("proposal-") or text.startswith("L3-proposal-") or text.startswith("output/_proposals/"):
+    if text.startswith("proposal-") or text.startswith("L3-proposal-") or text.startswith(f"{STAGING_PROPOSALS_DIR}/"):
         return "proposal"
     # receipt action_id 通常是 UUID 风格；fallback
     if len(text) >= 8 and "-" in text and not text.endswith(".md") and "/" not in text:
@@ -290,7 +292,7 @@ def _resolve_derived(root: Path, asset_id: str, *, direction: str, depth: int, v
     if direction in {"down", "both"}:
         # 哪些 elixir 引用此 derived 页面
         seen_elixir: set[str] = set()
-        for elixir_subdir in ("wiki/elixirs", "output/_candidates/elixirs"):
+        for elixir_subdir in ("wiki/elixirs", CANDIDATE_ELIXIR_DIR):
             for e_path, e_fm in _iter_curated_pages(root, elixir_subdir):
                 refs = _as_str_list(e_fm.get("derived_from"))
                 if not any(_derived_ref_matches(r, rel, node.id) for r in refs):
@@ -373,10 +375,10 @@ def _resolve_decision(root: Path, asset_id: str, *, direction: str, depth: int, 
 
 
 def _resolve_elixir(root: Path, asset_id: str, *, direction: str, depth: int, visited: set[str]) -> TraceNode:
-    # 先 settled (wiki/elixirs/) 后 candidate (output/_candidates/elixirs/)
-    candidate_dirs = [root / "wiki" / "elixirs", root / "output" / "_candidates" / "elixirs"]
+    # 先 settled (wiki/elixirs/) 后 candidate (.aiwiki/staging/elixirs/)
+    candidate_dirs = [root / "wiki" / "elixirs", root / CANDIDATE_ELIXIR_DIR]
     elixir_id = asset_id
-    if asset_id.startswith("wiki/elixirs/") or asset_id.startswith("output/_candidates/elixirs/"):
+    if asset_id.startswith("wiki/elixirs/") or asset_id.startswith(f"{CANDIDATE_ELIXIR_DIR}/"):
         elixir_id = Path(asset_id).stem
     fm: dict[str, Any] = {}
     found_path: Path | None = None

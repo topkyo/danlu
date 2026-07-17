@@ -105,7 +105,7 @@ Product Shell 适合日常快速投料和查看状态。复杂治理操作建议
 ./scripts/aiwiki-launcher.sh advanced run-ask "..." --format report --protocol research
 ```
 
-生成的报告落在 `output/reports/`。失败时会写 receipt 和 run notes，**不会假装成功**。
+生成的报告落在 `output/reports/`。失败时会写 receipt 与可审计失败说明，**不会假装成功**。
 
 ### 第 4 步：回流
 
@@ -178,7 +178,7 @@ file-back 会根据当前 protocol 把结论整理成 judgment、decision 或 de
 
 表现：`output/control/shell-summary.json` 显示异常，或 `review-queue.md`、`repair-backlog.md` 有内容。
 
-处理：先跑 `./scripts/aiwiki-launcher.sh advanced lint` 定位问题；再看 `output/control/execution-receipts/` 找到失败命令；必要时手动修复原料或配置后重跑。
+处理：先跑 `./scripts/aiwiki-launcher.sh advanced lint` 定位问题；再看 `.aiwiki/state/execution-receipts/` 找到失败命令；必要时手动修复原料或配置后重跑。
 
 ## 治理面板怎么看
 
@@ -210,4 +210,4 @@ file-back 会根据当前 protocol 把结论整理成 judgment、decision 或 de
 - 刚安装：先看 `HOME.md`，再跑一遍 5 分钟验证链路。
 - 日常用：Product Shell 投料 + `today` 看产出。
 - 做深度研究：按“投料 → 编译 → 提问 → 回流 → 复盘”循环跑。
-- 遇到问题：先查 `output/control/shell-summary.json` 和 `output/control/execution-receipts/`，再跑 `advanced lint`。
+- 遇到问题：先查 `output/control/shell-summary.json` 和 `.aiwiki/state/execution-receipts/`，再跑 `advanced lint`。

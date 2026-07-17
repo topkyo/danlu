@@ -98,7 +98,7 @@ _DEFERRED_APPLY_CONTRACTS = {
         "write_surfaces": [
             "wiki/judgments/",
             "wiki/decisions/",
-            "output/control/execution-receipts/",
+            ".aiwiki/state/execution-receipts/",
             ".aiwiki/state/execution-receipts.jsonl",
             ".aiwiki/state/runtime-history.jsonl",
             ".aiwiki/state/audit.jsonl",
@@ -113,8 +113,8 @@ _DEFERRED_APPLY_CONTRACTS = {
         "status": "executable",
         "primitive": "distill",
         "write_surfaces": [
-            "output/_candidates/elixirs/",
-            "output/control/execution-receipts/",
+            ".aiwiki/staging/elixirs/",
+            ".aiwiki/state/execution-receipts/",
             ".aiwiki/state/execution-receipts.jsonl",
             ".aiwiki/state/runtime-history.jsonl",
             ".aiwiki/state/audit.jsonl",
@@ -130,7 +130,7 @@ _DEFERRED_APPLY_CONTRACTS = {
         "primitive": "review",
         "write_surfaces": [
             "wiki/indexes/review-queue.md",
-            "output/control/execution-receipts/",
+            ".aiwiki/state/execution-receipts/",
             ".aiwiki/state/execution-receipts.jsonl",
             ".aiwiki/state/runtime-history.jsonl",
             ".aiwiki/state/audit.jsonl",
@@ -145,10 +145,10 @@ _DEFERRED_APPLY_CONTRACTS = {
         "status": "executable",
         "primitive": "propose",
         "write_surfaces": [
-            "output/_proposals/prompt/",
-            "output/_proposals/policy/",
+            ".aiwiki/staging/proposals/prompt/",
+            ".aiwiki/staging/proposals/policy/",
             ".aiwiki/state/l3-proposals.json",
-            "output/control/execution-receipts/",
+            ".aiwiki/state/execution-receipts/",
             ".aiwiki/state/execution-receipts.jsonl",
             ".aiwiki/state/runtime-history.jsonl",
             ".aiwiki/state/audit.jsonl",
@@ -158,6 +158,62 @@ _DEFERRED_APPLY_CONTRACTS = {
         "revert_policy": "non_revertible_proposal_generation: reject generated L3 proposal candidates through the existing review proposal workflow; target-file apply remains receipt-gated",
         "idempotency_key": "primitive + scope + candidate_ids + trace_ids",
         "backend_policy": "no LLM required for deterministic scoped proposal candidate generation; L3 target writes still require human accept",
+    },
+}
+
+_LANE_APPLY_CONTRACTS = {
+    "compile": {
+        "status": "executable",
+        "primitive": "compile",
+        "write_surfaces": [
+            "wiki/sources/",
+            "wiki/concepts/",
+            "wiki/indexes/",
+            "wiki/derived/",
+            ".aiwiki/state/compile-state.json",
+            ".aiwiki/state/execution-receipts/",
+            ".aiwiki/state/execution-receipts.jsonl",
+            ".aiwiki/state/runtime-history.jsonl",
+            ".aiwiki/state/audit.jsonl",
+        ],
+        "receipt_schema": "execution-receipt v1; subject_kind=alchemy_lane_primitive; operation=alchemy-lane-primitive",
+        "audit_event_schema": "execution_receipt_history_append plus runtime_history direct append",
+        "revert_policy": "non_revertible_derived_rebuild: rerun compile or apply a newer compile preview",
+        "idempotency_key": "primitive + scope + trace_ids",
+        "backend_policy": "deterministic compile baseline; scoped LLM sub-jobs must be explicit",
+    },
+    "lint": {
+        "status": "executable",
+        "primitive": "lint",
+        "write_surfaces": [
+            ".aiwiki/lint/",
+            ".aiwiki/state/execution-receipts/",
+            ".aiwiki/state/execution-receipts.jsonl",
+            ".aiwiki/state/runtime-history.jsonl",
+            ".aiwiki/state/audit.jsonl",
+        ],
+        "receipt_schema": "execution-receipt v1; subject_kind=alchemy_lane_primitive; operation=alchemy-lane-primitive",
+        "audit_event_schema": "execution_receipt_history_append plus runtime_history direct append",
+        "revert_policy": "non_revertible_operator_report: rerun lint or apply a newer lint preview",
+        "idempotency_key": "primitive + scope + trace_ids",
+        "backend_policy": "deterministic lint baseline; semantic lint via run-lint must be explicit",
+    },
+    "nightly": {
+        "status": "executable",
+        "primitive": "nightly",
+        "write_surfaces": [
+            ".aiwiki/state/nightly-health.json",
+            "wiki/indexes/repair-backlog.md",
+            ".aiwiki/state/execution-receipts/",
+            ".aiwiki/state/execution-receipts.jsonl",
+            ".aiwiki/state/runtime-history.jsonl",
+            ".aiwiki/state/audit.jsonl",
+        ],
+        "receipt_schema": "execution-receipt v1; subject_kind=alchemy_lane_primitive; operation=alchemy-lane-primitive",
+        "audit_event_schema": "execution_receipt_history_append plus runtime_history direct append",
+        "revert_policy": "non_revertible_health_snapshot: rerun nightly or apply a newer nightly preview",
+        "idempotency_key": "primitive + scope + trace_ids",
+        "backend_policy": "deterministic nightly health refresh; no implicit LLM",
     },
 }
 
@@ -741,18 +797,19 @@ def _primitive_plan(lane: str, scope_preview: dict[str, Any]) -> list[dict[str, 
     plan: list[dict[str, Any]] = []
     for index, (primitive, description) in enumerate(_PRIMITIVE_PLANS[lane], start=1):
         apply_supported = primitive in _APPLY_SUPPORTED_PRIMITIVES[lane]
-        plan.append(
-            {
-                "order": index,
-                "primitive": primitive,
-                "description": description,
-                "dry_run_only": True,
-                "apply_supported": apply_supported,
-                "apply_blocker": "" if apply_supported else _apply_blocker_for_primitive(lane, primitive),
-                "signal_ids": signal_ids,
-                "protocols": protocols,
-            }
-        )
+        entry = {
+            "order": index,
+            "primitive": primitive,
+            "description": description,
+            "dry_run_only": True,
+            "apply_supported": apply_supported,
+            "apply_blocker": "" if apply_supported else _apply_blocker_for_primitive(lane, primitive),
+            "signal_ids": signal_ids,
+            "protocols": protocols,
+        }
+        if apply_supported:
+            entry["apply_contract"] = _deferred_apply_contract(primitive)
+        plan.append(entry)
     return plan
 
 
@@ -780,7 +837,7 @@ def _deferred_primitives(lane: str) -> list[dict[str, Any]]:
 
 
 def _deferred_apply_contract(primitive: str) -> dict[str, Any]:
-    contract = _DEFERRED_APPLY_CONTRACTS.get(primitive, {})
+    contract = _DEFERRED_APPLY_CONTRACTS.get(primitive) or _LANE_APPLY_CONTRACTS.get(primitive, {})
     if not contract:
         return {}
     return json.loads(json.dumps(contract, ensure_ascii=False))

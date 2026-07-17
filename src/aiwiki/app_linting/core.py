@@ -167,6 +167,7 @@ from ..app_state import (
     save_planner_state,
     shell_summary_path,
 )
+from ..app_state_paths import lint_reports_dir
 from ..app_utils import (
     analyze_citation_snapshots,
     build_citation_snapshots,
@@ -374,17 +375,19 @@ _LINT_REPORT_KEEP = 10
 
 
 def _rotate_lint_reports(lint_dir: Path) -> None:
-    """Keep only the most recent _LINT_REPORT_KEEP lint reports."""
-    reports = sorted(lint_dir.glob("lint-*.md"))
-    if len(reports) <= _LINT_REPORT_KEEP:
-        return
-    for old in reports[: len(reports) - _LINT_REPORT_KEEP]:
-        old.unlink(missing_ok=True)
+    """Keep only the most recent _LINT_REPORT_KEEP reports per lint family."""
+    for pattern in ("lint-*.md", "semantic-lint-*.md"):
+        reports = sorted(lint_dir.glob(pattern))
+        if len(reports) <= _LINT_REPORT_KEEP:
+            continue
+        for old in reports[: len(reports) - _LINT_REPORT_KEEP]:
+            old.unlink(missing_ok=True)
 
 def _write_lint_report(context: _LintContext) -> dict[str, Any]:
     generated_at = utc_now()
     report_name = f"lint-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.md"
-    lint_dir = context.root / "output" / "lint"
+    lint_dir = lint_reports_dir(context.root)
+    lint_dir.mkdir(parents=True, exist_ok=True)
     report_path = lint_dir / report_name
     error_count = sum(1 for finding in context.findings if finding.severity == "error")
     warn_count = sum(1 for finding in context.findings if finding.severity == "warn")

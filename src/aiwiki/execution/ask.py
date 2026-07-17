@@ -767,7 +767,6 @@ def ask_question(
             "wiki/indexes/graph-health.md",
             "wiki/indexes/drift-report.md",
             "wiki/indexes/repair-backlog.md",
-            "wiki/indexes/log.md",
             "schema/index.md",
             "schema/protocols/index.md",
         ],
