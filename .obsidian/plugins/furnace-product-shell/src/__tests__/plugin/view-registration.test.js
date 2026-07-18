@@ -91,9 +91,11 @@ test("advanced drawer only exposes diagnostics and history surfaces", () => {
 
   expect(renderAdvancedSrc).not.toMatch(/renderLegacyAdvancedPanel/);
   expect(renderAdvancedSrc).not.toMatch(/开发者操作/);
+  expect(renderAdvancedSrc).not.toMatch(/renderAdvancedMetricsPanel/);
+  expect(renderAdvancedSrc).not.toMatch(/openExecutionCenterView/);
+  expect(renderAdvancedSrc).not.toMatch(/openReviewCenterView/);
+  expect(renderAdvancedSrc).not.toMatch(/openRecentRunsView/);
   expect(renderAdvancedSrc).toMatch(/renderHistorySectionBody/);
-  expect(renderAdvancedSrc).toMatch(/openReviewCenterView/);
-  expect(renderAdvancedSrc).toMatch(/openExecutionCenterView/);
 });
 
 test("digest panel exposes shell recovery commands when available", () => {

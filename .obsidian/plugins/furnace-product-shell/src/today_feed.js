@@ -49,6 +49,7 @@ function buildTodayFeed(summary) {
   entries.push(...buildDriftEntries(summary));
   entries.push(...buildProposalEntries(summary));
   entries.push(...buildReportEntries(summary, todayDate));
+  entries.push(...buildCompoundSuggestEntries(summary));
   entries.push(...buildElixirEntries(summary, todayDate));
   // Routine metrics and automation status stay in Advanced/operator surfaces;
   // primary Today only keeps reports, decision exceptions, and necessary actions.
@@ -169,8 +170,47 @@ function buildProposalEntries(summary) {
   return entries;
 }
 
+function compoundSuggestItems(summary) {
+  const compound = summary.compound_suggest;
+  if (!compound || typeof compound !== "object" || !compound.available) return [];
+  const items = compound.items;
+  if (!Array.isArray(items)) return [];
+  return items.filter((item) => item && typeof item === "object");
+}
+
+function compoundSuggestIndex(summary) {
+  const index = {};
+  for (const item of compoundSuggestItems(summary)) {
+    const reportPath = firstText(item, "report_path");
+    if (reportPath) index[reportPath] = item;
+  }
+  return index;
+}
+
+function buildCompoundSuggestEntries(summary) {
+  const timestamp = String(summary.generated_at || "");
+  const entries = [];
+  for (const item of compoundSuggestItems(summary)) {
+    const title = firstText(item, "title", "report_title");
+    const reportPath = firstText(item, "report_path");
+    const reason = firstText(item, "reason", "signal") || "compound-suggest";
+    if (!title) continue;
+    entries.push({
+      kind: "action",
+      title,
+      summary: `复利建议：${reason}`,
+      target: reportPath || firstText(item, "command"),
+      timestamp,
+      protocol: firstText(item, "protocol"),
+      compound_suggest: item,
+    });
+  }
+  return entries;
+}
+
 function buildReportEntries(summary, todayDate) {
   const entries = [];
+  const suggestIndex = compoundSuggestIndex(summary);
   for (const item of dictItems(summary.recent_outputs)) {
     if (!isDeliverableReportOutput(item)) continue;
     const timestamp = firstText(item, "generated_at", "created_at");
@@ -193,6 +233,7 @@ function buildReportEntries(summary, todayDate) {
       target: path,
       timestamp,
       protocol: firstText(item, "protocol"),
+      compound_suggest: suggestIndex[path] || null,
     });
   }
   return entries;
@@ -280,6 +321,7 @@ function buildActionEntries(summary, audience = "primary") {
   const entries = [];
   const generatedAt = String(summary.generated_at || "");
   for (const item of dictItems(summary.suggested_next_actions)) {
+    if (firstText(item, "kind") === "compound-suggest") continue;
     const title = firstText(item, "title", "label", "name");
     const target = firstText(item, "command", "cli", "action", "path");
     if (!title || !target) continue;
@@ -342,18 +384,6 @@ function isMaintenanceCommandAction(target, reason) {
   if (reasonText.startsWith("batch-hint:")) return true;
   const maintenanceTokens = [
     " review-page ",
-    " review-action ",
-    " apply-action ",
-    " revert-action ",
-    " review-concept ",
-    " retire-concept ",
-    " reactivate-concept ",
-    " apply-rewrite ",
-    " review-rewrite ",
-    " revert-rewrite ",
-    " apply-archive ",
-    " revert-archive ",
-    " alchemy auto ",
   ];
   return maintenanceTokens.some((token) => targetText.includes(token));
 }
@@ -370,7 +400,7 @@ function buildAgentLoopEntries(summary, todayDate) {
 
   let title = "预演下一步维护";
   let summaryText = "今日维护预演完成，暂不需要自动执行";
-  let target = "PYTHONPATH=src python3 -m aiwiki.cli --root . alchemy auto --dry-run";
+  let target = "wiki/indexes/repair-backlog.md";
   let autoState = "idle";
   if (status === "failed") {
     summaryText = "今日维护预演失败，需要人工查看";
@@ -497,6 +527,9 @@ module.exports = {
   reviewBucketCopy,
   priorityForKind,
   isMaintenanceCommandAction,
+  compoundSuggestItems,
+  compoundSuggestIndex,
+  buildCompoundSuggestEntries,
   PRIORITY,
   PRIMARY_REVIEW_BUCKETS,
 };

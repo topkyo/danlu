@@ -16,23 +16,12 @@
     "wiki/indexes/decisions.md",
     "wiki/indexes/judgments.md",
     "wiki/indexes/judgment-assets.md",
-    "wiki/indexes/agent-workbench.md",
-    "wiki/indexes/cognitive-history.md",
-    "wiki/indexes/output-packs.md",
-    "wiki/indexes/domain-pilots.md",
     "wiki/indexes/protocols.md",
     "wiki/indexes/review-queue.md",
     "wiki/indexes/review-center.md",
-    "wiki/indexes/aging-report.md",
     "wiki/indexes/compile-status.md",
-    "wiki/indexes/concept-quality.md",
     "wiki/indexes/machine-memory.md",
     "wiki/indexes/graph-view.md",
-    "wiki/indexes/machine-memory-topology.md",
-    "wiki/indexes/machine-memory-actions.md",
-    "wiki/indexes/machine-memory-repair-plan.md",
-    "wiki/indexes/graph-health.md",
-    "wiki/indexes/drift-report.md",
     "wiki/indexes/repair-backlog.md",
     "schema/index.md",
     "schema/protocols/index.md"
@@ -41,6 +30,8 @@
     "archive_recall_hints": [],
     "bridge_concept_slugs": [],
     "direct_concept_slugs": [],
+    "direct_elixir_ids": [],
+    "direct_judgment_ids": [],
     "direct_source_ids": [
       "source-a"
     ],
@@ -51,28 +42,8 @@
     "matched_terms": [
       "deterministic"
     ],
-    "planner_next_action": {
-      "action_id": "isolated-source-source-a",
-      "blocked": false,
-      "depends_on": [],
-      "impact_score": 37,
-      "priority": "medium",
-      "priority_score": 45,
-      "status": "proposed",
-      "title": "\u8fde\u63a5\u5b64\u7acb\u6765\u6e90 Source A"
-    },
-    "planner_priority_queue": [
-      {
-        "action_id": "isolated-source-source-a",
-        "blocked": false,
-        "depends_on": [],
-        "impact_score": 37,
-        "priority": "medium",
-        "priority_score": 45,
-        "status": "proposed",
-        "title": "\u8fde\u63a5\u5b64\u7acb\u6765\u6e90 Source A"
-      }
-    ],
+    "planner_next_action": {},
+    "planner_priority_queue": [],
     "protocol_shard_source_ids": [
       "source-a"
     ],
@@ -80,6 +51,8 @@
     "query_subgraph": {
       "concepts": [],
       "edges": [],
+      "elixirs": [],
+      "judgments": [],
       "sources": [
         {
           "id": "source-a",
@@ -89,13 +62,15 @@
       ]
     },
     "ranked_concept_slugs": [],
+    "ranked_elixir_ids": [],
+    "ranked_judgment_ids": [],
     "ranked_source_ids": [
       "source-a"
     ],
     "relevant_actions": [
       {
         "apply_ready": "false",
-        "command_hint": "PYTHONPATH=src python3 -m aiwiki.cli --root . review-action isolated-source-source-a --status accepted --note \"Accepted for manual repair.\"",
+        "command_hint": "PYTHONPATH=src python3 -m aiwiki.cli --root . review-queue --bucket mm_actions --json",
         "execution_policy": "triage",
         "focus_score": 0,
         "id": "isolated-source-source-a",
@@ -103,11 +78,9 @@
         "next_step": "\u628a\u5b64\u7acb\u6765\u6e90\u63a5\u5165\u81f3\u5c11\u4e00\u4e2a\u7a33\u5b9a\u6982\u5ff5\u3002",
         "primary_path": "wiki/sources/source-a.md",
         "priority": "medium",
-        "proposal_kind": "connect-source",
-        "proposal_summary": "\u628a\u5b64\u7acb\u6765\u6e90\u63a5\u5165\u81f3\u5c11\u4e00\u4e2a\u7a33\u5b9a\u6982\u5ff5\uff0c\u5e76\u663e\u5f0f\u8bb0\u5f55\u4f9d\u636e\u3002",
-        "proposal_targets": [
-          "wiki/sources/source-a.md"
-        ],
+        "proposal_kind": "",
+        "proposal_summary": "",
+        "proposal_targets": [],
         "reason": "\u6765\u6e90\u8282\u70b9\u5f53\u524d\u6ca1\u6709\u63a5\u5165\u4efb\u4f55\u6982\u5ff5\u3002",
         "secondary_path": "",
         "status": "proposed",
@@ -153,10 +126,12 @@
       "matched_terms": [
         "deterministic"
       ],
-      "planner_next_action_id": "isolated-source-source-a",
+      "planner_next_action_id": "",
       "protocol": "general",
       "query_signature": "sha256:b78c37f7f322b689dfc4c93133c504b1dacd6ca78996165d6bcf5c4195af5430",
       "ranked_concept_slugs": [],
+      "ranked_elixir_ids": [],
+      "ranked_judgment_ids": [],
       "ranked_source_ids": [
         "source-a"
       ],
@@ -212,5 +187,8 @@
   "retry_prompt_profile": "",
   "run_id": "ask-output-reports-deterministic-source-a",
   "run_notes_path": "",
-  "timeout_seconds": 120
+  "timeout_seconds": 120,
+  "used_refs": [
+    "wiki/sources/source-a.md"
+  ]
 }

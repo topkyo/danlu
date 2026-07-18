@@ -1244,17 +1244,14 @@ def run_nightly(
         autonomy_flags = nightly_autonomy_flags(root)
         auto_apply_light = autonomy_flags["auto_apply_light"]
         auto_adopt_l1 = autonomy_flags["auto_adopt_l1"]
-        auto_adopt_l2 = autonomy_flags["auto_adopt_l2"]
-        auto_adopt_l3 = autonomy_flags["auto_adopt_l3"]
-        auto_adopt_judgments = autonomy_flags["auto_adopt_judgments"]
         auto_apply_heavy_semantic = autonomy_flags.get("auto_apply_heavy_semantic", False)
         agent_loop = run_nightly_agent_loop(
             root,
             apply_light=auto_apply_light,
             auto_adopt_l1=auto_adopt_l1,
-            auto_adopt_l2=auto_adopt_l2,
-            auto_adopt_l3=auto_adopt_l3,
-            auto_adopt_judgments=auto_adopt_judgments,
+            auto_adopt_l2=False,
+            auto_adopt_l3=False,
+            auto_adopt_judgments=False,
         )
         from aiwiki.runner.signal_pipeline import run_signal_pipeline
 
@@ -1313,9 +1310,9 @@ def run_nightly(
                 "agent_loop_dry_run": bool(state.get("agent_loop", {}).get("dry_run", False)),
                 "agent_loop_auto_apply_light": auto_apply_light,
                 "agent_loop_auto_adopt_l1": auto_adopt_l1,
-                "agent_loop_auto_adopt_l2": auto_adopt_l2,
-                "agent_loop_auto_adopt_l3": auto_adopt_l3,
-                "agent_loop_auto_adopt_judgments": auto_adopt_judgments,
+                "agent_loop_auto_adopt_l2": False,
+                "agent_loop_auto_adopt_l3": False,
+                "agent_loop_auto_adopt_judgments": False,
                 "signal_pipeline_auto_apply_heavy_semantic": auto_apply_heavy_semantic,
                 "signal_pipeline_status": str(state.get("signal_pipeline", {}).get("status") or ""),
                 "duration_ms": int((time.monotonic() - started) * 1000),

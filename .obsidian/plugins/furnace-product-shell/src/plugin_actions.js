@@ -87,55 +87,6 @@ async function runProductShellDroppedFilesWithAutoAsk(plugin, { files, question 
   });
 }
 
-async function runProductShellReportSubgraphCommand(plugin, { reportPath }) {
-  const spec = buildReportSubgraphCommandSpec(reportPath);
-  if (!spec.normalized) {
-    new Notice(plugin.t("Report path cannot be empty."));
-    return;
-  }
-  const payload = await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
-  const outputPath = payload && typeof payload.output_path === "string" ? payload.output_path.trim() : "";
-  if (outputPath) {
-    await plugin.openWorkspacePath(outputPath);
-  }
-  return payload;
-}
-
-function collectProductShellReportCandidates(plugin) {
-  const summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : null;
-  if (!summary) return [];
-  const outputs = Array.isArray(summary.recent_outputs) ? summary.recent_outputs : [];
-  const seen = new Set();
-  const candidates = [];
-  for (const item of outputs) {
-    if (!item || typeof item !== "object") continue;
-    const candidatePath = String(item.path || "").trim();
-    if (!candidatePath || !candidatePath.startsWith("output/reports/")) continue;
-    const deliveryMode = String(item.delivery_mode || "").trim();
-    const llmStatus = String(item.llm_status || "").trim();
-    const backgroundStatus = String(item.background_status || "").trim();
-    const artifactQuality = String(item.artifact_quality || "").trim();
-    const containsPlaceholder = String(item.contains_llm_placeholder || "").trim().toLowerCase();
-    const rawTitle = String(item.title || "").trim();
-    if (deliveryMode === "deterministic-fallback" || deliveryMode === "llm-failed") continue;
-    if (["timeout_or_unavailable", "validation_failed", "pending", "failed", "degraded"].includes(llmStatus)) continue;
-    if (["submitted", "running", "degraded"].includes(backgroundStatus)) continue;
-    if (["degraded", "placeholder"].includes(artifactQuality)) continue;
-    if (["1", "true", "yes"].includes(containsPlaceholder)) continue;
-    if (rawTitle.startsWith("LLM 未完成")) continue;
-    if (seen.has(candidatePath)) continue;
-    seen.add(candidatePath);
-    const title = rawTitle || candidatePath;
-    candidates.push({ value: candidatePath, label: `${title} — ${candidatePath}` });
-  }
-  return candidates;
-}
-
-function openProductShellReportSubgraphPicker(plugin) {
-  const candidates = plugin.collectReportCandidates();
-  plugin.openStructuredCommandModal(buildReportSubgraphModalSpec(plugin, candidates));
-}
-
 async function runProductShellDropUrlCommand(plugin, { url, title }) {
   const spec = buildDropUrlCommandSpec({ url, title });
   await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);

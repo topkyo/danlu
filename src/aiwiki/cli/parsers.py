@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-PRIMARY_SURFACE_COMMANDS: tuple[str, ...] = ("drop", "today", "metrics", "advanced")
+PRIMARY_SURFACE_COMMANDS: tuple[str, ...] = ("drop", "today", "advanced")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -39,15 +39,6 @@ def build_parser() -> argparse.ArgumentParser:
     today_parser = subparsers.add_parser("today", help="炼丹炉今日产出 / 待办 / 建议")
     today_parser.add_argument("--json", action="store_true", help="JSON 输出（按 section 桶化）")
     today_parser.set_defaults(handler_command="today")
-    metrics_parser = subparsers.add_parser("metrics", help="炼丹炉知识复利指标")
-    metrics_parser.add_argument("--json", action="store_true", help="JSON 输出")
-    metrics_parser.add_argument(
-        "--delta",
-        choices=["7d", "30d"],
-        default=None,
-        help="对比 7 天前 / 30 天前 baseline（基于 .aiwiki/state/metrics-history.jsonl）",
-    )
-    metrics_parser.set_defaults(handler_command="metrics")
     drop_parser = subparsers.add_parser("drop", help="炼丹炉输入端：投喂 URL / PDF / 图片 / 仓库 / Markdown / 问题")
     drop_subparsers = drop_parser.add_subparsers(dest="drop_command", required=True)
     _register_drop_subcommand_parsers(drop_subparsers)
@@ -82,37 +73,15 @@ def _converge_default_help_surface(subparsers: argparse._SubParsersAction) -> No
 def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -> None:
     """Register operator/compat commands under the advanced drawer only."""
 
-    subparsers.add_parser("layout", help="Create the expected directory layout.")
-
-    today_snooze_parser = subparsers.add_parser("today-snooze", help="把 Today 中的确认项暂时隐藏。")
-    today_snooze_parser.add_argument("target", help="要隐藏的 Today entry target（通常是 review:<bucket> 或 wiki/... 路径）")
-    today_snooze_parser.add_argument("--days", type=int, default=1, help="隐藏天数，默认 1 天。")
-    today_snooze_parser.add_argument("--note", default="", help="可选备注。")
-    today_snooze_parser.set_defaults(handler_command="today-snooze")
-
-    autonomy_status_parser = subparsers.add_parser(
-        "autonomy-status",
-        help="炼丹炉自动化 kill switch 状态：policy 文件 + 全局 override + 4 flag effective 状态。",
+    metrics_parser = subparsers.add_parser("metrics", help="炼丹炉知识复利指标")
+    metrics_parser.add_argument("--json", action="store_true", help="JSON 输出")
+    metrics_parser.add_argument(
+        "--delta",
+        choices=["7d", "30d"],
+        default=None,
+        help="对比 7 天前 / 30 天前 baseline（基于 .aiwiki/state/metrics-history.jsonl）",
     )
-    autonomy_status_parser.add_argument("--json", action="store_true", help="JSON 输出")
-    autonomy_status_parser.set_defaults(handler_command="autonomy-status")
-
-    autonomy_disable_parser = subparsers.add_parser(
-        "autonomy-disable",
-        help="开启某个 autonomy flag（写入 .aiwiki/state/autonomy-policy.json）。",
-    )
-    autonomy_disable_parser.add_argument(
-        "flag",
-        help="flag 名（disable_lane_apply / disable_alchemy_auto / disable_l3_generate / disable_external_llm）",
-    )
-    autonomy_disable_parser.set_defaults(handler_command="autonomy-disable")
-
-    autonomy_enable_parser = subparsers.add_parser(
-        "autonomy-enable",
-        help="关闭某个 autonomy flag。",
-    )
-    autonomy_enable_parser.add_argument("flag", help="flag 名（同 autonomy-disable）")
-    autonomy_enable_parser.set_defaults(handler_command="autonomy-enable")
+    metrics_parser.set_defaults(handler_command="metrics")
 
     trace_parser = subparsers.add_parser(
         "trace",
@@ -154,123 +123,15 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
     )
     sync_product_shell_parser.add_argument("target", help="Target vault directory to update.")
 
-    ingest_parser = subparsers.add_parser("ingest", help="Ingest a local file or URL stub.")
-    ingest_parser.add_argument("source", help="Local file path or URL.")
-    ingest_parser.add_argument("--title", help="Optional display title.")
-
-    _configure_drop_url_parser(subparsers.add_parser("drop-url", help="Fetch a web page into raw/inbox as source material."))
-    _configure_drop_pdf_parser(subparsers.add_parser("drop-pdf", help="Import a PDF asset into raw/assets without rewriting it."))
-    _configure_drop_image_parser(
-        subparsers.add_parser("drop-image", help="Import an image asset into raw/assets without converting it to markdown.")
-    )
-    _configure_drop_repo_parser(subparsers.add_parser("drop-repo", help="Snapshot a local or remote repo into raw/inbox."))
-    _configure_drop_note_parser(
-        subparsers.add_parser(
-            "drop-note",
-            help="Legacy alias for capturing markdown/text into raw/inbox; prefer `drop markdown`.",
-        )
-    )
-
     subparsers.add_parser("compile", help="Compile manifest entries into wiki source pages and indexes.")
-    subparsers.add_parser(
-        "sync-evidence-graph",
-        help="Restore Obsidian Graph to the evidence-only view (reports, sources, raw; no concepts).",
-    )
 
     subparsers.add_parser(
         "shell-status",
         help="Write and return the Product Shell summary contract for front-end workbench integrations.",
     )
-    subparsers.add_parser("dashboard", help="Return the Product Shell dashboard contract.")
-
-    vault_queue_drain_parser = subparsers.add_parser(
-        "vault-queue-drain",
-        help="Drain mobile companion requests from .aiwiki/queue. Defaults to dry-run.",
-    )
-    vault_queue_drain_parser.add_argument("--execute", action="store_true", help="Execute supported pending queue items.")
-    vault_queue_drain_parser.add_argument("--limit", type=int, default=5, help="Maximum queue items to inspect or drain.")
-
-    search_parser = subparsers.add_parser("search", help="Search compiled wiki pages from the Product Shell.")
-    search_parser.add_argument("query", help="Search query.")
-    search_parser.add_argument("--limit", type=int, default=12, help="Maximum number of results to return.")
-
-    run_compile_parser = subparsers.add_parser(
-        "run-compile",
-        help="Compile sources and use the configured LLM to replace placeholder summaries.",
-    )
-    run_compile_parser.add_argument(
-        "--limit",
-        type=int,
-        default=5,
-        help=(
-            "Max number of LLM-enriched pages per stage. Note: run-compile is fail-fast — "
-            "first failure aborts remaining items in this stage."
-        ),
-    )
-    run_compile_parser.add_argument(
-        "--paths",
-        action="append",
-        default=None,
-        metavar="SOURCE_PATH",
-        help=(
-            "P4-INV-1: filter the LLM-enrichment queue to specific source pages. "
-            "Repeatable. Each value may be a path (e.g. wiki/sources/foo.md), a "
-            "raw input (raw/inbox/foo.md), or a source id (foo). Without --paths "
-            "the queue is the full backlog (existing behavior)."
-        ),
-    )
 
     ask_parser = subparsers.add_parser("ask", help="Generate a query artifact grounded in the wiki.")
     _configure_ask_parser(ask_parser)
-
-    signals_list_parser = subparsers.add_parser("signals-list", help="List runtime signals (read-only inspection).")
-    signals_list_parser.add_argument("--kind", help="Optional exact signal kind filter.")
-    signals_list_parser.add_argument("--trace-id", help="Optional exact trace_id filter.")
-    signals_list_parser.add_argument("--since", help="Optional ISO datetime lower bound (inclusive).")
-    signals_list_parser.add_argument("--limit", type=int, default=20, help="Maximum number of results (recent first).")
-    signals_list_parser.add_argument("--json", action="store_true", help="Return full JSON records.")
-
-    signals_show_parser = subparsers.add_parser("signals-show", help="Show one signal and related planner decisions.")
-    signals_show_parser.add_argument("signal_id", help="Signal id.")
-    signals_show_parser.add_argument("--json", action="store_true", help="Return full JSON payload.")
-
-    planner_log_list_parser = subparsers.add_parser(
-        "planner-log-list",
-        help="List planner log records (read-only inspection).",
-    )
-    planner_log_list_parser.add_argument("--decision", help="Optional exact planner decision filter.")
-    planner_log_list_parser.add_argument("--signal-id", help="Optional exact signal_id filter.")
-    planner_log_list_parser.add_argument("--trace-id", help="Optional exact trace_id filter.")
-    planner_log_list_parser.add_argument("--since", help="Optional ISO datetime lower bound (inclusive).")
-    planner_log_list_parser.add_argument("--limit", type=int, default=20, help="Maximum number of results (recent first).")
-    planner_log_list_parser.add_argument("--json", action="store_true", help="Return full JSON records.")
-
-    planner_log_rollback_parser = subparsers.add_parser(
-        "planner-log-rollback",
-        help="Preview append-only planner-log rollback markers without writing them.",
-    )
-    planner_log_rollback_mode = planner_log_rollback_parser.add_mutually_exclusive_group(required=True)
-    planner_log_rollback_mode.add_argument("--dry-run", action="store_true", help="Preview without writing rollback markers.")
-    planner_log_rollback_mode.add_argument("--apply", action="store_true", help="Append missing rollback markers.")
-    planner_log_rollback_parser.add_argument("--signal-id", default=None)
-    planner_log_rollback_parser.add_argument("--trace-id", default=None)
-    planner_log_rollback_parser.add_argument("--limit", type=int, default=20)
-
-    audit_preview_parser = subparsers.add_parser(
-        "audit-preview",
-        help="Preview a universal audit stream backfill without writing audit.jsonl.",
-    )
-    audit_preview_parser.add_argument("--dry-run", action="store_true", help="Required; preview only.")
-    audit_preview_parser.add_argument("--limit", type=int, default=50)
-
-    audit_backfill_parser = subparsers.add_parser(
-        "audit-backfill",
-        help="Backfill the universal audit stream from existing audit sources.",
-    )
-    audit_backfill_mode = audit_backfill_parser.add_mutually_exclusive_group(required=True)
-    audit_backfill_mode.add_argument("--dry-run", action="store_true", help="Preview without writing audit.jsonl.")
-    audit_backfill_mode.add_argument("--apply", action="store_true", help="Append missing audit records.")
-    audit_backfill_parser.add_argument("--limit", type=int, default=50)
 
     run_ask_parser = subparsers.add_parser(
         "run-ask",
@@ -339,22 +200,6 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
     )
     run_ask_resume_parser.add_argument("--job-id", required=True, help="Background job id returned by run-ask-submit.")
 
-    report_subgraph_parser = subparsers.add_parser(
-        "report-subgraph",
-        help="Generate a 1-hop subgraph markdown anchored at a single report's graph_anchor_node_ids.",
-    )
-    report_subgraph_parser.add_argument(
-        "--report",
-        required=True,
-        help="Path to the report markdown (relative to root or absolute).",
-    )
-    report_subgraph_parser.add_argument(
-        "--output",
-        default=None,
-        help="Optional output path. Defaults to output/reports/<stem>.subgraph.md next to the report.",
-    )
-    report_subgraph_parser.set_defaults(handler_command="report-subgraph")
-
     file_back_parser = subparsers.add_parser(
         "file-back",
         help="File a markdown artifact back into wiki/derived (machine-memory terminal layer, no review), wiki/decisions, or wiki/judgments (subject to review-page workflow).",
@@ -364,15 +209,9 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
     file_back_parser.add_argument(
         "--kind",
         choices=("derived", "decision", "judgment"),
-        default="derived",
-        help="Filed-back page kind. Note: 'derived' is terminal (no review) and separate from the corpus candidate plane; 'decision' and 'judgment' enter the review-page workflow.",
+        default="judgment",
+        help="Filed-back page kind. Default judgment enters review-page workflow; derived is terminal (no review); decision also enters review-page workflow.",
     )
-
-    promote_parser = subparsers.add_parser("promote", help="Promote an output candidate into wiki/derived.")
-    promote_parser.add_argument("artifact_ref", help="Output candidate artifact_ref.")
-
-    demote_parser = subparsers.add_parser("demote", help="Mark an output candidate as demoted.")
-    demote_parser.add_argument("artifact_ref", help="Output candidate artifact_ref.")
 
     alchemy_start_parser = subparsers.add_parser("alchemy-start", help="Start a new elixir from a corpus.")
     alchemy_start_parser.add_argument("corpus_id")
@@ -411,224 +250,6 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
     alchemy_demote_parser.add_argument("--elixir-id", required=True)
     alchemy_demote_parser.add_argument("--note", default=None)
 
-    alchemy_parser = subparsers.add_parser(
-        "alchemy",
-        help="Preview heavy/light alchemy lanes. M4 supports dry-run only.",
-    )
-    alchemy_subparsers = alchemy_parser.add_subparsers(dest="alchemy_lane", required=True)
-    for lane_name in ("heavy", "light"):
-        lane_parser = alchemy_subparsers.add_parser(
-            lane_name,
-            help=f"Preview the {lane_name} alchemy lane without executing primitives.",
-        )
-        lane_parser.add_argument(
-            "scope",
-            help="Scope selector: all, protocol:<name>, source:<id>, concept:<slug>, elixir:<ref>, or judgment:<ref>.",
-        )
-        lane_parser.add_argument("--dry-run", action="store_true", help="Preview without executing primitives.")
-        lane_parser.add_argument("--apply", action="store_true", help="M5 controlled apply bridge for explicit receipted action ids.")
-        lane_parser.add_argument("--action-id", action="append", default=[], help="Machine-memory action id to apply; may be repeated.")
-        lane_parser.add_argument(
-            "--primitive",
-            action="append",
-            default=[],
-            choices=("compile", "lint", "nightly", "review", "propose", "distill"),
-            help="Receipted lane primitive to apply; may be repeated.",
-        )
-        lane_parser.add_argument("--note", default=None)
-        lane_parser.add_argument("--planner-log-path", type=Path, default=None)
-        lane_parser.add_argument("--signals-path", type=Path, default=None)
-        lane_parser.add_argument("--max-signals", type=int, default=None)
-        lane_parser.add_argument("--max-pages", type=int, default=None)
-        lane_parser.add_argument("--max-tokens", type=int, default=None)
-    judge_parser = alchemy_subparsers.add_parser(
-        "judge",
-        help="Preview scoped judgment refresh candidates without applying them.",
-    )
-    judge_parser.add_argument(
-        "scope",
-        help="Scope selector: all, protocol:<name>, source:<id>, concept:<slug>, elixir:<ref>, or judgment:<ref>.",
-    )
-    judge_mode = judge_parser.add_mutually_exclusive_group(required=True)
-    judge_mode.add_argument("--dry-run", action="store_true", help="Preview only.")
-    judge_mode.add_argument("--apply", action="store_true", help="Apply deterministic scoped judge refresh markers with receipt/audit.")
-    judge_mode.add_argument("--propose", action="store_true", help="Create semantic judge proposal-preview artifacts without mutating target pages.")
-    judge_parser.add_argument("--planner-log-path", type=Path, default=None)
-    judge_parser.add_argument("--signals-path", type=Path, default=None)
-    judge_parser.add_argument("--max-signals", type=int, default=None)
-    judge_parser.add_argument("--max-pages", type=int, default=None)
-    judge_parser.add_argument("--max-tokens", type=int, default=None)
-    judge_parser.add_argument("--limit", type=int, default=50)
-    judge_parser.add_argument("--note", default=None)
-    judge_proposal_parser = alchemy_subparsers.add_parser(
-        "judge-proposal",
-        help="Apply an accepted semantic judge proposal artifact.",
-    )
-    judge_proposal_parser.add_argument("proposal")
-    judge_proposal_parser.add_argument("--apply", action="store_true", required=True)
-    judge_proposal_parser.add_argument("--note", default=None)
-    distill_preview_parser = alchemy_subparsers.add_parser(
-        "distill",
-        help="Preview scoped elixir distillation candidates without applying them.",
-    )
-    distill_preview_parser.add_argument(
-        "scope",
-        help="Scope selector: all, protocol:<name>, source:<id>, concept:<slug>, elixir:<ref>, or judgment:<ref>.",
-    )
-    distill_preview_mode = distill_preview_parser.add_mutually_exclusive_group(required=True)
-    distill_preview_mode.add_argument("--dry-run", action="store_true", help="Preview only.")
-    distill_preview_mode.add_argument("--apply", action="store_true", help="Refresh existing scoped elixir candidates with receipt/audit.")
-    distill_preview_parser.add_argument("--planner-log-path", type=Path, default=None)
-    distill_preview_parser.add_argument("--signals-path", type=Path, default=None)
-    distill_preview_parser.add_argument("--max-signals", type=int, default=None)
-    distill_preview_parser.add_argument("--max-pages", type=int, default=None)
-    distill_preview_parser.add_argument("--max-tokens", type=int, default=None)
-    distill_preview_parser.add_argument("--limit", type=int, default=50)
-    distill_preview_parser.add_argument("--note", default=None)
-    review_preview_parser = alchemy_subparsers.add_parser(
-        "review",
-        help="Preview scoped review enqueue candidates without applying them.",
-    )
-    review_preview_parser.add_argument(
-        "scope",
-        help="Scope selector: all, protocol:<name>, source:<id>, concept:<slug>, elixir:<ref>, or judgment:<ref>.",
-    )
-    review_preview_mode = review_preview_parser.add_mutually_exclusive_group(required=True)
-    review_preview_mode.add_argument("--dry-run", action="store_true", help="Preview only.")
-    review_preview_mode.add_argument("--apply", action="store_true", help="Apply scoped review enqueue with receipt/audit.")
-    review_preview_parser.add_argument("--planner-log-path", type=Path, default=None)
-    review_preview_parser.add_argument("--signals-path", type=Path, default=None)
-    review_preview_parser.add_argument("--max-signals", type=int, default=None)
-    review_preview_parser.add_argument("--max-pages", type=int, default=None)
-    review_preview_parser.add_argument("--max-tokens", type=int, default=None)
-    review_preview_parser.add_argument("--limit", type=int, default=50)
-    review_preview_parser.add_argument("--note", default=None)
-    propose_preview_parser = alchemy_subparsers.add_parser(
-        "propose",
-        help="Preview scoped proposal opportunities without applying them.",
-    )
-    propose_preview_parser.add_argument(
-        "scope",
-        help="Scope selector: all, protocol:<name>, source:<id>, concept:<slug>, elixir:<ref>, or judgment:<ref>.",
-    )
-    propose_preview_mode = propose_preview_parser.add_mutually_exclusive_group(required=True)
-    propose_preview_mode.add_argument("--dry-run", action="store_true", help="Preview only.")
-    propose_preview_mode.add_argument("--apply", action="store_true", help="Create scoped L3 proposal candidates.")
-    propose_preview_parser.add_argument("--planner-log-path", type=Path, default=None)
-    propose_preview_parser.add_argument("--signals-path", type=Path, default=None)
-    propose_preview_parser.add_argument("--max-signals", type=int, default=None)
-    propose_preview_parser.add_argument("--max-pages", type=int, default=None)
-    propose_preview_parser.add_argument("--max-tokens", type=int, default=None)
-    propose_preview_parser.add_argument("--limit", type=int, default=50)
-    propose_preview_parser.add_argument("--note", default=None)
-    legacy_migration_parser = alchemy_subparsers.add_parser(
-        "legacy-migration",
-        help="Preview legacy wiki/elixirs entries that lack candidate tombstones.",
-    )
-    legacy_migration_mode = legacy_migration_parser.add_mutually_exclusive_group(required=True)
-    legacy_migration_mode.add_argument("--dry-run", action="store_true", help="Preview only.")
-    legacy_migration_mode.add_argument("--apply", action="store_true", help="Create missing candidate tombstones.")
-    legacy_migration_parser.add_argument("--limit", type=int, default=50)
-    legacy_migration_parser.add_argument("--note", default=None)
-    auto_parser = alchemy_subparsers.add_parser(
-        "auto",
-        help="Preview or apply execute-mode planner decisions through safe alchemy lanes.",
-    )
-    auto_mode = auto_parser.add_mutually_exclusive_group(required=True)
-    auto_mode.add_argument("--dry-run", action="store_true", help="Preview scheduler decisions only.")
-    auto_mode.add_argument("--apply", action="store_true", help="Run deterministic apply-supported lane primitives.")
-    auto_parser.add_argument("--scope", default="all")
-    auto_parser.add_argument("--lane", action="append", choices=("heavy", "light"), default=[])
-    auto_parser.add_argument(
-        "--primitive",
-        action="append",
-        choices=("compile", "lint", "nightly", "review", "propose", "distill"),
-        default=[],
-        help=(
-            "Restrict automatic execution to one or more primitives. "
-            "Semantic candidate primitives are only selectable with an explicit heavy lane."
-        ),
-    )
-    auto_parser.add_argument("--note", default=None)
-    auto_parser.add_argument("--planner-log-path", type=Path, default=None)
-    auto_parser.add_argument("--signals-path", type=Path, default=None)
-    auto_parser.add_argument("--max-signals", type=int, default=None)
-    auto_parser.add_argument("--max-pages", type=int, default=None)
-    auto_parser.add_argument("--max-tokens", type=int, default=None)
-    superseded_cleanup_parser = alchemy_subparsers.add_parser(
-        "superseded-cleanup",
-        help="Preview or apply superseded elixir candidate tombstone cleanup.",
-    )
-    superseded_cleanup_mode = superseded_cleanup_parser.add_mutually_exclusive_group(required=True)
-    superseded_cleanup_mode.add_argument("--dry-run", action="store_true", help="Preview only.")
-    superseded_cleanup_mode.add_argument("--apply", action="store_true", help="Delete supported superseded tombstones.")
-    superseded_cleanup_parser.add_argument("--limit", type=int, default=50)
-    superseded_cleanup_parser.add_argument("--note", default=None)
-
-    l3_create_parser = subparsers.add_parser(
-        "l3-proposal-create",
-        help="Create a manual L3 prompt/policy proposal fixture without applying it.",
-    )
-    l3_create_parser.add_argument("--kind", required=True, choices=("prompt_proposal", "policy_proposal"))
-    l3_create_parser.add_argument("--proposal-id", default=None)
-    l3_create_parser.add_argument("--target-file", required=True)
-    l3_create_parser.add_argument("--content-file", required=True)
-    l3_create_parser.add_argument("--rationale", default="")
-    l3_create_parser.add_argument("--evidence-ref", action="append", dest="evidence_refs", default=[])
-    l3_create_parser.add_argument("--signal-id", action="append", dest="signal_ids", default=[])
-    l3_create_parser.add_argument(
-        "--pattern",
-        default="manual_fixture",
-        choices=("failure_cluster", "recurring_feedback", "drift", "contract_failure", "manual_fixture"),
-    )
-    l3_generate_parser = subparsers.add_parser(
-        "l3-proposal-generate",
-        help="Generate L3 proposal candidates from execute-mode planner decisions.",
-    )
-    l3_generate_mode = l3_generate_parser.add_mutually_exclusive_group(required=True)
-    l3_generate_mode.add_argument("--dry-run", action="store_true", help="Preview generation candidates only.")
-    l3_generate_mode.add_argument("--apply", action="store_true", help="Create eligible proposal candidates.")
-    l3_generate_parser.add_argument("--planner-log-path", type=Path, default=None)
-    l3_generate_parser.add_argument("--limit", type=int, default=20)
-
-    review_group_parser = subparsers.add_parser("review", help="Review queue inspection commands.")
-    review_group_subparsers = review_group_parser.add_subparsers(dest="review_command", required=True)
-    review_proposals_parser = review_group_subparsers.add_parser(
-        "proposals",
-        help="List L3 prompt/policy proposals without mutating targets.",
-    )
-    review_proposals_parser.add_argument("--kind", choices=("prompt_proposal", "policy_proposal"))
-    review_proposals_parser.add_argument(
-        "--state",
-        choices=("candidate", "accepted", "rejected", "reverted", "stale", "revert_conflict"),
-    )
-    review_proposals_parser.add_argument("--json", action="store_true", help="Return full JSON records.")
-    review_proposal_generation_parser = review_group_subparsers.add_parser(
-        "proposal-generation",
-        help="Preview L3 proposal generation candidates from planner-log.",
-    )
-    review_proposal_generation_parser.add_argument("--planner-log-path", type=Path, default=None)
-    review_proposal_generation_parser.add_argument("--limit", type=int, default=20)
-    review_proposal_generation_parser.add_argument("--json", action="store_true", help="Return full JSON payload.")
-    review_proposal_parser = review_group_subparsers.add_parser(
-        "proposal",
-        help="Review one L3 prompt/policy proposal.",
-    )
-    review_proposal_parser.add_argument("proposal_id")
-    review_proposal_parser.add_argument("--status", required=True, choices=("rejected",))
-    review_proposal_parser.add_argument("--note")
-
-    apply_parser = subparsers.add_parser("apply", help="Accept and apply a manual L3 proposal by id.")
-    apply_parser.add_argument("proposal_id")
-    apply_parser.add_argument("--note")
-
-    revert_parser = subparsers.add_parser("revert", help="Revert an L3 proposal apply receipt.")
-    revert_parser.add_argument(
-        "receipt_id",
-        help="Receipt id of the L3 proposal apply receipt (action_id field inside .aiwiki/state/execution-receipts/l3-proposal-apply-<proposal_id>.json; or full receipt path; or receipt JSON basename).",
-    )
-    revert_parser.add_argument("--note")
-
     review_parser = subparsers.add_parser(
         "review-page",
         help="Advance a decision or judgment page through the explicit review workflow.",
@@ -653,87 +274,6 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
         help="Review every currently reviewable page from the shell summary.",
     )
 
-    rewrite_review_parser = subparsers.add_parser(
-        "review-rewrite",
-        help="Advance a concept rewrite proposal through the explicit rewrite workflow.",
-    )
-    rewrite_review_parser.add_argument("slug", help="Concept slug.")
-    rewrite_review_parser.add_argument("--status", required=True, help="Target rewrite proposal status.")
-    rewrite_review_parser.add_argument("--note", help="Optional review note.")
-
-    apply_rewrite_parser = subparsers.add_parser(
-        "apply-rewrite",
-        help="Apply an accepted concept rewrite proposal to the target concept page.",
-    )
-    apply_rewrite_parser.add_argument("slug", help="Concept slug.")
-    apply_rewrite_parser.add_argument("--note", help="Optional apply note.")
-    apply_rewrite_parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Write a rewrite preview artifact without mutating the concept page.",
-    )
-
-    verify_rewrite_parser = subparsers.add_parser(
-        "verify-rewrite",
-        help="Verify that an applied concept rewrite still matches the current concept/runtime state.",
-    )
-    verify_rewrite_parser.add_argument("slug", help="Concept slug.")
-    verify_rewrite_parser.add_argument("--note", help="Optional verification note.")
-
-    revert_rewrite_parser = subparsers.add_parser(
-        "revert-rewrite",
-        help="Revert the latest applied concept rewrite and restore the previous concept snapshot.",
-    )
-    revert_rewrite_parser.add_argument("slug", help="Concept slug.")
-    revert_rewrite_parser.add_argument("--note", help="Optional revert note.")
-
-    retire_concept_parser = subparsers.add_parser(
-        "retire-concept",
-        help="Apply an explicit concept lifecycle override and retire one or more concepts from default query ranking.",
-    )
-    retire_concept_parser.add_argument(
-        "slugs",
-        nargs="+",
-        help="One or more concept slugs (fail-fast: first failure aborts remaining).",
-    )
-    retire_concept_parser.add_argument("--note", help="Optional retire note (applied to all slugs).")
-
-    reactivate_concept_parser = subparsers.add_parser(
-        "reactivate-concept",
-        help="Clear the active retired override for one or more concepts and return them to heuristic lifecycle routing.",
-    )
-    reactivate_concept_parser.add_argument(
-        "slugs",
-        nargs="+",
-        help="One or more concept slugs (fail-fast: first failure aborts remaining).",
-    )
-    reactivate_concept_parser.add_argument("--note", help="Optional reactivate note (applied to all slugs).")
-
-    review_concept_parser = subparsers.add_parser(
-        "review-concept",
-        help=(
-            "Manual review-ack for concepts in the revisit/review buckets — "
-            "writes a concept lifecycle override pinning lifecycle_state."
-        ),
-    )
-    review_concept_parser.add_argument(
-        "slugs",
-        nargs="*",
-        help="One or more concept slugs (omit when using --all-pending).",
-    )
-    review_concept_parser.add_argument(
-        "--status",
-        required=True,
-        choices=("active", "deferred", "review"),
-        help="Target lifecycle_state for the override.",
-    )
-    review_concept_parser.add_argument("--note", help="Optional review note (applied to all slugs).")
-    review_concept_parser.add_argument(
-        "--all-pending",
-        action="store_true",
-        help="Review every concept currently in the revisit_concepts and review_concepts buckets.",
-    )
-
     review_queue_parser = subparsers.add_parser(
         "review-queue",
         help="List pending review items grouped by sub-bucket (decision-kind feed entries).",
@@ -750,184 +290,7 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
     review_queue_parser.add_argument("--json", action="store_true", help="Structured JSON output.")
     review_queue_parser.set_defaults(handler_command="review-queue")
 
-    action_review_parser = subparsers.add_parser(
-        "review-action",
-        help="Advance a machine-memory repair action through the explicit action workflow.",
-    )
-    action_review_parser.add_argument(
-        "action_ids",
-        nargs="*",
-        help="Machine-memory action ids or title fragments.",
-    )
-    action_review_parser.add_argument(
-        "--status",
-        required=True,
-        choices=("proposed", "accepted", "deferred", "resolved", "rejected"),
-        help="Target action status.",
-    )
-    action_review_parser.add_argument("--note", help="Optional action review note.")
-    action_review_parser.add_argument(
-        "--all-pending",
-        action="store_true",
-        help="Review all proposed review-first actions matching --kind.",
-    )
-    action_review_parser.add_argument(
-        "--kind",
-        help="Required with --all-pending; filters action kind (e.g. add-source-concept-link).",
-    )
-    action_review_parser.add_argument(
-        "--execution-band",
-        default="review-first",
-        help="Execution band filter for --all-pending (default: review-first).",
-    )
-
-    apply_action_parser = subparsers.add_parser(
-        "apply-action",
-        help="Apply an accepted low-risk machine-memory repair action through the safe execution layer.",
-    )
-    apply_action_parser.add_argument("action_id", nargs="?", help="Machine-memory action id or title fragment.")
-    apply_action_parser.add_argument("--note", help="Optional apply note.")
-    apply_action_parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Preview the safe-apply bundle without mutating manual-link state.",
-    )
-    apply_action_parser.add_argument(
-        "--bundle",
-        help="Optional execution bundle path to validate and consume during apply.",
-    )
-    apply_action_parser.add_argument(
-        "--batch",
-        nargs="+",
-        help="Apply multiple action ids/title fragments in one batch receipt.",
-    )
-    apply_action_parser.add_argument(
-        "--all-accepted-low-risk",
-        action="store_true",
-        help="Apply every currently accepted low-risk action as a batch.",
-    )
-
-    auto_resolve_actions_parser = subparsers.add_parser(
-        "auto-resolve-actions",
-        help="Apply accepted low-risk machine-memory actions and defer human-required exceptions.",
-    )
-    auto_resolve_actions_parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Preview auto-resolution decisions without writing receipts or state.",
-    )
-    auto_resolve_actions_parser.add_argument(
-        "--limit",
-        type=int,
-        help="Optional maximum number of active actions to evaluate.",
-    )
-    auto_resolve_actions_parser.add_argument(
-        "--accepted-only",
-        action="store_true",
-        help="Only evaluate active accepted actions; skip proposed/deferred review debt.",
-    )
-    auto_resolve_actions_parser.add_argument("--note", help="Optional note stored in auto-resolution receipts.")
-    auto_resolve_actions_parser.set_defaults(handler_command="auto-resolve-actions")
-
-    revert_action_parser = subparsers.add_parser(
-        "revert-action",
-        help="Revert the latest low-risk safe apply for a machine-memory action.",
-    )
-    revert_action_parser.add_argument("action_id", nargs="?", help="Machine-memory action id.")
-    revert_action_parser.add_argument("--note", help="Optional revert note.")
-    revert_action_parser.add_argument(
-        "--last-batch",
-        action="store_true",
-        help="Revert the most recent unreverted action apply batch.",
-    )
-
-    apply_archive_parser = subparsers.add_parser(
-        "apply-archive",
-        help="Apply a ready archive candidate and pin the material temperature to archived.",
-    )
-    apply_archive_parser.add_argument("entry_id", help="Manifest/material entry id.")
-    apply_archive_parser.add_argument("--note", help="Optional apply note.")
-    apply_archive_parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Write an archive bundle preview without mutating material state.",
-    )
-
-    revert_archive_parser = subparsers.add_parser(
-        "revert-archive",
-        help="Revert the latest explicit archive transition and restore the material to cold.",
-    )
-    revert_archive_parser.add_argument("entry_id", help="Manifest/material entry id.")
-    revert_archive_parser.add_argument("--note", help="Optional revert note.")
-
-    batch_review_parser = subparsers.add_parser(
-        "batch-review",
-        help=(
-            "One-shot alias that routes a batch decision through existing review primitives "
-            "(review-page --all-pending / review-action --all-pending --kind ... / apply-action --all-accepted-low-risk). "
-            "User must still pick the batch and supply --note; runtime never auto-adopts."
-        ),
-    )
-    batch_review_parser.add_argument(
-        "target",
-        choices=("pages", "action", "apply-low-risk"),
-        help=(
-            "Batch target: pages = pending decision/judgment review pages; "
-            "action = machine-memory action review (requires --kind); "
-            "apply-low-risk = batch apply currently accepted low-risk actions."
-        ),
-    )
-    batch_review_parser.add_argument(
-        "--note",
-        required=True,
-        help="Required note explaining the batch decision (stored in batch receipt for audit).",
-    )
-    batch_review_parser.add_argument(
-        "--kind",
-        help="Action kind filter (required when target=action).",
-    )
-    batch_review_parser.add_argument(
-        "--status",
-        help="Optional status override (default: tracking for pages, accepted for action).",
-    )
-    batch_review_parser.add_argument(
-        "--execution-band",
-        default="review-first",
-        help="Execution band filter for target=action (default: review-first).",
-    )
-    batch_review_parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Preview only (target=apply-low-risk).",
-    )
-    batch_review_parser.set_defaults(handler_command="batch-review")
-
-    review_next_parser = subparsers.add_parser(
-        "review-next",
-        help=(
-            "Interactive review workflow: surface the highest-priority review page, prompt for a/r/t/s/q, "
-            "write the explicit review receipt, and continue. Each step is still a user-driven decision."
-        ),
-    )
-    review_next_parser.add_argument(
-        "--limit",
-        type=int,
-        default=1,
-        help="Maximum number of items to surface in this run (default: 1).",
-    )
-    review_next_parser.add_argument(
-        "--non-interactive",
-        action="store_true",
-        help="Print the surface block without reading stdin or writing receipts (CI / preview mode).",
-    )
-    review_next_parser.add_argument(
-        "--note",
-        help="Optional review note applied to every accepted decision in this run.",
-    )
-    review_next_parser.set_defaults(handler_command="review-next")
-
     subparsers.add_parser("lint", help="Run deterministic lint checks against the wiki.")
-    subparsers.add_parser("run-lint", help="Run deterministic lint plus an LLM-backed semantic lint pass.")
     subparsers.add_parser("nightly", help="Run deterministic compile + lint and write nightly repair artifacts.")
     run_nightly_parser = subparsers.add_parser(
         "run-nightly",
@@ -943,30 +306,6 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
         "--no-semantic-lint",
         action="store_true",
         help="Skip the semantic lint pass and write deterministic nightly artifacts only.",
-    )
-    signals_replay_parser = subparsers.add_parser(
-        "signals-replay",
-        help="Replay runtime signal sources into .aiwiki/state/signals.jsonl.",
-    )
-    signals_replay_parser.add_argument(
-        "--source",
-        action="append",
-        choices=("runtime_history", "llm_receipt", "archive"),
-        help="Signal source to replay; may be repeated. Defaults to all sources.",
-    )
-    signals_replay_parser.add_argument(
-        "--trace-id",
-        help="Optional lowercase UUIDv4 trace id for this replay batch.",
-    )
-    planner_log_replay_parser = subparsers.add_parser(
-        "planner-log-replay",
-        help="Replay signals to planner-log.",
-    )
-    planner_log_replay_parser.add_argument("--signals-path", type=Path, default=None)
-    planner_log_replay_parser.add_argument(
-        "--execute",
-        action="store_true",
-        help="Write execute-mode planner decisions. Default remains observe-only.",
     )
     llm_check_parser = subparsers.add_parser("llm-check", help="Show whether the LLM runner is configured.")
     llm_check_parser.add_argument(
@@ -990,71 +329,6 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
         choices=["json", "human"],
         default="json",
         help="Output format. 'human' renders a backend compatibility table; 'json' (default) preserves machine-readable schema.",
-    )
-
-    llm_telemetry_parser = subparsers.add_parser(
-        "llm-telemetry",
-        help="Aggregate recent LLM run receipts (backend/model success rate, latency, errors).",
-    )
-    llm_telemetry_parser.add_argument(
-        "--limit",
-        type=int,
-        default=50,
-        help="Number of recent receipts to aggregate (default: 50).",
-    )
-
-    backend_telemetry_parser = subparsers.add_parser(
-        "backend-telemetry",
-        help="Aggregate recent execution receipts (operations, status, LLM backend when present).",
-    )
-    backend_telemetry_parser.add_argument(
-        "--limit",
-        type=int,
-        default=100,
-        help="Number of recent execution receipts to aggregate (default: 100).",
-    )
-
-    cache_parser = subparsers.add_parser("cache", help="Inspect, rebuild, or drop the volatile SQLite query cache.")
-    cache_parser.add_argument(
-        "--status",
-        action="store_true",
-        help="Show the current cache status summary.",
-    )
-    cache_parser.add_argument(
-        "--rebuild",
-        action="store_true",
-        help="Force a rebuild of the volatile cache from the latest snapshot.",
-    )
-    cache_parser.add_argument(
-        "--drop",
-        action="store_true",
-        help="Delete `.aiwiki/cache.db` unconditionally.",
-    )
-
-    auto_once_parser = subparsers.add_parser(
-        "auto-once",
-        help="Automatically process the inbox once: compile, summarize, and lint.",
-    )
-    auto_once_parser.add_argument(
-        "--compile-limit",
-        type=int,
-        default=5,
-        help="Maximum number of pending source pages to summarize in one run.",
-    )
-    auto_once_parser.add_argument(
-        "--deterministic-only",
-        action="store_true",
-        help="Compatibility no-op: auto-once is deterministic-only unless --with-llm is provided.",
-    )
-    auto_once_parser.add_argument(
-        "--with-llm",
-        action="store_true",
-        help="Opt in to LLM compile + semantic lint for this auto-once run.",
-    )
-    auto_once_parser.add_argument(
-        "--no-semantic-lint",
-        action="store_true",
-        help="Skip the LLM semantic lint pass.",
     )
 
     watch_parser = subparsers.add_parser(

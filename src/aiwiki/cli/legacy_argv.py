@@ -1,6 +1,6 @@
 """Rewrite deprecated top-level operator argv into `advanced ...`.
 
-Primary surface stays: drop / today / metrics / advanced.
+Primary surface stays: drop / today / advanced.
 Operator commands are registered only under `advanced`. Old top-level
 invocations are rewritten with a stderr deprecation warning so dogfood
 scripts keep working without dual argparse registration.
@@ -10,87 +10,39 @@ from __future__ import annotations
 
 import sys
 
-PRIMARY_SURFACE_COMMANDS = frozenset({"drop", "today", "metrics", "advanced"})
+PRIMARY_SURFACE_COMMANDS = frozenset({"drop", "today", "advanced"})
 
-# Keep in sync with top-level names registered by
-# `_register_legacy_top_level_parsers` plus former top-level-only operator
-# entries (today-snooze).
+# Keep in sync with operator commands registered under `advanced` that still
+# accept legacy top-level argv rewrite (not W4-cut surfaces).
 LEGACY_TOP_LEVEL_COMMANDS = frozenset({
-    "alchemy",
     "alchemy-demote",
     "alchemy-distill",
     "alchemy-finalize",
     "alchemy-promote",
     "alchemy-revert",
     "alchemy-start",
-    "apply",
-    "apply-action",
-    "apply-archive",
-    "apply-rewrite",
     "ask",
-    "audit-backfill",
-    "audit-preview",
-    "auto-once",
-    "auto-resolve-actions",
-    "autonomy-disable",
-    "autonomy-enable",
-    "autonomy-status",
-    "backend-telemetry",
-    "batch-review",
-    "cache",
     "compile",
-    "dashboard",
-    "demote",
     "drop-image",
     "drop-note",
     "drop-pdf",
     "drop-repo",
     "drop-url",
     "file-back",
-    "ingest",
-    "l3-proposal-create",
-    "l3-proposal-generate",
-    "layout",
     "lint",
     "llm-check",
-    "llm-telemetry",
+    "metrics",
     "new-vault",
     "nightly",
-    "planner-log-list",
-    "planner-log-replay",
-    "planner-log-rollback",
-    "promote",
-    "reactivate-concept",
-    "report-subgraph",
-    "retire-concept",
-    "revert",
-    "revert-action",
-    "revert-archive",
-    "revert-rewrite",
-    "review",
-    "review-action",
-    "review-concept",
-    "review-next",
     "review-page",
     "review-queue",
-    "review-rewrite",
     "run-ask",
     "run-ask-resume",
     "run-ask-submit",
-    "run-compile",
-    "run-lint",
     "run-nightly",
-    "search",
     "shell-status",
-    "signals-list",
-    "signals-replay",
-    "signals-show",
-    "sync-evidence-graph",
     "sync-product-shell",
-    "today-snooze",
     "trace",
-    "vault-queue-drain",
-    "verify-rewrite",
     "watch",
 })
 

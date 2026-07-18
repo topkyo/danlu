@@ -345,11 +345,11 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async runReviewRewriteTransition(slug, status) {
-    await this.runCliAction(`Review Rewrite: ${slug}`, "review-rewrite", [slug, "--status", status]);
+    new Notice(this.t("Concept rewrite commands were removed in W3; use review-page on the concept page instead."));
   }
 
   async runReviewActionTransition(actionId, status) {
-    await this.runCliAction(`Review Action: ${actionId}`, "review-action", [actionId, "--status", status]);
+    new Notice(this.t("Machine-memory action commands were removed in W3; use review-page instead."));
   }
 
   visibleReviewPageCandidates() {
@@ -488,39 +488,19 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async runTodaySnoozeCommand(target, days = 1) {
-    const normalizedTarget = String(target || "").trim();
-    if (!normalizedTarget) {
-      return;
-    }
-    await this.runPluginCommand(
-      `${this.t("Snooze")}: ${truncateText(normalizedTarget, 48)}`,
-      ["today-snooze", normalizedTarget, "--days", String(days)],
-      { refreshAfter: true }
-    );
+    new Notice(this.t("Today snooze was removed in W4; open Review Center or handle the item directly."));
   }
 
   async runShellSearchCommand(query, limit = 8) {
-    const normalizedQuery = String(query || "").trim();
-    if (!normalizedQuery) {
-      new Notice(this.t("Search query cannot be empty."));
-      return;
-    }
-    const parsedLimit = Number.parseInt(String(limit || 8), 10);
-    await this.runPluginCommand(
-      `${this.t("Search")}: ${truncateText(normalizedQuery, 48)}`,
-      ["search", normalizedQuery, "--limit", String(Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 8)],
-      { refreshAfter: false, notice: false }
-    );
-    await this.loadShellSummaryFromDisk();
-    new Notice(this.t("Search completed: {query}", { query: truncateText(normalizedQuery, 60) }));
+    new Notice(this.t("Shell search was removed in W4; use Obsidian search and wiki pages instead."));
   }
 
   async runApplyAllAcceptedLowRiskCommand() {
-    await this.runCliAction(this.t("Apply All Low-Risk"), "apply-action", ["--all-accepted-low-risk"]);
+    new Notice(this.t("Batch review was removed in W4; use review-page for explicit page transitions."));
   }
 
   async runRevertLastBatchCommand() {
-    await this.runCliAction(this.t("Revert Last Batch"), "revert-action", ["--last-batch"]);
+    new Notice(this.t("Batch revert commands were removed in W3; inspect execution receipts manually."));
   }
 
   async openHomeNote() {
@@ -620,15 +600,15 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async runReportSubgraphCommand({ reportPath }) {
-    return runProductShellReportSubgraphCommand(this, { reportPath });
+    new Notice(this.t("Report subgraph was removed in W4; open graph artifacts from output/ manually if needed."));
   }
 
   collectReportCandidates() {
-    return collectProductShellReportCandidates(this);
+    return [];
   }
 
   openReportSubgraphPicker() {
-    return openProductShellReportSubgraphPicker(this);
+    this.runReportSubgraphCommand({ reportPath: "" });
   }
 
   async runDropUrlCommand({ url, title }) {
@@ -661,6 +641,31 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   openFileBackModal(prefill = {}) {
     this.openStructuredCommandModal(buildFileBackModalSpec(this, prefill));
+  }
+
+  openAlchemyStartModal(prefill = {}) {
+    this.openStructuredCommandModal(buildAlchemyStartModalSpec(this, prefill));
+  }
+
+  async runCompoundFileBack(suggest) {
+    const item = suggest && typeof suggest === "object" ? suggest : {};
+    const reportPath = String(item.report_path || item.reportPath || "").trim();
+    if (!reportPath) {
+      new Notice(this.t("缺少报告路径"));
+      return;
+    }
+    const label = String(item.title || this.t("沉淀")).trim() || this.t("沉淀");
+    await this.runCliAction(label, "file-back", [reportPath, "--kind", "judgment"]);
+  }
+
+  openCompoundAlchemyStart(suggest) {
+    const item = suggest && typeof suggest === "object" ? suggest : {};
+    const linkedRefs = Array.isArray(item.linked_refs) ? item.linked_refs : Array.isArray(item.linkedRefs) ? item.linkedRefs : [];
+    this.openAlchemyStartModal({
+      corpusId: String(item.corpus_id || item.corpusId || "").trim(),
+      topic: String(item.topic || "").trim(),
+      includeElixir: elixirIdFromLinkedRefs(linkedRefs),
+    });
   }
 
   openReviewPageModal(prefill = {}) {

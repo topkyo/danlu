@@ -22,4 +22,4 @@ Suggested Next Actions
 
 Advanced
 Run `aiwiki advanced ...` for system status, receipts, audit, repair, lanes, and debugging.
-Run `aiwiki metrics` for knowledge compounding metrics.
+Run `aiwiki advanced metrics` for knowledge compounding metrics.

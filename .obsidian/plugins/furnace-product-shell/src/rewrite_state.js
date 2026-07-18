@@ -138,5 +138,5 @@ function openRewriteFollowupForRecord(plugin, record) {
     plugin.openReviewRewriteModal({ slug: rewriteSlugs[0] });
     return;
   }
-  plugin.runUiAction(() => plugin.openReviewCenterView(), plugin.t("Open Review Center"));
+  plugin.runUiAction(() => plugin.openReviewNextTransitionPicker(), plugin.t("Review Next Page"));
 }

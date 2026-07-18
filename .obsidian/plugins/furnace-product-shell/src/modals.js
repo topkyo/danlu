@@ -138,63 +138,6 @@ class CaptureNoteModal extends Modal {
   }
 }
 
-class SearchCommandModal extends Modal {
-  constructor(app, plugin) {
-    super(app);
-    this.plugin = plugin;
-  }
-
-  onOpen() {
-    const { contentEl } = this;
-    const t = this.plugin.t.bind(this.plugin);
-    contentEl.empty();
-    contentEl.addClass("furnace-shell-view");
-    contentEl.createEl("h2", { text: t("搜索知识库") });
-    contentEl.createDiv({ cls: "furnace-modal-help", text: t("搜索 wiki、概念、判断、决策和派生页面。") });
-
-    const querySetting = new Setting(contentEl).setName(t("关键词"));
-    querySetting.nameEl.addClass("furnace-modal-field-required");
-    const queryInput = querySetting.controlEl.createEl("textarea");
-    queryInput.rows = 3;
-    queryInput.placeholder = t("输入关键词搜索……");
-    queryInput.addClass("furnace-shell-code");
-    const queryError = querySetting.controlEl.createDiv({ cls: "furnace-modal-error" });
-
-    var tagsRow = contentEl.createDiv({ cls: "furnace-modal-tags" });
-    ["来源", "概念", "判断", "决策", "报告"].forEach(function (tag) {
-      var tagEl = tagsRow.createDiv({ cls: "furnace-modal-tag", text: tag });
-      tagEl.addEventListener("click", function () {
-        var current = String(queryInput.value || "").trim();
-        queryInput.value = current ? current + " " + tag : tag;
-        queryInput.focus();
-      });
-    });
-
-    const limitSetting = new Setting(contentEl).setName(t("结果数量"));
-    const limitInput = limitSetting.controlEl.createEl("input", { type: "text" });
-    limitInput.value = "8";
-    limitInput.addClass("furnace-shell-code");
-
-    const self = this;
-    modalSubmitRow(contentEl, t("搜索"), t("取消"), function (btn) {
-      const query = String(queryInput.value || "").trim();
-      if (!query) {
-        showInlineError(queryError, t("搜索关键词不能为空。"));
-        return;
-      }
-      clearInlineError(queryError);
-      setSubmitLoading(btn, t("搜索中…"));
-      const parsedLimit = Number.parseInt(String(limitInput.value || "8"), 10);
-      self.close();
-      self.plugin.runUiAction(function () {
-        return self.plugin.runShellSearchCommand(query, Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 8);
-      }, t("搜索"));
-    }, function () { self.close(); });
-
-    queryInput.focus();
-  }
-}
-
 class DropUrlModal extends Modal {
   constructor(app, plugin) {
     super(app);

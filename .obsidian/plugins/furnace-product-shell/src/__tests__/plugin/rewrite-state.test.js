@@ -99,7 +99,7 @@ test("open rewrite recovery helper routes to the narrowest available UI action",
     openReviewRewriteTransitionPicker: (payload) => calls.push(["transition", payload]),
     openReviewRewriteContextPicker: (payload) => calls.push(["context", payload]),
     openReviewRewriteModal: (payload) => calls.push(["modal", payload]),
-    openReviewCenterView: () => calls.push(["center"]),
+    openReviewNextTransitionPicker: () => calls.push(["review-next"]),
     runUiAction: (action, label) => {
       calls.push(["run-ui", label]);
       action();
@@ -132,6 +132,6 @@ test("open rewrite recovery helper routes to the narrowest available UI action",
   expect(calls[2][1][0]).toMatchObject({ value: "concept-c", label: "Concept C" });
   expect(calls[2][1][0].description).toContain("wiki/rewrite-proposals/c.md");
   expect(calls[3]).toEqual(["transition", { slug: "concept-e", title: "Control concept-e" }]);
-  expect(calls[4]).toEqual(["run-ui", "Open Review Center"]);
-  expect(calls[5]).toEqual(["center"]);
+  expect(calls[4]).toEqual(["run-ui", "Review Next Page"]);
+  expect(calls[5]).toEqual(["review-next"]);
 });

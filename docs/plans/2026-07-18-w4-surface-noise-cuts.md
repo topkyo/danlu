@@ -20,8 +20,8 @@ drop (unified), today, advanced (thin), watch, compile, lint, ask*, file-back, r
 
 **Depends on:** none
 
-- [ ] Remove listed parsers/dispatch/legacy_argv; keep unified `drop`
-- [ ] **Verify:** `bash scripts/verify.sh python-static cli-smoke`
+- [x] Remove listed parsers/dispatch/legacy_argv; keep unified `drop`
+- [x] **Verify:** `bash scripts/verify.sh python-static cli-smoke`
 
 **Commit:** `feat(cut): remove W4 non-core CLI surfaces`
 
@@ -31,8 +31,8 @@ drop (unified), today, advanced (thin), watch, compile, lint, ask*, file-back, r
 
 **Depends on:** Task 1
 
-- [ ] Thin Advanced drawer; remove buttons for deleted commands; rebuild main.js
-- [ ] **Verify:** `bash scripts/verify.sh product-shell-static`
+- [x] Thin Advanced drawer; remove buttons for deleted commands; rebuild main.js
+- [x] **Verify:** `bash scripts/verify.sh product-shell-static`
 
 **Commit:** `fix(shell): thin Advanced; drop dead command UI`
 
@@ -42,9 +42,9 @@ drop (unified), today, advanced (thin), watch, compile, lint, ask*, file-back, r
 
 **Depends on:** Task 1
 
-- [ ] No-op or delete generators for agents pages / excess control HTML if safe
-- [ ] Active docs C51/C53; PROGRESS; `bash scripts/verify.sh all`
-- [ ] **Verify:** all PASS
+- [x] No-op or delete generators for agents pages / excess control HTML if safe
+- [x] Active docs C51/C53; PROGRESS; `bash scripts/verify.sh all`
+- [x] **Verify:** all PASS
 
 **Commit:** `feat(cut)+docs: W4 surface noise`
 

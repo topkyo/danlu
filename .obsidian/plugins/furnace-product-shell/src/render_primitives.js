@@ -311,40 +311,16 @@ function renderStatusPanel(plugin, container) {
   }
   plugin.renderInlineButtons(panel, [
     { label: "Refresh Furnace Shell", onClick: async () => plugin.refreshShellSummaryCommand() },
-    { label: "Open Recent Runs", kind: "ghost", onClick: async () => plugin.openRecentRunsView() },
   ]);
 }
 
-function resolveBatchHintInvocation(plugin, action) {
-  // Round 43 / Stage C: batch hint commands -> existing pickers / runners.
-  // Returns { label, run } or null when the action is not a recognised batch hint.
+function resolveBatchHintInvocation(_plugin, action) {
   if (!action || typeof action !== "object") {
     return null;
   }
   const kind = String(action.kind || "");
-  if (kind !== "batch-review" && kind !== "batch-apply") {
+  if (kind === "batch-review" || kind === "batch-apply") {
     return null;
-  }
-  const command = String(action.command || "");
-  if (kind === "batch-apply" && command.includes("apply-action --all-accepted-low-risk")) {
-    return {
-      label: plugin.t("Run batch"),
-      run: () => plugin.runApplyAllAcceptedLowRiskCommand(),
-    };
-  }
-  if (kind === "batch-review" && command.includes("review-page --all-pending")) {
-    return {
-      label: plugin.t("Run batch"),
-      run: () => plugin.openReviewBatchSuggestionPicker(),
-    };
-  }
-  if (kind === "batch-review" && command.includes("review-action --all-pending")) {
-    // Action-kind batch review still routes through the batch suggestion picker;
-    // the picker filters to the active suggestion bundle, so the same entry point works.
-    return {
-      label: plugin.t("Run batch"),
-      run: () => plugin.openReviewBatchSuggestionPicker(),
-    };
   }
   return null;
 }
@@ -381,6 +357,19 @@ function renderSuggestedNextActionsBlock(plugin, container, options = {}) {
       runButton.addEventListener("click", () => {
         plugin.runUiAction(batchInvocation.run, `Run batch hint: ${action.title || action.command}`);
       });
+    } else if (action.kind === "compound-suggest") {
+      const compoundAction = String(action.action || "").trim();
+      if (compoundAction === "file-back-judgment") {
+        const fileBackBtn = buttons.createEl("button", { text: plugin.t("沉淀"), cls: "mod-cta" });
+        fileBackBtn.addEventListener("click", () => {
+          plugin.runUiAction(() => plugin.runCompoundFileBack(action), `Compound file-back: ${action.title || action.path}`);
+        });
+      } else if (compoundAction === "alchemy-start") {
+        const alchemyBtn = buttons.createEl("button", { text: plugin.t("凝丹"), cls: "mod-cta" });
+        alchemyBtn.addEventListener("click", () => {
+          plugin.runUiAction(() => plugin.openCompoundAlchemyStart(action), `Compound alchemy-start: ${action.title || action.path}`);
+        });
+      }
     }
     if (action.path) {
       const openButton = buttons.createEl("button", { text: plugin.t("Open") });

@@ -20,7 +20,7 @@ related_docs:
 - `src/aiwiki/app_utils.py`：runtime write lock、hash、frontmatter、markdown / JSON helpers、`safe_fetch` 等底层 primitives。
 - `src/aiwiki/app_state.py`：**legacy central hub**，path / state / json-document primitives 的单点入口；改动半径大，需额外谨慎。
 - `src/aiwiki/app_protocol.py`：**legacy central hub**，layout、schema scaffolding、protocol runtime、review windows 和默认 runtime 规则。
-- `src/aiwiki/cli/`：CLI parser / dispatch / product-first command surface；普通入口固定为 `drop` / `today` / `metrics` / `advanced`，legacy top-level 命令只保留兼容。
+- `src/aiwiki/cli/`：CLI parser / dispatch / product-first command surface；普通入口固定为 `drop` / `today` / `advanced`；operator 命令（含 `metrics`）只注册在 `advanced` 下，旧顶层名靠 argv rewrite compat。
 - `src/aiwiki/drop.py`：`drop-url` / `drop-pdf` / `drop-image` / `drop-repo` / `drop-note` 的 raw materialization owner；用户入口推荐 `drop markdown`。
 - `src/aiwiki/compile/`：compile pipeline phase owner（content/runtime/output/persist）；`app_compile.py` 仍是 legacy orchestration hotspot，新逻辑优先下沉到 `compile/*` 或明确 owner module。
 - `src/aiwiki/content/`：source / concept / derived / memory output 的主要 owner。
@@ -28,7 +28,7 @@ related_docs:
 - `src/aiwiki/render/`：index / dashboard / output pack / domain pilot / judgment asset render owner。
 - `src/aiwiki/memory/`：machine memory graph、execution surfaces、trace/recall/batch 相关 owner；legacy `app_memory.py` 已删除（Round 8），query helpers 在 `app_memory_query.py`。
 - `src/aiwiki/execution/`：execution bundles、receipts、apply/revert/audit、alchemy proposal mutation 的事实层 owner；`app_execution.py` 保留 receipt / bundle assembly 入口。
-- `src/aiwiki/runner/`：`run-compile` / `run-ask` / `nightly` / `watch` / alchemy 等 high-level workflow owner；`runner/alchemy.py` 是 deferred residual hotspot。
+- `src/aiwiki/runner/`：`run-ask` / `nightly` / `watch` / alchemy min-chain 等 high-level workflow owner；AgentOS 膨胀面（`run-compile`、`alchemy auto/lane`、signals/planner CLI）已在 W3 删除。
 - `src/aiwiki/planner/` 与 `src/aiwiki/signals/`：planner dry-run / log / safe primitive policy，以及 review / repair / aging / escalation signal source。
 - 金丹主链路已落地：`alchemy-start / alchemy-distill / alchemy-finalize / alchemy-promote` 覆盖 candidate plane、settled plane、DAG/provenance gate、promote/revert/demote receipt、Stage-3 compounding acceptance 与 maturity gate 的 `elixir_quality_proof`；剩余 planned 只指显式 LLM/human contract 下的 semantic distillation。
 - `src/aiwiki/app_shell/`：Product Shell summary、controls、status、HTML/surface assembly；Obsidian 插件源码在 `.obsidian/plugins/furnace-product-shell/src/`，它是用户 surface，不拥有 runtime SoT。
@@ -46,9 +46,9 @@ related_docs:
 
 | Layer | Commands | Purpose |
 | --- | --- | --- |
-| `primary` | `drop`, `today`, `metrics`, `advanced` | 日常投料、今日简报、健康度，以及进入 operator 面。`drop` 下含 `url / pdf / image / repo / markdown`。 |
+| `primary` | `drop`, `today`, `advanced` | 日常投料、今日简报，以及进入 operator 面（compile / lint / metrics / review-page 等）。`drop` 下含 `url / pdf / image / repo / markdown`。 |
 | `advanced` | `aiwiki advanced ...` | 治理、编译、执行、审计、协议、LLM 和调试；完整列表见 `aiwiki advanced --help`。 |
-| `compat` | 旧顶层名（rewrite only） | 不在 argparse 顶层注册；`drop-*` → `drop <kind>`，其余 → `advanced <cmd>`。 |
+| `compat` | 旧顶层名（rewrite only） | 不在 argparse 顶层注册；`drop-*` → `drop <kind>`，其余 → `advanced <cmd>`（含 legacy `metrics` / `compile` 等）。 |
 
 ### 当前 P1-P5 稳定化清单（2026-05-24）
 
@@ -58,7 +58,7 @@ related_docs:
 | --- | --- | --- |
 | P1 Hub slimming | 继续用 seam map / owner map 约束大 hub；`runner/alchemy.py` 与 Product Shell `plugin.js` 保持 deferred residual hotspots。 | 不做 broad rewrite；每轮只削一个有测试的 owner seam。 |
 | P2 `run-ask` receipt matrix | 所有 `run-ask` success execution receipts 统一带 `receipt_matrix_version`、`run_ask_path`、`artifact_status`。 | LLM failure / degraded 仍不伪造 success execution receipt。 |
-| P3 CLI product-first | 顶层只注册 `drop` / `today` / `metrics` / `advanced`；旧顶层名靠 rewrite compat。 | 不删除 advanced 下的 operator 命令，避免破坏脚本与 dogfood。 |
+| P3 CLI product-first | 顶层只注册 `drop` / `today` / `advanced`；旧顶层名靠 rewrite compat。 | operator 命令仍在 `advanced` 下，避免破坏脚本与 dogfood。 |
 | P4 Planner phase proof | 新 planner-log record 写入 decision-derived `phase`；旧无 `phase` 的 v1 records 仍可 replay。 | `phase` 只是可复算调度标签，不直接触发 side effect。 |
 | P5 Long-run proof | 当前 release proof 是 3-day live window；14/30-day natural run 仍是后续观测目标。 | 不伪造尚未自然发生的长期窗口。 |
 
@@ -84,7 +84,7 @@ scripts/uninstall_launchd_service.sh
 
 常驻 `watch` 的默认职责是稳定入炉：发现 `raw/inbox` 变化后跑 deterministic compile / lint，保留 provenance、source page、concept graph 和 review queue 的最低可用状态。它默认不 inline 阻塞跑 LLM；如果确实要让 watcher 同步执行 LLM compile，可以显式设置 `AIWIKI_WATCH_DETERMINISTIC_ONLY=0`，但这会增加 single-writer lock 占用，不作为默认推荐。
 
-LLM enrichment 仍然是炼丹炉主路径，但放在受控 worker 入口：`run-compile`、`run-ask`、`run-nightly` 和 nightly timer。Product Shell 对话框属于用户显式触发的 `run-ask` / 本地统计入口，可以跑 LLM 或确定性本地回答；它不是常驻 watcher。这样 watcher 不会长时间占用 single-writer lock，LLM 失败也不会阻断原料进入炉子。
+LLM enrichment 仍然是炼丹炉主路径，但放在受控 worker 入口：`run-ask`、`run-nightly` 和 nightly timer。W3 已删除 `run-compile` / `run-lint` 与 AgentOS governance CLI（`review-action`、`apply-action`、`signals-*`、`planner-log-*`、`alchemy auto/lane` 等）；保留 `compile` / `lint` / `nightly` 确定性链路与 `alchemy-start/distill/finalize/promote/revert/demote`。
 
 默认 unattended 路径按“**等待投料 → 炼丹 → 产出 → 回馈 → 受控学习**”运行：watcher 负责等待投料和最低可用 compile；nightly 负责每天炼化、巡检、修复、回馈和学习；产物写到 `wiki/`、`output/`、receipt / audit；所有会改写系统行为的学习都必须保留 receipt、可审计、可回滚，不允许覆盖 `raw/` 或隐式切 backend。
 
@@ -103,6 +103,8 @@ runtime policy 缺省采用 `autonomy_profile=agentic`：未写 `.aiwiki/state/a
 > 2026-07-15 scripts 清理：本节早先引用的 `scripts/dogfood_maturity_gate.py summarize --days 3` 等 heuristic 已删除。当前以 **manual 仅异常审计** 为成熟度观察口径：人盯 `.aiwiki/state/execution-receipts/` 与 `output/control/llm-receipts.jsonl` 中的异常事件；不依赖自动 3-day verdict 给出"成熟"宣称。
 
 ## LLM 后端
+
+**产品默认（B44 product lock）：** 炼丹炉产品面只锁定 `opencode-api/deepseek-v4-pro` 一条主路由；Shell、CLI 与安装脚本均以此为准，runtime **不会**自动 cross-backend fallback。`deepseek-api`、`openai-api`、`anthropic-api` 仍作为开发者 escape hatch 保留，需显式设置 `AIWIKI_LLM_BACKEND` 切换。
 
 支持：
 - API provider：`deepseek-api`、`opencode-api`、`openai-api`、`anthropic-api`

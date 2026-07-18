@@ -44,8 +44,11 @@ from ..app_protocol import (
     schedule_review_windows,
 )
 from ..app_queries import (
+    build_ask_used_refs,
+    compound_rank_boosts,
     human_query_title,
     rank_sources,
+    ranked_compound_page_paths,
     render_report,
     wiki_requires_compile,
 )
@@ -222,22 +225,29 @@ def _collect_curated_provenance_refs(
 
 
 def _merge_source_files_frontmatter(path: Path, refs: list[str]) -> None:
+    _merge_frontmatter_string_list(path, "source_files", refs, merge_existing=True)
+
+
+def _merge_frontmatter_string_list(path: Path, key: str, refs: list[str], *, merge_existing: bool = False) -> None:
     cleaned: list[str] = []
     for ref in refs:
         normalized = str(ref).strip()
         if normalized and normalized not in cleaned:
             cleaned.append(normalized)
-    if not cleaned:
+    if not cleaned and not merge_existing:
         return
 
     original = path.read_text(encoding="utf-8", errors="replace")
     frontmatter = parse_frontmatter(original)
     merged: list[str] = []
-    for ref in [*_frontmatter_string_list(frontmatter, "source_files"), *cleaned]:
+    existing = _frontmatter_string_list(frontmatter, key) if merge_existing else []
+    for ref in [*existing, *cleaned]:
         if ref not in merged:
             merged.append(ref)
+    if not merged:
+        return
 
-    block = ["source_files:", *[f'  - "{ref}"' for ref in merged]]
+    block = [f"{key}:", *[f'  - "{ref}"' for ref in merged]]
     lines = original.splitlines()
     has_frontmatter = bool(lines) and lines[0].strip() == "---"
     close_idx: int | None = None
@@ -254,7 +264,7 @@ def _merge_source_files_frontmatter(path: Path, refs: list[str]) -> None:
     filtered: list[str] = lines[:1]
     skip_list_items = False
     for line in lines[1:close_idx]:
-        if line.startswith("source_files:"):
+        if line.startswith(f"{key}:"):
             skip_list_items = True
             continue
         if skip_list_items and line.startswith("  - "):
@@ -451,13 +461,14 @@ def ask_question(
         archive_candidates=archive_candidates,
         no_cache=no_cache,
     )
+    compound_source_boosts, compound_concept_boosts = compound_rank_boosts(memory, machine_query)
     ranked_concepts = _app_compile.rank_concepts(
         root,
         question,
-        boost_concept_slugs=set(machine_query["ranked_concept_slugs"]),
+        boost_concept_slugs=set(machine_query["ranked_concept_slugs"]) | compound_concept_boosts,
         protocol=active_protocol,
     )
-    boosted_ids: set[str] = set(machine_query["ranked_source_ids"])
+    boosted_ids: set[str] = set(machine_query["ranked_source_ids"]) | compound_source_boosts
     for concept in ranked_concepts:
         for source_page in concept.get("source_pages", []):
             if isinstance(source_page, str) and source_page.startswith("wiki/sources/") and source_page.endswith(".md"):
@@ -519,6 +530,13 @@ def ask_question(
         ranked,
     )
     _merge_source_files_frontmatter(destination, curated_provenance_refs)
+    compound_paths = ranked_compound_page_paths(machine_query)
+    used_refs = build_ask_used_refs(
+        ranked_sources=ranked,
+        ranked_concepts=ranked_concepts,
+        compound_paths=compound_paths,
+    )
+    _merge_frontmatter_string_list(destination, "used_refs", used_refs)
     anchors = _build_graph_anchor_node_ids(
         machine_query,
         memory,
@@ -666,6 +684,7 @@ def ask_question(
         "active_corpus_id": active_corpus["corpus_id"],
         "ranked_sources": [entry["id"] for entry in ranked],
         "ranked_concepts": [concept["slug"] for concept in ranked_concepts],
+        "used_refs": used_refs,
         "graph_anchor_node_ids": anchors,
         "machine_memory_query": machine_query,
         "index_pages": [
@@ -675,23 +694,12 @@ def ask_question(
             "wiki/indexes/decisions.md",
             "wiki/indexes/judgments.md",
             "wiki/indexes/judgment-assets.md",
-            "wiki/indexes/agent-workbench.md",
-            "wiki/indexes/cognitive-history.md",
-            "wiki/indexes/output-packs.md",
-            "wiki/indexes/domain-pilots.md",
             "wiki/indexes/protocols.md",
             "wiki/indexes/review-queue.md",
             "wiki/indexes/review-center.md",
-            "wiki/indexes/aging-report.md",
             "wiki/indexes/compile-status.md",
-            "wiki/indexes/concept-quality.md",
             "wiki/indexes/machine-memory.md",
             "wiki/indexes/graph-view.md",
-            "wiki/indexes/machine-memory-topology.md",
-            "wiki/indexes/machine-memory-actions.md",
-            "wiki/indexes/machine-memory-repair-plan.md",
-            "wiki/indexes/graph-health.md",
-            "wiki/indexes/drift-report.md",
             "wiki/indexes/repair-backlog.md",
             "schema/index.md",
             "schema/protocols/index.md",

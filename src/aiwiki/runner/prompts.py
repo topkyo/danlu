@@ -25,7 +25,6 @@ ASK_INDEX_PAGES_BASE = (
     "wiki/indexes/index.md",
     "wiki/indexes/sources.md",
     "wiki/indexes/concepts.md",
-    "wiki/indexes/concept-quality.md",
     "wiki/indexes/machine-memory.md",
     "schema/index.md",
     "schema/protocols/index.md",
@@ -54,10 +53,14 @@ ASK_PROMPT_PROFILES = {
         "protocol_page_chars": 900,
         "concept_page_chars": 1000,
         "source_page_chars": 4200,
+        "judgment_page_chars": 1200,
+        "elixir_page_chars": 1200,
         "max_index_pages": 6,
         "max_protocol_pages": 2,
         "max_concepts": 2,
         "max_sources": 2,
+        "max_judgments": 2,
+        "max_elixirs": 1,
     },
     "lean": {
         "max_total_chars": 16000,
@@ -65,10 +68,14 @@ ASK_PROMPT_PROFILES = {
         "protocol_page_chars": 700,
         "concept_page_chars": 700,
         "source_page_chars": 3200,
+        "judgment_page_chars": 900,
+        "elixir_page_chars": 900,
         "max_index_pages": 2,
         "max_protocol_pages": 1,
         "max_concepts": 1,
         "max_sources": 1,
+        "max_judgments": 1,
+        "max_elixirs": 1,
     },
 }
 COMPILE_PROMPT_PROFILES = {
@@ -330,6 +337,8 @@ def _build_ask_prompt(
     previous_output_summary: str | None = None,
     material_context: str = "",
     prompt_profile: str = "balanced",
+    judgment_pages: list[tuple[str, str]] | None = None,
+    elixir_pages: list[tuple[str, str]] | None = None,
 ) -> str:
     template = _load_prompt(root, "ask.md")
     profile = _ask_prompt_profile(prompt_profile)
@@ -438,6 +447,64 @@ def _build_ask_prompt(
             included_chars += len(block)
         if omitted:
             sections.append(f"- Omitted `{omitted}` additional concept page(s) for prompt profile `{prompt_profile}`.")
+    judgment_pages = list(judgment_pages or [])
+    elixir_pages = list(elixir_pages or [])
+    sections.extend(
+        [
+            "## Judgment Pages",
+        ]
+    )
+    included_chars += len(sections[-1])
+    if not judgment_pages:
+        sections.append("- No ranked confirmed judgment pages were available.")
+    else:
+        omitted = 0
+        for index, (page_id, content) in enumerate(judgment_pages):
+            if index >= profile["max_judgments"]:
+                omitted = len(judgment_pages) - index
+                break
+            block = "\n".join(
+                [
+                    f"### wiki/judgments/{page_id}.md",
+                    _fit_prompt_section(content, max_chars=profile["judgment_page_chars"]),
+                    "",
+                ]
+            )
+            if included_chars + len(block) > profile["max_total_chars"]:
+                omitted = len(judgment_pages) - index
+                break
+            sections.append(block)
+            included_chars += len(block)
+        if omitted:
+            sections.append(f"- Omitted `{omitted}` additional judgment page(s) for prompt profile `{prompt_profile}`.")
+    sections.extend(
+        [
+            "## Elixir Pages",
+        ]
+    )
+    included_chars += len(sections[-1])
+    if not elixir_pages:
+        sections.append("- No ranked settled elixir pages were available.")
+    else:
+        omitted = 0
+        for index, (elixir_id, content) in enumerate(elixir_pages):
+            if index >= profile["max_elixirs"]:
+                omitted = len(elixir_pages) - index
+                break
+            block = "\n".join(
+                [
+                    f"### wiki/elixirs/{elixir_id}.md",
+                    _fit_prompt_section(content, max_chars=profile["elixir_page_chars"]),
+                    "",
+                ]
+            )
+            if included_chars + len(block) > profile["max_total_chars"]:
+                omitted = len(elixir_pages) - index
+                break
+            sections.append(block)
+            included_chars += len(block)
+        if omitted:
+            sections.append(f"- Omitted `{omitted}` additional elixir page(s) for prompt profile `{prompt_profile}`.")
     sections.extend(
         [
             "## Source Pages",
@@ -545,6 +612,8 @@ def _render_machine_query(machine_memory_query: dict[str, Any]) -> str:
     direct_concept_slugs = machine_memory_query.get("direct_concept_slugs", [])
     ranked_source_ids = machine_memory_query.get("ranked_source_ids", [])
     ranked_concept_slugs = machine_memory_query.get("ranked_concept_slugs", [])
+    ranked_judgment_ids = machine_memory_query.get("ranked_judgment_ids", [])
+    ranked_elixir_ids = machine_memory_query.get("ranked_elixir_ids", [])
     supporting_edges = machine_memory_query.get("supporting_edges", [])
 
     lines = [
@@ -557,6 +626,8 @@ def _render_machine_query(machine_memory_query: dict[str, Any]) -> str:
         f"- Direct concept hits: `{', '.join(direct_concept_slugs) or 'none'}`",
         f"- Ranked source candidates: `{', '.join(ranked_source_ids) or 'none'}`",
         f"- Ranked concept candidates: `{', '.join(ranked_concept_slugs) or 'none'}`",
+        f"- Ranked judgment candidates: `{', '.join(ranked_judgment_ids) or 'none'}`",
+        f"- Ranked elixir candidates: `{', '.join(ranked_elixir_ids) or 'none'}`",
         f"- Bridge concepts: `{', '.join(machine_memory_query.get('bridge_concept_slugs', [])) or 'none'}`",
         f"- Touched components: `{', '.join(machine_memory_query.get('touched_component_ids', [])) or 'none'}`",
         "- Supporting edges:",
@@ -571,6 +642,8 @@ def _render_machine_query(machine_memory_query: dict[str, Any]) -> str:
     subgraph = machine_memory_query.get("query_subgraph", {})
     lines.append(f"- Query subgraph sources: `{', '.join(node['id'] for node in subgraph.get('sources', [])) or 'none'}`")
     lines.append(f"- Query subgraph concepts: `{', '.join(node['slug'] for node in subgraph.get('concepts', [])) or 'none'}`")
+    lines.append(f"- Query subgraph judgments: `{', '.join(node.get('page_id', '') for node in subgraph.get('judgments', [])) or 'none'}`")
+    lines.append(f"- Query subgraph elixirs: `{', '.join(node.get('elixir_id', '') for node in subgraph.get('elixirs', [])) or 'none'}`")
     lines.append(f"- Query subgraph edge count: `{len(subgraph.get('edges', []))}`")
     routes = machine_memory_query.get("query_routes", [])
     lines.append(f"- Query routes: `{len(routes)}`")
@@ -640,10 +713,6 @@ def _build_lint_prompt(root: Path, deterministic_report: str, prompt_profile: st
         "wiki/indexes/concepts.md",
         "wiki/indexes/compile-status.md",
         "wiki/indexes/machine-memory.md",
-        "wiki/indexes/machine-memory-topology.md",
-        "wiki/indexes/machine-memory-actions.md",
-        "wiki/indexes/graph-health.md",
-        "wiki/indexes/drift-report.md",
     )
     omitted_indexes = 0
     for index, relative in enumerate(index_pages):

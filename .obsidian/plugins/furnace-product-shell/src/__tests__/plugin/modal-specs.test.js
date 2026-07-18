@@ -51,8 +51,8 @@ function makePlugin(overrides = {}) {
     runReviewPageBatchTransition: async (paths, status, note, confidence) => {
       calls.push({ label: "batch", command: "review-page", paths, status, note, confidence });
     },
-    runReportSubgraphCommand: async (values) => {
-      calls.push({ label: "report-subgraph", command: "report-subgraph", values });
+    runApplyAllAcceptedLowRiskCommand: async () => {
+      calls.push({ label: "apply-all-low-risk", command: "notice" });
     },
   };
 }
@@ -79,7 +79,7 @@ test("review page modal spec keeps fields and submit args stable", async () => {
   });
 });
 
-test("apply action modal spec includes optional bundle and dry-run args", async () => {
+test("apply action modal spec routes through removed-command notice hook", async () => {
   const context = loadModalSpecContext();
   const plugin = makePlugin();
   const spec = context.buildApplyActionModalSpec(plugin, { actionId: "act-1", bundle: "output/actions/act-1.json", dryRun: true });
@@ -92,9 +92,8 @@ test("apply action modal spec includes optional bundle and dry-run args", async 
     dry_run: true,
   });
   expect(plugin.calls[0]).toEqual({
-    label: "Apply Action: act-1",
-    command: "apply-action",
-    args: ["act-1", "--note", "safe", "--bundle", "output/actions/act-1.json", "--dry-run"],
+    label: "apply-all-low-risk",
+    command: "notice",
   });
 });
 
@@ -126,22 +125,32 @@ test("batch review modal spec parses page lines and rejects empty batches", asyn
   await expect(spec.onSubmit({ pages: "", status: "accepted" })).rejects.toThrow("Batch review requires at least one page path.");
 });
 
-test("report subgraph modal spec switches between select and manual field", async () => {
+test("file back modal defaults kind to judgment", async () => {
   const context = loadModalSpecContext();
   const plugin = makePlugin();
-  const spec = context.buildReportSubgraphModalSpec(plugin, [
-    { value: "output/reports/a.md", label: "Report A" },
-  ]);
+  const spec = context.buildFileBackModalSpec(plugin, {});
 
-  expect(spec.fields[0]).toMatchObject({ key: "reportPath", kind: "select", initialValue: "output/reports/a.md" });
-  await spec.onSubmit({ reportPath: "output/reports/a.md" });
-  expect(plugin.calls[0]).toEqual({
-    label: "report-subgraph",
-    command: "report-subgraph",
-    values: { reportPath: "output/reports/a.md" },
+  expect(spec.fields.find((field) => field.key === "kind").initialValue).toBe("judgment");
+});
+
+test("alchemy start modal spec submits corpus and topic args", async () => {
+  const context = loadModalSpecContext();
+  const plugin = makePlugin();
+  const spec = context.buildAlchemyStartModalSpec(plugin, {
+    corpusId: "corpus-a",
+    topic: "Follow-up thesis",
+    includeElixir: "elixir-old",
   });
 
-  const manualSpec = context.buildReportSubgraphModalSpec(plugin, []);
-  expect(manualSpec.fields[0]).toMatchObject({ key: "reportPath", required: true });
-  expect(manualSpec.fields[0].kind).toBeUndefined();
+  expect(spec.fields.map((field) => field.key)).toEqual(["corpus_id", "topic", "include_elixir"]);
+  await spec.onSubmit({
+    corpus_id: "corpus-a",
+    topic: "Follow-up thesis",
+    include_elixir: "elixir-old",
+  });
+  expect(plugin.calls[0]).toEqual({
+    label: "Alchemy Start: corpus-a",
+    command: "alchemy-start",
+    args: ["corpus-a", "--topic", "Follow-up thesis", "--include-elixir", "elixir-old"],
+  });
 });

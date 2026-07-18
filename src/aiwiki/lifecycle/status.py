@@ -13,6 +13,12 @@ from ..app_protocol import (
     PENDING_REWRITE_PROPOSAL_STATUSES,
 )
 
+THIN_REVIEW_TRANSITIONS = ("pending-review", "confirmed", "discarded")
+
+_PENDING_CURATED_STATUSES = frozenset({"proposed", "needs-revisit", "tentative", "tracking"})
+_CONFIRMED_CURATED_STATUSES = frozenset({"approved", "confirmed"})
+_DISCARDED_CURATED_STATUSES = frozenset({"superseded", "rejected"})
+
 
 def default_curated_status(kind: str) -> str:
     if kind == "decision":
@@ -38,19 +44,68 @@ def page_needs_review(kind: str, status: str) -> bool:
     return False
 
 
+def thin_curated_status_group(status: str) -> str:
+    normalized = str(status or "").strip()
+    if normalized in _PENDING_CURATED_STATUSES:
+        return "pending-review"
+    if normalized in _CONFIRMED_CURATED_STATUSES:
+        return "confirmed"
+    if normalized in _DISCARDED_CURATED_STATUSES:
+        return "discarded"
+    return normalized
+
+
 def display_curated_status(status: str) -> str:
+    thin = thin_curated_status_group(status)
     mapping = {
-        "filed": "已归档",
-        "proposed": "待决策",
-        "approved": "已批准",
-        "needs-revisit": "待复审",
-        "superseded": "已替代",
-        "tentative": "暂定判断",
-        "tracking": "持续观察",
+        "pending-review": "待审",
         "confirmed": "已确认",
-        "rejected": "已否决",
+        "discarded": "废弃",
+        "filed": "已归档",
     }
-    return mapping.get(status, status or "unknown")
+    if thin in mapping:
+        return mapping[thin]
+    return status or "unknown"
+
+
+def resolve_thin_review_transition(kind: str, current_status: str, transition: str) -> str:
+    """Map thin review transition tokens (or legacy canonical statuses) to curated status."""
+    normalized_kind = str(kind or "").strip()
+    normalized_transition = str(transition or "").strip()
+    normalized_current = str(current_status or "").strip()
+    valid_statuses = valid_curated_statuses(normalized_kind)
+    if normalized_transition in valid_statuses:
+        return normalized_transition
+    if normalized_kind == "decision":
+        resolved = {
+            "pending-review": "needs-revisit",
+            "confirmed": "approved",
+            "discarded": "superseded",
+        }.get(normalized_transition)
+    elif normalized_kind == "judgment":
+        resolved = {
+            "pending-review": "tracking",
+            "confirmed": "confirmed",
+            "discarded": "rejected",
+        }.get(normalized_transition)
+    else:
+        resolved = None
+    if not resolved or resolved not in valid_statuses:
+        thin_hint = ", ".join(THIN_REVIEW_TRANSITIONS)
+        canonical_hint = ", ".join(valid_statuses)
+        raise ValueError(
+            f"Unsupported review transition for {normalized_kind}: {normalized_transition!r}; "
+            f"expected one of: ({thin_hint}) or canonical ({canonical_hint}) "
+            f"from current status {normalized_current!r}"
+        )
+    allowed = curated_page_transition_profile(normalized_kind, normalized_current).get("allowed_transitions", [])
+    thin_token = normalized_transition if normalized_transition in THIN_REVIEW_TRANSITIONS else None
+    if thin_token and thin_token not in allowed:
+        raise ValueError(
+            f"Review transition {normalized_transition!r} is not allowed from current status "
+            f"{normalized_current!r} for {normalized_kind} pages."
+        )
+    return resolved
 
 
 def action_needs_review(status: str) -> bool:
@@ -106,47 +161,41 @@ def transition_profile(
 
 
 def curated_page_transition_profile(kind: str, status: str) -> dict[str, Any]:
-    if kind == "decision":
-        if status == "proposed":
-            return transition_profile(
-                ["approved", "needs-revisit", "superseded"],
-                preferred_transitions=["approved", "needs-revisit"],
-                default_transition="approved",
-            )
-        if status == "approved":
-            return transition_profile(
-                ["needs-revisit", "superseded"],
-                preferred_transitions=["needs-revisit"],
-                default_transition="needs-revisit",
-            )
-        if status == "needs-revisit":
-            return transition_profile(
-                ["approved", "superseded"],
-                preferred_transitions=["approved"],
-                default_transition="approved",
-            )
+    normalized_kind = str(kind or "").strip()
+    normalized_status = str(status or "").strip()
+    if normalized_kind not in {"decision", "judgment"}:
         return transition_profile([])
-    if kind == "judgment":
-        if status == "tentative":
-            return transition_profile(
-                ["tracking", "confirmed", "rejected"],
-                preferred_transitions=["tracking", "confirmed"],
-                default_transition="tracking",
-            )
-        if status == "tracking":
-            return transition_profile(
-                ["confirmed", "rejected"],
-                preferred_transitions=["confirmed"],
-                default_transition="confirmed",
-            )
-        if status == "confirmed":
-            return transition_profile(
-                ["tracking", "rejected"],
-                preferred_transitions=["tracking"],
-                default_transition="tracking",
-            )
+
+    confirmed_status = "approved" if normalized_kind == "decision" else "confirmed"
+    discarded_status = "superseded" if normalized_kind == "decision" else "rejected"
+    pending_statuses = (
+        {"proposed", "needs-revisit"} if normalized_kind == "decision" else {"tentative", "tracking"}
+    )
+
+    if normalized_status == discarded_status:
         return transition_profile([])
-    return transition_profile([])
+
+    allowed: list[str] = []
+    preferred: list[str] = []
+    default_transition = ""
+
+    if normalized_status != confirmed_status:
+        allowed.append("confirmed")
+        preferred.append("confirmed")
+        default_transition = "confirmed"
+
+    allowed.append("discarded")
+
+    if normalized_status not in pending_statuses:
+        allowed.append("pending-review")
+        if not default_transition:
+            default_transition = "pending-review"
+
+    return transition_profile(
+        allowed,
+        preferred_transitions=preferred,
+        default_transition=default_transition,
+    )
 
 
 def rewrite_transition_profile(status: str) -> dict[str, Any]:

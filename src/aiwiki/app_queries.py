@@ -541,6 +541,8 @@ def machine_memory_query_plan_lines(machine_query: dict[str, Any]) -> list[str]:
         f"- 图谱意图词：`{', '.join(machine_query.get('matched_graph_markers', [])) or 'none'}`",
         f"- 提升权重的来源：`{', '.join(machine_query.get('ranked_source_ids', [])) or 'none'}`",
         f"- 提升权重的概念：`{', '.join(machine_query.get('ranked_concept_slugs', [])) or 'none'}`",
+        f"- 提升权重的判断：`{', '.join(machine_query.get('ranked_judgment_ids', [])) or 'none'}`",
+        f"- 提升权重的金丹：`{', '.join(machine_query.get('ranked_elixir_ids', [])) or 'none'}`",
         f"- 协议 shard 来源：`{', '.join(machine_query.get('protocol_shard_source_ids', [])) or 'none'}`",
         f"- 时间偏置：`{str(machine_query.get('time_focus') or 'none')}`",
         f"- 时间意图词：`{', '.join(machine_query.get('time_focus_markers', [])) or 'none'}`",
@@ -634,6 +636,171 @@ def compact_source_link_lines(
     return [f"- [{entry['title']}](../../wiki/sources/{entry['id']}.md)" for entry in entries[:limit]]
 
 
+def compound_rank_boosts(
+    memory: dict[str, Any],
+    machine_query: dict[str, Any],
+) -> tuple[set[str], set[str]]:
+    """Derive source/concept boost ids from ranked confirmed judgments and settled elixirs."""
+
+    ranked_judgments = {
+        str(page_id).strip()
+        for page_id in machine_query.get("ranked_judgment_ids", []) or []
+        if str(page_id).strip()
+    }
+    ranked_elixirs = {
+        str(elixir_id).strip()
+        for elixir_id in machine_query.get("ranked_elixir_ids", []) or []
+        if str(elixir_id).strip()
+    }
+    boost_sources: set[str] = set()
+    edges = memory.get("edges", {})
+    source_to_concepts: dict[str, set[str]] = {}
+    for edge in edges.get("source_to_concept", []):
+        if not isinstance(edge, dict):
+            continue
+        source_id = str(edge.get("source_id") or "").strip()
+        concept_slug = str(edge.get("concept_slug") or "").strip()
+        if source_id and concept_slug:
+            source_to_concepts.setdefault(source_id, set()).add(concept_slug)
+
+    for node in memory.get("judgment_nodes", []):
+        if not isinstance(node, dict):
+            continue
+        page_id = str(node.get("page_id") or "").strip()
+        if page_id not in ranked_judgments:
+            continue
+        for source_id in node.get("source_ids", []) or []:
+            normalized = str(source_id or "").strip()
+            if normalized:
+                boost_sources.add(normalized)
+
+    for edge in edges.get("source_to_judgment", []):
+        if not isinstance(edge, dict):
+            continue
+        page_id = str(edge.get("page_id") or "").strip()
+        source_id = str(edge.get("source_id") or "").strip()
+        if page_id in ranked_judgments and source_id:
+            boost_sources.add(source_id)
+
+    for edge in edges.get("elixir_derived_from", []):
+        if not isinstance(edge, dict):
+            continue
+        elixir_id = str(edge.get("elixir_id") or "").strip()
+        if elixir_id not in ranked_elixirs:
+            continue
+        if str(edge.get("from_kind") or "").strip() == "source":
+            from_id = str(edge.get("from_id") or "").strip()
+            if from_id:
+                boost_sources.add(from_id)
+
+    boost_concepts: set[str] = set()
+    for source_id in boost_sources:
+        boost_concepts.update(source_to_concepts.get(source_id, set()))
+    return boost_sources, boost_concepts
+
+
+def ranked_compound_page_paths(
+    machine_query: dict[str, Any],
+    *,
+    judgment_limit: int = 3,
+    elixir_limit: int = 2,
+) -> list[str]:
+    subgraph = machine_query.get("query_subgraph", {}) or {}
+    refs: list[str] = []
+    for node in subgraph.get("judgments", []) or []:
+        if not isinstance(node, dict):
+            continue
+        path = str(node.get("path") or "").strip()
+        if path and path not in refs:
+            refs.append(path)
+        if len([item for item in refs if item.startswith("wiki/judgments/")]) >= judgment_limit:
+            break
+    for node in subgraph.get("elixirs", []) or []:
+        if not isinstance(node, dict):
+            continue
+        path = str(node.get("path") or "").strip()
+        if path and path not in refs:
+            refs.append(path)
+        if len([item for item in refs if item.startswith("wiki/elixirs/")]) >= elixir_limit:
+            break
+    return refs
+
+
+def build_ask_used_refs(
+    *,
+    ranked_sources: list[dict[str, Any]] | None = None,
+    ranked_concepts: list[dict[str, Any]] | None = None,
+    compound_paths: list[str] | None = None,
+    material_paths: list[str] | None = None,
+) -> list[str]:
+    refs: list[str] = []
+    for entry in ranked_sources or []:
+        if not isinstance(entry, dict):
+            continue
+        source_id = str(entry.get("id") or "").strip()
+        if source_id:
+            path = f"wiki/sources/{source_id}.md"
+            if path not in refs:
+                refs.append(path)
+    for concept in ranked_concepts or []:
+        if not isinstance(concept, dict):
+            continue
+        path = str(concept.get("path") or "").strip()
+        if not path and concept.get("slug"):
+            path = f"wiki/concepts/{concept['slug']}.md"
+        if path and path not in refs:
+            refs.append(path)
+    for path in compound_paths or []:
+        normalized = str(path or "").strip()
+        if normalized and normalized not in refs:
+            refs.append(normalized)
+    for path in material_paths or []:
+        normalized = str(path or "").strip()
+        if normalized and normalized not in refs:
+            refs.append(normalized)
+    return refs
+
+
+def compact_judgment_link_lines(
+    machine_query: dict[str, Any],
+    *,
+    limit: int = 3,
+    empty_message: str = "- 当前没有命中的已确认判断。",
+) -> list[str]:
+    nodes = (machine_query.get("query_subgraph", {}) or {}).get("judgments", []) or []
+    if not nodes:
+        return [empty_message]
+    lines: list[str] = []
+    for node in nodes[:limit]:
+        if not isinstance(node, dict):
+            continue
+        title = str(node.get("title") or node.get("page_id") or "").strip()
+        path = str(node.get("path") or "").strip()
+        if title and path:
+            lines.append(f"- [{title}](../../{path})")
+    return lines or [empty_message]
+
+
+def compact_elixir_link_lines(
+    machine_query: dict[str, Any],
+    *,
+    limit: int = 2,
+    empty_message: str = "- 当前没有命中的 settled 金丹。",
+) -> list[str]:
+    nodes = (machine_query.get("query_subgraph", {}) or {}).get("elixirs", []) or []
+    if not nodes:
+        return [empty_message]
+    lines: list[str] = []
+    for node in nodes[:limit]:
+        if not isinstance(node, dict):
+            continue
+        title = str(node.get("title") or node.get("elixir_id") or "").strip()
+        path = str(node.get("path") or "").strip()
+        if title and path:
+            lines.append(f"- [{title}](../../{path})")
+    return lines or [empty_message]
+
+
 def render_report(
     root: Path,
     question: str,
@@ -685,4 +852,20 @@ def render_report(
         ]
     )
     lines.extend(compact_concept_link_lines(concepts))
+    if machine_query.get("ranked_judgment_ids") or (machine_query.get("query_subgraph", {}) or {}).get("judgments"):
+        lines.extend(
+            [
+                "",
+                "_优先判断：_",
+            ]
+        )
+        lines.extend(compact_judgment_link_lines(machine_query))
+    if machine_query.get("ranked_elixir_ids") or (machine_query.get("query_subgraph", {}) or {}).get("elixirs"):
+        lines.extend(
+            [
+                "",
+                "_优先金丹：_",
+            ]
+        )
+        lines.extend(compact_elixir_link_lines(machine_query))
     return "\n".join(lines) + "\n"

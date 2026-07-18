@@ -408,7 +408,7 @@ function renderPendingSubmissionsGroup(plugin, section) {
       });
       const actions = aiBubble.createDiv({ cls: "furnace-bubble-actions" });
       const openBtn = actions.createEl("button", { cls: "mod-cta furnace-pending-exception-btn", text: plugin.t("打开异常队列") });
-      openBtn.addEventListener("click", async () => plugin.openReviewCenterView());
+      openBtn.addEventListener("click", async () => plugin.openReviewNextTransitionPicker());
       const dismissBtn = actions.createEl("button", { text: plugin.t("Dismiss") });
       dismissBtn.addEventListener("click", () => plugin.removePendingSubmission(entry.id));
     } else if (entry.status === "received" || entry.status === "running") {
@@ -606,6 +606,8 @@ function renderTodayFeedItem(plugin, listEl, entry) {
 
   if (entry.kind === "report") {
     renderReportCard(plugin, card, entry);
+  } else if (entry.kind === "action" && (entry.compound_suggest || entry.compoundSuggest)) {
+    renderCompoundSuggestActionCard(plugin, card, entry);
   } else if (entry.kind === "decision" || entry.kind === "proposal") {
     renderConfirmationCard(plugin, card, entry);
   } else if (entry.kind === "automation") {
@@ -613,7 +615,13 @@ function renderTodayFeedItem(plugin, listEl, entry) {
   }
 
   // Fallback action buttons (for entries not handled by card renderers)
-  if (entry.kind !== "report" && entry.kind !== "decision" && entry.kind !== "proposal" && entry.kind !== "automation") {
+  if (
+    entry.kind !== "report"
+    && entry.kind !== "action"
+    && entry.kind !== "decision"
+    && entry.kind !== "proposal"
+    && entry.kind !== "automation"
+  ) {
     const targetLabel = todayFeedTargetLabel(plugin, entry);
     if (targetLabel && card.querySelector) {
       const meta = card.createDiv({ cls: "furnace-today-feed-target" });
@@ -630,14 +638,9 @@ function todayFeedActions(plugin, entry) {
   if (isReviewTarget(target)) {
     return [
       {
-        label: "Open Review",
-        description: `Open review surface: ${target}`,
-        onClick: async () => plugin.openReviewCenterView(),
-      },
-      {
-        label: "Snooze",
-        description: `Snooze today item: ${target}`,
-        onClick: async () => plugin.runTodaySnoozeCommand(target),
+        label: "Review",
+        description: `Review next item for: ${target}`,
+        onClick: async () => plugin.openReviewNextTransitionPicker(),
       },
     ];
   }

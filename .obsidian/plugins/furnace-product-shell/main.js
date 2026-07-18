@@ -245,9 +245,10 @@ const ZH_TEXT = {
   "Show advanced commands": "显示高级命令",
   "Register diagnostics, history, Review Center, and Execution Center commands in the command palette. Reload Obsidian after changing this toggle.": "是否把诊断、历史、Review Center 与 Execution Center 命令注册到命令面板中。修改后需要重载 Obsidian。",
   "Advanced command visibility refreshes after reloading Obsidian.": "高级命令可见性会在重载 Obsidian 后刷新。",
+  "Review, Execution, and Recent Runs are available from the command palette when advanced commands are enabled.": "Review / Execution / Recent Runs 仅在开启高级命令后，从命令面板打开。",
   "Full runtime is Desktop-only. iPad/iOS Obsidian can only be a future companion; it cannot run the local launcher, Python CLI, or full ingest/review flow.": "全功能 runtime 仅支持 Desktop。iPad/iOS Obsidian 未来只能作为 companion，不能运行本地 launcher、Python CLI 或完整投料/复审流程。",
   "LLM backend": "LLM 后端",
-  "Select the LLM provider used by run-compile / run-ask / run-nightly. Common providers are listed first; advanced entries are for local CLI sessions or custom OpenAI-compatible endpoints.": "选择 run-compile / run-ask / run-nightly 使用的 LLM API provider。",
+  "Select the LLM provider used by compile / run-ask / run-nightly. Common providers are listed first; advanced entries are for local CLI sessions or custom OpenAI-compatible endpoints.": "选择 compile / run-ask / run-nightly 使用的 LLM API provider。",
   "LLM model": "LLM 模型",
   "Model for the selected API provider. Empty uses that provider profile default when one exists.": "所选 API provider 的模型。留空时使用该 provider profile 的默认模型（如果有）。",
   "API key": "API Key",
@@ -593,7 +594,7 @@ const ZH_TEXT = {
   "未刷新": "未刷新",
   "刚刚": "刚刚",
   "已打开输出汇总（找不到具体报告路径）": "已打开输出汇总（找不到具体报告路径）",
-  "已打开运行记录（找不到具体回执路径）": "已打开运行记录（找不到具体回执路径）",
+  "已回到 Today（找不到具体回执路径）": "已回到 Today（找不到具体回执路径）",
   "无法打开目标，可能尚未生成": "无法打开目标，可能尚未生成",
   // R91 Advanced 抽屉子 section
   "系统状态": "系统状态",
@@ -769,6 +770,7 @@ const ZH_TEXT = {
   "output/reports/....md": "output/reports/....md",
   "Optional filed-back title": "可选回填标题",
   "wiki/decisions/... or wiki/judgments/...": "wiki/decisions/... 或 wiki/judgments/...",
+  "confirmed / discarded / pending-review": "confirmed / discarded / pending-review",
   "approved / confirmed / needs-revision ...": "approved / confirmed / needs-revision ...",
   "accepted / rejected / needs-revision ...": "accepted / rejected / needs-revision ...",
   "accepted / rejected / ready ...": "accepted / rejected / ready ...",
@@ -861,6 +863,7 @@ const ZH_TEXT = {
   apply: "应用",
   revert: "回滚",
   "file-back": "回流归档",
+  "alchemy-start": "凝丹启动",
   "archive-apply": "归档应用",
   "archive-revert": "归档回滚",
   "knowledge-lifecycle-override": "生命周期覆盖",
@@ -1033,6 +1036,16 @@ const ZH_TEXT = {
   stdout: "标准输出",
   stderr: "错误输出",
   error: "错误",
+};
+const THIN_CURATED_STATUS_LABELS = {
+  "pending-review": "待审",
+  confirmed: "已确认",
+  discarded: "废弃",
+};
+const THIN_REVIEW_TRANSITION_LABELS = {
+  "pending-review": "待审",
+  confirmed: "已确认",
+  discarded: "废弃",
 };
 const CURATED_STATUS_LABELS = {
   proposed: "Proposed",
@@ -1369,8 +1382,26 @@ function sumNumericValues(values) {
   }, 0);
 }
 
+function thinCuratedStatusGroup(status) {
+  const normalized = String(status || "").trim();
+  if (["proposed", "needs-revisit", "tentative", "tracking"].includes(normalized)) {
+    return "pending-review";
+  }
+  if (["approved", "confirmed"].includes(normalized)) {
+    return "confirmed";
+  }
+  if (["superseded", "rejected"].includes(normalized)) {
+    return "discarded";
+  }
+  return normalized;
+}
+
 function displayCuratedStatus(status, locale = DEFAULT_LOCALE) {
-  return t(locale, CURATED_STATUS_LABELS[String(status || "").trim()] || String(status || "unknown"));
+  const thin = thinCuratedStatusGroup(status);
+  const label = THIN_CURATED_STATUS_LABELS[thin]
+    || CURATED_STATUS_LABELS[String(status || "").trim()]
+    || String(status || "unknown");
+  return t(locale, label);
 }
 
 function displayActionStatus(status, locale = DEFAULT_LOCALE) {
@@ -1540,6 +1571,20 @@ function splitReportsByLocalDate(reports, options = {}) {
   };
 }
 
+function elixirIdFromLinkedRefs(linkedRefs) {
+  const refs = Array.isArray(linkedRefs) ? linkedRefs : [];
+  for (const ref of refs) {
+    const text = String(ref || "").trim();
+    if (!text) continue;
+    const normalized = text.replace(/\\/g, "/");
+    if (normalized.startsWith("wiki/elixirs/") && normalized.endsWith(".md")) {
+      const base = normalized.slice("wiki/elixirs/".length, -".md".length);
+      if (base) return base;
+    }
+  }
+  return "";
+}
+
 // --- src/command_specs.js ---
 
 // Pure command specs for launcher-backed Product Shell actions.
@@ -1581,17 +1626,6 @@ function buildAskCommandSpec({ question, format, mode }) {
       longRunning,
       backgroundSubmit: longRunning,
     },
-  };
-}
-
-function buildReportSubgraphCommandSpec(reportPath) {
-  const normalized = String(reportPath || "").trim();
-  return {
-    normalized,
-    args: ["report-subgraph", "--report", normalized],
-    labelKey: "View report graph",
-    labelSubject: normalized,
-    options: { refreshAfter: true },
   };
 }
 
@@ -2286,6 +2320,7 @@ function buildTodayFeed(summary) {
   entries.push(...buildDriftEntries(summary));
   entries.push(...buildProposalEntries(summary));
   entries.push(...buildReportEntries(summary, todayDate));
+  entries.push(...buildCompoundSuggestEntries(summary));
   entries.push(...buildElixirEntries(summary, todayDate));
   // Routine metrics and automation status stay in Advanced/operator surfaces;
   // primary Today only keeps reports, decision exceptions, and necessary actions.
@@ -2406,8 +2441,47 @@ function buildProposalEntries(summary) {
   return entries;
 }
 
+function compoundSuggestItems(summary) {
+  const compound = summary.compound_suggest;
+  if (!compound || typeof compound !== "object" || !compound.available) return [];
+  const items = compound.items;
+  if (!Array.isArray(items)) return [];
+  return items.filter((item) => item && typeof item === "object");
+}
+
+function compoundSuggestIndex(summary) {
+  const index = {};
+  for (const item of compoundSuggestItems(summary)) {
+    const reportPath = firstText(item, "report_path");
+    if (reportPath) index[reportPath] = item;
+  }
+  return index;
+}
+
+function buildCompoundSuggestEntries(summary) {
+  const timestamp = String(summary.generated_at || "");
+  const entries = [];
+  for (const item of compoundSuggestItems(summary)) {
+    const title = firstText(item, "title", "report_title");
+    const reportPath = firstText(item, "report_path");
+    const reason = firstText(item, "reason", "signal") || "compound-suggest";
+    if (!title) continue;
+    entries.push({
+      kind: "action",
+      title,
+      summary: `复利建议：${reason}`,
+      target: reportPath || firstText(item, "command"),
+      timestamp,
+      protocol: firstText(item, "protocol"),
+      compound_suggest: item,
+    });
+  }
+  return entries;
+}
+
 function buildReportEntries(summary, todayDate) {
   const entries = [];
+  const suggestIndex = compoundSuggestIndex(summary);
   for (const item of dictItems(summary.recent_outputs)) {
     if (!isDeliverableReportOutput(item)) continue;
     const timestamp = firstText(item, "generated_at", "created_at");
@@ -2430,6 +2504,7 @@ function buildReportEntries(summary, todayDate) {
       target: path,
       timestamp,
       protocol: firstText(item, "protocol"),
+      compound_suggest: suggestIndex[path] || null,
     });
   }
   return entries;
@@ -2517,6 +2592,7 @@ function buildActionEntries(summary, audience = "primary") {
   const entries = [];
   const generatedAt = String(summary.generated_at || "");
   for (const item of dictItems(summary.suggested_next_actions)) {
+    if (firstText(item, "kind") === "compound-suggest") continue;
     const title = firstText(item, "title", "label", "name");
     const target = firstText(item, "command", "cli", "action", "path");
     if (!title || !target) continue;
@@ -2579,18 +2655,6 @@ function isMaintenanceCommandAction(target, reason) {
   if (reasonText.startsWith("batch-hint:")) return true;
   const maintenanceTokens = [
     " review-page ",
-    " review-action ",
-    " apply-action ",
-    " revert-action ",
-    " review-concept ",
-    " retire-concept ",
-    " reactivate-concept ",
-    " apply-rewrite ",
-    " review-rewrite ",
-    " revert-rewrite ",
-    " apply-archive ",
-    " revert-archive ",
-    " alchemy auto ",
   ];
   return maintenanceTokens.some((token) => targetText.includes(token));
 }
@@ -2607,7 +2671,7 @@ function buildAgentLoopEntries(summary, todayDate) {
 
   let title = "预演下一步维护";
   let summaryText = "今日维护预演完成，暂不需要自动执行";
-  let target = "PYTHONPATH=src python3 -m aiwiki.cli --root . alchemy auto --dry-run";
+  let target = "wiki/indexes/repair-backlog.md";
   let autoState = "idle";
   if (status === "failed") {
     summaryText = "今日维护预演失败，需要人工查看";
@@ -2734,6 +2798,9 @@ module.exports = {
   reviewBucketCopy,
   priorityForKind,
   isMaintenanceCommandAction,
+  compoundSuggestItems,
+  compoundSuggestIndex,
+  buildCompoundSuggestEntries,
   PRIORITY,
   PRIMARY_REVIEW_BUCKETS,
 };
@@ -2877,63 +2944,6 @@ class CaptureNoteModal extends Modal {
     }, function () { self.close(); });
 
     textInput.focus();
-  }
-}
-
-class SearchCommandModal extends Modal {
-  constructor(app, plugin) {
-    super(app);
-    this.plugin = plugin;
-  }
-
-  onOpen() {
-    const { contentEl } = this;
-    const t = this.plugin.t.bind(this.plugin);
-    contentEl.empty();
-    contentEl.addClass("furnace-shell-view");
-    contentEl.createEl("h2", { text: t("搜索知识库") });
-    contentEl.createDiv({ cls: "furnace-modal-help", text: t("搜索 wiki、概念、判断、决策和派生页面。") });
-
-    const querySetting = new Setting(contentEl).setName(t("关键词"));
-    querySetting.nameEl.addClass("furnace-modal-field-required");
-    const queryInput = querySetting.controlEl.createEl("textarea");
-    queryInput.rows = 3;
-    queryInput.placeholder = t("输入关键词搜索……");
-    queryInput.addClass("furnace-shell-code");
-    const queryError = querySetting.controlEl.createDiv({ cls: "furnace-modal-error" });
-
-    var tagsRow = contentEl.createDiv({ cls: "furnace-modal-tags" });
-    ["来源", "概念", "判断", "决策", "报告"].forEach(function (tag) {
-      var tagEl = tagsRow.createDiv({ cls: "furnace-modal-tag", text: tag });
-      tagEl.addEventListener("click", function () {
-        var current = String(queryInput.value || "").trim();
-        queryInput.value = current ? current + " " + tag : tag;
-        queryInput.focus();
-      });
-    });
-
-    const limitSetting = new Setting(contentEl).setName(t("结果数量"));
-    const limitInput = limitSetting.controlEl.createEl("input", { type: "text" });
-    limitInput.value = "8";
-    limitInput.addClass("furnace-shell-code");
-
-    const self = this;
-    modalSubmitRow(contentEl, t("搜索"), t("取消"), function (btn) {
-      const query = String(queryInput.value || "").trim();
-      if (!query) {
-        showInlineError(queryError, t("搜索关键词不能为空。"));
-        return;
-      }
-      clearInlineError(queryError);
-      setSubmitLoading(btn, t("搜索中…"));
-      const parsedLimit = Number.parseInt(String(limitInput.value || "8"), 10);
-      self.close();
-      self.plugin.runUiAction(function () {
-        return self.plugin.runShellSearchCommand(query, Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 8);
-      }, t("搜索"));
-    }, function () { self.close(); });
-
-    queryInput.focus();
   }
 }
 
@@ -3879,21 +3889,46 @@ function renderReportCard(plugin, cardEl, entry) {
   }
 
   const actions = cardEl.createDiv({ cls: "furnace-feed-card-actions" });
+  const suggest = entry.compound_suggest || entry.compoundSuggest;
+  if (suggest && typeof suggest === "object") {
+    renderCompoundSuggestActions(plugin, actions, suggest);
+  }
   const openBtn = actions.createEl("button", {
-    cls: "mod-cta",
+    cls: suggest ? "" : "mod-cta",
     text: plugin.t("Open report"),
   });
   openBtn.addEventListener("click", () => {
     plugin.openWorkspacePath(entry.target);
   });
 
-  // 仅 advanced mode 显示 View graph 按钮 (EP-004 SC#2)
-  if (plugin.settings && plugin.settings.showAdvancedCommands) {
-    const graphBtn = actions.createEl("button", {
-      text: plugin.t("View graph"),
+}
+
+function renderCompoundSuggestActionCard(plugin, cardEl, entry) {
+  const suggest = entry.compound_suggest || entry.compoundSuggest;
+  if (!suggest || typeof suggest !== "object") return;
+  const actions = cardEl.createDiv({ cls: "furnace-feed-card-actions" });
+  renderCompoundSuggestActions(plugin, actions, suggest);
+}
+
+function renderCompoundSuggestActions(plugin, actionsEl, suggest) {
+  const action = String(suggest.action || "").trim();
+  if (action === "file-back-judgment") {
+    const fileBackBtn = actionsEl.createEl("button", {
+      cls: "mod-cta furnace-compound-file-back",
+      text: plugin.t("沉淀"),
     });
-    graphBtn.addEventListener("click", async () => {
-      await plugin.runReportSubgraphCommand({ reportPath: entry.target });
+    fileBackBtn.addEventListener("click", () => {
+      plugin.runCompoundFileBack(suggest);
+    });
+    return;
+  }
+  if (action === "alchemy-start") {
+    const alchemyBtn = actionsEl.createEl("button", {
+      cls: "mod-cta furnace-compound-alchemy-start",
+      text: plugin.t("凝丹"),
+    });
+    alchemyBtn.addEventListener("click", () => {
+      plugin.openCompoundAlchemyStart(suggest);
     });
   }
 }
@@ -3907,15 +3942,11 @@ function renderConfirmationCard(plugin, cardEl, entry) {
       text: plugin.t("Review"),
     });
     reviewBtn.addEventListener("click", () => {
-      plugin.openReviewCenterView();
+      if (typeof plugin.openReviewNextTransitionPicker === "function") {
+        plugin.openReviewNextTransitionPicker();
+      }
     });
 
-    const snoozeBtn = actions.createEl("button", {
-      text: plugin.t("Snooze"),
-    });
-    snoozeBtn.addEventListener("click", () => {
-      plugin.runTodaySnoozeCommand(entry.target);
-    });
   }
 }
 
@@ -3953,6 +3984,8 @@ module.exports = {
   renderReportCard,
   renderConfirmationCard,
   renderAutomationCard,
+  renderCompoundSuggestActionCard,
+  renderCompoundSuggestActions,
   isReportUnread,
 };
 
@@ -4059,7 +4092,7 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName(t("LLM backend"))
-      .setDesc(t("Select the LLM provider used by run-compile / run-ask / run-nightly. Common providers are listed first; advanced entries are for local CLI sessions or custom OpenAI-compatible endpoints."))
+      .setDesc(t("Select the LLM provider used by compile / run-ask / run-nightly. Common providers are listed first; advanced entries are for local CLI sessions or custom OpenAI-compatible endpoints."))
       .addDropdown((dropdown) => {
         for (const profile of LLM_PROVIDER_PROFILES) {
           const prefix = profile.tier === "advanced" ? "Advanced · " : "";
@@ -4514,40 +4547,16 @@ function renderStatusPanel(plugin, container) {
   }
   plugin.renderInlineButtons(panel, [
     { label: "Refresh Furnace Shell", onClick: async () => plugin.refreshShellSummaryCommand() },
-    { label: "Open Recent Runs", kind: "ghost", onClick: async () => plugin.openRecentRunsView() },
   ]);
 }
 
-function resolveBatchHintInvocation(plugin, action) {
-  // Round 43 / Stage C: batch hint commands -> existing pickers / runners.
-  // Returns { label, run } or null when the action is not a recognised batch hint.
+function resolveBatchHintInvocation(_plugin, action) {
   if (!action || typeof action !== "object") {
     return null;
   }
   const kind = String(action.kind || "");
-  if (kind !== "batch-review" && kind !== "batch-apply") {
+  if (kind === "batch-review" || kind === "batch-apply") {
     return null;
-  }
-  const command = String(action.command || "");
-  if (kind === "batch-apply" && command.includes("apply-action --all-accepted-low-risk")) {
-    return {
-      label: plugin.t("Run batch"),
-      run: () => plugin.runApplyAllAcceptedLowRiskCommand(),
-    };
-  }
-  if (kind === "batch-review" && command.includes("review-page --all-pending")) {
-    return {
-      label: plugin.t("Run batch"),
-      run: () => plugin.openReviewBatchSuggestionPicker(),
-    };
-  }
-  if (kind === "batch-review" && command.includes("review-action --all-pending")) {
-    // Action-kind batch review still routes through the batch suggestion picker;
-    // the picker filters to the active suggestion bundle, so the same entry point works.
-    return {
-      label: plugin.t("Run batch"),
-      run: () => plugin.openReviewBatchSuggestionPicker(),
-    };
   }
   return null;
 }
@@ -4584,6 +4593,19 @@ function renderSuggestedNextActionsBlock(plugin, container, options = {}) {
       runButton.addEventListener("click", () => {
         plugin.runUiAction(batchInvocation.run, `Run batch hint: ${action.title || action.command}`);
       });
+    } else if (action.kind === "compound-suggest") {
+      const compoundAction = String(action.action || "").trim();
+      if (compoundAction === "file-back-judgment") {
+        const fileBackBtn = buttons.createEl("button", { text: plugin.t("沉淀"), cls: "mod-cta" });
+        fileBackBtn.addEventListener("click", () => {
+          plugin.runUiAction(() => plugin.runCompoundFileBack(action), `Compound file-back: ${action.title || action.path}`);
+        });
+      } else if (compoundAction === "alchemy-start") {
+        const alchemyBtn = buttons.createEl("button", { text: plugin.t("凝丹"), cls: "mod-cta" });
+        alchemyBtn.addEventListener("click", () => {
+          plugin.runUiAction(() => plugin.openCompoundAlchemyStart(action), `Compound alchemy-start: ${action.title || action.path}`);
+        });
+      }
     }
     if (action.path) {
       const openButton = buttons.createEl("button", { text: plugin.t("Open") });
@@ -5419,7 +5441,7 @@ function renderPendingSubmissionsGroup(plugin, section) {
       });
       const actions = aiBubble.createDiv({ cls: "furnace-bubble-actions" });
       const openBtn = actions.createEl("button", { cls: "mod-cta furnace-pending-exception-btn", text: plugin.t("打开异常队列") });
-      openBtn.addEventListener("click", async () => plugin.openReviewCenterView());
+      openBtn.addEventListener("click", async () => plugin.openReviewNextTransitionPicker());
       const dismissBtn = actions.createEl("button", { text: plugin.t("Dismiss") });
       dismissBtn.addEventListener("click", () => plugin.removePendingSubmission(entry.id));
     } else if (entry.status === "received" || entry.status === "running") {
@@ -5617,6 +5639,8 @@ function renderTodayFeedItem(plugin, listEl, entry) {
 
   if (entry.kind === "report") {
     renderReportCard(plugin, card, entry);
+  } else if (entry.kind === "action" && (entry.compound_suggest || entry.compoundSuggest)) {
+    renderCompoundSuggestActionCard(plugin, card, entry);
   } else if (entry.kind === "decision" || entry.kind === "proposal") {
     renderConfirmationCard(plugin, card, entry);
   } else if (entry.kind === "automation") {
@@ -5624,7 +5648,13 @@ function renderTodayFeedItem(plugin, listEl, entry) {
   }
 
   // Fallback action buttons (for entries not handled by card renderers)
-  if (entry.kind !== "report" && entry.kind !== "decision" && entry.kind !== "proposal" && entry.kind !== "automation") {
+  if (
+    entry.kind !== "report"
+    && entry.kind !== "action"
+    && entry.kind !== "decision"
+    && entry.kind !== "proposal"
+    && entry.kind !== "automation"
+  ) {
     const targetLabel = todayFeedTargetLabel(plugin, entry);
     if (targetLabel && card.querySelector) {
       const meta = card.createDiv({ cls: "furnace-today-feed-target" });
@@ -5641,14 +5671,9 @@ function todayFeedActions(plugin, entry) {
   if (isReviewTarget(target)) {
     return [
       {
-        label: "Open Review",
-        description: `Open review surface: ${target}`,
-        onClick: async () => plugin.openReviewCenterView(),
-      },
-      {
-        label: "Snooze",
-        description: `Snooze today item: ${target}`,
-        onClick: async () => plugin.runTodaySnoozeCommand(target),
+        label: "Review",
+        description: `Review next item for: ${target}`,
+        onClick: async () => plugin.openReviewNextTransitionPicker(),
       },
     ];
   }
@@ -5966,9 +5991,7 @@ function renderAdvancedDrawer(plugin, container) {
     title: plugin.t("系统状态"),
     summaryText: buildStatusSectionSummary(plugin),
     render: (el) => {
-      plugin.renderMainHeader(el);
       plugin.renderStatusPanel(el);
-      renderAdvancedMetricsPanel(plugin, el);
     },
   });
 
@@ -6050,48 +6073,12 @@ function buildHistorySectionSummary(plugin) {
   });
 }
 
-// R91: 运行与历史 section 主体 — 入口按钮 + 最近 LLM 运行摘要
+// R91: 运行与历史 section 主体 — operator views 仅保留命令面板入口
 function renderHistorySectionBody(plugin, container) {
-  const buttons = [
-    {
-      key: "open-recent-runs",
-      label: plugin.t("Open Recent Runs"),
-      onClick: () => {
-        try {
-          plugin.openRecentRunsView();
-        } catch (error) {
-          // surface via Notice if available
-        }
-      },
-    },
-    {
-      key: "open-review-center",
-      label: plugin.t("Open Review Center"),
-      onClick: () => {
-        try {
-          plugin.openReviewCenterView();
-        } catch (error) {}
-      },
-    },
-    {
-      key: "open-execution-center",
-      label: plugin.t("Open Execution Center"),
-      onClick: () => {
-        try {
-          plugin.openExecutionCenterView();
-        } catch (error) {}
-      },
-    },
-  ];
-  if (typeof plugin.renderInlineButtons === "function") {
-    plugin.renderInlineButtons(container, buttons, "furnace-advanced-section-actions");
-  } else {
-    const row = container.createDiv({ cls: "furnace-advanced-section-actions" });
-    for (const btn of buttons) {
-      const el = row.createEl("button", { cls: "furnace-shell-button", text: btn.label });
-      el.addEventListener("click", btn.onClick);
-    }
-  }
+  container.createDiv({
+    cls: "furnace-shell-panel-note",
+    text: plugin.t("Review, Execution, and Recent Runs are available from the command palette when advanced commands are enabled."),
+  });
 
   // 最近 LLM 运行摘要（若有）
   try {
@@ -6129,80 +6116,6 @@ function advancedDrawerCounts(plugin) {
   return { review, execution: actionCount + archiveCount, runs };
 }
 
-function renderAdvancedMetricsPanel(plugin, container) {
-  const summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : null;
-  if (!summary) return;
-  
-  const metrics = Array.isArray(summary.metrics) ? summary.metrics : [];
-  
-  const section = container.createDiv({ cls: "furnace-advanced-metrics" });
-  section.createEl("h3", { text: plugin.t("Knowledge Compounding Metrics") });
-  
-  if (!metrics.length) {
-    section.createEl("div", {
-      cls: "furnace-advanced-metrics-empty",
-      text: plugin.t("(metrics unavailable; run aiwiki metrics for details)"),
-    });
-    return;
-  }
-  
-  const list = section.createEl("ul", { cls: "furnace-advanced-metrics-list" });
-  
-  const labels = {
-    provenance_completeness: plugin.t("Provenance Completeness"),
-    stale_ratio: plugin.t("Stale Page Ratio"),
-    review_closure_rate: plugin.t("Review Closure Rate (7d)"),
-    proposal_acceptance_rate: plugin.t("Proposal Acceptance Rate"),
-    judgment_revisit_rate: plugin.t("Judgment Revisit Rate"),
-    output_file_back_rate: plugin.t("Output File-back Rate"),
-    elixir_reuse_count: plugin.t("Elixir Reuse Count"),
-  };
-  
-  for (const m of metrics) {
-    if (!m || typeof m !== "object") continue;
-    const li = list.createEl("li", { cls: "furnace-advanced-metrics-item" });
-    const labelText = labels[m.key] || m.key;
-    li.createEl("span", { cls: "furnace-advanced-metrics-label", text: labelText });
-    
-    if (m.value === null || m.value === undefined) {
-      li.createEl("span", {
-        cls: "furnace-advanced-metrics-value furnace-advanced-metrics-unavailable",
-        text: plugin.t("unavailable"),
-      });
-      if (m.reason) {
-        li.createEl("span", {
-          cls: "furnace-advanced-metrics-reason",
-          text: ` — ${m.reason}`,
-        });
-      }
-    } else {
-      const formatted = formatMetricValue(m.value, m.unit);
-      li.createEl("span", {
-        cls: "furnace-advanced-metrics-value",
-        text: formatted,
-      });
-      if (typeof m.sample_size === "number" && m.sample_size > 0) {
-        li.createEl("span", {
-          cls: "furnace-advanced-metrics-sample",
-          text: ` (n=${m.sample_size})`,
-        });
-      }
-    }
-  }
-  
-  section.createEl("div", {
-    cls: "furnace-advanced-metrics-hint",
-    text: plugin.t("Run `aiwiki metrics --json` for full data."),
-  });
-}
-
-function formatMetricValue(value, unit) {
-  if (typeof value !== "number") return String(value);
-  if (unit === "ratio") return (value * 100).toFixed(1) + "%";
-  if (unit === "percent") return value.toFixed(1) + "%";
-  if (unit === "count") return String(value);
-  return String(value);
-}
 
 // --- src/render_runs.js ---
 
@@ -7020,7 +6933,7 @@ function openRewriteFollowupForRecord(plugin, record) {
     plugin.openReviewRewriteModal({ slug: rewriteSlugs[0] });
     return;
   }
-  plugin.runUiAction(() => plugin.openReviewCenterView(), plugin.t("Open Review Center"));
+  plugin.runUiAction(() => plugin.openReviewNextTransitionPicker(), plugin.t("Review Next Page"));
 }
 
 // --- src/control_items.js ---
@@ -7088,6 +7001,10 @@ function reviewKindLabel(plugin, kind, count = 1) {
 
 function transitionLabel(plugin, controlType, transition) {
   if (controlType === "page") {
+    const thin = THIN_REVIEW_TRANSITION_LABELS[String(transition || "").trim()];
+    if (thin) {
+      return plugin.t(thin);
+    }
     return displayCuratedStatus(transition, plugin.locale());
   }
   if (controlType === "rewrite") {
@@ -7409,31 +7326,6 @@ function openContextAwareActionForSpec(plugin, spec) {
 
 // Structured command modal specs for Product Shell operator actions.
 
-function buildReportSubgraphModalSpec(plugin, candidates) {
-  const reportCandidates = Array.isArray(candidates) ? candidates : [];
-  const fieldSpec = {
-    key: "reportPath",
-    label: plugin.t("Report path"),
-    placeholder: "output/reports/...md",
-    required: true,
-  };
-  if (reportCandidates.length) {
-    fieldSpec.kind = "select";
-    fieldSpec.options = reportCandidates;
-    fieldSpec.initialValue = reportCandidates[0].value;
-  }
-  return {
-    title: plugin.t("View report graph"),
-    description: reportCandidates.length
-      ? plugin.t("Choose a recent report.")
-      : plugin.t("No recent reports available; enter a path manually."),
-    fields: [fieldSpec],
-    onSubmit: async (values) => {
-      await plugin.runReportSubgraphCommand({ reportPath: values.reportPath });
-    },
-  };
-}
-
 function buildFileBackModalSpec(plugin, prefill = {}) {
   return {
     title: plugin.t("File Back"),
@@ -7456,7 +7348,7 @@ function buildFileBackModalSpec(plugin, prefill = {}) {
         key: "kind",
         label: plugin.t("Kind"),
         kind: "select",
-        initialValue: prefill.kind || "derived",
+        initialValue: prefill.kind || "judgment",
         options: [
           ["derived", plugin.t("derived")],
           ["decision", plugin.t("decision")],
@@ -7469,6 +7361,40 @@ function buildFileBackModalSpec(plugin, prefill = {}) {
       appendOptionalArg(args, "--title", values.title);
       appendOptionalArg(args, "--kind", values.kind);
       await plugin.runCliAction(`File Back: ${values.kind}`, "file-back", args);
+    },
+  };
+}
+
+function buildAlchemyStartModalSpec(plugin, prefill = {}) {
+  return {
+    title: plugin.t("Alchemy Start"),
+    description: plugin.t("Start a new elixir draft from a promoted corpus."),
+    fields: [
+      {
+        key: "corpus_id",
+        label: plugin.t("Corpus id"),
+        required: true,
+        placeholder: plugin.t("corpus-id"),
+        initialValue: prefill.corpusId || prefill.corpus_id || "",
+      },
+      {
+        key: "topic",
+        label: plugin.t("Topic"),
+        required: true,
+        placeholder: plugin.t("Elixir topic"),
+        initialValue: prefill.topic || "",
+      },
+      {
+        key: "include_elixir",
+        label: plugin.t("Include elixir"),
+        placeholder: plugin.t("Optional settled elixir id"),
+        initialValue: prefill.includeElixir || prefill.include_elixir || "",
+      },
+    ],
+    onSubmit: async (values) => {
+      const args = [values.corpus_id, "--topic", values.topic];
+      appendOptionalArg(args, "--include-elixir", values.include_elixir);
+      await plugin.runCliAction(`Alchemy Start: ${values.corpus_id}`, "alchemy-start", args);
     },
   };
 }
@@ -7489,7 +7415,7 @@ function buildReviewPageModalSpec(plugin, prefill = {}) {
         key: "status",
         label: plugin.t("Status"),
         required: true,
-        placeholder: plugin.t("approved / confirmed / needs-revision ..."),
+        placeholder: plugin.t("confirmed / discarded / pending-review"),
         initialValue: prefill.status || "",
       },
       {
@@ -7528,6 +7454,10 @@ function buildReviewRewriteModalSpec(plugin, prefill = {}) {
     onSubmit: async (values) => {
       const args = [values.slug, "--status", values.status];
       appendOptionalArg(args, "--note", values.note);
+      if (typeof plugin.runReviewRewriteTransition === "function") {
+        await plugin.runReviewRewriteTransition(values.slug, values.status);
+        return;
+      }
       await plugin.runCliAction(`Review Rewrite: ${values.slug}`, "review-rewrite", args);
     },
   };
@@ -7623,6 +7553,10 @@ function buildReviewActionModalSpec(plugin, prefill = {}) {
       { key: "note", label: plugin.t("Note"), kind: "textarea", rows: 4, placeholder: plugin.t("Optional action review note"), initialValue: prefill.note || "" },
     ],
     onSubmit: async (values) => {
+      if (typeof plugin.runReviewActionTransition === "function") {
+        await plugin.runReviewActionTransition(values.action_id, values.status);
+        return;
+      }
       const args = [values.action_id, "--status", values.status];
       appendOptionalArg(args, "--note", values.note);
       await plugin.runCliAction(`Review Action: ${values.action_id}`, "review-action", args);
@@ -7641,13 +7575,11 @@ function buildApplyActionModalSpec(plugin, prefill = {}) {
       { key: "dry_run", label: plugin.t("Dry run"), kind: "toggle", initialValue: Boolean(prefill.dryRun) },
     ],
     onSubmit: async (values) => {
-      const args = [values.action_id];
-      appendOptionalArg(args, "--note", values.note);
-      appendOptionalArg(args, "--bundle", values.bundle);
-      if (values.dry_run) {
-        args.push("--dry-run");
+      if (typeof plugin.runApplyAllAcceptedLowRiskCommand === "function") {
+        await plugin.runApplyAllAcceptedLowRiskCommand();
+        return;
       }
-      await plugin.runCliAction(`Apply Action: ${values.action_id}`, "apply-action", args);
+      new Notice(plugin.t("Batch review was removed in W4; use review-page for explicit page transitions."));
     },
   };
 }
@@ -7661,6 +7593,10 @@ function buildRevertActionModalSpec(plugin, prefill = {}) {
       { key: "note", label: plugin.t("Note"), kind: "textarea", rows: 4, placeholder: plugin.t("Optional revert note"), initialValue: prefill.note || "" },
     ],
     onSubmit: async (values) => {
+      if (typeof plugin.runRevertLastBatchCommand === "function") {
+        await plugin.runRevertLastBatchCommand();
+        return;
+      }
       const args = [values.action_id];
       appendOptionalArg(args, "--note", values.note);
       await plugin.runCliAction(`Revert Action: ${values.action_id}`, "revert-action", args);
@@ -8484,9 +8420,9 @@ async function openProductShellPendingDoneTarget(plugin, target, reconcilePath) 
       new Notice(plugin.t("已打开输出汇总（找不到具体报告路径）"));
       return;
     }
-    if (normalizedTarget === "receipts" && typeof plugin.openRecentRunsView === "function") {
-      await plugin.openRecentRunsView();
-      new Notice(plugin.t("已打开运行记录（找不到具体回执路径）"));
+    if (normalizedTarget === "receipts" && typeof plugin.openFurnaceCenterView === "function") {
+      await plugin.openFurnaceCenterView();
+      new Notice(plugin.t("已回到 Today（找不到具体回执路径）"));
       return;
     }
     if (typeof plugin.openHomeNote === "function") {
@@ -8719,55 +8655,6 @@ async function runProductShellDroppedFilesWithAutoAsk(plugin, { files, question 
     payloads: normalizedFiles.map((file) => ({ path: file.path, title: file.name })),
     question,
   });
-}
-
-async function runProductShellReportSubgraphCommand(plugin, { reportPath }) {
-  const spec = buildReportSubgraphCommandSpec(reportPath);
-  if (!spec.normalized) {
-    new Notice(plugin.t("Report path cannot be empty."));
-    return;
-  }
-  const payload = await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
-  const outputPath = payload && typeof payload.output_path === "string" ? payload.output_path.trim() : "";
-  if (outputPath) {
-    await plugin.openWorkspacePath(outputPath);
-  }
-  return payload;
-}
-
-function collectProductShellReportCandidates(plugin) {
-  const summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : null;
-  if (!summary) return [];
-  const outputs = Array.isArray(summary.recent_outputs) ? summary.recent_outputs : [];
-  const seen = new Set();
-  const candidates = [];
-  for (const item of outputs) {
-    if (!item || typeof item !== "object") continue;
-    const candidatePath = String(item.path || "").trim();
-    if (!candidatePath || !candidatePath.startsWith("output/reports/")) continue;
-    const deliveryMode = String(item.delivery_mode || "").trim();
-    const llmStatus = String(item.llm_status || "").trim();
-    const backgroundStatus = String(item.background_status || "").trim();
-    const artifactQuality = String(item.artifact_quality || "").trim();
-    const containsPlaceholder = String(item.contains_llm_placeholder || "").trim().toLowerCase();
-    const rawTitle = String(item.title || "").trim();
-    if (deliveryMode === "deterministic-fallback" || deliveryMode === "llm-failed") continue;
-    if (["timeout_or_unavailable", "validation_failed", "pending", "failed", "degraded"].includes(llmStatus)) continue;
-    if (["submitted", "running", "degraded"].includes(backgroundStatus)) continue;
-    if (["degraded", "placeholder"].includes(artifactQuality)) continue;
-    if (["1", "true", "yes"].includes(containsPlaceholder)) continue;
-    if (rawTitle.startsWith("LLM 未完成")) continue;
-    if (seen.has(candidatePath)) continue;
-    seen.add(candidatePath);
-    const title = rawTitle || candidatePath;
-    candidates.push({ value: candidatePath, label: `${title} — ${candidatePath}` });
-  }
-  return candidates;
-}
-
-function openProductShellReportSubgraphPicker(plugin) {
-  const candidates = plugin.collectReportCandidates();
-  plugin.openStructuredCommandModal(buildReportSubgraphModalSpec(plugin, candidates));
 }
 
 async function runProductShellDropUrlCommand(plugin, { url, title }) {
@@ -9755,11 +9642,11 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async runReviewRewriteTransition(slug, status) {
-    await this.runCliAction(`Review Rewrite: ${slug}`, "review-rewrite", [slug, "--status", status]);
+    new Notice(this.t("Concept rewrite commands were removed in W3; use review-page on the concept page instead."));
   }
 
   async runReviewActionTransition(actionId, status) {
-    await this.runCliAction(`Review Action: ${actionId}`, "review-action", [actionId, "--status", status]);
+    new Notice(this.t("Machine-memory action commands were removed in W3; use review-page instead."));
   }
 
   visibleReviewPageCandidates() {
@@ -9898,39 +9785,19 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async runTodaySnoozeCommand(target, days = 1) {
-    const normalizedTarget = String(target || "").trim();
-    if (!normalizedTarget) {
-      return;
-    }
-    await this.runPluginCommand(
-      `${this.t("Snooze")}: ${truncateText(normalizedTarget, 48)}`,
-      ["today-snooze", normalizedTarget, "--days", String(days)],
-      { refreshAfter: true }
-    );
+    new Notice(this.t("Today snooze was removed in W4; open Review Center or handle the item directly."));
   }
 
   async runShellSearchCommand(query, limit = 8) {
-    const normalizedQuery = String(query || "").trim();
-    if (!normalizedQuery) {
-      new Notice(this.t("Search query cannot be empty."));
-      return;
-    }
-    const parsedLimit = Number.parseInt(String(limit || 8), 10);
-    await this.runPluginCommand(
-      `${this.t("Search")}: ${truncateText(normalizedQuery, 48)}`,
-      ["search", normalizedQuery, "--limit", String(Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 8)],
-      { refreshAfter: false, notice: false }
-    );
-    await this.loadShellSummaryFromDisk();
-    new Notice(this.t("Search completed: {query}", { query: truncateText(normalizedQuery, 60) }));
+    new Notice(this.t("Shell search was removed in W4; use Obsidian search and wiki pages instead."));
   }
 
   async runApplyAllAcceptedLowRiskCommand() {
-    await this.runCliAction(this.t("Apply All Low-Risk"), "apply-action", ["--all-accepted-low-risk"]);
+    new Notice(this.t("Batch review was removed in W4; use review-page for explicit page transitions."));
   }
 
   async runRevertLastBatchCommand() {
-    await this.runCliAction(this.t("Revert Last Batch"), "revert-action", ["--last-batch"]);
+    new Notice(this.t("Batch revert commands were removed in W3; inspect execution receipts manually."));
   }
 
   async openHomeNote() {
@@ -10030,15 +9897,15 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async runReportSubgraphCommand({ reportPath }) {
-    return runProductShellReportSubgraphCommand(this, { reportPath });
+    new Notice(this.t("Report subgraph was removed in W4; open graph artifacts from output/ manually if needed."));
   }
 
   collectReportCandidates() {
-    return collectProductShellReportCandidates(this);
+    return [];
   }
 
   openReportSubgraphPicker() {
-    return openProductShellReportSubgraphPicker(this);
+    this.runReportSubgraphCommand({ reportPath: "" });
   }
 
   async runDropUrlCommand({ url, title }) {
@@ -10071,6 +9938,31 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   openFileBackModal(prefill = {}) {
     this.openStructuredCommandModal(buildFileBackModalSpec(this, prefill));
+  }
+
+  openAlchemyStartModal(prefill = {}) {
+    this.openStructuredCommandModal(buildAlchemyStartModalSpec(this, prefill));
+  }
+
+  async runCompoundFileBack(suggest) {
+    const item = suggest && typeof suggest === "object" ? suggest : {};
+    const reportPath = String(item.report_path || item.reportPath || "").trim();
+    if (!reportPath) {
+      new Notice(this.t("缺少报告路径"));
+      return;
+    }
+    const label = String(item.title || this.t("沉淀")).trim() || this.t("沉淀");
+    await this.runCliAction(label, "file-back", [reportPath, "--kind", "judgment"]);
+  }
+
+  openCompoundAlchemyStart(suggest) {
+    const item = suggest && typeof suggest === "object" ? suggest : {};
+    const linkedRefs = Array.isArray(item.linked_refs) ? item.linked_refs : Array.isArray(item.linkedRefs) ? item.linkedRefs : [];
+    this.openAlchemyStartModal({
+      corpusId: String(item.corpus_id || item.corpusId || "").trim(),
+      topic: String(item.topic || "").trim(),
+      includeElixir: elixirIdFromLinkedRefs(linkedRefs),
+    });
   }
 
   openReviewPageModal(prefill = {}) {

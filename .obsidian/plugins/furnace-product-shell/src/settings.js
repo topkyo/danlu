@@ -99,7 +99,7 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName(t("LLM backend"))
-      .setDesc(t("Select the LLM provider used by run-compile / run-ask / run-nightly. Common providers are listed first; advanced entries are for local CLI sessions or custom OpenAI-compatible endpoints."))
+      .setDesc(t("Select the LLM provider used by compile / run-ask / run-nightly. Common providers are listed first; advanced entries are for local CLI sessions or custom OpenAI-compatible endpoints."))
       .addDropdown((dropdown) => {
         for (const profile of LLM_PROVIDER_PROFILES) {
           const prefix = profile.tier === "advanced" ? "Advanced · " : "";

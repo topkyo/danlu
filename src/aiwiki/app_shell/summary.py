@@ -87,6 +87,7 @@ from ..render.views import (
     judgment_asset_shell_record,
     judgment_asset_summary,
 )
+from .compound_suggest import build_compound_suggest
 from .controls import (
     rewrite_followup_actions_for_controls,
     shell_execution_controls,
@@ -100,6 +101,7 @@ from .meta import (
     shell_protocol_state,
 )
 from .surfaces import (
+    shell_compound_suggest_actions,
     shell_dashboard,
     shell_drift_warnings,
     shell_latest_llm_run,
@@ -385,7 +387,15 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
     counter_evidence_pages = _counter_evidence_pages_from_memory(counter_evidence_scan)
     metrics_history_delta = _build_metrics_history_delta(root, generated_at)
     planner_log_preview = _build_planner_log_preview(root)
-    suggested_next_actions = shell_suggested_next_actions(
+    compound_suggest = build_compound_suggest(
+        root,
+        memory=memory,
+        recent_outputs=recent_outputs,
+        route_telemetry=route_telemetry,
+        counter_evidence_pages=counter_evidence_pages,
+    )
+    compound_actions = shell_compound_suggest_actions(compound_suggest)
+    suggested_next_actions = compound_actions + shell_suggested_next_actions(
         planner_state=planner_state,
         review_controls=review_controls,
         execution_controls=execution_controls,
@@ -453,6 +463,7 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
         "counter_evidence_pages": counter_evidence_pages,
         "metrics_history_delta": metrics_history_delta,
         "planner_log_preview": planner_log_preview,
+        "compound_suggest": compound_suggest,
         "suggested_next_actions": suggested_next_actions,
         "today_snooze": load_today_snooze_state(root),
         "nightly": _build_nightly_summary(root, nightly_state),
@@ -467,6 +478,121 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
         suggested_next_actions=suggested_next_actions,
     )
     return summary
+
+
+def thin_shell_summary_for_persist(summary: ShellSummary) -> ShellSummary:
+    """Drop operator-only bulk from the on-disk Product Shell contract (B49)."""
+    if not isinstance(summary, dict):
+        return {}
+
+    review_controls = summary.get("review_controls")
+    thin_review: dict[str, Any] = {}
+    if isinstance(review_controls, dict):
+        l3_proposals = review_controls.get("l3_proposals")
+        if isinstance(l3_proposals, list):
+            thin_review["l3_proposals"] = l3_proposals
+        pages = review_controls.get("pages")
+        if isinstance(pages, list):
+            thin_pages = [page for page in pages if isinstance(page, dict) and page.get("can_review")][:1]
+            if thin_pages:
+                thin_review["pages"] = thin_pages
+
+    llm_status = summary.get("llm_status")
+    thin_llm_status: dict[str, Any] = {}
+    if isinstance(llm_status, dict):
+        for key in (
+            "configured",
+            "backend",
+            "effective_backend",
+            "model",
+            "effective_model",
+            "backend_requested",
+            "model_requested",
+            "message",
+            "auth_mode",
+        ):
+            if key in llm_status:
+                thin_llm_status[key] = llm_status[key]
+
+    nightly = summary.get("nightly")
+    thin_nightly: dict[str, Any] = {}
+    if isinstance(nightly, dict):
+        thin_nightly = {
+            "available": nightly.get("available"),
+            "generated_at": nightly.get("generated_at"),
+            "lint_counts": dict(nightly.get("lint_counts", {})) if isinstance(nightly.get("lint_counts"), dict) else {},
+            "rerun_command": nightly.get("rerun_command"),
+        }
+        llm_receipt = nightly.get("llm_receipt")
+        if isinstance(llm_receipt, dict) and llm_receipt.get("rerun_command"):
+            thin_nightly["llm_receipt"] = {"rerun_command": llm_receipt.get("rerun_command")}
+
+    watcher = summary.get("watcher")
+    thin_watcher: dict[str, Any] = {}
+    if isinstance(watcher, dict):
+        thin_watcher = {
+            "rerun_command": watcher.get("rerun_command"),
+            "last_run_mode": watcher.get("last_run_mode"),
+        }
+
+    links = summary.get("links")
+    thin_links: dict[str, str] = {}
+    if isinstance(links, dict):
+        for key in ("summary_path", "review_center_markdown", "furnace_center_html"):
+            value = links.get(key)
+            if value:
+                thin_links[key] = str(value)
+
+    return {
+        "kind": str(summary.get("kind") or "product-shell-summary"),
+        "contract_version": int(summary.get("contract_version") or 1),
+        "generated_at": str(summary.get("generated_at") or ""),
+        "generated_by": str(summary.get("generated_by") or ""),
+        "summary_path": str(summary.get("summary_path") or ""),
+        "active_protocol": str(summary.get("active_protocol") or ""),
+        "llm_status": thin_llm_status,
+        "latest_llm_run": dict(summary.get("latest_llm_run", {}))
+        if isinstance(summary.get("latest_llm_run"), dict)
+        else {},
+        "latest_shell_sync_run": dict(summary.get("latest_shell_sync_run", {}))
+        if isinstance(summary.get("latest_shell_sync_run"), dict)
+        else {},
+        "llm_health": dict(summary.get("llm_health", {})) if isinstance(summary.get("llm_health"), dict) else {},
+        "curated_page_roots": dict(summary.get("curated_page_roots", {}))
+        if isinstance(summary.get("curated_page_roots"), dict)
+        else {},
+        "review_backlog_counts": dict(summary.get("review_backlog_counts", {}))
+        if isinstance(summary.get("review_backlog_counts"), dict)
+        else {},
+        "review_controls": thin_review,
+        "counter_evidence_pages": list(summary.get("counter_evidence_pages", []))
+        if isinstance(summary.get("counter_evidence_pages"), list)
+        else [],
+        "drift_warnings": list(summary.get("drift_warnings", []))
+        if isinstance(summary.get("drift_warnings"), list)
+        else [],
+        "compound_suggest": dict(summary.get("compound_suggest", {}))
+        if isinstance(summary.get("compound_suggest"), dict)
+        else {},
+        "suggested_next_actions": list(summary.get("suggested_next_actions", []))
+        if isinstance(summary.get("suggested_next_actions"), list)
+        else [],
+        "recent_outputs": list(summary.get("recent_outputs", []))
+        if isinstance(summary.get("recent_outputs"), list)
+        else [],
+        "recent_receipts": list(summary.get("recent_receipts", []))
+        if isinstance(summary.get("recent_receipts"), list)
+        else [],
+        "recent_raw_inputs": list(summary.get("recent_raw_inputs", []))
+        if isinstance(summary.get("recent_raw_inputs"), list)
+        else [],
+        "today_snooze": dict(summary.get("today_snooze", {}))
+        if isinstance(summary.get("today_snooze"), dict)
+        else {},
+        "nightly": thin_nightly,
+        "watcher": thin_watcher,
+        "links": thin_links,
+    }
 
 
 def _filter_shell_route_telemetry(route_telemetry: dict[str, Any]) -> dict[str, Any]:

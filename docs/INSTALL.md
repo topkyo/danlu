@@ -34,7 +34,7 @@ pip install -e ".[dev]" --break-system-packages   # 若无 PEP 668，可去掉 -
 
 **边界（诚实预览）**：
 
-- **可用**：在克隆仓库根执行 `pip install -e .`（或 `pip install .`）后，用 `aiwiki` 做 `new-vault` / `layout` / `compile` / `today` / `drop` 等 CLI。
+- **可用**：在克隆仓库根执行 `pip install -e .`（或 `pip install .`）后，用 `aiwiki` 做 `new-vault` / `advanced compile` / `today` / `drop` 等 CLI。
 - **仍依赖 checkout**：创建带 Product Shell 的 vault 需要本仓库里的 `.obsidian/plugins/furnace-product-shell/` 三件套；**尚未**发布到 PyPI 的 `pip install aiwiki` 一键包。
 - 版本与 CHANGELOG AgentOS gate 对齐为 **0.4.0**（见 `pyproject.toml` / `src/aiwiki/__init__.py`）。
 
@@ -104,9 +104,15 @@ cd /path/to/your-vault
 当前支持的后端：
 
 - `deepseek-api`
-- `opencode-api`（默认主路由，模型 `deepseek-v4-pro`）
+- `opencode-api`（**产品默认**主路由，模型 `deepseek-v4-pro`）
 - `openai-api`（兼容 OpenAI 协议）
 - `anthropic-api`
+
+### 产品默认 LLM 路由（product lock）
+
+炼丹炉产品面只锁定一条默认 LLM 路由：`opencode-api` + `deepseek-v4-pro`。Product Shell、CLI、`llm-check` 与 systemd/launchd 安装脚本均以此为准；**不会**在 `run-ask` / nightly 中自动 fallback 到其他 backend。
+
+`deepseek-api`、`openai-api`、`anthropic-api` 仍作为开发者/专家 escape hatch 保留在代码中，需显式设置 `AIWIKI_LLM_BACKEND` 切换；这不属于默认产品路径。
 
 最简配置示例：
 

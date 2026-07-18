@@ -61,6 +61,10 @@ function reviewKindLabel(plugin, kind, count = 1) {
 
 function transitionLabel(plugin, controlType, transition) {
   if (controlType === "page") {
+    const thin = THIN_REVIEW_TRANSITION_LABELS[String(transition || "").trim()];
+    if (thin) {
+      return plugin.t(thin);
+    }
     return displayCuratedStatus(transition, plugin.locale());
   }
   if (controlType === "rewrite") {

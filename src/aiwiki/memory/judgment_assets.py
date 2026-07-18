@@ -6,7 +6,213 @@ from pathlib import Path
 from typing import Any
 
 from ..app_state import DEFAULT_PROTOCOL, load_manifest
-from ..app_utils import analyze_citation_snapshots, parse_frontmatter
+from ..app_utils import analyze_citation_snapshots, parse_frontmatter, strip_frontmatter, tokenize
+from ..content.io import preserved_section
+from ..execution.alchemy import ELIXIR_DIR
+
+
+def _empty_term_bucket() -> dict[str, set[str]]:
+    return {
+        "source_ids": set(),
+        "concept_slugs": set(),
+        "judgment_page_ids": set(),
+        "elixir_ids": set(),
+    }
+
+
+def _normalize_term_index(term_index: dict[str, Any]) -> dict[str, dict[str, set[str]]]:
+    normalized: dict[str, dict[str, set[str]]] = {}
+    for term, payload in term_index.items():
+        if not isinstance(payload, dict):
+            continue
+        bucket = _empty_term_bucket()
+        for key in bucket:
+            bucket[key] = {
+                str(item)
+                for item in payload.get(key, [])
+                if isinstance(item, str) and str(item).strip()
+            }
+        normalized[str(term)] = bucket
+    return normalized
+
+
+def _serialize_term_index(term_index: dict[str, dict[str, set[str]]]) -> dict[str, dict[str, list[str]]]:
+    return {
+        term: {
+            "source_ids": sorted(payload["source_ids"]),
+            "concept_slugs": sorted(payload["concept_slugs"]),
+            "judgment_page_ids": sorted(payload["judgment_page_ids"]),
+            "elixir_ids": sorted(payload["elixir_ids"]),
+        }
+        for term, payload in sorted(term_index.items())
+    }
+
+
+def _index_compounding_text(
+    term_index: dict[str, dict[str, set[str]]],
+    text: str,
+    *,
+    judgment_page_id: str | None = None,
+    elixir_id: str | None = None,
+) -> None:
+    for token in tokenize(text):
+        bucket = term_index.setdefault(token, _empty_term_bucket())
+        if judgment_page_id:
+            bucket["judgment_page_ids"].add(judgment_page_id)
+        if elixir_id:
+            bucket["elixir_ids"].add(elixir_id)
+
+
+def _is_confirmed_judgment(node: dict[str, Any]) -> bool:
+    return str(node.get("kind") or "") == "judgment" and str(node.get("status") or "") == "confirmed"
+
+
+def _compounding_index_text(root: Path, page_path: str, title: str) -> str:
+    target = root / page_path
+    if not target.exists():
+        return title
+    content = target.read_text(encoding="utf-8", errors="replace")
+    body = strip_frontmatter(content)
+    summary = preserved_section(body, "Summary", "").strip()
+    if not summary:
+        summary = body[:1200]
+    return f"{title}\n{summary}"
+
+
+def _resolve_elixir_derived_ref(
+    reference: str,
+    *,
+    source_ids: set[str],
+    judgment_page_ids: set[str],
+    elixir_ids: set[str],
+) -> tuple[str, str] | None:
+    candidate = reference.strip().replace("\\", "/")
+    if not candidate:
+        return None
+    if candidate.startswith("wiki/sources/") and candidate.endswith(".md"):
+        source_id = Path(candidate).stem
+        if source_id in source_ids:
+            return ("source", source_id)
+    if candidate.startswith("wiki/judgments/") and candidate.endswith(".md"):
+        page_id = Path(candidate).stem
+        if page_id in judgment_page_ids:
+            return ("judgment", page_id)
+    if candidate.startswith(f"{ELIXIR_DIR}/") and candidate.endswith(".md"):
+        elixir_id = Path(candidate).stem
+        if elixir_id in elixir_ids:
+            return ("elixir", elixir_id)
+    stem = Path(candidate).stem
+    if stem in source_ids:
+        return ("source", stem)
+    if stem in judgment_page_ids:
+        return ("judgment", stem)
+    if stem in elixir_ids:
+        return ("elixir", stem)
+    return None
+
+
+def _attach_settled_elixirs_to_memory(
+    root: Path,
+    memory: dict[str, Any],
+    term_index: dict[str, dict[str, set[str]]],
+) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
+    confirmed_judgment_ids = {
+        str(node.get("page_id") or "")
+        for node in memory.get("judgment_nodes", [])
+        if _is_confirmed_judgment(node) and node.get("page_id")
+    }
+    source_ids = {str(node.get("id") or "") for node in memory.get("source_nodes", []) if node.get("id")}
+    elixir_nodes: list[dict[str, Any]] = []
+    elixir_derived_from: list[dict[str, str]] = []
+    elixir_dir = root / ELIXIR_DIR
+    if not elixir_dir.exists():
+        return elixir_nodes, elixir_derived_from
+
+    for page in sorted(elixir_dir.glob("*.md")):
+        try:
+            content = page.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        frontmatter = parse_frontmatter(content)
+        state = str(frontmatter.get("elixir_state") or "settled").strip() or "settled"
+        if state != "settled":
+            continue
+        elixir_id = str(frontmatter.get("id") or page.stem).strip() or page.stem
+        title = str(frontmatter.get("title") or elixir_id)
+        page_path = f"{ELIXIR_DIR}/{page.name}"
+        derived_from = _frontmatter_string_list(frontmatter, "derived_from")
+        elixir_nodes.append(
+            {
+                "elixir_id": elixir_id,
+                "title": title,
+                "path": page_path,
+                "protocol": str(frontmatter.get("protocol") or DEFAULT_PROTOCOL),
+                "elixir_state": state,
+                "derived_from": derived_from,
+            }
+        )
+        _index_compounding_text(
+            term_index,
+            _compounding_index_text(root, page_path, title),
+            elixir_id=elixir_id,
+        )
+
+    elixir_ids = {str(node.get("elixir_id") or "") for node in elixir_nodes if node.get("elixir_id")}
+    seen_edges: set[tuple[str, str, str]] = set()
+    for node in elixir_nodes:
+        elixir_id = str(node.get("elixir_id") or "")
+        if not elixir_id:
+            continue
+        for reference in list(node.get("derived_from") or []):
+            resolved = _resolve_elixir_derived_ref(
+                str(reference),
+                source_ids=source_ids,
+                judgment_page_ids=confirmed_judgment_ids,
+                elixir_ids=elixir_ids,
+            )
+            if not resolved:
+                continue
+            from_kind, from_id = resolved
+            edge_key = (elixir_id, from_kind, from_id)
+            if edge_key in seen_edges:
+                continue
+            seen_edges.add(edge_key)
+            elixir_derived_from.append(
+                {
+                    "elixir_id": elixir_id,
+                    "from_kind": from_kind,
+                    "from_id": from_id,
+                }
+            )
+    return elixir_nodes, elixir_derived_from
+
+
+def _index_compounding_assets_in_memory(root: Path, memory: dict[str, Any]) -> dict[str, Any]:
+    term_index = _normalize_term_index(memory.get("term_index", {}))
+    for node in memory.get("judgment_nodes", []):
+        if not isinstance(node, dict) or not _is_confirmed_judgment(node):
+            continue
+        page_id = str(node.get("page_id") or "")
+        page_path = str(node.get("path") or "")
+        title = str(node.get("title") or page_id)
+        if not page_id or not page_path:
+            continue
+        _index_compounding_text(
+            term_index,
+            _compounding_index_text(root, page_path, title),
+            judgment_page_id=page_id,
+        )
+    elixir_nodes, elixir_derived_from = _attach_settled_elixirs_to_memory(root, memory, term_index)
+    updated = dict(memory)
+    updated["term_index"] = _serialize_term_index(term_index)
+    updated["elixir_nodes"] = sorted(elixir_nodes, key=lambda item: item["elixir_id"])
+    edges = dict(memory.get("edges", {}))
+    edges["elixir_derived_from"] = sorted(
+        elixir_derived_from,
+        key=lambda item: (item["elixir_id"], item["from_kind"], item["from_id"]),
+    )
+    updated["edges"] = edges
+    return updated
 
 
 def _frontmatter_string_list(frontmatter: dict[str, Any], key: str) -> list[str]:
@@ -227,4 +433,4 @@ def attach_judgment_assets_to_machine_memory(
         key=lambda item: (item["relation"], item["from"], item["to"]),
     )
     updated["edges"] = edges
-    return updated
+    return _index_compounding_assets_in_memory(root, updated)

@@ -53,9 +53,10 @@ const ZH_TEXT = {
   "Show advanced commands": "显示高级命令",
   "Register diagnostics, history, Review Center, and Execution Center commands in the command palette. Reload Obsidian after changing this toggle.": "是否把诊断、历史、Review Center 与 Execution Center 命令注册到命令面板中。修改后需要重载 Obsidian。",
   "Advanced command visibility refreshes after reloading Obsidian.": "高级命令可见性会在重载 Obsidian 后刷新。",
+  "Review, Execution, and Recent Runs are available from the command palette when advanced commands are enabled.": "Review / Execution / Recent Runs 仅在开启高级命令后，从命令面板打开。",
   "Full runtime is Desktop-only. iPad/iOS Obsidian can only be a future companion; it cannot run the local launcher, Python CLI, or full ingest/review flow.": "全功能 runtime 仅支持 Desktop。iPad/iOS Obsidian 未来只能作为 companion，不能运行本地 launcher、Python CLI 或完整投料/复审流程。",
   "LLM backend": "LLM 后端",
-  "Select the LLM provider used by run-compile / run-ask / run-nightly. Common providers are listed first; advanced entries are for local CLI sessions or custom OpenAI-compatible endpoints.": "选择 run-compile / run-ask / run-nightly 使用的 LLM API provider。",
+  "Select the LLM provider used by compile / run-ask / run-nightly. Common providers are listed first; advanced entries are for local CLI sessions or custom OpenAI-compatible endpoints.": "选择 compile / run-ask / run-nightly 使用的 LLM API provider。",
   "LLM model": "LLM 模型",
   "Model for the selected API provider. Empty uses that provider profile default when one exists.": "所选 API provider 的模型。留空时使用该 provider profile 的默认模型（如果有）。",
   "API key": "API Key",
@@ -401,7 +402,7 @@ const ZH_TEXT = {
   "未刷新": "未刷新",
   "刚刚": "刚刚",
   "已打开输出汇总（找不到具体报告路径）": "已打开输出汇总（找不到具体报告路径）",
-  "已打开运行记录（找不到具体回执路径）": "已打开运行记录（找不到具体回执路径）",
+  "已回到 Today（找不到具体回执路径）": "已回到 Today（找不到具体回执路径）",
   "无法打开目标，可能尚未生成": "无法打开目标，可能尚未生成",
   // R91 Advanced 抽屉子 section
   "系统状态": "系统状态",
@@ -577,6 +578,7 @@ const ZH_TEXT = {
   "output/reports/....md": "output/reports/....md",
   "Optional filed-back title": "可选回填标题",
   "wiki/decisions/... or wiki/judgments/...": "wiki/decisions/... 或 wiki/judgments/...",
+  "confirmed / discarded / pending-review": "confirmed / discarded / pending-review",
   "approved / confirmed / needs-revision ...": "approved / confirmed / needs-revision ...",
   "accepted / rejected / needs-revision ...": "accepted / rejected / needs-revision ...",
   "accepted / rejected / ready ...": "accepted / rejected / ready ...",
@@ -669,6 +671,7 @@ const ZH_TEXT = {
   apply: "应用",
   revert: "回滚",
   "file-back": "回流归档",
+  "alchemy-start": "凝丹启动",
   "archive-apply": "归档应用",
   "archive-revert": "归档回滚",
   "knowledge-lifecycle-override": "生命周期覆盖",
@@ -841,6 +844,16 @@ const ZH_TEXT = {
   stdout: "标准输出",
   stderr: "错误输出",
   error: "错误",
+};
+const THIN_CURATED_STATUS_LABELS = {
+  "pending-review": "待审",
+  confirmed: "已确认",
+  discarded: "废弃",
+};
+const THIN_REVIEW_TRANSITION_LABELS = {
+  "pending-review": "待审",
+  confirmed: "已确认",
+  discarded: "废弃",
 };
 const CURATED_STATUS_LABELS = {
   proposed: "Proposed",

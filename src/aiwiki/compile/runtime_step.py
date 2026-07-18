@@ -18,14 +18,11 @@ from ..app_state import (
     default_machine_memory_build_state,
     default_ranking_build_state,
     knowledge_lifecycle_state_path,
-    machine_memory_actions_path,
     machine_memory_build_state_path,
     machine_memory_graph_html_path,
     machine_memory_graph_path,
     machine_memory_history_path,
-    machine_memory_repair_plan_path,
     machine_memory_state_path,
-    machine_memory_topology_path,
     material_routing_state_path,
     material_state_path,
     planner_state_path,
@@ -66,8 +63,6 @@ from ..memory.core import (
 from ..memory.execution_surfaces import (
     build_execution_audit_snapshot,
     reconcile_concept_rewrite_proposals,
-    render_execution_audit,
-    render_execution_center,
 )
 from ..memory.graph import (
     append_machine_memory_history,
@@ -78,14 +73,7 @@ from ..memory.graph import (
 from ..memory.graph_builder import build_machine_memory_graph
 from ..memory.health import build_machine_memory_health
 from ..memory.judgment_assets import attach_judgment_assets_to_machine_memory
-from ..memory.status import (
-    render_drift_report,
-    render_graph_health,
-    render_machine_memory_actions,
-    render_machine_memory_index,
-    render_machine_memory_repair_plan,
-)
-from ..memory.topology import render_machine_memory_topology
+from ..memory.status import render_machine_memory_index
 from .context import CompileContext
 
 logger = logging.getLogger(__name__)
@@ -570,29 +558,10 @@ def compile_runtime_phase(context: CompileContext) -> None:
         context.root / "wiki" / "indexes" / "machine-memory.md",
         render_machine_memory_index(context.memory),
     )
-    context.write_index_artifact(machine_memory_topology_path(context.root), render_machine_memory_topology(context.memory))
-    context.write_index_artifact(machine_memory_actions_path(context.root), render_machine_memory_actions(context.memory))
-    context.write_index_artifact(
-        machine_memory_repair_plan_path(context.root),
-        render_machine_memory_repair_plan(context.memory),
-    )
-    context.write_index_artifact(
-        context.root / "wiki" / "indexes" / "execution-center.md",
-        render_execution_center(
-            context.root,
-            context.memory,
-            compiled_at=context.compiled_at,
-            active_protocol=context.protocol_state["active_protocol"],
-        ),
-    )
     context.execution_audit = build_execution_audit_snapshot(
         context.root,
         context.memory,
         active_protocol=context.protocol_state["active_protocol"],
-    )
-    context.write_index_artifact(
-        context.root / "wiki" / "indexes" / "execution-audit.md",
-        render_execution_audit(context.execution_audit),
     )
 
     ranking_build = compile_facade.build_ranking_state(

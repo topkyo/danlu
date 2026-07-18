@@ -294,8 +294,26 @@ function sumNumericValues(values) {
   }, 0);
 }
 
+function thinCuratedStatusGroup(status) {
+  const normalized = String(status || "").trim();
+  if (["proposed", "needs-revisit", "tentative", "tracking"].includes(normalized)) {
+    return "pending-review";
+  }
+  if (["approved", "confirmed"].includes(normalized)) {
+    return "confirmed";
+  }
+  if (["superseded", "rejected"].includes(normalized)) {
+    return "discarded";
+  }
+  return normalized;
+}
+
 function displayCuratedStatus(status, locale = DEFAULT_LOCALE) {
-  return t(locale, CURATED_STATUS_LABELS[String(status || "").trim()] || String(status || "unknown"));
+  const thin = thinCuratedStatusGroup(status);
+  const label = THIN_CURATED_STATUS_LABELS[thin]
+    || CURATED_STATUS_LABELS[String(status || "").trim()]
+    || String(status || "unknown");
+  return t(locale, label);
 }
 
 function displayActionStatus(status, locale = DEFAULT_LOCALE) {
@@ -463,4 +481,18 @@ function splitReportsByLocalDate(reports, options = {}) {
       .sort((left, right) => right.date.getTime() - left.date.getTime())
       .slice(0, limitPreviousDays),
   };
+}
+
+function elixirIdFromLinkedRefs(linkedRefs) {
+  const refs = Array.isArray(linkedRefs) ? linkedRefs : [];
+  for (const ref of refs) {
+    const text = String(ref || "").trim();
+    if (!text) continue;
+    const normalized = text.replace(/\\/g, "/");
+    if (normalized.startsWith("wiki/elixirs/") && normalized.endsWith(".md")) {
+      const base = normalized.slice("wiki/elixirs/".length, -".md".length);
+      if (base) return base;
+    }
+  }
+  return "";
 }

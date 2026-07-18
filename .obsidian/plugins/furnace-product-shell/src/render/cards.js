@@ -24,21 +24,46 @@ function renderReportCard(plugin, cardEl, entry) {
   }
 
   const actions = cardEl.createDiv({ cls: "furnace-feed-card-actions" });
+  const suggest = entry.compound_suggest || entry.compoundSuggest;
+  if (suggest && typeof suggest === "object") {
+    renderCompoundSuggestActions(plugin, actions, suggest);
+  }
   const openBtn = actions.createEl("button", {
-    cls: "mod-cta",
+    cls: suggest ? "" : "mod-cta",
     text: plugin.t("Open report"),
   });
   openBtn.addEventListener("click", () => {
     plugin.openWorkspacePath(entry.target);
   });
 
-  // 仅 advanced mode 显示 View graph 按钮 (EP-004 SC#2)
-  if (plugin.settings && plugin.settings.showAdvancedCommands) {
-    const graphBtn = actions.createEl("button", {
-      text: plugin.t("View graph"),
+}
+
+function renderCompoundSuggestActionCard(plugin, cardEl, entry) {
+  const suggest = entry.compound_suggest || entry.compoundSuggest;
+  if (!suggest || typeof suggest !== "object") return;
+  const actions = cardEl.createDiv({ cls: "furnace-feed-card-actions" });
+  renderCompoundSuggestActions(plugin, actions, suggest);
+}
+
+function renderCompoundSuggestActions(plugin, actionsEl, suggest) {
+  const action = String(suggest.action || "").trim();
+  if (action === "file-back-judgment") {
+    const fileBackBtn = actionsEl.createEl("button", {
+      cls: "mod-cta furnace-compound-file-back",
+      text: plugin.t("沉淀"),
     });
-    graphBtn.addEventListener("click", async () => {
-      await plugin.runReportSubgraphCommand({ reportPath: entry.target });
+    fileBackBtn.addEventListener("click", () => {
+      plugin.runCompoundFileBack(suggest);
+    });
+    return;
+  }
+  if (action === "alchemy-start") {
+    const alchemyBtn = actionsEl.createEl("button", {
+      cls: "mod-cta furnace-compound-alchemy-start",
+      text: plugin.t("凝丹"),
+    });
+    alchemyBtn.addEventListener("click", () => {
+      plugin.openCompoundAlchemyStart(suggest);
     });
   }
 }
@@ -52,15 +77,11 @@ function renderConfirmationCard(plugin, cardEl, entry) {
       text: plugin.t("Review"),
     });
     reviewBtn.addEventListener("click", () => {
-      plugin.openReviewCenterView();
+      if (typeof plugin.openReviewNextTransitionPicker === "function") {
+        plugin.openReviewNextTransitionPicker();
+      }
     });
 
-    const snoozeBtn = actions.createEl("button", {
-      text: plugin.t("Snooze"),
-    });
-    snoozeBtn.addEventListener("click", () => {
-      plugin.runTodaySnoozeCommand(entry.target);
-    });
   }
 }
 
@@ -98,5 +119,7 @@ module.exports = {
   renderReportCard,
   renderConfirmationCard,
   renderAutomationCard,
+  renderCompoundSuggestActionCard,
+  renderCompoundSuggestActions,
   isReportUnread,
 };

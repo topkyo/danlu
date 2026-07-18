@@ -19,7 +19,7 @@ related_docs:
 
 开源版是完整的 local-first runtime，不阉割核心功能：
 
-- **Runtime CLI**：`aiwiki` 全部命令，包括 `drop`、`today`、`metrics`、`advanced` 及其下全部 operator 命令。
+- **Runtime CLI**：`aiwiki` 全部命令，包括 `drop`、`today`、`advanced` 及其下全部 operator 命令（含 `metrics` / `compile` / `review-page` 等）。
 - **Product Shell 插件**：Obsidian 插件源码与 release bundle，见 `.obsidian/plugins/furnace-product-shell/`。
 - **五层主线**：`raw / wiki / machine memory / schema / outputs` 完整编译与治理链路。
 - **五协议 runtime**：`general / investing / research / product / ops`。

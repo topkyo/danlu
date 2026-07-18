@@ -214,7 +214,10 @@ def shell_search(root: Path, query: str, *, limit: int = 12) -> dict[str, Any]:
 
 @runtime_write_operation
 def write_shell_summary(root: Path, summary: ShellSummary | None = None) -> ShellSummary:
+    from .summary import thin_shell_summary_for_persist
+
     summary = summary or build_shell_summary(root)
-    write_json_document_if_changed_ignoring_generated_timestamps(shell_summary_path(root), summary)
-    write_if_changed_ignoring_timestamps(product_shell_html_path(root), render_product_shell_html(summary))
-    return summary
+    persisted = thin_shell_summary_for_persist(summary)
+    write_json_document_if_changed_ignoring_generated_timestamps(shell_summary_path(root), persisted)
+    write_if_changed_ignoring_timestamps(product_shell_html_path(root), render_product_shell_html(persisted))
+    return persisted

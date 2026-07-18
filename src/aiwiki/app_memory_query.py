@@ -112,6 +112,7 @@ def _machine_memory_query_payload_hash(
         "memory_source_count": len(memory.get("source_nodes", [])),
         "memory_concept_count": len(memory.get("concept_nodes", [])),
         "memory_judgment_count": len(memory.get("judgment_nodes", [])),
+        "memory_elixir_count": len(memory.get("elixir_nodes", [])),
         "material_generated_at": str(material_state.get("generated_at") or ""),
         "material_entries": material_state.get("entries", []),
         "routing_computed_at": str(routing_state.get("computed_at") or ""),
@@ -130,6 +131,8 @@ def build_machine_memory_adjacency(memory: dict[str, Any]) -> dict[str, dict[str
         adjacency.setdefault(f"concept:{node['slug']}", {})
     for node in memory.get("judgment_nodes", []):
         adjacency.setdefault(f"judgment:{node['page_id']}", {})
+    for node in memory.get("elixir_nodes", []):
+        adjacency.setdefault(f"elixir:{node['elixir_id']}", {})
     for edge in memory.get("edges", {}).get("source_to_concept", []):
         source_key = f"source:{edge['source_id']}"
         concept_key = f"concept:{edge['concept_slug']}"
@@ -163,6 +166,15 @@ def build_machine_memory_adjacency(memory: dict[str, Any]) -> dict[str, dict[str
         right_key = f"concept:{edge['to']}"
         adjacency.setdefault(left_key, {})[right_key] = edge_type
         adjacency.setdefault(right_key, {})[left_key] = edge_type
+    for edge in memory.get("edges", {}).get("elixir_derived_from", []):
+        elixir_key = f"elixir:{edge['elixir_id']}"
+        from_kind = str(edge.get("from_kind") or "")
+        from_id = str(edge.get("from_id") or "")
+        if from_kind not in {"source", "judgment", "elixir"} or not from_id:
+            continue
+        from_key = f"{from_kind}:{from_id}"
+        adjacency.setdefault(elixir_key, {})[from_key] = "ELIXIR_DERIVED_FROM"
+        adjacency.setdefault(from_key, {})[elixir_key] = "ELIXIR_DERIVED_FROM"
     return adjacency
 
 
@@ -177,6 +189,16 @@ def machine_memory_node_metadata(memory: dict[str, Any], node_key: str) -> dict[
         judgment_nodes = {node["page_id"]: node for node in memory.get("judgment_nodes", [])}
         node = judgment_nodes.get(page_id, {})
         return {"kind": "judgment", "page_id": page_id, "title": node.get("title", page_id), "path": node.get("path", f"wiki/judgments/{page_id}.md")}
+    if node_key.startswith("elixir:"):
+        elixir_id = node_key.removeprefix("elixir:")
+        elixir_nodes = {node["elixir_id"]: node for node in memory.get("elixir_nodes", [])}
+        node = elixir_nodes.get(elixir_id, {})
+        return {
+            "kind": "elixir",
+            "elixir_id": elixir_id,
+            "title": node.get("title", elixir_id),
+            "path": node.get("path", f"wiki/elixirs/{elixir_id}.md"),
+        }
     concept_slug = node_key.removeprefix("concept:")
     concept_nodes = {node["slug"]: node for node in memory.get("concept_nodes", [])}
     node = concept_nodes.get(concept_slug, {})
@@ -273,7 +295,7 @@ def record_query_route_telemetry(root: Path, *, question: str, machine_query: di
     occurred_at = occurred_at or utc_now()
     telemetry_state = load_query_route_telemetry(root)
     entries = [dict(entry) for entry in telemetry_state.get("entries", []) if isinstance(entry, dict)]
-    entry = {"query_signature": question_signature(question), "question_preview": question.strip()[:160], "occurred_at": occurred_at, "protocol": protocol, "selected_strategy": str(machine_query.get("selected_strategy") or ""), "selection_reason": str(machine_query.get("selection_reason") or ""), "matched_terms": list(machine_query.get("matched_terms", []) or [])[:8], "matched_source_markers": list(machine_query.get("matched_source_markers", []) or [])[:4], "matched_graph_markers": list(machine_query.get("matched_graph_markers", []) or [])[:4], "route_count": len(machine_query.get("query_routes", []) or []), "ranked_source_ids": list(machine_query.get("ranked_source_ids", []) or [])[:5], "ranked_concept_slugs": list(machine_query.get("ranked_concept_slugs", []) or [])[:5], "touched_component_ids": list(machine_query.get("touched_component_ids", []) or [])[:5], "planner_next_action_id": str((machine_query.get("planner_next_action") or {}).get("action_id") or "")}
+    entry = {"query_signature": question_signature(question), "question_preview": question.strip()[:160], "occurred_at": occurred_at, "protocol": protocol, "selected_strategy": str(machine_query.get("selected_strategy") or ""), "selection_reason": str(machine_query.get("selection_reason") or ""), "matched_terms": list(machine_query.get("matched_terms", []) or [])[:8], "matched_source_markers": list(machine_query.get("matched_source_markers", []) or [])[:4], "matched_graph_markers": list(machine_query.get("matched_graph_markers", []) or [])[:4], "route_count": len(machine_query.get("query_routes", []) or []), "ranked_source_ids": list(machine_query.get("ranked_source_ids", []) or [])[:5], "ranked_concept_slugs": list(machine_query.get("ranked_concept_slugs", []) or [])[:5], "ranked_judgment_ids": list(machine_query.get("ranked_judgment_ids", []) or [])[:5], "ranked_elixir_ids": list(machine_query.get("ranked_elixir_ids", []) or [])[:5], "touched_component_ids": list(machine_query.get("touched_component_ids", []) or [])[:5], "planner_next_action_id": str((machine_query.get("planner_next_action") or {}).get("action_id") or "")}
     entries.insert(0, entry)
     strategy_counts: dict[str, int] = {}
     protocol_counts: dict[str, int] = {}

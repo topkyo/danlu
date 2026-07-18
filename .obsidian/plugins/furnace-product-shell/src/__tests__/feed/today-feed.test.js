@@ -120,8 +120,7 @@ test("isMaintenanceCommandAction detects batch-hint prefix", () => {
 
 test("isMaintenanceCommandAction detects maintenance tokens", () => {
   expect(isMaintenanceCommandAction(" review-page foo.md ", "")).toBe(true);
-  expect(isMaintenanceCommandAction(" apply-action ", "")).toBe(true);
-  expect(isMaintenanceCommandAction(" alchemy auto --dry-run ", "")).toBe(true);
+  expect(isMaintenanceCommandAction(" wiki/indexes/repair-backlog.md ", "")).toBe(false);
 });
 
 test("isMaintenanceCommandAction returns false for user commands", () => {
@@ -291,6 +290,72 @@ test("buildTodayFeed surfaces elixir entries for today", () => {
   const elixirs = feed.filter((e) => e.kind === "elixir");
   expect(elixirs).toHaveLength(1);
   expect(elixirs[0].title).toBe("Elixir NVDA settled");
+});
+
+test("buildTodayFeed surfaces compound suggest action entries", () => {
+  const summary = makeSummary({
+    compound_suggest: {
+      available: true,
+      count: 1,
+      items: [
+        {
+          report_path: "output/reports/today.md",
+          title: "沉淀：Today question",
+          action: "file-back-judgment",
+          reason: "multi-turn-same-corpus,links-confirmed-judgment",
+          signal: "extend",
+          protocol: "research",
+        },
+      ],
+    },
+    suggested_next_actions: [
+      {
+        kind: "compound-suggest",
+        title: "沉淀：Today question",
+        command: "PYTHONPATH=src python3 -m aiwiki.cli --root . file-back output/reports/today.md --kind judgment",
+        path: "output/reports/today.md",
+        reason: "multi-turn-same-corpus",
+        action: "file-back-judgment",
+      },
+    ],
+  });
+
+  const feed = buildTodayFeed(summary);
+  const compoundActions = feed.filter((entry) => entry.compound_suggest);
+  expect(compoundActions).toHaveLength(1);
+  expect(compoundActions[0].kind).toBe("action");
+  expect(compoundActions[0].title).toBe("沉淀：Today question");
+  expect(compoundActions[0].compound_suggest.action).toBe("file-back-judgment");
+});
+
+test("buildTodayFeed attaches compound suggest to today report entries", () => {
+  const summary = makeSummary({
+    compound_suggest: {
+      available: true,
+      count: 1,
+      items: [
+        {
+          report_path: "output/reports/today.md",
+          title: "凝丹：衔接旧丹",
+          action: "alchemy-start",
+          corpus_id: "corpus-a",
+          topic: "Follow-up question",
+          reason: "extend",
+        },
+      ],
+    },
+    recent_outputs: [
+      { path: "output/reports/today.md", title: "Today Report", generated_at: "2026-05-03T08:00:00Z", format: "report" },
+    ],
+  });
+
+  const feed = buildTodayFeed(summary);
+  const reports = feed.filter((entry) => entry.kind === "report");
+  expect(reports).toHaveLength(1);
+  expect(reports[0].compound_suggest).toMatchObject({
+    action: "alchemy-start",
+    corpus_id: "corpus-a",
+  });
 });
 
 test("buildTodayFeed keeps agent loop automation out of primary Today", () => {

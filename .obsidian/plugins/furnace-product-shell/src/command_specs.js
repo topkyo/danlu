@@ -40,17 +40,6 @@ function buildAskCommandSpec({ question, format, mode }) {
   };
 }
 
-function buildReportSubgraphCommandSpec(reportPath) {
-  const normalized = String(reportPath || "").trim();
-  return {
-    normalized,
-    args: ["report-subgraph", "--report", normalized],
-    labelKey: "View report graph",
-    labelSubject: normalized,
-    options: { refreshAfter: true },
-  };
-}
-
 function buildDropUrlCommandSpec({ url, title }) {
   const args = ["drop", "url", url];
   if (title) {

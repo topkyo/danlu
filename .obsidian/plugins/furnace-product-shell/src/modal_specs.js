@@ -1,30 +1,5 @@
 // Structured command modal specs for Product Shell operator actions.
 
-function buildReportSubgraphModalSpec(plugin, candidates) {
-  const reportCandidates = Array.isArray(candidates) ? candidates : [];
-  const fieldSpec = {
-    key: "reportPath",
-    label: plugin.t("Report path"),
-    placeholder: "output/reports/...md",
-    required: true,
-  };
-  if (reportCandidates.length) {
-    fieldSpec.kind = "select";
-    fieldSpec.options = reportCandidates;
-    fieldSpec.initialValue = reportCandidates[0].value;
-  }
-  return {
-    title: plugin.t("View report graph"),
-    description: reportCandidates.length
-      ? plugin.t("Choose a recent report.")
-      : plugin.t("No recent reports available; enter a path manually."),
-    fields: [fieldSpec],
-    onSubmit: async (values) => {
-      await plugin.runReportSubgraphCommand({ reportPath: values.reportPath });
-    },
-  };
-}
-
 function buildFileBackModalSpec(plugin, prefill = {}) {
   return {
     title: plugin.t("File Back"),
@@ -47,7 +22,7 @@ function buildFileBackModalSpec(plugin, prefill = {}) {
         key: "kind",
         label: plugin.t("Kind"),
         kind: "select",
-        initialValue: prefill.kind || "derived",
+        initialValue: prefill.kind || "judgment",
         options: [
           ["derived", plugin.t("derived")],
           ["decision", plugin.t("decision")],
@@ -60,6 +35,40 @@ function buildFileBackModalSpec(plugin, prefill = {}) {
       appendOptionalArg(args, "--title", values.title);
       appendOptionalArg(args, "--kind", values.kind);
       await plugin.runCliAction(`File Back: ${values.kind}`, "file-back", args);
+    },
+  };
+}
+
+function buildAlchemyStartModalSpec(plugin, prefill = {}) {
+  return {
+    title: plugin.t("Alchemy Start"),
+    description: plugin.t("Start a new elixir draft from a promoted corpus."),
+    fields: [
+      {
+        key: "corpus_id",
+        label: plugin.t("Corpus id"),
+        required: true,
+        placeholder: plugin.t("corpus-id"),
+        initialValue: prefill.corpusId || prefill.corpus_id || "",
+      },
+      {
+        key: "topic",
+        label: plugin.t("Topic"),
+        required: true,
+        placeholder: plugin.t("Elixir topic"),
+        initialValue: prefill.topic || "",
+      },
+      {
+        key: "include_elixir",
+        label: plugin.t("Include elixir"),
+        placeholder: plugin.t("Optional settled elixir id"),
+        initialValue: prefill.includeElixir || prefill.include_elixir || "",
+      },
+    ],
+    onSubmit: async (values) => {
+      const args = [values.corpus_id, "--topic", values.topic];
+      appendOptionalArg(args, "--include-elixir", values.include_elixir);
+      await plugin.runCliAction(`Alchemy Start: ${values.corpus_id}`, "alchemy-start", args);
     },
   };
 }
@@ -80,7 +89,7 @@ function buildReviewPageModalSpec(plugin, prefill = {}) {
         key: "status",
         label: plugin.t("Status"),
         required: true,
-        placeholder: plugin.t("approved / confirmed / needs-revision ..."),
+        placeholder: plugin.t("confirmed / discarded / pending-review"),
         initialValue: prefill.status || "",
       },
       {
@@ -119,6 +128,10 @@ function buildReviewRewriteModalSpec(plugin, prefill = {}) {
     onSubmit: async (values) => {
       const args = [values.slug, "--status", values.status];
       appendOptionalArg(args, "--note", values.note);
+      if (typeof plugin.runReviewRewriteTransition === "function") {
+        await plugin.runReviewRewriteTransition(values.slug, values.status);
+        return;
+      }
       await plugin.runCliAction(`Review Rewrite: ${values.slug}`, "review-rewrite", args);
     },
   };
@@ -214,6 +227,10 @@ function buildReviewActionModalSpec(plugin, prefill = {}) {
       { key: "note", label: plugin.t("Note"), kind: "textarea", rows: 4, placeholder: plugin.t("Optional action review note"), initialValue: prefill.note || "" },
     ],
     onSubmit: async (values) => {
+      if (typeof plugin.runReviewActionTransition === "function") {
+        await plugin.runReviewActionTransition(values.action_id, values.status);
+        return;
+      }
       const args = [values.action_id, "--status", values.status];
       appendOptionalArg(args, "--note", values.note);
       await plugin.runCliAction(`Review Action: ${values.action_id}`, "review-action", args);
@@ -232,13 +249,11 @@ function buildApplyActionModalSpec(plugin, prefill = {}) {
       { key: "dry_run", label: plugin.t("Dry run"), kind: "toggle", initialValue: Boolean(prefill.dryRun) },
     ],
     onSubmit: async (values) => {
-      const args = [values.action_id];
-      appendOptionalArg(args, "--note", values.note);
-      appendOptionalArg(args, "--bundle", values.bundle);
-      if (values.dry_run) {
-        args.push("--dry-run");
+      if (typeof plugin.runApplyAllAcceptedLowRiskCommand === "function") {
+        await plugin.runApplyAllAcceptedLowRiskCommand();
+        return;
       }
-      await plugin.runCliAction(`Apply Action: ${values.action_id}`, "apply-action", args);
+      new Notice(plugin.t("Batch review was removed in W4; use review-page for explicit page transitions."));
     },
   };
 }
@@ -252,6 +267,10 @@ function buildRevertActionModalSpec(plugin, prefill = {}) {
       { key: "note", label: plugin.t("Note"), kind: "textarea", rows: 4, placeholder: plugin.t("Optional revert note"), initialValue: prefill.note || "" },
     ],
     onSubmit: async (values) => {
+      if (typeof plugin.runRevertLastBatchCommand === "function") {
+        await plugin.runRevertLastBatchCommand();
+        return;
+      }
       const args = [values.action_id];
       appendOptionalArg(args, "--note", values.note);
       await plugin.runCliAction(`Revert Action: ${values.action_id}`, "revert-action", args);

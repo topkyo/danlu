@@ -26,12 +26,31 @@ def build_machine_memory(
     concept_causal: list[dict[str, str]] = []
     citation_map: list[dict[str, Any]] = []
 
-    def index_term(term: str, *, source_id: str | None = None, concept_slug: str | None = None) -> None:
-        bucket = term_index.setdefault(term, {"source_ids": set(), "concept_slugs": set()})
+    def index_term(
+        term: str,
+        *,
+        source_id: str | None = None,
+        concept_slug: str | None = None,
+        judgment_page_id: str | None = None,
+        elixir_id: str | None = None,
+    ) -> None:
+        bucket = term_index.setdefault(
+            term,
+            {
+                "source_ids": set(),
+                "concept_slugs": set(),
+                "judgment_page_ids": set(),
+                "elixir_ids": set(),
+            },
+        )
         if source_id:
             bucket["source_ids"].add(source_id)
         if concept_slug:
             bucket["concept_slugs"].add(concept_slug)
+        if judgment_page_id:
+            bucket["judgment_page_ids"].add(judgment_page_id)
+        if elixir_id:
+            bucket["elixir_ids"].add(elixir_id)
 
     for entry in entries:
         concept_slugs = [concept_label_to_slug(label) for label in entry_terms.get(entry["id"], [])]
@@ -126,6 +145,8 @@ def build_machine_memory(
             term: {
                 "source_ids": sorted(payload["source_ids"]),
                 "concept_slugs": sorted(payload["concept_slugs"]),
+                "judgment_page_ids": sorted(payload["judgment_page_ids"]),
+                "elixir_ids": sorted(payload["elixir_ids"]),
             }
             for term, payload in sorted(term_index.items())
         },
