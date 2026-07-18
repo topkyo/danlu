@@ -202,10 +202,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return getActiveProtocolFromSummary(this.shellSummary);
   }
 
-  getAvailableProtocols() {
-    return getAvailableProtocolsFromSummary(this.shellSummary);
-  }
-
   getActiveFilePath() {
     return getActiveFilePathFromApp(this.app);
   }
@@ -535,10 +531,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return openProductShellOutputsHub(this);
   }
 
-  async runProtocolSetCommand(protocol) {
-    await this.runPluginCommand(`${this.t("Set Protocol")}: ${protocol}`, ["protocol-set", protocol], { refreshAfter: true });
-  }
-
   pushPendingSubmission(displayText, opts = {}) {
     return pushPendingSubmissionRuntime(this, displayText, opts);
   }
@@ -611,20 +603,20 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return runProductShellUniversalInputCommand(this, { payload, title });
   }
 
-  async runAskCommand({ question, format, mode, protocol }) {
-    return runProductShellAskCommand(this, { question, format, mode, protocol });
+  async runAskCommand({ question, format, mode }) {
+    return runProductShellAskCommand(this, { question, format, mode });
   }
 
-  async runDroppedPayloadsWithAutoAsk({ payloads, question, protocol }) {
-    return runProductShellDroppedPayloadsWithAutoAsk(this, { payloads, question, protocol });
+  async runDroppedPayloadsWithAutoAsk({ payloads, question }) {
+    return runProductShellDroppedPayloadsWithAutoAsk(this, { payloads, question });
   }
 
   completePendingMaterialDrop(id, materialPaths) {
     return completeProductShellPendingMaterialDrop(this, id, materialPaths);
   }
 
-  async runDroppedFilesWithAutoAsk({ files, question, protocol }) {
-    return runProductShellDroppedFilesWithAutoAsk(this, { files, question, protocol });
+  async runDroppedFilesWithAutoAsk({ files, question }) {
+    return runProductShellDroppedFilesWithAutoAsk(this, { files, question });
   }
 
   async runReportSubgraphCommand({ reportPath }) {

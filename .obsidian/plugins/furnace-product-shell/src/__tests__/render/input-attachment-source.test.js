@@ -149,7 +149,6 @@ describe("Universal Input attachment source handling", () => {
     const result = await plugin.runDroppedPayloadsWithAutoAsk({
       payloads: ["a.pdf", "b.pdf"],
       question: "请总结",
-      protocol: "research",
     });
 
     expect(plugin.runUniversalInputCommand).toHaveBeenCalledTimes(2);
@@ -161,7 +160,6 @@ describe("Universal Input attachment source handling", () => {
       question: expect.stringContaining("材料路径供系统路由使用："),
       format: "report",
       mode: "run-ask",
-      protocol: "research",
     });
     const askQuestion = plugin.runAskCommand.mock.calls[0][0].question;
     expect(askQuestion).toContain("raw/inbox/a.md");

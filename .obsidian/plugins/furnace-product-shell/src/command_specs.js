@@ -20,14 +20,11 @@ function buildUniversalInputCommandSpec({ payload, title }) {
   };
 }
 
-function buildAskCommandSpec({ question, format, mode, protocol }) {
+function buildAskCommandSpec({ question, format, mode }) {
   const finalFormat = "report";
   const longRunning = mode === "run-ask" && finalFormat === "report";
   const command = longRunning ? "run-ask-submit" : mode;
   const args = [command, question, "--format", finalFormat];
-  if (protocol) {
-    args.push("--protocol", protocol);
-  }
   if (mode === "run-ask") {
     args.push("--lean");
   }

@@ -44,7 +44,6 @@ function makePlugin(overrides = {}) {
     getActiveOutputPath: () => overrides.activeOutputPath || "output/reports/current.md",
     getActiveCuratedPagePath: () => overrides.activeCuratedPagePath || "wiki/decisions/current.md",
     getActiveConceptSlug: () => overrides.activeConceptSlug || "current-concept",
-    getAvailableProtocols: () => overrides.protocols || ["general", "product"],
     transitionLabel: (_controlType, value) => `label:${value}`,
     runCliAction: async (label, command, args) => {
       calls.push({ label, command, args });

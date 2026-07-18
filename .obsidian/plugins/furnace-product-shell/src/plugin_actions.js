@@ -8,12 +8,12 @@ async function runProductShellUniversalInputCommand(plugin, { payload, title }) 
   return await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
 }
 
-async function runProductShellAskCommand(plugin, { question, format, mode, protocol }) {
-  const spec = buildAskCommandSpec({ question, format, mode, protocol });
+async function runProductShellAskCommand(plugin, { question, format, mode }) {
+  const spec = buildAskCommandSpec({ question, format, mode });
   return await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
 }
 
-async function runProductShellDroppedPayloadsWithAutoAsk(plugin, { payloads, question, protocol }) {
+async function runProductShellDroppedPayloadsWithAutoAsk(plugin, { payloads, question }) {
   const normalizedPayloads = Array.isArray(payloads)
     ? payloads
       .map((payload) => {
@@ -47,7 +47,6 @@ async function runProductShellDroppedPayloadsWithAutoAsk(plugin, { payloads, que
       question: askQuestion,
       format: askFormat,
       mode: "run-ask",
-      protocol,
     });
     runNotesPath = String(askPayload && askPayload.run_notes_path || "");
     runId = String(askPayload && askPayload.run_id || "");
@@ -73,7 +72,7 @@ function completeProductShellPendingMaterialDrop(plugin, id, materialPaths) {
   return false;
 }
 
-async function runProductShellDroppedFilesWithAutoAsk(plugin, { files, question, protocol }) {
+async function runProductShellDroppedFilesWithAutoAsk(plugin, { files, question }) {
   const normalizedFiles = Array.isArray(files)
     ? files
       .map((file) => ({
@@ -85,7 +84,6 @@ async function runProductShellDroppedFilesWithAutoAsk(plugin, { files, question,
   return await plugin.runDroppedPayloadsWithAutoAsk({
     payloads: normalizedFiles.map((file) => ({ path: file.path, title: file.name })),
     question,
-    protocol,
   });
 }
 
