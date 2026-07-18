@@ -118,7 +118,6 @@ from aiwiki.runner.receipts import (  # noqa: F401
 )
 from aiwiki.runner.workflows import (  # noqa: F401
     _reinject_candidate_frontmatter,
-    promote_recurring_outputs,
     run_ask,
     run_compile,
     run_lint,

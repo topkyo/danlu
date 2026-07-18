@@ -17,7 +17,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..app_compile_ops import promote_recurring_outputs
 from ..app_linting import lint_wiki, write_nightly_health
 from ..app_protocol import ensure_layout
 from ..app_shell import build_shell_summary, write_shell_summary
@@ -34,16 +33,12 @@ def nightly_health(root: Path) -> dict[str, Any]:
 def _nightly_health_unlocked(root: Path) -> dict[str, Any]:
     ensure_layout(root)
     compile_result = compile_wiki(root)
-    promotion_result = promote_recurring_outputs(root)
-    if promotion_result["count"]:
-        compile_result = compile_wiki(root)
     lint_result = lint_wiki(root)
 
     state = write_nightly_health(
         root,
         compile_result,
         lint_result,
-        promotion_result=promotion_result,
         semantic_report="",
         llm_used=False,
     )
@@ -51,7 +46,6 @@ def _nightly_health_unlocked(root: Path) -> dict[str, Any]:
     return {
         "compile": compile_result,
         "lint": lint_result,
-        "promotions": promotion_result,
         "aging": state["aging"],
         "repair_backlog": state["repair_backlog"]["path"],
         "state_path": relative_path(root, nightly_health_state_path(root)),
