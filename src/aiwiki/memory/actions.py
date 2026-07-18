@@ -14,20 +14,18 @@ from ..app_protocol import (
     RESOLVABLE_MONITOR_ACTION_KINDS,
     schedule_review_windows,
 )
-from ..app_state import (
-    DEFAULT_PROTOCOL,
-    load_machine_memory_action_state_strict,
-    machine_memory_action_state_path,
-    save_machine_memory_action_state,
-)
-from ..app_utils import parse_iso_datetime, relative_path
-from ..content.memory import (
+from ..app_state_paths import machine_memory_action_state_path
+from ..state.constants import DEFAULT_PROTOCOL
+from ..utils.path import relative_path
+from ..utils.time import parse_iso_datetime
+from .action_core import (
     action_priority_rank,
     action_status_rank,
     describe_machine_memory_action,
     safe_apply_preview,
     validate_low_risk_action_targets,
 )
+from .action_state import load_machine_memory_action_state_strict, save_machine_memory_action_state
 
 
 def reconcile_machine_memory_actions(
@@ -38,9 +36,7 @@ def reconcile_machine_memory_actions(
     active_protocol: str = DEFAULT_PROTOCOL,
 ) -> dict[str, Any]:
     previous_state = load_machine_memory_action_state_strict(root)
-    previous_by_id = {
-        str(action.get("id")): action for action in previous_state.get("actions", []) if action.get("id")
-    }
+    previous_by_id = {str(action.get("id")): action for action in previous_state.get("actions", []) if action.get("id")}
     now = parse_iso_datetime(compiled_at) or datetime.now(timezone.utc)
     active_records: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
@@ -128,8 +124,7 @@ def reconcile_machine_memory_actions(
         if action_id in seen_ids:
             continue
         preserved_pending = (
-            bool(previous.get("active", True))
-            and str(previous.get("status") or "") in PENDING_ACTION_STATUSES
+            bool(previous.get("active", True)) and str(previous.get("status") or "") in PENDING_ACTION_STATUSES
         )
         if preserved_pending:
             preview = safe_apply_preview(root, previous)
@@ -207,7 +202,9 @@ def reconcile_machine_memory_actions(
     active_records = [{**record, **describe_machine_memory_action(record, root=root)} for record in active_records]
     inactive_records = [{**record, **describe_machine_memory_action(record, root=root)} for record in inactive_records]
     overdue_actions = [{**record, **describe_machine_memory_action(record, root=root)} for record in overdue_actions]
-    escalated_actions = [{**record, **describe_machine_memory_action(record, root=root)} for record in escalated_actions]
+    escalated_actions = [
+        {**record, **describe_machine_memory_action(record, root=root)} for record in escalated_actions
+    ]
     counts = {
         "total": len(active_records),
         "inactive": len(inactive_records),
@@ -218,8 +215,7 @@ def reconcile_machine_memory_actions(
             for priority in ("high", "medium", "low")
         },
         "by_status": {
-            status: sum(1 for action in active_records if action.get("status") == status)
-            for status in ACTION_STATUSES
+            status: sum(1 for action in active_records if action.get("status") == status) for status in ACTION_STATUSES
         },
         "by_kind": {
             kind: sum(1 for action in active_records if action.get("kind") == kind)

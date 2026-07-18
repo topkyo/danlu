@@ -5,8 +5,9 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .. import app_utils
-from ..app_utils import relative_path, runtime_lock_path, slugify
+from ..utils.io import _RUNTIME_LOCKS, runtime_lock_path
+from ..utils.path import relative_path
+from ..utils.text import slugify
 from .schema import validate_planner_log_record
 
 _PLANNER_LOG_REL_PATH = ".aiwiki/state/planner-log.jsonl"
@@ -344,7 +345,9 @@ def preview_judge_primitive(
         max_tokens=max_tokens,
         allow_current_writer_lock=allow_current_writer_lock,
     )
-    scope_preview = lane_plan.get("scope_preview") if isinstance(lane_plan.get("scope_preview"), dict) else _empty_scope_preview()
+    scope_preview = (
+        lane_plan.get("scope_preview") if isinstance(lane_plan.get("scope_preview"), dict) else _empty_scope_preview()
+    )
     all_candidates = _judge_preview_candidates(str(lane_plan.get("scope") or scope), scope_preview)
     candidates = all_candidates[:limit]
     applicable_count = sum(1 for item in all_candidates if item.get("apply_supported") is True)
@@ -419,7 +422,9 @@ def preview_distill_primitive(
         max_tokens=max_tokens,
         allow_current_writer_lock=allow_current_writer_lock,
     )
-    scope_preview = lane_plan.get("scope_preview") if isinstance(lane_plan.get("scope_preview"), dict) else _empty_scope_preview()
+    scope_preview = (
+        lane_plan.get("scope_preview") if isinstance(lane_plan.get("scope_preview"), dict) else _empty_scope_preview()
+    )
     all_candidates = _distill_preview_candidates(str(lane_plan.get("scope") or scope), scope_preview)
     candidates = all_candidates[:limit]
     applicable_count = sum(1 for item in all_candidates if item.get("apply_supported") is True)
@@ -495,7 +500,9 @@ def preview_review_primitive(
         max_tokens=max_tokens,
         allow_current_writer_lock=allow_current_writer_lock,
     )
-    scope_preview = lane_plan.get("scope_preview") if isinstance(lane_plan.get("scope_preview"), dict) else _empty_scope_preview()
+    scope_preview = (
+        lane_plan.get("scope_preview") if isinstance(lane_plan.get("scope_preview"), dict) else _empty_scope_preview()
+    )
     all_candidates = _review_preview_candidates(str(lane_plan.get("scope") or scope), scope_preview)
     candidates = all_candidates[:limit]
 
@@ -569,7 +576,9 @@ def preview_propose_primitive(
         max_tokens=max_tokens,
         allow_current_writer_lock=allow_current_writer_lock,
     )
-    scope_preview = lane_plan.get("scope_preview") if isinstance(lane_plan.get("scope_preview"), dict) else _empty_scope_preview()
+    scope_preview = (
+        lane_plan.get("scope_preview") if isinstance(lane_plan.get("scope_preview"), dict) else _empty_scope_preview()
+    )
     all_candidates = _propose_preview_candidates(str(lane_plan.get("scope") or scope), scope_preview)
     candidates = all_candidates[:limit]
 
@@ -1134,7 +1143,7 @@ def _preview_runtime_lock(root: Path, *, allow_current_writer: bool = False) -> 
     if not path.exists():
         return {"status": "available", "path": path_label, "would_acquire": True}
 
-    local_state = app_utils._RUNTIME_LOCKS.get(str(root.resolve()))  # type: ignore[attr-defined]
+    local_state = _RUNTIME_LOCKS.get(str(root.resolve()))  # type: ignore[attr-defined]
     if local_state is not None and int(local_state.get("depth", 0) or 0) > 0:
         if allow_current_writer:
             return {

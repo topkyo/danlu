@@ -8,10 +8,9 @@ This module owns the lifecycle-facing execution entry points:
 * :func:`review_concept` (Round 7 / P4-19b)
 * :func:`review_concepts_batch` (Round 7 / P4-19b)
 
-They were previously defined in :mod:`aiwiki.app_compile`. The monolithic
-module now exposes them lazily through ``_LAZY_OWNERS`` so existing
-callers (``aiwiki.app_compile.retire_concept(...)`` etc.) keep working
-without re-importing.
+They were previously defined in :mod:`aiwiki.app_compile` and have since
+been migrated here as the canonical owner. Callers should import directly
+from :mod:`aiwiki.execution.lifecycle`.
 
 Import policy (mirrors EP-018B1/B2):
 
@@ -19,14 +18,14 @@ Import policy (mirrors EP-018B1/B2):
   from that module (not round-tripped through ``app_compile``).
 * The single hot-patch target used by this group — ``utc_now`` — is
   looked up lazily inside each function body via
-  ``from .. import app_utils as _app_utils; _app_utils.utc_now()``
-  so that ``patch("aiwiki.app_utils.utc_now")`` patches
+  ``from ..utils.time import utc_now; utc_now()``
+  so that ``patch("aiwiki.utils.time.utc_now")`` patches
   (acceptance tests + downstream suites) still intercept the call
   through the migrated path.
 * Intra-group calls (``retire_concept`` / ``reactivate_concept`` call
   ``refresh_knowledge_lifecycle_runtime``) resolve against the local
   module, which also guarantees the hot-patch seam works when tests
-  patch ``utc_now`` at the ``app_compile`` namespace.
+  patch ``utc_now`` at the ``aiwiki.utils.time`` namespace.
 """
 
 from __future__ import annotations
@@ -38,27 +37,22 @@ from typing import Any
 
 from ..app_lifecycle import refresh_knowledge_lifecycle_state
 from ..app_protocol import ensure_layout
-from ..app_state import (
-    append_runtime_history,
-    ensure_knowledge_lifecycle_override_state,
+from ..app_state_paths import (
     execution_receipt_history_path,
     knowledge_lifecycle_override_state_path,
     knowledge_lifecycle_state_path,
-    load_active_corpora_state,
-    load_machine_memory,
     runtime_history_path,
-    save_knowledge_lifecycle_override_state,
-)
-from ..app_utils import (
-    _restore_snapshots,
-    _snapshot_file_bytes,
-    relative_path,
-    runtime_write_operation,
-    sha256_bytes,
 )
 from ..content.io import sync_manifest_with_raw
+from ..content.material import load_active_corpora_state
+from ..lifecycle.knowledge import ensure_knowledge_lifecycle_override_state, save_knowledge_lifecycle_override_state
+from ..memory.state import load_machine_memory
 from ..render.paths import append_wiki_log
+from ..utils.hash import sha256_bytes
+from ..utils.io import _restore_snapshots, _snapshot_file_bytes, runtime_write_operation
+from ..utils.path import relative_path
 from .audit_preview import AUDIT_STREAM_PATH
+from .history import append_runtime_history
 from .receipts import write_execution_receipt
 
 
@@ -87,7 +81,9 @@ def _hash_json(value: Any) -> str:
 
 def _lifecycle_transaction_snapshots(root: Path) -> dict[Path, bytes | None]:
     return {
-        knowledge_lifecycle_override_state_path(root): _snapshot_file_bytes(knowledge_lifecycle_override_state_path(root)),
+        knowledge_lifecycle_override_state_path(root): _snapshot_file_bytes(
+            knowledge_lifecycle_override_state_path(root)
+        ),
         knowledge_lifecycle_state_path(root): _snapshot_file_bytes(knowledge_lifecycle_state_path(root)),
         runtime_history_path(root): _snapshot_file_bytes(runtime_history_path(root)),
         root / "wiki" / "indexes" / "log.md": _snapshot_file_bytes(root / "wiki" / "indexes" / "log.md"),
@@ -110,17 +106,15 @@ def _rollback_lifecycle_transaction(
     _restore_snapshots(snapshots)
 
 
-def refresh_knowledge_lifecycle_runtime(
-    root: Path, *, generated_at: str | None = None
-) -> dict[str, Any]:
+def refresh_knowledge_lifecycle_runtime(root: Path, *, generated_at: str | None = None) -> dict[str, Any]:
     # Hot-patch seam: ``utc_now`` is patched in tests via
-    # ``patch("aiwiki.app_utils.utc_now")``. Lazy import preserves that.
-    from .. import app_utils as _app_utils
+    # ``patch("aiwiki.utils.time.utc_now")``. Lazy import preserves that.
+    from ..utils.time import utc_now
 
     manifest = sync_manifest_with_raw(root)
     return refresh_knowledge_lifecycle_state(
         root,
-        generated_at=generated_at or _app_utils.utc_now(),
+        generated_at=generated_at or utc_now(),
         entries=manifest["entries"],
         active_corpora_state=load_active_corpora_state(root),
         memory=load_machine_memory(root),
@@ -129,7 +123,7 @@ def refresh_knowledge_lifecycle_runtime(
 
 @runtime_write_operation
 def retire_concept(root: Path, slug: str, *, note: str | None = None) -> dict[str, Any]:
-    from .. import app_utils as _app_utils
+    from ..utils.time import utc_now
 
     ensure_layout(root)
     path = concept_page_path(root, slug)
@@ -142,17 +136,13 @@ def retire_concept(root: Path, slug: str, *, note: str | None = None) -> dict[st
         raise RuntimeError(f"Concept lifecycle entry not found: {slug}")
     if current_entry.get("active_corpus_ids"):
         raise RuntimeError("Active-corpus concept cannot transition to retired.")
-    if str(current_entry.get("lifecycle_state") or "") == "retired" and current_entry.get(
-        "override_active"
-    ):
+    if str(current_entry.get("lifecycle_state") or "") == "retired" and current_entry.get("override_active"):
         raise RuntimeError(f"Concept is already retired: {slug}")
 
     override_state = ensure_knowledge_lifecycle_override_state(root)
-    override_entries = [
-        dict(entry) for entry in override_state.get("entries", []) if isinstance(entry, dict)
-    ]
+    override_entries = [dict(entry) for entry in override_state.get("entries", []) if isinstance(entry, dict)]
     before_override_hash = _hash_json(override_entries)
-    retired_at = _app_utils.utc_now()
+    retired_at = utc_now()
     path_ref = relative_path(root, path)
     page_id = str(current_entry.get("page_id") or f"concept-{slug}")
     for entry in override_entries:
@@ -281,7 +271,7 @@ def reactivate_concept(root: Path, slug: str, *, note: str | None = None) -> dic
       raw heuristic entry, so the concept rejoins the normal
       revisit/review/active routing.
     """
-    from .. import app_utils as _app_utils
+    from ..utils.time import utc_now
 
     ensure_layout(root)
     path = concept_page_path(root, slug)
@@ -289,9 +279,7 @@ def reactivate_concept(root: Path, slug: str, *, note: str | None = None) -> dic
         raise FileNotFoundError(f"Concept page not found: {relative_path(root, path)}")
     transaction_snapshots = _lifecycle_transaction_snapshots(root)
     override_state = ensure_knowledge_lifecycle_override_state(root)
-    override_entries = [
-        dict(entry) for entry in override_state.get("entries", []) if isinstance(entry, dict)
-    ]
+    override_entries = [dict(entry) for entry in override_state.get("entries", []) if isinstance(entry, dict)]
     before_override_hash = _hash_json(override_entries)
     path_ref = relative_path(root, path)
     matches: list[dict[str, Any]] = [
@@ -307,13 +295,11 @@ def reactivate_concept(root: Path, slug: str, *, note: str | None = None) -> dic
         raise RuntimeError(f"No active concept lifecycle override exists for slug: {slug}")
     target = matches[-1]
     cleared_state = str(target.get("lifecycle_state") or "")
-    reactivated_at = _app_utils.utc_now()
+    reactivated_at = utc_now()
     for entry in matches:
         entry["active"] = False
         entry["reactivated_at"] = reactivated_at
-        entry["reactivate_note"] = (
-            note or "Concept reactivated into heuristic lifecycle routing."
-        )
+        entry["reactivate_note"] = note or "Concept reactivated into heuristic lifecycle routing."
         entry["updated_at"] = reactivated_at
     receipt: dict[str, Any] | None = None
     try:
@@ -440,14 +426,11 @@ def review_concept(
     status: str,
     note: str | None = None,
 ) -> dict[str, Any]:
-    from .. import app_utils as _app_utils
+    from ..utils.time import utc_now
 
     ensure_layout(root)
     if status not in REVIEW_CONCEPT_STATUSES:
-        raise ValueError(
-            f"Unsupported review-concept status: {status!r}; "
-            f"expected one of: {REVIEW_CONCEPT_STATUSES}"
-        )
+        raise ValueError(f"Unsupported review-concept status: {status!r}; expected one of: {REVIEW_CONCEPT_STATUSES}")
     path = concept_page_path(root, slug)
     if not path.exists():
         raise FileNotFoundError(f"Concept page not found: {relative_path(root, path)}")
@@ -455,19 +438,12 @@ def review_concept(
     current_entry = concept_lifecycle_entry(lifecycle, slug)
     if not current_entry:
         raise RuntimeError(f"Concept lifecycle entry not found: {slug}")
-    if (
-        str(current_entry.get("lifecycle_state") or "") == "retired"
-        and current_entry.get("override_active")
-    ):
-        raise RuntimeError(
-            f"Concept is retired: {slug}. Use reactivate-concept first if you want to review it."
-        )
+    if str(current_entry.get("lifecycle_state") or "") == "retired" and current_entry.get("override_active"):
+        raise RuntimeError(f"Concept is retired: {slug}. Use reactivate-concept first if you want to review it.")
 
     override_state = ensure_knowledge_lifecycle_override_state(root)
-    override_entries = [
-        dict(entry) for entry in override_state.get("entries", []) if isinstance(entry, dict)
-    ]
-    reviewed_at = _app_utils.utc_now()
+    override_entries = [dict(entry) for entry in override_state.get("entries", []) if isinstance(entry, dict)]
+    reviewed_at = utc_now()
     path_ref = relative_path(root, path)
     page_id = str(current_entry.get("page_id") or f"concept-{slug}")
     for entry in override_entries:

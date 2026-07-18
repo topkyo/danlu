@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any
 
 from aiwiki.app_protocol import ensure_layout
-from aiwiki.app_utils import atomic_append_jsonl
 from aiwiki.runner.clients import (
     _append_fallback_stage,
     _client_backend_name,
@@ -16,6 +15,7 @@ from aiwiki.runner.clients import (
     _fallback_stage_label,
 )
 from aiwiki.runner.interfaces import SupportsComplete
+from aiwiki.utils.io import atomic_append_jsonl
 
 
 def _append_log(root: Path, event: dict[str, Any]) -> None:
@@ -23,8 +23,9 @@ def _append_log(root: Path, event: dict[str, Any]) -> None:
 
 
 def _append_llm_receipt(root: Path, event: dict[str, Any]) -> None:
-    from aiwiki.app_utils import AuditMirrorError, AuditMirrorRollbackError, _durable_truncate
     from aiwiki.execution.audit_preview import append_universal_audit_record
+    from aiwiki.utils.audit import AuditMirrorError, AuditMirrorRollbackError
+    from aiwiki.utils.io import _durable_truncate
 
     log_path = root / ".aiwiki/logs/llm-receipts.jsonl"
     size_before = log_path.stat().st_size if log_path.exists() else 0
@@ -44,9 +45,7 @@ def _append_llm_receipt(root: Path, event: dict[str, Any]) -> None:
                 "audit mirror append failed and primary truncate also failed: "
                 f"audit={audit_exc!r}; truncate={truncate_exc!r}"
             ) from audit_exc
-        raise AuditMirrorError(
-            f"universal audit append failed; primary truncated: {audit_exc!r}"
-        ) from audit_exc
+        raise AuditMirrorError(f"universal audit append failed; primary truncated: {audit_exc!r}") from audit_exc
 
 
 def _append_jsonl_log(root: Path, relative_log_path: str, event: dict[str, Any]) -> tuple[dict[str, Any], int]:
@@ -80,7 +79,9 @@ _HISTORICAL_LINEAGE_KEYS = (
 )
 
 
-def _infer_delivery_mode(status: str, error: str = "", fallback_stage: str = "", explicit: str = "", skipped: bool = False) -> str:
+def _infer_delivery_mode(
+    status: str, error: str = "", fallback_stage: str = "", explicit: str = "", skipped: bool = False
+) -> str:
     if explicit:
         return explicit
     if skipped:
@@ -221,7 +222,9 @@ def build_llm_attempt_receipt(
 
     usage_payload = usage if isinstance(usage, dict) else {}
     normalized_event = {**llm_audit, **base_event}
-    normalized_event["delivery_mode"] = classify_fallback_stage(normalized_event, status=status, error=error, skipped=skipped)
+    normalized_event["delivery_mode"] = classify_fallback_stage(
+        normalized_event, status=status, error=error, skipped=skipped
+    )
     normalized_event.setdefault("fallback_used", False)
     if not normalized_event["fallback_used"]:
         normalized_event["fallback_used"] = bool(

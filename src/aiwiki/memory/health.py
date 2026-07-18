@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from .. import app_memory_query as _memory_query
-from ..app_state import DEFAULT_PROTOCOL
+from ..state.constants import DEFAULT_PROTOCOL
 
 
 def build_machine_memory_health(memory: dict[str, Any]) -> dict[str, Any]:
@@ -187,7 +187,9 @@ def build_machine_memory_health(memory: dict[str, Any]) -> dict[str, Any]:
                 "component_id": concept_component_ids.get(concept_slug, ""),
             }
         )
-    link_suggestions.sort(key=lambda item: (-item["score"], item["source_title"].lower(), item["concept_title"].lower()))
+    link_suggestions.sort(
+        key=lambda item: (-item["score"], item["source_title"].lower(), item["concept_title"].lower())
+    )
 
     actions: list[dict[str, Any]] = []
     for suggestion in link_suggestions[:12]:

@@ -12,34 +12,25 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .app_state import (
-    DEFAULT_PROTOCOL,
+from .app_state_paths import (
     execution_batch_receipt_path,
     execution_receipt_history_path,
-    load_json_document_strict,
     material_archive_action_id,
     material_archive_state_path,
     material_state_path,
 )
 from .app_types import ExecutionBundle, ExecutionReceipt
-from .app_utils import (
-    AuditMirrorError as ReceiptHistoryAuditError,
-)
-from .app_utils import (
-    AuditMirrorRollbackError as ReceiptHistoryRollbackError,
-)
-from .app_utils import (
-    _durable_truncate,
-    atomic_append_jsonl,
-    atomic_write_text,
-    relative_path,
-    runtime_write_operation,
-    sha256_bytes,
-    slugify,
-)
 from .autonomy_domains import classify_machine_memory_action
 from .autonomy_policy import load_policy
 from .render.paths import execution_bundle_path, execution_receipt_path
+from .state.constants import DEFAULT_PROTOCOL
+from .state.io import load_json_document_strict
+from .utils.audit import AuditMirrorError as ReceiptHistoryAuditError
+from .utils.audit import AuditMirrorRollbackError as ReceiptHistoryRollbackError
+from .utils.hash import sha256_bytes
+from .utils.io import _durable_truncate, atomic_append_jsonl, atomic_write_text, runtime_write_operation
+from .utils.path import relative_path
+from .utils.text import slugify
 
 
 def build_execution_bundle(
@@ -185,11 +176,7 @@ def build_execution_batch_receipt(
         for item in items
         if isinstance(item, dict) and (item.get("id") or item.get("action_id"))
     ]
-    page_paths = [
-        str(item.get("path") or "")
-        for item in items
-        if isinstance(item, dict) and item.get("path")
-    ]
+    page_paths = [str(item.get("path") or "") for item in items if isinstance(item, dict) and item.get("path")]
     receipt_path = execution_batch_receipt_path(root, batch_id)
     autonomy_domain = "maintenance" if operation.endswith("dry-run-batch") else "governance"
     return {
@@ -315,9 +302,7 @@ def build_material_archive_bundle(
         "page_patch_plan": [],
         "safe_apply_preview": {
             "apply_mode": (
-                "material-temperature-archive"
-                if operation == "apply"
-                else "material-temperature-archive-revert"
+                "material-temperature-archive" if operation == "apply" else "material-temperature-archive-revert"
             ),
             "state_path": relative_path(root, material_archive_state_path(root)),
             "entry": {
@@ -548,7 +533,7 @@ def find_latest_elixir_promotion_receipt(root: Path, *, elixir_id: str) -> dict[
     silently skipped. A corrupt receipt history can otherwise cause revert to select a stale
     receipt or report missing, both of which are silent fact-layer corruption.
     """
-    from .app_state import load_jsonl_documents_strict
+    from .state.io import load_jsonl_documents_strict
 
     path = execution_receipt_history_path(root)
     latest: dict[str, Any] | None = None
@@ -578,8 +563,7 @@ def append_execution_receipt_history(root: Path, receipt: dict[str, Any]) -> Non
             _durable_truncate(path, size_before)
         except Exception as truncate_exc:
             raise ReceiptHistoryRollbackError(
-                "audit append failed and primary truncate also failed: "
-                f"audit={audit_exc!r}; truncate={truncate_exc!r}"
+                f"audit append failed and primary truncate also failed: audit={audit_exc!r}; truncate={truncate_exc!r}"
             ) from audit_exc
         raise ReceiptHistoryAuditError(
             f"universal audit append failed; primary truncated: {audit_exc!r}"

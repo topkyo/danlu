@@ -7,7 +7,8 @@ import re
 from pathlib import Path
 from typing import Any
 
-from .app_utils import parse_frontmatter, render_json_document, upsert_markdown_section, write_if_changed
+from .utils.io import render_json_document, write_if_changed
+from .utils.markdown import parse_frontmatter, upsert_markdown_section
 
 OBSIDIAN_EVIDENCE_GRAPH_HUB = "wiki/evidence-graph.md"
 
@@ -95,7 +96,7 @@ def sync_obsidian_native_graph_config(root: Path) -> bool:
 
 def sync_evidence_graph_workspace(root: Path, memory: dict[str, Any] | None = None) -> dict[str, Any]:
     """Apply evidence-graph policy: Obsidian filter + wikilink materialization."""
-    from .app_state import load_machine_memory
+    from .memory.state import load_machine_memory
 
     memory = memory if isinstance(memory, dict) else load_machine_memory(root)
     return {
@@ -130,20 +131,12 @@ def _report_anchor_ids_from_body(report_text: str, memory: dict[str, Any]) -> li
 
 def native_graph_anchor_ids(anchors: list[str]) -> list[str]:
     """Native Obsidian graph only shows reports, sources, judgments, and raw — not concepts."""
-    return [
-        str(item).strip()
-        for item in anchors
-        if str(item).strip().startswith(("source:", "judgment:"))
-    ]
+    return [str(item).strip() for item in anchors if str(item).strip().startswith(("source:", "judgment:"))]
 
 
 def expand_native_anchors_from_concepts(anchors: list[str], memory: dict[str, Any]) -> list[str]:
     """Map ``concept:*`` anchors to ``source:*`` via machine-memory edges."""
-    concept_slugs = {
-        str(item).split(":", 1)[1].strip()
-        for item in anchors
-        if str(item).strip().startswith("concept:")
-    }
+    concept_slugs = {str(item).split(":", 1)[1].strip() for item in anchors if str(item).strip().startswith("concept:")}
     if not concept_slugs:
         return []
     native: list[str] = []
@@ -253,9 +246,7 @@ def apply_plain_concept_links_section(text: str) -> str:
     frontmatter = parse_frontmatter(text)
     concepts_raw = frontmatter.get("concepts")
     concepts = (
-        [str(item).strip() for item in concepts_raw if str(item).strip()]
-        if isinstance(concepts_raw, list)
-        else []
+        [str(item).strip() for item in concepts_raw if str(item).strip()] if isinstance(concepts_raw, list) else []
     )
     if concepts:
         section = "\n".join(render_plain_concept_link_lines(concepts) + [""])
@@ -316,9 +307,7 @@ def render_obsidian_evidence_graph_hub(root: Path, memory: dict[str, Any]) -> st
     return "\n".join(lines)
 
 
-def apply_native_graph_anchor_section(
-    destination: Path, *, anchors: list[str], memory: dict[str, Any]
-) -> None:
+def apply_native_graph_anchor_section(destination: Path, *, anchors: list[str], memory: dict[str, Any]) -> None:
     """Upsert native-graph anchors (sources/judgments only) into the report body."""
     from .execution.ask import _obsidian_wikilink, _resolve_anchor_md_link
 
@@ -357,8 +346,9 @@ def apply_native_graph_anchor_section(
 
 def materialize_obsidian_native_graph_links(root: Path, memory: dict[str, Any] | None = None) -> dict[str, int]:
     """Write vault-relative wikilinks so Obsidian's native graph can render edges."""
-    from .app_state import load_machine_memory
-    from .app_utils import parse_frontmatter, upsert_markdown_section
+    from .memory.state import load_machine_memory
+    from .utils.markdown import parse_frontmatter, upsert_markdown_section
+
     memory = memory if isinstance(memory, dict) else load_machine_memory(root)
     counts = {
         "sources": 0,
@@ -424,15 +414,11 @@ def materialize_obsidian_native_graph_links(root: Path, memory: dict[str, Any] |
         frontmatter = parse_frontmatter(text)
         anchors_raw = frontmatter.get("graph_anchor_node_ids")
         raw_anchors = (
-            [str(item).strip() for item in anchors_raw if str(item).strip()]
-            if isinstance(anchors_raw, list)
-            else []
+            [str(item).strip() for item in anchors_raw if str(item).strip()] if isinstance(anchors_raw, list) else []
         )
         machine_raw = frontmatter.get("machine_memory_anchor_node_ids")
         machine_anchors = (
-            [str(item).strip() for item in machine_raw if str(item).strip()]
-            if isinstance(machine_raw, list)
-            else []
+            [str(item).strip() for item in machine_raw if str(item).strip()] if isinstance(machine_raw, list) else []
         )
         backfilled = False
         native_anchors = resolve_report_native_anchors(
@@ -447,12 +433,7 @@ def materialize_obsidian_native_graph_links(root: Path, memory: dict[str, Any] |
             backfilled = True
         has_concept_anchors = any(str(item).startswith("concept:") for item in raw_anchors)
         strip_concepts = "wiki/concepts" in text
-        if (
-            not native_anchors
-            and not strip_concepts
-            and not has_concept_anchors
-            and "## 关系图谱锚点" in text
-        ):
+        if not native_anchors and not strip_concepts and not has_concept_anchors and "## 关系图谱锚点" in text:
             continue
         from .execution.candidates import (
             write_graph_anchor_frontmatter,

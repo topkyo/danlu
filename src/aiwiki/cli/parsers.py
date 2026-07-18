@@ -64,9 +64,7 @@ def _converge_default_help_surface(subparsers: argparse._SubParsersAction) -> No
         if getattr(action, "dest", "") in PRIMARY_SURFACE_COMMANDS
     }
     subparsers._choices_actions = [  # type: ignore[attr-defined]  # argparse private display hook.
-        visible[name]
-        for name in PRIMARY_SURFACE_COMMANDS
-        if name in visible
+        visible[name] for name in PRIMARY_SURFACE_COMMANDS if name in visible
     ]
 
 
@@ -210,12 +208,16 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
     alchemy_start_parser = subparsers.add_parser("alchemy-start", help="Start a new elixir from a corpus.")
     alchemy_start_parser.add_argument("corpus_id")
     alchemy_start_parser.add_argument("--topic", required=True)
-    alchemy_start_parser.add_argument("--include-elixir", type=str, default=None, help="可选：额外包含的金丹 id，多个用逗号分隔。")
+    alchemy_start_parser.add_argument(
+        "--include-elixir", type=str, default=None, help="可选：额外包含的金丹 id，多个用逗号分隔。"
+    )
 
     alchemy_distill_parser = subparsers.add_parser("alchemy-distill", help="Distill an existing draft elixir.")
     alchemy_distill_parser.add_argument("elixir_id")
     alchemy_distill_parser.add_argument("--question", required=True)
-    alchemy_distill_parser.add_argument("--include-elixir", type=str, default=None, help="可选：额外包含的金丹 id，多个用逗号分隔。")
+    alchemy_distill_parser.add_argument(
+        "--include-elixir", type=str, default=None, help="可选：额外包含的金丹 id，多个用逗号分隔。"
+    )
 
     alchemy_finalize_parser = subparsers.add_parser(
         "alchemy-finalize",
@@ -363,7 +365,9 @@ def _register_drop_subcommand_parsers(subparsers: argparse._SubParsersAction) ->
     _configure_drop_pdf_parser(drop_pdf_parser)
     drop_pdf_parser.set_defaults(handler_command="drop-pdf")
 
-    drop_image_parser = subparsers.add_parser("image", help="Import an image asset into raw/assets without converting it to markdown.")
+    drop_image_parser = subparsers.add_parser(
+        "image", help="Import an image asset into raw/assets without converting it to markdown."
+    )
     _configure_drop_image_parser(drop_image_parser)
     drop_image_parser.set_defaults(handler_command="drop-image")
 
@@ -429,7 +433,9 @@ def _configure_drop_repo_parser(parser: argparse.ArgumentParser) -> None:
 
 
 def _configure_drop_note_parser(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("source", nargs="?", help="Optional markdown or text file path; local files are copied byte-for-byte.")
+    parser.add_argument(
+        "source", nargs="?", help="Optional markdown or text file path; local files are copied byte-for-byte."
+    )
     parser.add_argument("--text", help="Inline note text. Use this instead of SOURCE for free-text capture.")
     parser.add_argument("--title", help="Optional display title.")
     parser.add_argument(

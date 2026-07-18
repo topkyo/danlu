@@ -10,7 +10,7 @@ from typing import Any
 
 from ..app_lifecycle import display_action_status
 from ..app_protocol import ACTION_STATUSES
-from ..app_state import DEFAULT_PROTOCOL
+from ..state.constants import DEFAULT_PROTOCOL
 
 
 def render_drift_report(memory: dict[str, Any], transition: dict[str, Any]) -> str:
@@ -104,16 +104,16 @@ def render_graph_health(memory: dict[str, Any]) -> str:
     lines.extend(
         [
             "",
-        "## 相关链接",
-        "- [机器记忆](./machine-memory.md)",
-        "- [拓扑视图](./machine-memory-topology.md)",
-        "- [动作队列](./machine-memory-actions.md)",
-        "- [修复计划](./machine-memory-repair-plan.md)",
-        "- [漂移报告](./drift-report.md)",
-        "- [修复待办](./repair-backlog.md)",
-        "- [决策索引](./decisions.md)",
-        "- [判断索引](./judgments.md)",
-        "- [审阅队列](./review-queue.md)",
+            "## 相关链接",
+            "- [机器记忆](./machine-memory.md)",
+            "- [拓扑视图](./machine-memory-topology.md)",
+            "- [动作队列](./machine-memory-actions.md)",
+            "- [修复计划](./machine-memory-repair-plan.md)",
+            "- [漂移报告](./drift-report.md)",
+            "- [修复待办](./repair-backlog.md)",
+            "- [决策索引](./decisions.md)",
+            "- [判断索引](./judgments.md)",
+            "- [审阅队列](./review-queue.md)",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -236,11 +236,7 @@ def render_machine_memory_actions(memory: dict[str, Any]) -> str:
     planner_queue = planner_state.get("priority_queue", [])
     planner_next_action = planner_state.get("next_action", {})
     recent_receipts = sorted(
-        [
-            action
-            for action in [*actions, *inactive_actions]
-            if action.get("last_receipt_path")
-        ],
+        [action for action in [*actions, *inactive_actions] if action.get("last_receipt_path")],
         key=lambda item: str(item.get("status_updated_at") or item.get("reviewed_at") or ""),
         reverse=True,
     )
@@ -332,7 +328,7 @@ def render_machine_memory_actions(memory: dict[str, Any]) -> str:
     lines.extend(
         [
             "",
-        "## 优先队列",
+            "## 优先队列",
         ]
     )
     if not actions:
@@ -464,7 +460,7 @@ def render_machine_memory_repair_plan(memory: dict[str, Any]) -> str:
     lines.extend(
         [
             "",
-        "## Ready Now",
+            "## Ready Now",
         ]
     )
     if not ready_actions:
@@ -571,11 +567,11 @@ def render_machine_memory_repair_plan(memory: dict[str, Any]) -> str:
             patch_plan = proposal.get("page_patch_plan", [])
             if not patch_plan:
                 continue
-            lines.append(
-                f"### `{proposal.get('action_id', 'proposal')}` · {proposal.get('title', 'unnamed proposal')}"
-            )
+            lines.append(f"### `{proposal.get('action_id', 'proposal')}` · {proposal.get('title', 'unnamed proposal')}")
             lines.append(f"- Summary: {proposal.get('summary', 'n/a')}")
-            lines.append(f"- Risk: `{proposal.get('risk', 'medium')}` | Protocol: `{proposal.get('protocol', DEFAULT_PROTOCOL)}`")
+            lines.append(
+                f"- Risk: `{proposal.get('risk', 'medium')}` | Protocol: `{proposal.get('protocol', DEFAULT_PROTOCOL)}`"
+            )
             for patch in patch_plan:
                 sections = ", ".join(patch.get("sections", [])) or "none"
                 command_hint = str(patch.get("command_hint") or "")
@@ -613,4 +609,3 @@ def render_machine_memory_repair_plan(memory: dict[str, Any]) -> str:
         ]
     )
     return "\n".join(lines) + "\n"
-

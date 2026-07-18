@@ -99,9 +99,7 @@ def compute_provenance_completeness(snapshot: MetricsSnapshot) -> Metric:
     if sample_size == 0:
         return Metric("provenance_completeness", None, "ratio", "no wiki pages", 0)
     complete = sum(
-        1
-        for page in snapshot.wiki_pages
-        if page.has_source_url and page.has_captured_at and page.has_derived_from
+        1 for page in snapshot.wiki_pages if page.has_source_url and page.has_captured_at and page.has_derived_from
     )
     return Metric("provenance_completeness", round(complete / sample_size, 4), "ratio", "", sample_size)
 

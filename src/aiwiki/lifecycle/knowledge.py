@@ -1,10 +1,92 @@
-"""Pure knowledge lifecycle selection, display, and summary helpers."""
+"""Pure knowledge lifecycle selection, display, and summary helpers.
+
+Also owns the knowledge-lifecycle *state* I/O (default / load / save / override /
+active-overrides), extracted from the legacy app_state hub.
+"""
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
-from ..app_state import DEFAULT_PROTOCOL, KNOWLEDGE_LIFECYCLE_KINDS, KNOWLEDGE_LIFECYCLE_STATES
+from ..app_state_paths import (
+    knowledge_lifecycle_override_state_path,
+    knowledge_lifecycle_state_path,
+)
+from ..state.collections import active_records_by_key, normalize_versioned_record_list_state
+from ..state.constants import (
+    DEFAULT_PROTOCOL,
+    KNOWLEDGE_LIFECYCLE_KINDS,
+    KNOWLEDGE_LIFECYCLE_STATES,
+)
+from ..state.io import load_json_document, save_json_document
+
+
+def default_knowledge_lifecycle_state() -> dict[str, Any]:
+    by_state = {state: 0 for state in KNOWLEDGE_LIFECYCLE_STATES}
+    return {
+        "version": 1,
+        "generated_at": "",
+        "entries": [],
+        "counts": {
+            "total": 0,
+            "by_state": dict(by_state),
+            "by_kind": {kind: {"total": 0, "by_state": dict(by_state)} for kind in KNOWLEDGE_LIFECYCLE_KINDS},
+            "invalidated": 0,
+            "active_corpus_linked": 0,
+        },
+    }
+
+
+def load_knowledge_lifecycle_state(root: Path) -> dict[str, Any]:
+    document = load_json_document(knowledge_lifecycle_state_path(root))
+    if not isinstance(document, dict):
+        return default_knowledge_lifecycle_state()
+    entries = document.get("entries")
+    if not isinstance(entries, list):
+        return default_knowledge_lifecycle_state()
+    counts = document.get("counts")
+    if not isinstance(counts, dict):
+        counts = default_knowledge_lifecycle_state()["counts"]
+    return {
+        "version": int(document.get("version", 1) or 1),
+        "generated_at": str(document.get("generated_at") or ""),
+        "entries": [entry for entry in entries if isinstance(entry, dict)],
+        "counts": counts,
+    }
+
+
+def save_knowledge_lifecycle_state(root: Path, document: dict[str, Any]) -> None:
+    save_json_document(knowledge_lifecycle_state_path(root), document)
+
+
+def default_knowledge_lifecycle_override_state() -> dict[str, Any]:
+    return {"version": 1, "entries": []}
+
+
+def load_knowledge_lifecycle_override_state(root: Path) -> dict[str, Any]:
+    document = load_json_document(knowledge_lifecycle_override_state_path(root))
+    return normalize_versioned_record_list_state(
+        document,
+        default_state=default_knowledge_lifecycle_override_state,
+        list_key="entries",
+    )
+
+
+def save_knowledge_lifecycle_override_state(root: Path, document: dict[str, Any]) -> None:
+    save_json_document(knowledge_lifecycle_override_state_path(root), document)
+
+
+def ensure_knowledge_lifecycle_override_state(root: Path) -> dict[str, Any]:
+    state = load_knowledge_lifecycle_override_state(root)
+    path = knowledge_lifecycle_override_state_path(root)
+    if not path.exists():
+        save_knowledge_lifecycle_override_state(root, state)
+    return state
+
+
+def active_knowledge_lifecycle_overrides(document: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return active_records_by_key(document, list_key="entries", key="path")
 
 
 def knowledge_lifecycle_counts(entries: list[dict[str, Any]]) -> dict[str, Any]:

@@ -273,7 +273,11 @@ def detect_trace_id_conflict(existing_records: Iterable[dict[str, Any]], new_rec
             continue
         existing_dedupe_key = existing.get("dedupe_key")
         existing_trace_id = existing.get("trace_id")
-        if isinstance(existing_dedupe_key, str) and existing_dedupe_key == new_dedupe_key and existing_trace_id != new_trace_id:
+        if (
+            isinstance(existing_dedupe_key, str)
+            and existing_dedupe_key == new_dedupe_key
+            and existing_trace_id != new_trace_id
+        ):
             return True
     return False
 

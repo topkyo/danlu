@@ -8,8 +8,11 @@ import time
 from pathlib import Path
 from typing import Any
 
-from aiwiki.app_utils import parse_frontmatter, render_frontmatter, sha256_bytes, slugify, utc_now
 from aiwiki.render.paths import execution_receipt_path
+from aiwiki.utils.hash import sha256_bytes
+from aiwiki.utils.markdown import parse_frontmatter, render_frontmatter
+from aiwiki.utils.text import slugify
+from aiwiki.utils.time import utc_now
 
 ALCHEMY_REVIEW_QUEUE_START = "<!-- aiwiki:alchemy-review-enqueue:start -->"
 ALCHEMY_REVIEW_QUEUE_END = "<!-- aiwiki:alchemy-review-enqueue:end -->"
@@ -52,12 +55,16 @@ def extract_marker_section(existing: str, *, start_marker: str, end_marker: str)
 
 
 def replace_review_queue_section(existing: str, section: str) -> str:
-    return replace_marker_section(
-        existing,
-        section,
-        start_marker=ALCHEMY_REVIEW_QUEUE_START,
-        end_marker=ALCHEMY_REVIEW_QUEUE_END,
-    ) if existing.strip() else "# Review Queue\n\n" + section
+    return (
+        replace_marker_section(
+            existing,
+            section,
+            start_marker=ALCHEMY_REVIEW_QUEUE_START,
+            end_marker=ALCHEMY_REVIEW_QUEUE_END,
+        )
+        if existing.strip()
+        else "# Review Queue\n\n" + section
+    )
 
 
 def render_alchemy_judge_refresh_section(*, preview: dict[str, Any], candidate: dict[str, Any]) -> str:
@@ -267,14 +274,8 @@ def walk_preview_lock_status(value: Any, *, in_lock_subtree: bool) -> Any:
             normalized = dict(value)
             normalized["status"] = "available"
             normalized["would_acquire"] = True
-            return {
-                k: walk_preview_lock_status(v, in_lock_subtree=(k == "lock"))
-                for k, v in normalized.items()
-            }
-        return {
-            k: walk_preview_lock_status(v, in_lock_subtree=(k == "lock"))
-            for k, v in value.items()
-        }
+            return {k: walk_preview_lock_status(v, in_lock_subtree=(k == "lock")) for k, v in normalized.items()}
+        return {k: walk_preview_lock_status(v, in_lock_subtree=(k == "lock")) for k, v in value.items()}
     if isinstance(value, list):
         return [walk_preview_lock_status(item, in_lock_subtree=in_lock_subtree) for item in value]
     return value

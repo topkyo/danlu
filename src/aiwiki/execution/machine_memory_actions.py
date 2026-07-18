@@ -24,8 +24,8 @@ Migration invariants (same as B1..B5):
   * ``compile_wiki`` comes from ``..compile.pipeline``, not from the
     ``..compile`` package ``__init__`` re-export (B4 oracle rule).
 - ``utc_now`` is resolved lazily at **call time** via
-  ``from .. import app_utils as _app_utils; _app_utils.utc_now()``
-  so that ``patch("aiwiki.app_utils.utc_now", ...)`` patches
+  ``from ..utils.time import utc_now; utc_now()``
+  so that ``patch("aiwiki.utils.time.utc_now", ...)`` patches
   (acceptance tests + downstream suites) continue to take effect after
   the owner flip.
 """
@@ -57,46 +57,39 @@ from ..app_protocol import (
     load_protocol_state,
     schedule_review_windows,
 )
-from ..app_state import (
-    DEFAULT_PROTOCOL,
-    append_runtime_history,
+from ..app_state_paths import (
     execution_dry_run_path,
     execution_receipt_history_path,
     knowledge_lifecycle_override_state_path,
     knowledge_lifecycle_state_path,
-    load_json_document_strict,
-    load_machine_memory_action_state_strict,
-    load_manual_link_state,
     machine_memory_action_state_path,
     manual_link_state_path,
     runtime_history_path,
-    save_machine_memory_action_state,
-    save_manual_link_state,
-)
-from ..app_utils import (
-    atomic_write_text,
-    parse_frontmatter,
-    relative_path,
-    render_frontmatter,
-    runtime_write_operation,
-    safe_resolve_within,
-    strip_frontmatter,
 )
 from ..compile.pipeline import compile_wiki
-from ..content.memory import (
+from ..content.material import load_manual_link_state, save_manual_link_state
+from ..memory.action_core import (
     action_supports_low_risk_apply,
-    build_page_patch_plan,
-    repair_execution_proposals,
     safe_apply_preview,
     validate_low_risk_action_targets,
 )
+from ..memory.action_state import load_machine_memory_action_state_strict, save_machine_memory_action_state
 from ..render.paths import (
     append_wiki_log,
     execution_bundle_path,
     execution_proposal_path,
     execution_receipt_path,
 )
+from ..state.constants import DEFAULT_PROTOCOL
+from ..state.io import load_json_document_strict
+from ..utils.io import atomic_write_text, runtime_write_operation
+from ..utils.markdown import parse_frontmatter, render_frontmatter, strip_frontmatter
+from ..utils.path import relative_path
+from ..utils.security import safe_resolve_within
 from .audit_preview import AUDIT_STREAM_PATH
+from .history import append_runtime_history
+from .patch_plan import build_page_patch_plan
+from .repair_plan import repair_execution_proposals
 
 AUTO_RESOLUTION_RECEIPTS_DIR = Path(".aiwiki") / "state" / "execution-receipts" / "auto-resolution"
 AUTO_RESOLUTION_GENERATED_BY = "aiwiki-auto-resolve-actions"
@@ -196,7 +189,12 @@ def _fallback_policy_fields(action: dict[str, Any]) -> dict[str, str]:
             "execution_band": "bundle-safe-apply",
             "policy_rule_id": f"legacy:{kind}",
         }
-    if kind in {"monitor-bridge-concept", "split-overloaded-concept", "expand-singleton-concept", "connect-isolated-source"}:
+    if kind in {
+        "monitor-bridge-concept",
+        "split-overloaded-concept",
+        "expand-singleton-concept",
+        "connect-isolated-source",
+    }:
         return {
             "policy_decision": "review",
             "execution_band": "review-first",
@@ -337,10 +335,10 @@ def _apply_auto_resolution_escalation(
     decision: dict[str, Any],
     note: str | None,
 ) -> dict[str, Any]:
-    from .. import app_utils as _app_utils
+    from ..utils.time import utc_now
 
     action_id = str(target.get("id") or "")
-    generated_at = _app_utils.utc_now()
+    generated_at = utc_now()
     receipt_path = _auto_resolution_receipt_path(root, action_id)
     receipt_history = execution_receipt_history_path(root)
     audit_stream = root / AUDIT_STREAM_PATH
@@ -362,7 +360,9 @@ def _apply_auto_resolution_escalation(
         decision=decision,
         note=note,
     )
-    review_note = note or f"Auto-resolved to deferred: {decision.get('human_required_reason', 'semantic_judgment_required')}."
+    review_note = (
+        note or f"Auto-resolved to deferred: {decision.get('human_required_reason', 'semantic_judgment_required')}."
+    )
     try:
         _update_action_review_state(root, target, "deferred", note=review_note, reviewed_at=generated_at)
         target["human_required"] = "true"
@@ -563,9 +563,7 @@ def _validate_citation_page_path(root: Path, page_path: str) -> Path:
     try:
         page = safe_resolve_within(root / page_path, root)
     except (ValueError, OSError) as exc:
-        raise RuntimeError(
-            f"citation-snapshot-refresh page_path escapes vault root: {page_path}"
-        ) from exc
+        raise RuntimeError(f"citation-snapshot-refresh page_path escapes vault root: {page_path}") from exc
     allowed_prefixes = (
         (root / "wiki" / "judgments").resolve(),
         (root / "wiki" / "decisions").resolve(),
@@ -576,9 +574,7 @@ def _validate_citation_page_path(root: Path, page_path: str) -> Path:
             return page
         except ValueError:
             continue
-    raise RuntimeError(
-        f"citation-snapshot-refresh page_path must be in wiki/judgments or wiki/decisions: {page_path}"
-    )
+    raise RuntimeError(f"citation-snapshot-refresh page_path must be in wiki/judgments or wiki/decisions: {page_path}")
 
 
 def resolve_machine_memory_action_query(
@@ -612,8 +608,7 @@ def resolve_machine_memory_action_query(
             return matches[0]
         if matches:
             candidates = ", ".join(
-                f"{str(action.get('id') or '')} ({str(action.get('title') or '')})"
-                for action in matches[:5]
+                f"{str(action.get('id') or '')} ({str(action.get('title') or '')})" for action in matches[:5]
             )
             raise RuntimeError(f"Machine-memory action is ambiguous: {action_query}. Candidates: {candidates}")
         return None
@@ -625,7 +620,9 @@ def resolve_machine_memory_action_query(
     if exact_title_match is not None:
         return exact_title_match
     prefix_match = _match_stage(
-        lambda lowered_id, lowered_title: lowered_id.startswith(lowered_query) or lowered_title.startswith(lowered_query),
+        lambda lowered_id, lowered_title: (
+            lowered_id.startswith(lowered_query) or lowered_title.startswith(lowered_query)
+        ),
         skip_exact_title=True,
     )
     if prefix_match is not None:
@@ -677,21 +674,18 @@ def review_machine_memory_action(
     *,
     note: str | None = None,
 ) -> dict[str, Any]:
-    # Lazy-resolve utc_now so patch("aiwiki.app_utils.utc_now", ...) still
+    # Lazy-resolve utc_now so patch("aiwiki.utils.time.utc_now", ...) still
     # takes effect after B6 flip.
-    from .. import app_utils as _app_utils
+    from ..utils.time import utc_now
 
     ensure_layout(root)
     if status not in ACTION_STATUSES:
-        raise ValueError(
-            f"Unsupported machine-memory action status: {status!r}; "
-            f"expected one of: {ACTION_STATUSES}"
-        )
+        raise ValueError(f"Unsupported machine-memory action status: {status!r}; expected one of: {ACTION_STATUSES}")
     state = load_machine_memory_action_state_strict(root)
     actions = [dict(action) for action in state.get("actions", []) if isinstance(action, dict)]
     target = resolve_machine_memory_action_query(actions, action_id)
     resolved_action_id = str(target.get("id") or action_id.strip())
-    reviewed_at = _app_utils.utc_now()
+    reviewed_at = utc_now()
     _update_action_review_state(root, target, status, note=note, reviewed_at=reviewed_at)
     save_machine_memory_action_state(root, {"version": 1, "actions": actions})
     append_wiki_log(
@@ -729,14 +723,11 @@ def review_machine_memory_actions_batch(
     then runs one compile to refresh derived policy/apply_ready fields and wiki
     surfaces.
     """
-    from .. import app_utils as _app_utils
+    from ..utils.time import utc_now
 
     ensure_layout(root)
     if status not in ACTION_STATUSES:
-        raise ValueError(
-            f"Unsupported machine-memory action status: {status!r}; "
-            f"expected one of: {ACTION_STATUSES}"
-        )
+        raise ValueError(f"Unsupported machine-memory action status: {status!r}; expected one of: {ACTION_STATUSES}")
     ordered_ids: list[str] = []
     seen_ids: set[str] = set()
     for raw in action_ids:
@@ -764,7 +755,7 @@ def review_machine_memory_actions_batch(
     if not targets:
         raise ValueError("Batch review-action requires at least one resolved action.")
 
-    reviewed_at = _app_utils.utc_now()
+    reviewed_at = utc_now()
     receipts: list[dict[str, Any]] = []
     for target, resolved_id in zip(targets, resolved_ids, strict=True):
         _update_action_review_state(root, target, status, note=note, reviewed_at=reviewed_at)
@@ -818,7 +809,7 @@ def apply_machine_memory_action(
     dry_run: bool = False,
     bundle_path: str | None = None,
 ) -> dict[str, Any]:
-    from .. import app_utils as _app_utils
+    from ..utils.time import utc_now
 
     ensure_layout(root)
     state = load_machine_memory_action_state_strict(root)
@@ -830,40 +821,41 @@ def apply_machine_memory_action(
     kind = str(target.get("kind") or "")
     protocol = str(target.get("protocol") or load_protocol_state(root)["active_protocol"] or DEFAULT_PROTOCOL)
     preview_proposals = repair_execution_proposals(root, [target], active_protocol=protocol)
-    proposal = preview_proposals[0] if preview_proposals else {
-        "action_id": resolved_action_id,
-        "title": str(target.get("title") or resolved_action_id),
-        "proposal_kind": "manual-repair",
-        "risk": "low",
-        "priority": str(target.get("priority") or "medium"),
-        "protocol": protocol,
-        "summary": str(target.get("reason") or ""),
-        "target_paths": [
-            path
-            for path in (str(target.get("primary_path") or ""), str(target.get("secondary_path") or ""))
-            if path
-        ],
-        "page_patch_plan": build_page_patch_plan(root, target, active_protocol=protocol),
-        "safe_apply_preview": safe_apply_preview(root, target),
-        "command_hint": str(target.get("command_hint") or ""),
-        "bundle_path": relative_path(root, execution_bundle_path(root, resolved_action_id)),
-        "proposal_path": relative_path(root, execution_proposal_path(root, resolved_action_id)),
-    }
+    proposal = (
+        preview_proposals[0]
+        if preview_proposals
+        else {
+            "action_id": resolved_action_id,
+            "title": str(target.get("title") or resolved_action_id),
+            "proposal_kind": "manual-repair",
+            "risk": "low",
+            "priority": str(target.get("priority") or "medium"),
+            "protocol": protocol,
+            "summary": str(target.get("reason") or ""),
+            "target_paths": [
+                path
+                for path in (str(target.get("primary_path") or ""), str(target.get("secondary_path") or ""))
+                if path
+            ],
+            "page_patch_plan": build_page_patch_plan(root, target, active_protocol=protocol),
+            "safe_apply_preview": safe_apply_preview(root, target),
+            "command_hint": str(target.get("command_hint") or ""),
+            "bundle_path": relative_path(root, execution_bundle_path(root, resolved_action_id)),
+            "proposal_path": relative_path(root, execution_proposal_path(root, resolved_action_id)),
+        }
+    )
     preview = proposal.get("safe_apply_preview")
     if not isinstance(preview, dict):
         raise RuntimeError("Only accepted actions with a safe apply preview support semi-auto apply.")
     preview_apply_mode = str(preview.get("apply_mode") or "")
     if not preview_apply_mode:
         raise RuntimeError("Safe apply preview is missing an apply mode.")
-    previewed_at = _app_utils.utc_now()
+    previewed_at = utc_now()
     bundle = build_execution_bundle(root, proposal, compiled_at=previewed_at)
     if dry_run:
         selected_bundle_path = safe_resolve_within(
             root
-            / str(
-                proposal.get("bundle_path")
-                or relative_path(root, execution_bundle_path(root, resolved_action_id))
-            ),
+            / str(proposal.get("bundle_path") or relative_path(root, execution_bundle_path(root, resolved_action_id))),
             root,
         )
         write_execution_bundle_document(selected_bundle_path, bundle)
@@ -940,7 +932,7 @@ def apply_machine_memory_action(
             f"or use `advanced review-page` before retrying machine-memory apply for action {resolved_action_id}."
         )
 
-    applied_at = _app_utils.utc_now()
+    applied_at = utc_now()
     stored_preview = stored_bundle.get("safe_apply_preview")
     if not isinstance(stored_preview, dict):
         raise RuntimeError("Execution bundle is missing the safe apply preview.")
@@ -1051,9 +1043,7 @@ def apply_machine_memory_action(
         auto_retire_skipped_active_corpus = False
         if kind == "split-overloaded-concept":
             slug_candidates = [
-                str(s).strip()
-                for s in (target.get("concept_slugs") or [])
-                if isinstance(s, str) and str(s).strip()
+                str(s).strip() for s in (target.get("concept_slugs") or []) if isinstance(s, str) and str(s).strip()
             ]
             if slug_candidates:
                 slug_to_retire = slug_candidates[0]
@@ -1135,7 +1125,7 @@ def apply_machine_memory_action(
                     root,
                     {
                         "event_type": "action-auto-revert-on-verify-failure",
-                        "occurred_at": _app_utils.utc_now(),
+                        "occurred_at": utc_now(),
                         "action_id": resolved_action_id,
                         "apply_receipt_path": relative_path(root, receipt_path),
                         "revert_receipt_path": str(revert_result.get("receipt_path") or ""),
@@ -1179,7 +1169,7 @@ def revert_machine_memory_action(
     note: str | None = None,
     verify: bool = True,
 ) -> dict[str, Any]:
-    from .. import app_utils as _app_utils
+    from ..utils.time import utc_now
 
     ensure_layout(root)
     state = load_machine_memory_action_state_strict(root)
@@ -1202,7 +1192,7 @@ def revert_machine_memory_action(
     preview = receipt.get("safe_apply_preview")
     if not isinstance(preview, dict):
         raise RuntimeError("Execution receipt is missing the safe apply preview.")
-    reverted_at = _app_utils.utc_now()
+    reverted_at = utc_now()
     apply_mode = str(preview.get("apply_mode") or "")
 
     # R92-MM-ACTION-TX: snapshot every file we may mutate before any write.
@@ -1228,7 +1218,8 @@ def revert_machine_memory_action(
             except Exception as exc:
                 logging.getLogger("aiwiki.machine_memory").warning(
                     "revert citation-snapshot-refresh: page path %r invalid, snapshot skipped: %s",
-                    page_path_pre, exc,
+                    page_path_pre,
+                    exc,
                 )
 
     try:
@@ -1288,27 +1279,34 @@ def revert_machine_memory_action(
             "next_step": "回滚后重新 review，确认是否要再次 accepted 再执行。",
         }
         preview_proposals = repair_execution_proposals(root, [reverted_target], active_protocol=protocol)
-        proposal = preview_proposals[0] if preview_proposals else {
-            "action_id": resolved_action_id,
-            "title": str(reverted_target.get("title") or resolved_action_id),
-            "proposal_kind": "manual-repair",
-            "risk": "low",
-            "priority": str(reverted_target.get("priority") or "medium"),
-            "protocol": protocol,
-            "status": "proposed",
-            "execution_policy": "triage",
-            "summary": str(reverted_target.get("reason") or ""),
-            "target_paths": [
-                path
-                for path in (str(reverted_target.get("primary_path") or ""), str(reverted_target.get("secondary_path") or ""))
-                if path
-            ],
-            "page_patch_plan": build_page_patch_plan(root, reverted_target, active_protocol=protocol),
-            "safe_apply_preview": safe_apply_preview(root, reverted_target),
-            "command_hint": str(reverted_target.get("command_hint") or ""),
-            "bundle_path": relative_path(root, execution_bundle_path(root, resolved_action_id)),
-            "proposal_path": relative_path(root, execution_proposal_path(root, resolved_action_id)),
-        }
+        proposal = (
+            preview_proposals[0]
+            if preview_proposals
+            else {
+                "action_id": resolved_action_id,
+                "title": str(reverted_target.get("title") or resolved_action_id),
+                "proposal_kind": "manual-repair",
+                "risk": "low",
+                "priority": str(reverted_target.get("priority") or "medium"),
+                "protocol": protocol,
+                "status": "proposed",
+                "execution_policy": "triage",
+                "summary": str(reverted_target.get("reason") or ""),
+                "target_paths": [
+                    path
+                    for path in (
+                        str(reverted_target.get("primary_path") or ""),
+                        str(reverted_target.get("secondary_path") or ""),
+                    )
+                    if path
+                ],
+                "page_patch_plan": build_page_patch_plan(root, reverted_target, active_protocol=protocol),
+                "safe_apply_preview": safe_apply_preview(root, reverted_target),
+                "command_hint": str(reverted_target.get("command_hint") or ""),
+                "bundle_path": relative_path(root, execution_bundle_path(root, resolved_action_id)),
+                "proposal_path": relative_path(root, execution_proposal_path(root, resolved_action_id)),
+            }
+        )
         revert_receipt = build_execution_receipt(
             root,
             reverted_target,

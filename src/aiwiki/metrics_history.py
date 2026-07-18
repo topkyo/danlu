@@ -22,7 +22,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable
 
-from .app_utils import atomic_append_jsonl, runtime_write_operation
+from .utils.io import atomic_append_jsonl, runtime_write_operation
 
 HISTORY_RELATIVE = Path(".aiwiki") / "state" / "metrics-history.jsonl"
 

@@ -14,37 +14,39 @@ PRIMARY_SURFACE_COMMANDS = frozenset({"drop", "today", "advanced"})
 
 # Keep in sync with operator commands registered under `advanced` that still
 # accept legacy top-level argv rewrite (not W4-cut surfaces).
-LEGACY_TOP_LEVEL_COMMANDS = frozenset({
-    "alchemy-demote",
-    "alchemy-distill",
-    "alchemy-finalize",
-    "alchemy-promote",
-    "alchemy-revert",
-    "alchemy-start",
-    "ask",
-    "compile",
-    "drop-image",
-    "drop-note",
-    "drop-pdf",
-    "drop-repo",
-    "drop-url",
-    "file-back",
-    "lint",
-    "llm-check",
-    "metrics",
-    "new-vault",
-    "nightly",
-    "review-page",
-    "review-queue",
-    "run-ask",
-    "run-ask-resume",
-    "run-ask-submit",
-    "run-nightly",
-    "shell-status",
-    "sync-product-shell",
-    "trace",
-    "watch",
-})
+LEGACY_TOP_LEVEL_COMMANDS = frozenset(
+    {
+        "alchemy-demote",
+        "alchemy-distill",
+        "alchemy-finalize",
+        "alchemy-promote",
+        "alchemy-revert",
+        "alchemy-start",
+        "ask",
+        "compile",
+        "drop-image",
+        "drop-note",
+        "drop-pdf",
+        "drop-repo",
+        "drop-url",
+        "file-back",
+        "lint",
+        "llm-check",
+        "metrics",
+        "new-vault",
+        "nightly",
+        "review-page",
+        "review-queue",
+        "run-ask",
+        "run-ask-resume",
+        "run-ask-submit",
+        "run-nightly",
+        "shell-status",
+        "sync-product-shell",
+        "trace",
+        "watch",
+    }
+)
 
 
 _PRIMARY_DROP_REPLACEMENTS = {
@@ -104,8 +106,7 @@ def rewrite_legacy_top_level_argv(
         return [*prefix, *drop_cmd, *rest]
     if emit_warning:
         print(
-            f"[deprecated] `aiwiki {command}` is a legacy top-level entry; "
-            f"use `aiwiki advanced {command}` instead.",
+            f"[deprecated] `aiwiki {command}` is a legacy top-level entry; use `aiwiki advanced {command}` instead.",
             file=sys.stderr,
         )
     return [*prefix, "advanced", command, *rest]

@@ -1,0 +1,249 @@
+"""Build-state helpers (concept / machine-memory / ranking / output-pack / domain-pilot).
+
+Extracted from the legacy app_state hub. Each builder owns its own persisted state file.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from ..app_state_paths import (
+    concept_build_state_path,
+    domain_pilot_build_state_path,
+    machine_memory_build_state_path,
+    output_pack_build_state_path,
+    ranking_build_state_path,
+)
+from ..state.constants import DEFAULT_PROTOCOL
+from ..state.io import load_json_document, save_json_document
+
+
+def default_concept_build_state() -> dict[str, Any]:
+    return {"version": 2, "generated_at": "", "entry_records": {}}
+
+
+def load_concept_build_state(root: Path) -> dict[str, Any]:
+    document = load_json_document(concept_build_state_path(root))
+    if not isinstance(document, dict):
+        return default_concept_build_state()
+    version = int(document.get("version", 1) or 1)
+    if version < 2:
+        return default_concept_build_state()
+    entry_records = document.get("entry_records")
+    if not isinstance(entry_records, dict):
+        return default_concept_build_state()
+    normalized_records: dict[str, dict[str, Any]] = {}
+    for entry_id, record in entry_records.items():
+        if not isinstance(entry_id, str) or not entry_id or not isinstance(record, dict):
+            continue
+        terms = record.get("terms", [])
+        if not isinstance(terms, list):
+            continue
+        normalized_records[entry_id] = {
+            "input_signature": str(record.get("input_signature") or ""),
+            "terms": [str(label) for label in terms if str(label)],
+        }
+    return {
+        "version": version,
+        "generated_at": str(document.get("generated_at") or ""),
+        "entry_records": normalized_records,
+    }
+
+
+def save_concept_build_state(root: Path, document: dict[str, Any]) -> None:
+    save_json_document(concept_build_state_path(root), document)
+
+
+def default_machine_memory_build_state() -> dict[str, Any]:
+    return {"version": 1, "generated_at": "", "source_records": {}, "concept_records": {}}
+
+
+def load_machine_memory_build_state(root: Path) -> dict[str, Any]:
+    document = load_json_document(machine_memory_build_state_path(root))
+    if not isinstance(document, dict):
+        return default_machine_memory_build_state()
+    source_records = document.get("source_records")
+    concept_records = document.get("concept_records")
+    if not isinstance(source_records, dict) or not isinstance(concept_records, dict):
+        return default_machine_memory_build_state()
+
+    normalized_source_records: dict[str, dict[str, str]] = {}
+    for entry_id, record in source_records.items():
+        if not isinstance(entry_id, str) or not entry_id or not isinstance(record, dict):
+            continue
+        normalized_source_records[entry_id] = {
+            "input_signature": str(record.get("input_signature") or ""),
+        }
+
+    normalized_concept_records: dict[str, dict[str, str]] = {}
+    for slug, record in concept_records.items():
+        if not isinstance(slug, str) or not slug or not isinstance(record, dict):
+            continue
+        normalized_concept_records[slug] = {
+            "input_signature": str(record.get("input_signature") or ""),
+        }
+
+    return {
+        "version": int(document.get("version", 1) or 1),
+        "generated_at": str(document.get("generated_at") or ""),
+        "source_records": normalized_source_records,
+        "concept_records": normalized_concept_records,
+    }
+
+
+def save_machine_memory_build_state(root: Path, document: dict[str, Any]) -> None:
+    save_json_document(machine_memory_build_state_path(root), document)
+
+
+def default_ranking_build_state() -> dict[str, Any]:
+    return {"version": 1, "generated_at": "", "source_records": {}, "concept_records": {}}
+
+
+def load_ranking_build_state(root: Path) -> dict[str, Any]:
+    document = load_json_document(ranking_build_state_path(root))
+    if not isinstance(document, dict):
+        return default_ranking_build_state()
+    source_records = document.get("source_records")
+    concept_records = document.get("concept_records")
+    if not isinstance(source_records, dict) or not isinstance(concept_records, dict):
+        return default_ranking_build_state()
+
+    normalized_source_records: dict[str, dict[str, Any]] = {}
+    for entry_id, record in source_records.items():
+        if not isinstance(entry_id, str) or not entry_id or not isinstance(record, dict):
+            continue
+        summary_or_preview = str(record.get("summary_or_preview") or "")
+        concept_terms = record.get("concept_terms")
+        if not isinstance(concept_terms, list):
+            continue
+        normalized_source_records[entry_id] = {
+            "input_signature": str(record.get("input_signature") or ""),
+            "summary_or_preview": summary_or_preview,
+            "concept_terms": [str(term) for term in concept_terms if str(term)],
+        }
+
+    normalized_concept_records: dict[str, dict[str, Any]] = {}
+    for slug, record in concept_records.items():
+        if not isinstance(slug, str) or not slug or not isinstance(record, dict):
+            continue
+        source_pages = record.get("source_pages")
+        if not isinstance(source_pages, list):
+            continue
+        normalized_concept_records[slug] = {
+            "input_signature": str(record.get("input_signature") or ""),
+            "title": str(record.get("title") or slug),
+            "path": str(record.get("path") or f"wiki/concepts/{slug}.md"),
+            "source_pages": [str(path) for path in source_pages if str(path)],
+            "content": str(record.get("content") or ""),
+        }
+
+    return {
+        "version": int(document.get("version", 1) or 1),
+        "generated_at": str(document.get("generated_at") or ""),
+        "source_records": normalized_source_records,
+        "concept_records": normalized_concept_records,
+    }
+
+
+def save_ranking_build_state(root: Path, document: dict[str, Any]) -> None:
+    save_json_document(ranking_build_state_path(root), document)
+
+
+def default_output_pack_build_state() -> dict[str, Any]:
+    return {
+        "version": 1,
+        "generated_at": "",
+        "active_protocol": DEFAULT_PROTOCOL,
+        "group_records": {},
+        "lifecycle_summary": {},
+        "review_packs": [],
+        "decision_memos": [],
+        "sop_drafts": [],
+        "counts": {
+            "review_packs": 0,
+            "decision_memos": 0,
+            "sop_drafts": 0,
+            "execution_proposal_sops": 0,
+        },
+    }
+
+
+def load_output_pack_build_state(root: Path) -> dict[str, Any]:
+    document = load_json_document(output_pack_build_state_path(root))
+    if not isinstance(document, dict):
+        return default_output_pack_build_state()
+    group_records = document.get("group_records")
+    lifecycle_summary = document.get("lifecycle_summary")
+    review_packs = document.get("review_packs")
+    decision_memos = document.get("decision_memos")
+    sop_drafts = document.get("sop_drafts")
+    counts = document.get("counts")
+    if (
+        not isinstance(group_records, dict)
+        or not isinstance(lifecycle_summary, dict)
+        or not isinstance(review_packs, list)
+        or not isinstance(decision_memos, list)
+        or not isinstance(sop_drafts, list)
+        or not isinstance(counts, dict)
+    ):
+        return default_output_pack_build_state()
+    return {
+        "version": int(document.get("version", 1) or 1),
+        "generated_at": str(document.get("generated_at") or ""),
+        "active_protocol": str(document.get("active_protocol") or DEFAULT_PROTOCOL),
+        "group_records": {
+            str(group): {"input_signature": str(record.get("input_signature") or "")}
+            for group, record in group_records.items()
+            if str(group) and isinstance(record, dict)
+        },
+        "lifecycle_summary": lifecycle_summary,
+        "review_packs": [record for record in review_packs if isinstance(record, dict)],
+        "decision_memos": [record for record in decision_memos if isinstance(record, dict)],
+        "sop_drafts": [record for record in sop_drafts if isinstance(record, dict)],
+        "counts": {
+            "review_packs": int(counts.get("review_packs", 0) or 0),
+            "decision_memos": int(counts.get("decision_memos", 0) or 0),
+            "sop_drafts": int(counts.get("sop_drafts", 0) or 0),
+            "execution_proposal_sops": int(counts.get("execution_proposal_sops", 0) or 0),
+        },
+    }
+
+
+def save_output_pack_build_state(root: Path, document: dict[str, Any]) -> None:
+    save_json_document(output_pack_build_state_path(root), document)
+
+
+def default_domain_pilot_build_state() -> dict[str, Any]:
+    return {
+        "version": 1,
+        "generated_at": "",
+        "active_protocol": DEFAULT_PROTOCOL,
+        "protocol_records": {},
+        "scorecards": [],
+    }
+
+
+def load_domain_pilot_build_state(root: Path) -> dict[str, Any]:
+    document = load_json_document(domain_pilot_build_state_path(root))
+    if not isinstance(document, dict):
+        return default_domain_pilot_build_state()
+    protocol_records = document.get("protocol_records")
+    scorecards = document.get("scorecards")
+    if not isinstance(protocol_records, dict) or not isinstance(scorecards, list):
+        return default_domain_pilot_build_state()
+    return {
+        "version": int(document.get("version", 1) or 1),
+        "generated_at": str(document.get("generated_at") or ""),
+        "active_protocol": str(document.get("active_protocol") or DEFAULT_PROTOCOL),
+        "protocol_records": {
+            str(protocol): {"input_signature": str(record.get("input_signature") or "")}
+            for protocol, record in protocol_records.items()
+            if str(protocol) and isinstance(record, dict)
+        },
+        "scorecards": [record for record in scorecards if isinstance(record, dict)],
+    }
+
+
+def save_domain_pilot_build_state(root: Path, document: dict[str, Any]) -> None:
+    save_json_document(domain_pilot_build_state_path(root), document)

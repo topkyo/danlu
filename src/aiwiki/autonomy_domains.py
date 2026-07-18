@@ -214,20 +214,17 @@ def _classify_path_surface(path: str, *, root: Path | None = None) -> str:
         return "external"
     normalized_lower = normalized.lower()
     if any(
-        normalized_lower == prefix.rstrip("/").lower()
-        or normalized_lower.startswith(prefix.lower())
+        normalized_lower == prefix.rstrip("/").lower() or normalized_lower.startswith(prefix.lower())
         for prefix in EXTERNAL_PATH_PREFIXES
     ):
         return "external"
     if any(
-        normalized_lower == prefix.rstrip("/").lower()
-        or normalized_lower.startswith(prefix.lower())
+        normalized_lower == prefix.rstrip("/").lower() or normalized_lower.startswith(prefix.lower())
         for prefix in RAW_PATH_PREFIXES
     ):
         return "raw"
     if any(
-        normalized_lower == prefix.rstrip("/").lower()
-        or normalized_lower.startswith(prefix.lower())
+        normalized_lower == prefix.rstrip("/").lower() or normalized_lower.startswith(prefix.lower())
         for prefix in CORE_PATH_PREFIXES
     ):
         return "core"

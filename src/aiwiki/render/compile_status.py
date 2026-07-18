@@ -6,7 +6,7 @@ from typing import Any
 
 from ..app_lifecycle import collect_aging_signals, review_queue
 from ..app_protocol import protocol_title
-from ..app_state import default_compile_state
+from ..compile.state import default_compile_state
 
 DETAIL_LABELS = {
     "manifest_entries": "entries",
@@ -181,9 +181,7 @@ def render_compile_status(
         )
     }
     entry_by_id = {
-        str(entry.get("id") or ""): entry
-        for entry in entries
-        if isinstance(entry, dict) and str(entry.get("id") or "")
+        str(entry.get("id") or ""): entry for entry in entries if isinstance(entry, dict) and str(entry.get("id") or "")
     }
     concept_by_slug = {
         str(record.get("slug") or ""): record

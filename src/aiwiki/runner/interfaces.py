@@ -8,5 +8,4 @@ from aiwiki.llm import CompletionResult
 
 
 class SupportsComplete(Protocol):
-    def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
-        ...
+    def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult: ...

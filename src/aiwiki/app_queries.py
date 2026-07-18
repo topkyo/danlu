@@ -91,18 +91,11 @@ from .app_routing import (
     upsert_active_corpus,
 )
 from .app_shell import build_shell_summary, write_shell_summary
-from .app_state import (
-    DEFAULT_PROTOCOL,
-    JUDGMENT_LIFECYCLE_STATES,
-    KNOWLEDGE_LIFECYCLE_KINDS,
-    KNOWLEDGE_LIFECYCLE_STATES,
-    active_archived_material_ids,
+from .app_state_paths import (
     active_corpora_state_path,
-    active_material_archive_entries,
     agent_pack_path,
     agent_workbench_path,
     aging_report_path,
-    append_runtime_history,
     archive_candidates_state_path,
     cognitive_history_path,
     compile_state_path,
@@ -110,13 +103,7 @@ from .app_state import (
     concept_quality_path,
     concept_rewrite_index_path,
     concept_rewrite_state_path,
-    default_concept_build_state,
-    default_domain_pilot_build_state,
-    default_machine_memory_build_state,
-    default_output_pack_build_state,
-    default_ranking_build_state,
     domain_pilot_build_state_path,
-    ensure_knowledge_lifecycle_override_state,
     execution_audit_html_path,
     execution_audit_path,
     execution_policy_log_path,
@@ -125,19 +112,6 @@ from .app_state import (
     judgment_assets_path,
     knowledge_lifecycle_override_state_path,
     knowledge_lifecycle_state_path,
-    load_active_corpora_state,
-    load_archive_candidates_state,
-    load_concept_rewrite_state,
-    load_json_document,
-    load_knowledge_lifecycle_state,
-    load_machine_memory,
-    load_machine_memory_action_state,
-    load_manifest,
-    load_manual_link_state,
-    load_material_archive_state,
-    load_material_routing_state,
-    load_material_state,
-    load_ranking_build_state,
     machine_memory_action_state_path,
     machine_memory_actions_path,
     machine_memory_build_state_path,
@@ -160,38 +134,26 @@ from .app_state import (
     ranking_build_state_path,
     repair_backlog_path,
     review_center_html_path,
-    save_compile_state,
-    save_concept_rewrite_state,
-    save_knowledge_lifecycle_override_state,
-    save_machine_memory_action_state,
-    save_manual_link_state,
-    save_material_archive_state,
     shell_summary_path,
 )
-from .app_utils import (
-    analyze_citation_snapshots,
-    build_citation_snapshots,
-    compiled_source_sha,
-    extract_provenance_paths,
-    next_available_stem,
-    parse_frontmatter,
-    question_signature,
-    read_text_preview,
-    relative_path,
-    render_frontmatter,
-    render_scalar,
-    runtime_write_operation,
-    sha256_bytes,
-    slugify,
-    strip_frontmatter,
-    tokenize,
-    upsert_markdown_section,
-    utc_now,
-    write_if_changed,
-    write_if_changed_ignoring_timestamps,
-    write_json_document_if_changed_ignoring_generated_timestamps,
+from .compile.build import (
+    default_concept_build_state,
+    default_domain_pilot_build_state,
+    default_machine_memory_build_state,
+    default_output_pack_build_state,
+    default_ranking_build_state,
+    load_ranking_build_state,
 )
+from .compile.state import save_compile_state
 from .config import LLMConfig
+from .content.archive import (
+    active_archived_material_ids,
+    active_material_archive_entries,
+    load_archive_candidates_state,
+    load_material_archive_state,
+    load_material_routing_state,
+    save_material_archive_state,
+)
 from .content.concepts import (
     build_concept_quality,
     build_concept_records,
@@ -222,27 +184,47 @@ from .content.io import (
     source_summary_or_preview,
     sync_manifest_with_raw,
 )
+from .content.material import (
+    load_active_corpora_state,
+    load_manual_link_state,
+    load_material_state,
+    save_manual_link_state,
+)
 from .content.memory import (
-    _validate_rewrite_candidate_markdown,
-    action_supports_low_risk_apply,
-    append_execution_policy_decisions,
-    build_machine_memory_repair_plan,
-    build_page_patch_plan,
     concept_summary_is_placeholder,
+    remove_stale_generated_markdown_files,
+)
+from .content.outputs import classify_recurring_output_kind
+from .content.rewrite import load_concept_rewrite_state, save_concept_rewrite_state
+from .execution.history import append_runtime_history
+from .execution.lifecycle import concept_lifecycle_entry, concept_page_path
+from .execution.patch_plan import build_page_patch_plan
+from .execution.policy import (
+    append_execution_policy_decisions,
     execution_policy_decision_record,
     load_execution_receipt_history,
-    placeholder_concept_slugs,
-    remove_stale_generated_execution_bundle_files,
-    remove_stale_generated_execution_proposal_pages,
-    remove_stale_generated_markdown_files,
+)
+from .execution.repair_plan import (
+    _validate_rewrite_candidate_markdown,
+    build_machine_memory_repair_plan,
     repair_execution_proposals,
     rewrite_proposal_candidate_is_current,
     rewrite_proposal_is_apply_ready,
+)
+from .lifecycle.knowledge import (
+    ensure_knowledge_lifecycle_override_state,
+    load_knowledge_lifecycle_state,
+    save_knowledge_lifecycle_override_state,
+)
+from .memory.action_core import (
+    action_supports_low_risk_apply,
+    placeholder_concept_slugs,
+    remove_stale_generated_execution_bundle_files,
+    remove_stale_generated_execution_proposal_pages,
     safe_apply_preview,
     validate_low_risk_action_targets,
 )
-from .content.outputs import classify_recurring_output_kind
-from .execution.lifecycle import concept_lifecycle_entry, concept_page_path
+from .memory.action_state import load_machine_memory_action_state, save_machine_memory_action_state
 from .memory.actions import reconcile_machine_memory_actions
 from .memory.build_plan import plan_machine_memory_build
 from .memory.builder import build_machine_memory
@@ -272,6 +254,7 @@ from .memory.graph import (
 from .memory.graph_builder import build_machine_memory_graph
 from .memory.health import build_machine_memory_health
 from .memory.judgment_assets import attach_judgment_assets_to_machine_memory
+from .memory.state import load_machine_memory
 from .memory.status import (
     render_drift_report,
     render_graph_health,
@@ -318,6 +301,35 @@ from .render.views import (
     render_master_index,
     render_review_queue,
 )
+from .state.constants import (
+    DEFAULT_PROTOCOL,
+    JUDGMENT_LIFECYCLE_STATES,
+    KNOWLEDGE_LIFECYCLE_KINDS,
+    KNOWLEDGE_LIFECYCLE_STATES,
+)
+from .state.io import load_json_document
+from .state.manifest import load_manifest
+from .utils.hash import compiled_source_sha, question_signature, sha256_bytes
+from .utils.io import (
+    runtime_write_operation,
+    write_if_changed,
+    write_if_changed_ignoring_timestamps,
+    write_json_document_if_changed_ignoring_generated_timestamps,
+)
+from .utils.markdown import (
+    analyze_citation_snapshots,
+    build_citation_snapshots,
+    extract_provenance_paths,
+    parse_frontmatter,
+    read_text_preview,
+    render_frontmatter,
+    render_scalar,
+    strip_frontmatter,
+    upsert_markdown_section,
+)
+from .utils.path import next_available_stem, relative_path
+from .utils.text import slugify, tokenize
+from .utils.time import utc_now
 
 AUTO_ASK_PATH_MARKER = "本次投喂材料路径："
 AUTO_ASK_QUESTION_MARKER = "用户问题："
@@ -359,16 +371,6 @@ def human_query_title(question: str) -> str:
     return text or "未命名问题"
 
 
-def _ranking_helpers() -> tuple[Any, Any, Any]:
-    from . import app_compile as compile_facade
-
-    return (
-        compile_facade.build_ranking_source_record,
-        compile_facade.ranking_source_record_is_reusable,
-        compile_facade.ranking_source_summary_or_preview,
-    )
-
-
 def source_page_is_stale(root: Path, entry: dict[str, Any]) -> bool:
     page = root / "wiki" / "sources" / f"{entry['id']}.md"
     if not page.exists():
@@ -384,7 +386,9 @@ def source_page_requires_compile(root: Path, entry: dict[str, Any], concepts: li
     if compiled_source_sha(content) != entry["sha256"]:
         return True
     frontmatter = parse_frontmatter(content)
-    if str(frontmatter.get("source_updated_at") or "") != str(entry.get("updated_at") or entry.get("imported_at") or ""):
+    if str(frontmatter.get("source_updated_at") or "") != str(
+        entry.get("updated_at") or entry.get("imported_at") or ""
+    ):
         return True
     existing_concepts = frontmatter.get("concepts", [])
     if not isinstance(existing_concepts, list):
@@ -434,9 +438,15 @@ def rank_sources(
     *,
     protocol: str = DEFAULT_PROTOCOL,
 ) -> list[dict[str, Any]]:
-    build_ranking_source_record, ranking_source_record_is_reusable, ranking_source_summary_or_preview = (
-        _ranking_helpers()
+    # Lazy import: ``aiwiki.compile.ranking`` triggers ``aiwiki.compile.__init__``
+    # which imports ``compile.pipeline`` → ``compile.content_step`` → ``app_queries``,
+    # forming a cycle when placed at module level.
+    from .compile.ranking import (
+        build_ranking_source_record,
+        ranking_source_record_is_reusable,
+        ranking_source_summary_or_preview,
     )
+
     question_tokens = tokenize(question)
     scored: list[tuple[float, int, float, dict[str, Any]]] = []
     boost_source_ids = boost_source_ids or set()
@@ -583,9 +593,7 @@ def compact_machine_memory_focus_lines(machine_query: dict[str, Any]) -> list[st
     if strategy:
         suffix = f" / `{reason}`" if reason else ""
         lines.append(f"- 查询入口：`{strategy}`{suffix}")
-    bridge_concepts = [
-        str(slug).strip() for slug in machine_query.get("bridge_concept_slugs", []) if str(slug).strip()
-    ]
+    bridge_concepts = [str(slug).strip() for slug in machine_query.get("bridge_concept_slugs", []) if str(slug).strip()]
     if bridge_concepts:
         lines.append(f"- 桥接概念：`{', '.join(bridge_concepts[:4])}`")
     archive_hints = machine_query.get("archive_recall_hints", []) or []
@@ -639,9 +647,7 @@ def compound_rank_boosts(
     """Derive source/concept boost ids from ranked confirmed judgments and settled elixirs."""
 
     ranked_judgments = {
-        str(page_id).strip()
-        for page_id in machine_query.get("ranked_judgment_ids", []) or []
-        if str(page_id).strip()
+        str(page_id).strip() for page_id in machine_query.get("ranked_judgment_ids", []) or [] if str(page_id).strip()
     }
     ranked_elixirs = {
         str(elixir_id).strip()

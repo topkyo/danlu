@@ -7,12 +7,15 @@ from pathlib import Path
 from typing import Any, Callable
 
 from aiwiki.app_execution import append_execution_receipt_history
-from aiwiki.app_state import append_runtime_history, execution_receipt_history_path
-from aiwiki.app_utils import atomic_write_text, relative_path, utc_now
+from aiwiki.app_state_paths import execution_receipt_history_path
+from aiwiki.execution.history import append_runtime_history
 from aiwiki.execution.l3_proposals import STAGING_JUDGE_PROPOSAL_DIR
 from aiwiki.render.paths import execution_receipt_path
 from aiwiki.runner import alchemy_materialize as materialize
 from aiwiki.runner import alchemy_support as support
+from aiwiki.utils.io import atomic_write_text
+from aiwiki.utils.path import relative_path
+from aiwiki.utils.time import utc_now
 
 PreviewRunner = Callable[..., dict[str, Any]]
 
@@ -96,7 +99,9 @@ def run_judge_apply(
     trace_ids = support.preview_trace_ids(preview)
     trace_id = trace_ids[0] if trace_ids else ""
     candidate_ids = [str(item.get("candidate_id") or "") for item in candidates if item.get("candidate_id")]
-    idempotency_key = support.alchemy_judge_idempotency_key(scope=scope, candidate_ids=candidate_ids, trace_ids=trace_ids)
+    idempotency_key = support.alchemy_judge_idempotency_key(
+        scope=scope, candidate_ids=candidate_ids, trace_ids=trace_ids
+    )
     receipt = {
         "version": 1,
         "kind": "execution-receipt",
@@ -225,7 +230,9 @@ def run_judge_propose(
     trace_id = trace_ids[0] if trace_ids else ""
     candidate_ids = [str(item.get("candidate_id") or "") for item in candidates if item.get("candidate_id")]
     proposal_ids = [str(item.get("proposal_id") or "") for item in [*generated, *skipped] if item.get("proposal_id")]
-    idempotency_key = support.alchemy_judge_proposal_idempotency_key(scope=scope, candidate_ids=candidate_ids, trace_ids=trace_ids)
+    idempotency_key = support.alchemy_judge_proposal_idempotency_key(
+        scope=scope, candidate_ids=candidate_ids, trace_ids=trace_ids
+    )
     receipt = {
         "version": 1,
         "kind": "execution-receipt",

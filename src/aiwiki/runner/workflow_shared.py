@@ -16,9 +16,11 @@ def reinject_candidate_frontmatter(target: Path, *, corpus_id: str = "") -> None
 
 DEFAULT_REPORT_TIMEOUT_SECONDS = 240
 
+
 def _env_flag(name: str) -> bool:
     value = os.environ.get(name, "")
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
 
 def _receipt_error_class(exc: Exception | str) -> str:
     message = str(exc)
@@ -31,6 +33,7 @@ def _receipt_error_class(exc: Exception | str) -> str:
     if "exit code" in lowered or "non-zero" in lowered or "nonzero" in lowered:
         return "non_zero_exit"
     return "other"
+
 
 def _raw_response_path(root: Path, result: CompletionResult | None, exc: Exception | None = None) -> str:
     if exc is not None:

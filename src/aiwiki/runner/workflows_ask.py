@@ -11,25 +11,12 @@ from typing import Any
 
 from aiwiki.app_protocol import ensure_layout
 from aiwiki.app_queries import build_ask_used_refs
-from aiwiki.app_state import load_machine_memory, load_manifest
-from aiwiki.app_state import run_notes_path as run_notes_file_path
-from aiwiki.app_utils import (
-    _restore_file_bytes,
-    _snapshot_file_bytes,
-    atomic_write_text,
-    next_available_stem,
-    parse_frontmatter,
-    relative_path,
-    render_frontmatter,
-    runtime_write_operation,
-    slugify,
-    strip_frontmatter,
-    utc_now,
-)
+from aiwiki.app_state_paths import run_notes_path as run_notes_file_path
 from aiwiki.execution.receipts import write_execution_receipt
 from aiwiki.execution.run_notes import run_id_for_artifact, write_run_notes, write_run_notes_frontmatter
 from aiwiki.input_router import is_obsidian_open_link
 from aiwiki.llm import CompletionResult, LLMError, classify_backend_error
+from aiwiki.memory.state import load_machine_memory
 from aiwiki.notify import notify_report_generated
 from aiwiki.render.paths import execution_receipts_dir
 from aiwiki.runner.background import (
@@ -78,6 +65,12 @@ from aiwiki.runner.workflow_shared import (
     _receipt_error_class,
     reinject_candidate_frontmatter,
 )
+from aiwiki.state.manifest import load_manifest
+from aiwiki.utils.io import _restore_file_bytes, _snapshot_file_bytes, atomic_write_text, runtime_write_operation
+from aiwiki.utils.markdown import parse_frontmatter, render_frontmatter, strip_frontmatter
+from aiwiki.utils.path import next_available_stem, relative_path
+from aiwiki.utils.text import slugify
+from aiwiki.utils.time import utc_now
 
 from ..execution.ask import ask_question
 
@@ -114,12 +107,14 @@ def _run_ask_failure_llm_status(exc: Exception) -> str:
         return "validation_failed"
     return "failed"
 
+
 def _effective_run_ask_timeout(output_format: str, timeout_seconds: int | None) -> int | None:
     if timeout_seconds is not None:
         return timeout_seconds
     if output_format == "report" and not os.environ.get("AIWIKI_LLM_TIMEOUT", "").strip():
         return DEFAULT_REPORT_TIMEOUT_SECONDS
     return None
+
 
 def _frontmatter_string_list(frontmatter: dict[str, Any], key: str) -> list[str]:
     value = frontmatter.get(key)
@@ -129,11 +124,13 @@ def _frontmatter_string_list(frontmatter: dict[str, Any], key: str) -> list[str]
         return [value.strip()]
     return []
 
+
 def _runtime_provenance_field_lines(fields: dict[str, list[str]]) -> list[str]:
     if not fields:
         return []
     rendered = render_frontmatter(fields).splitlines()
     return rendered[1:-1]
+
 
 def _drop_frontmatter_keys(header_lines: list[str], keys: set[str]) -> list[str]:
     filtered: list[str] = []
@@ -151,6 +148,7 @@ def _drop_frontmatter_keys(header_lines: list[str], keys: set[str]) -> list[str]
             continue
         filtered.append(line)
     return filtered
+
 
 def _ensure_output_cssclass(target: Path) -> None:
     """Ensure generated output hides Obsidian properties without dropping audit metadata."""
@@ -187,6 +185,7 @@ def _ensure_output_cssclass(target: Path) -> None:
     css_lines = _runtime_provenance_field_lines({"cssclasses": classes})
     updated_lines = [lines[0], *header, *css_lines, lines[close_idx], *lines[close_idx + 1 :]]
     target.write_text("\n".join(updated_lines).rstrip() + "\n", encoding="utf-8")
+
 
 def _restore_run_ask_provenance_frontmatter(
     target: Path,
@@ -245,6 +244,7 @@ def _restore_run_ask_provenance_frontmatter(
         updated_lines = [lines[0], *header, *restored_lines, lines[close_idx], *lines[close_idx + 1 :]]
     target.write_text("\n".join(updated_lines).rstrip() + "\n", encoding="utf-8")
 
+
 def _strip_report_skeleton_reference_hints(markdown: str) -> str:
     lines = str(markdown or "").splitlines()
     if not lines:
@@ -274,6 +274,7 @@ def _strip_report_skeleton_reference_hints(markdown: str) -> str:
             continue
         kept.append(line)
     return "\n".join(kept).rstrip() + "\n"
+
 
 def _append_visible_quoted_report_refs(markdown: str, refs: list[str]) -> str:
     quoted_refs: list[str] = []
@@ -306,13 +307,10 @@ def _append_visible_quoted_report_refs(markdown: str, refs: list[str]) -> str:
         end = h2_positions[position_index + 1][0] if position_index + 1 < len(h2_positions) else len(lines)
         remove_ranges.append((line_index, end))
 
-    kept = [
-        line
-        for index, line in enumerate(lines)
-        if not any(start <= index < end for start, end in remove_ranges)
-    ]
+    kept = [line for index, line in enumerate(lines) if not any(start <= index < end for start, end in remove_ranges)]
     section = ["", "## 引用报告", *[f"- {ref}" for ref in quoted_refs]]
     return "\n".join(kept).rstrip() + "\n" + "\n".join(section).rstrip() + "\n"
+
 
 def _load_compound_context_pages(
     root: Path,
@@ -388,6 +386,7 @@ def _run_ask_prepared_context(root: Path, question: str, artifact: dict[str, Any
         "question": question,
     }
 
+
 def _complete_run_ask_artifact(
     root: Path,
     *,
@@ -432,17 +431,15 @@ def _complete_run_ask_artifact(
     if corpus_id:
         from aiwiki.execution.ask import load_previous_output_summary
 
-        previous_output_summary = load_previous_output_summary(root, corpus_id, exclude_artifact_ref=artifact.get("path"))
+        previous_output_summary = load_previous_output_summary(
+            root, corpus_id, exclude_artifact_ref=artifact.get("path")
+        )
     material_refs = [str(item) for item in artifact.get("material_refs", []) if str(item).strip()]
     material_context_refs: list[str] = []
     material_context = str(artifact.get("material_context") or "").strip()
     if material_context:
         material_context_refs = _context_ref_paths(
-            [
-                record
-                for record in artifact.get("used_context_refs", [])
-                if isinstance(record, dict)
-            ]
+            [record for record in artifact.get("used_context_refs", []) if isinstance(record, dict)]
         )
         if not material_context_refs:
             material_context_refs = list(dict.fromkeys(material_refs))
@@ -450,23 +447,15 @@ def _complete_run_ask_artifact(
         material_context_payload = _read_material_context(root, material_refs, max_chars=12000) if material_refs else {}
         material_context = str(material_context_payload.get("text") or "")
         material_context_refs = _context_ref_paths(
-            [
-                record
-                for record in material_context_payload.get("used_context_refs", [])
-                if isinstance(record, dict)
-            ]
+            [record for record in material_context_payload.get("used_context_refs", []) if isinstance(record, dict)]
         )
     provenance_event_fields: dict[str, Any] = {}
     if material_refs:
         provenance_event_fields["material_refs"] = material_refs
     if material_context_refs:
         provenance_event_fields["used_context_refs"] = material_context_refs
-    compound_paths = [
-        f"wiki/judgments/{page_id}.md"
-        for page_id, _content in prepared.get("judgment_pages", [])
-    ] + [
-        f"wiki/elixirs/{elixir_id}.md"
-        for elixir_id, _content in prepared.get("elixir_pages", [])
+    compound_paths = [f"wiki/judgments/{page_id}.md" for page_id, _content in prepared.get("judgment_pages", [])] + [
+        f"wiki/elixirs/{elixir_id}.md" for elixir_id, _content in prepared.get("elixir_pages", [])
     ]
     if not compound_paths:
         compound_paths = [
@@ -757,6 +746,7 @@ def _complete_run_ask_artifact(
     }
     return payload
 
+
 @runtime_write_operation
 def run_ask_submit(
     root: Path,
@@ -853,6 +843,7 @@ def run_ask_submit(
         submitted_payload["material_refs"] = material_refs
     return submitted_payload
 
+
 @runtime_write_operation
 def run_ask_resume(root: Path, job_id: str, client: SupportsComplete | None = None) -> dict[str, Any]:
     manifest = update_job_manifest(root, job_id, status="running")
@@ -865,7 +856,9 @@ def run_ask_resume(root: Path, job_id: str, client: SupportsComplete | None = No
             protocol=str(manifest.get("protocol") or "") or None,
             client=client,
             lean=bool(manifest.get("lean")),
-            timeout_seconds=manifest.get("timeout_seconds") if isinstance(manifest.get("timeout_seconds"), int) else None,
+            timeout_seconds=manifest.get("timeout_seconds")
+            if isinstance(manifest.get("timeout_seconds"), int)
+            else None,
             no_cache=bool(manifest.get("no_cache")),
             backend_compat=dict(manifest.get("backend_preflight") or {}),
         )
@@ -884,6 +877,7 @@ def run_ask_resume(root: Path, job_id: str, client: SupportsComplete | None = No
     )
     _refresh_shell_summary_fail_soft(root)
     return {"job_id": job_id, **payload}
+
 
 def _mark_run_ask_artifact_degraded(
     target: Path,
@@ -938,6 +932,7 @@ def _mark_run_ask_artifact_degraded(
         lines.extend(["", "## 可用上下文", references])
     atomic_write_text(target, "\n".join(lines).rstrip() + "\n")
 
+
 def _mark_run_ask_background_artifact_submitted(target: Path, *, job_id: str, status: str = "submitted") -> None:
     current = target.read_text(encoding="utf-8", errors="replace") if target.exists() else ""
     frontmatter = parse_frontmatter(current)
@@ -952,6 +947,7 @@ def _mark_run_ask_background_artifact_submitted(target: Path, *, job_id: str, st
     body = strip_frontmatter(current)
     target.write_text(render_frontmatter(frontmatter).rstrip() + "\n\n" + body.lstrip(), encoding="utf-8")
 
+
 def _mark_run_ask_background_artifact_complete(target: Path, *, status: str, job_id: str = "") -> None:
     current = target.read_text(encoding="utf-8", errors="replace") if target.exists() else ""
     frontmatter = parse_frontmatter(current)
@@ -960,6 +956,7 @@ def _mark_run_ask_background_artifact_complete(target: Path, *, status: str, job
     frontmatter["background_status"] = status
     body = strip_frontmatter(current)
     target.write_text(render_frontmatter(frontmatter).rstrip() + "\n\n" + body.lstrip(), encoding="utf-8")
+
 
 def _write_run_ask_output_receipt(
     root: Path,
@@ -1007,8 +1004,10 @@ def _planned_run_ask_output_receipt_ref(root: Path, *, artifact_ref: str, run_id
     action_id = next_available_stem(receipt_dir, seed, suffix=".json")
     return relative_path(root, receipt_dir / f"{action_id}.json")
 
+
 def _quoted_report_reference_paths(question: str) -> list[str]:
     return extract_report_reference_paths(question)
+
 
 def _safe_quoted_report_reference_paths(root: Path, refs: list[str]) -> list[str]:
     safe_refs: list[str] = []
@@ -1041,6 +1040,7 @@ def _safe_quoted_report_reference_paths(root: Path, refs: list[str]) -> list[str
         safe_refs.append(text)
     return safe_refs
 
+
 def _quoted_report_material_refs(root: Path, question: str) -> list[str]:
     quoted_refs = _quoted_report_reference_paths(question)
     if not quoted_refs:
@@ -1053,8 +1053,10 @@ def _quoted_report_material_refs(root: Path, question: str) -> list[str]:
         raise ValueError(f"quoted report reference is missing or unsafe: {missing}")
     return safe_refs
 
+
 def _clean_report_reference_question(question: str) -> str:
     return clean_report_reference_question(question)
+
 
 def _material_hint_paths(question: str) -> list[str]:
     text = str(question or "")
@@ -1069,6 +1071,7 @@ def _material_hint_paths(question: str) -> list[str]:
             if item and any(item.startswith(prefix) for prefix in ("raw/", "wiki/", "output/", ".aiwiki/")):
                 paths.append(item.strip("`"))
     return paths
+
 
 def _read_material_context(root: Path, refs: list[str], *, max_chars: int = 6000) -> dict[str, Any]:
     snippets: list[str] = []
@@ -1111,6 +1114,7 @@ def _read_material_context(root: Path, refs: list[str], *, max_chars: int = 6000
         "context_budget": {"explicit_material_refs": len(refs), "max_chars": max_chars},
     }
 
+
 def _context_kind_for_path(relative: str) -> str:
     if relative.startswith("wiki/elixirs/"):
         return "elixir"
@@ -1128,6 +1132,7 @@ def _context_kind_for_path(relative: str) -> str:
         return "raw-material"
     return "material"
 
+
 def _context_ref_paths(records: list[dict[str, Any]]) -> list[str]:
     paths: list[str] = []
     for record in records:
@@ -1135,6 +1140,7 @@ def _context_ref_paths(records: list[dict[str, Any]]) -> list[str]:
         if path and path not in paths:
             paths.append(path)
     return paths
+
 
 def _strip_run_notes_prompt_fields(markdown: str) -> str:
     lines = str(markdown or "").splitlines()
@@ -1158,13 +1164,10 @@ def _strip_run_notes_prompt_fields(markdown: str) -> str:
         "llm_backend:",
         "llm_model:",
     )
-    filtered = [
-        line
-        for line in lines[: close_idx + 1]
-        if not line.startswith(control_prefixes)
-    ]
+    filtered = [line for line in lines[: close_idx + 1] if not line.startswith(control_prefixes)]
     filtered.extend(lines[close_idx + 1 :])
     return "\n".join(filtered) + ("\n" if markdown.endswith("\n") else "")
+
 
 @runtime_write_operation
 def run_ask(

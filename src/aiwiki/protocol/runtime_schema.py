@@ -69,7 +69,9 @@ def validate_protocol_runtime_execution_policy(path_ref: str, value: Any) -> dic
         if not isinstance(rule_id, str) or not rule_id.strip():
             raise protocol_runtime_schema_error(path_ref, "Execution policy rule ids must be non-empty strings.")
         if not isinstance(rule_payload, dict):
-            raise protocol_runtime_schema_error(path_ref, f"`execution_policy.accepted_rules.{rule_id}` must be an object.")
+            raise protocol_runtime_schema_error(
+                path_ref, f"`execution_policy.accepted_rules.{rule_id}` must be an object."
+            )
         normalized_rule = dict(rule_payload)
         if "capabilities" in normalized_rule:
             normalized_rule["capabilities"] = validate_protocol_runtime_string_list(

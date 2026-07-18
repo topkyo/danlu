@@ -80,10 +80,7 @@ def machine_memory_source_runtime_record(
     archive_hint = bool(
         temperature == "archived"
         or (time_focus == "historical" and (temperature == "cold" or bool(archive_candidate)))
-        or (
-            archive_candidate
-            and str(archive_candidate.get("recommended_temperature") or "") == "archived"
-        )
+        or (archive_candidate and str(archive_candidate.get("recommended_temperature") or "") == "archived")
     )
     archive_hint_score = base_score + protocol_bonus + max(0.0, time_bonus)
     if temperature == "archived":
@@ -109,8 +106,6 @@ def machine_memory_source_runtime_record(
         "archive_hint_score": round(archive_hint_score, 3),
         "recommended_temperature": str(archive_candidate.get("recommended_temperature") or ""),
         "reason_codes": [
-            str(reason)
-            for reason in archive_candidate.get("reason_codes", [])
-            if isinstance(reason, str) and reason
+            str(reason) for reason in archive_candidate.get("reason_codes", []) if isinstance(reason, str) and reason
         ],
     }

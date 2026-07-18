@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..app_state import load_machine_memory_build_state
-from ..content.memory import (
+from ..compile.build import load_machine_memory_build_state
+from .action_core import (
     machine_memory_concept_input_signature,
     machine_memory_source_input_signature,
 )
@@ -42,10 +42,7 @@ def plan_machine_memory_build(
         )
         source_records[entry_id] = {"input_signature": input_signature}
         previous_record = previous_source_records.get(entry_id, {})
-        if (
-            isinstance(previous_record, dict)
-            and str(previous_record.get("input_signature") or "") == input_signature
-        ):
+        if isinstance(previous_record, dict) and str(previous_record.get("input_signature") or "") == input_signature:
             clean_source_ids.append(entry_id)
         else:
             dirty_source_ids.append(entry_id)
@@ -58,10 +55,7 @@ def plan_machine_memory_build(
         input_signature = machine_memory_concept_input_signature(root, record)
         concept_records[slug] = {"input_signature": input_signature}
         previous_record = previous_concept_records.get(slug, {})
-        if (
-            isinstance(previous_record, dict)
-            and str(previous_record.get("input_signature") or "") == input_signature
-        ):
+        if isinstance(previous_record, dict) and str(previous_record.get("input_signature") or "") == input_signature:
             clean_concept_slugs.append(slug)
         else:
             dirty_concept_slugs.append(slug)
@@ -81,10 +75,5 @@ def plan_machine_memory_build(
         "clean_concept_slugs": clean_concept_slugs,
         "removed_source_ids": removed_source_ids,
         "removed_concept_slugs": removed_concept_slugs,
-        "inputs_clean": not (
-            dirty_source_ids
-            or dirty_concept_slugs
-            or removed_source_ids
-            or removed_concept_slugs
-        ),
+        "inputs_clean": not (dirty_source_ids or dirty_concept_slugs or removed_source_ids or removed_concept_slugs),
     }

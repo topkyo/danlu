@@ -36,7 +36,9 @@ def llm_probe(root: Path, probe_all: bool = False, timeout_seconds: int = 20) ->
     if probe_all:
         probes = probe_available_backends(config, root, timeout_seconds=timeout_seconds)
         result["probes"] = probes
-        result["probe"] = next((probe for probe in probes if probe.get("backend") == config.backend), probes[0] if probes else None)
+        result["probe"] = next(
+            (probe for probe in probes if probe.get("backend") == config.backend), probes[0] if probes else None
+        )
         return result
     result["probe"] = probe_backend(config, root, timeout_seconds=timeout_seconds)
     result["probes"] = []

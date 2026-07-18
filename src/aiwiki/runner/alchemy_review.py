@@ -90,7 +90,9 @@ def run_alchemy_review_apply_impl(
             "result_summary": queue_result,
         }
         receipt_path.parent.mkdir(parents=True, exist_ok=True)
-        deps["atomic_write_text"](receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+        deps["atomic_write_text"](
+            receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+        )
         deps["append_execution_receipt_history"](root, receipt)
     except Exception as tx_exc:
         try:

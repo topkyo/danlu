@@ -10,7 +10,7 @@ from ..app_protocol import (
     PROTOCOL_CLASSIFICATION_MARKERS,
     PROTOCOL_PROMOTION_PREFIXES,
 )
-from ..app_state import DEFAULT_PROTOCOL
+from ..state.constants import DEFAULT_PROTOCOL
 
 
 def normalize_query_signature(query: str) -> str:

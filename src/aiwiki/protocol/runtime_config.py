@@ -41,18 +41,10 @@ PROTOCOL_OUTPUT_GUIDANCE: dict[str, dict[str, tuple[str, ...]]] = {
             "先重述问题，再列证据、分歧、缺口和下一步问题。",
             "不要把猜测写成事实。",
         ),
-        "decision-memo": (
-            "优先组织成结论、证据、反证、失效条件和下一次复核信号。",
-        ),
-        "sop": (
-            "优先组织成前置检查、步骤、风险控制、回滚和复盘记录。",
-        ),
-        "slides": (
-            "每页都保留引用和关键不确定性。",
-        ),
-        "figure": (
-            "图表应强调变量关系、假设和证据边界。",
-        ),
+        "decision-memo": ("优先组织成结论、证据、反证、失效条件和下一次复核信号。",),
+        "sop": ("优先组织成前置检查、步骤、风险控制、回滚和复盘记录。",),
+        "slides": ("每页都保留引用和关键不确定性。",),
+        "figure": ("图表应强调变量关系、假设和证据边界。",),
     },
 }
 
@@ -110,7 +102,18 @@ PROTOCOL_QUERY_ROUTE_CONFIG: dict[str, dict[str, Any]] = {
         "default_strategy": "concept-first",
         "strategy_order": ("concept-first", "graph-walk", "source-first"),
         "source_markers": ("source", "citation", "quote", "file", "raw", "证据", "引用", "来源", "原文"),
-        "graph_markers": ("why", "how", "impact", "dependency", "relationship", "root cause", "为什么", "因果", "关系", "根因"),
+        "graph_markers": (
+            "why",
+            "how",
+            "impact",
+            "dependency",
+            "relationship",
+            "root cause",
+            "为什么",
+            "因果",
+            "关系",
+            "根因",
+        ),
     },
 }
 

@@ -7,7 +7,7 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any, Callable
 
-from ..app_utils import atomic_append_line, runtime_write_lock
+from ..utils.io import atomic_append_line, runtime_write_lock
 from .schema import (
     DECISIONS,
     MODES,
@@ -228,9 +228,7 @@ def _load_existing_planner_log(path: Path) -> dict[str, str]:
 
             validation = validate_planner_log_record(record)
             if not validation.ok:
-                raise ValueError(
-                    f"invalid planner-log.jsonl record at line {line_no}: {'; '.join(validation.errors)}"
-                )
+                raise ValueError(f"invalid planner-log.jsonl record at line {line_no}: {'; '.join(validation.errors)}")
 
             dedupe_key = compute_planner_log_dedupe_key(record)
             fingerprint = _fingerprint_without_dedupe_identity(record)
@@ -248,11 +246,7 @@ def _load_existing_planner_log(path: Path) -> dict[str, str]:
 
 
 def _fingerprint_without_dedupe_identity(record: dict[str, Any]) -> str:
-    trimmed = {
-        key: value
-        for key, value in record.items()
-        if key not in {"signal_id", "mode"}
-    }
+    trimmed = {key: value for key, value in record.items() if key not in {"signal_id", "mode"}}
     return canonical_dumps_planner_log(trimmed)
 
 

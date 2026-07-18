@@ -8,13 +8,11 @@ from typing import Any
 from ..app_lifecycle import rewrite_proposal_needs_review
 from ..app_memory_query import concept_page_snapshot
 from ..app_protocol import ensure_layout
-from ..app_state import (
-    concept_rewrite_proposal_page_path,
-    load_concept_rewrite_state,
-    save_concept_rewrite_state,
-)
-from ..app_utils import relative_path, write_if_changed
-from ..content.memory import rewrite_proposal_is_apply_ready
+from ..app_state_paths import concept_rewrite_proposal_page_path
+from ..content.rewrite import load_concept_rewrite_state, save_concept_rewrite_state
+from ..execution.repair_plan import rewrite_proposal_is_apply_ready
+from ..utils.io import write_if_changed
+from ..utils.path import relative_path
 from .execution_surfaces import (
     concept_rewrite_proposal_digest,
     render_concept_rewrite_proposal_page,
@@ -84,7 +82,9 @@ def store_concept_rewrite_candidate(
             "current_summary": str(snapshot.get("summary") or ""),
         }
     )
-    target["pending_review"] = "true" if rewrite_proposal_needs_review(str(target.get("status") or "proposed")) else "false"
+    target["pending_review"] = (
+        "true" if rewrite_proposal_needs_review(str(target.get("status") or "proposed")) else "false"
+    )
     target["apply_ready"] = rewrite_proposal_is_apply_ready(root, target)
     save_concept_rewrite_state(root, {"version": 1, "proposals": proposals})
     write_if_changed(root / str(target["proposal_path"]), render_concept_rewrite_proposal_page(target))

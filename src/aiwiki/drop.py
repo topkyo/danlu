@@ -16,28 +16,21 @@ from typing import Any
 from urllib import parse
 
 from .app_protocol import ensure_layout, save_manifest
-from .app_state import DEFAULT_PROTOCOL, append_runtime_history, load_manifest, manifest_path, runtime_history_path
-from .app_utils import (
-    FetchPolicyError,
-    _validate_safe_url,
-    atomic_copy_file,
-    atomic_write_bytes,
-    atomic_write_text,
-    detect_kind,
-    first_markdown_heading,
-    next_identifier,
-    relative_path,
-    runtime_write_lock,
-    safe_fetch,
-    safe_resolve_within,
-    sha256_file,
-    slugify,
-    utc_now,
-)
+from .app_state_paths import manifest_path, runtime_history_path
 from .config import LLMConfig, _backend_supports_image_analysis
 from .drop_helpers import strip_leading_title_echo, timestamped_stem
+from .execution.history import append_runtime_history
 from .llm import LLMError, create_backend_client
 from .render.paths import append_wiki_log
+from .state.constants import DEFAULT_PROTOCOL
+from .state.manifest import load_manifest
+from .utils.hash import sha256_file
+from .utils.io import atomic_copy_file, atomic_write_bytes, atomic_write_text, runtime_write_lock
+from .utils.markdown import first_markdown_heading
+from .utils.path import next_identifier, relative_path
+from .utils.security import FetchPolicyError, _validate_safe_url, safe_fetch, safe_resolve_within
+from .utils.text import detect_kind, slugify
+from .utils.time import utc_now
 
 try:
     from bs4 import BeautifulSoup
@@ -127,6 +120,8 @@ def _append_run_event(root: Path, event: dict[str, Any]) -> None:
     from .runner.receipts import _append_log
 
     _append_log(root, event)
+
+
 BROWSER_RENDER_TIMEOUT_SECONDS = 45
 BROWSER_VIRTUAL_TIME_BUDGET_MS = 8000
 ALLOW_BROWSER_NO_SANDBOX_ENV = "AIWIKI_ALLOW_BROWSER_NO_SANDBOX"
@@ -491,7 +486,9 @@ def _collect_image(
     enable_vision: bool = True,
     client: Any | None = None,
 ) -> dict[str, Any]:
-    collection = _collect_binary_to_tmp(root, source, prefix="aiwiki-drop-image-", preferred_slug=title or Path(source).stem)
+    collection = _collect_binary_to_tmp(
+        root, source, prefix="aiwiki-drop-image-", preferred_slug=title or Path(source).stem
+    )
     try:
         tmp_path = collection["tmp_path"]
         mime = _detect_mime_type(tmp_path)
@@ -542,7 +539,9 @@ def _materialize_image(root: Path, source: str, title: str | None, collection: d
     vision_backend = vision_result["backend"]
     vision_status = vision_result["status"]
     display_title = title or Path(original_path).stem or tmp_path.stem
-    asset_path = _unique_path(root / "raw" / "assets", timestamped_stem(display_title), tmp_path.suffix.lower() or ".bin")
+    asset_path = _unique_path(
+        root / "raw" / "assets", timestamped_stem(display_title), tmp_path.suffix.lower() or ".bin"
+    )
     created_paths: list[Path] = []
     append_file_sizes = _snapshot_append_files(root)
     try:
@@ -812,7 +811,7 @@ def _sensitive_text_findings(text: str) -> list[tuple[int, str]]:
 def _normalized_sensitive_value(value: str) -> str:
     cleaned = value.strip()
     cleaned = re.split(r"\s+#|\s+//", cleaned, maxsplit=1)[0].strip()
-    cleaned = cleaned.strip("`\"")
+    cleaned = cleaned.strip('`"')
     return cleaned.lower()
 
 
@@ -884,7 +883,9 @@ def _append_manifest_entry(
             return entry
     existing_ids = {str(entry.get("id") or "") for entry in entries}
     slug = slugify(title or stored_path.stem)
-    seed = f"source-{slug}" if slug and slug != "item" else f"source-{hashlib.sha256(relative.encode()).hexdigest()[:12]}"
+    seed = (
+        f"source-{slug}" if slug and slug != "item" else f"source-{hashlib.sha256(relative.encode()).hexdigest()[:12]}"
+    )
     entry_id = next_identifier(existing_ids, seed)
     imported_at = utc_now()
     entry = {
@@ -1454,7 +1455,12 @@ def _collect_binary_to_tmp(root: Path, source: str, *, prefix: str, preferred_sl
             tmp_path = tmp_dir / f"asset{suffix}"
             shutil.copyfile(source_path, tmp_path)
             original_path = str(source_path)
-        return {"tmp_dir": tmp_dir, "tmp_path": tmp_path, "original_path": original_path, "suffix": tmp_path.suffix.lower() or ".bin"}
+        return {
+            "tmp_dir": tmp_dir,
+            "tmp_path": tmp_path,
+            "original_path": original_path,
+            "suffix": tmp_path.suffix.lower() or ".bin",
+        }
     except Exception:
         _cleanup_tmp_dir(tmp_dir)
         raise
@@ -1470,9 +1476,7 @@ def _extract_pdf_text(path: Path) -> str:
             timeout=PDF_EXTRACT_TIMEOUT_SECONDS,
         )
     except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(
-            f"pdftotext timed out after {PDF_EXTRACT_TIMEOUT_SECONDS}s"
-        ) from exc
+        raise RuntimeError(f"pdftotext timed out after {PDF_EXTRACT_TIMEOUT_SECONDS}s") from exc
     if completed.returncode != 0:
         raise RuntimeError(f"pdftotext failed: {completed.stderr.strip()}")
     return _truncate_text(_normalize_text(completed.stdout), MAX_TEXT_CHARS)

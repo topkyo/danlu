@@ -37,5 +37,6 @@ _sys.modules[__name__].__class__ = _CliModule
 __all__ = [
     _name
     for _name in globals()
-    if not _name.startswith("__") and _name not in {"_types", "_sys", "_dispatch", "_parsers", "_export_module_symbols", "_CliModule"}
+    if not _name.startswith("__")
+    and _name not in {"_types", "_sys", "_dispatch", "_parsers", "_export_module_symbols", "_CliModule"}
 ]

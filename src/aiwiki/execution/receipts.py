@@ -8,8 +8,11 @@ from pathlib import Path
 from typing import Any
 
 from ..app_execution import append_execution_receipt_history
-from ..app_utils import atomic_write_text, next_available_stem, relative_path, slugify, utc_now
 from ..render.paths import execution_receipts_dir
+from ..utils.io import atomic_write_text
+from ..utils.path import next_available_stem, relative_path
+from ..utils.text import slugify
+from ..utils.time import utc_now
 
 _CORE_RECEIPT_FIELDS = {
     "version",

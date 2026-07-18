@@ -16,8 +16,10 @@ from ..app_lifecycle import (
     sort_knowledge_lifecycle_entries,
 )
 from ..app_protocol import page_focus_score, protocol_title
-from ..app_state import DEFAULT_PROTOCOL, load_knowledge_lifecycle_state, load_runtime_history
 from ..content.io import review_history_entries
+from ..execution.history import load_runtime_history
+from ..lifecycle.knowledge import load_knowledge_lifecycle_state
+from ..state.constants import DEFAULT_PROTOCOL
 from .views import render_curated_page_summary
 
 
@@ -104,29 +106,19 @@ def render_cognitive_history(
             continue
         if event_type == "judgment-relation-refresh":
             occurred_at = str(event.get("occurred_at") or "")
-            added_relations = [
-                relation
-                for relation in event.get("added_relations", [])
-                if isinstance(relation, dict)
-            ]
+            added_relations = [relation for relation in event.get("added_relations", []) if isinstance(relation, dict)]
             removed_relations = [
-                relation
-                for relation in event.get("removed_relations", [])
-                if isinstance(relation, dict)
+                relation for relation in event.get("removed_relations", []) if isinstance(relation, dict)
             ]
             if added_relations or removed_relations:
                 judgment_relation_events.append((occurred_at, added_relations, removed_relations))
             continue
         if event_type == "nightly":
             overdue_pages = [
-                str(path)
-                for path in event.get("overdue_pages", [])
-                if isinstance(path, str) and path.strip()
+                str(path) for path in event.get("overdue_pages", []) if isinstance(path, str) and path.strip()
             ]
             escalated_pages = [
-                str(path)
-                for path in event.get("escalated_pages", [])
-                if isinstance(path, str) and path.strip()
+                str(path) for path in event.get("escalated_pages", []) if isinstance(path, str) and path.strip()
             ]
             if overdue_pages or escalated_pages:
                 nightly_escalation_events.append(
@@ -207,17 +199,13 @@ def render_cognitive_history(
         lines.append("- 当前还没有 concept lifecycle override 事件。")
     else:
         for occurred_at, title, path, detail in concept_override_events[:20]:
-            lines.append(
-                f"- [{title}](../../{path}) | occurred `{occurred_at or 'unknown'}` | {detail}"
-            )
+            lines.append(f"- [{title}](../../{path}) | occurred `{occurred_at or 'unknown'}` | {detail}")
     lines.extend(["", "## Judgment 生命周期事件"])
     if not judgment_lifecycle_events:
         lines.append("- 当前还没有 judgment lifecycle 事件。")
     else:
         for occurred_at, title, path, detail in judgment_lifecycle_events[:20]:
-            lines.append(
-                f"- [{title}](../../{path}) | occurred `{occurred_at or 'unknown'}` | {detail}"
-            )
+            lines.append(f"- [{title}](../../{path}) | occurred `{occurred_at or 'unknown'}` | {detail}")
     lines.extend(["", "## Judgment 关系事件"])
     if not judgment_relation_events:
         lines.append("- 当前还没有 judgment relation change 事件。")
@@ -272,13 +260,9 @@ def render_cognitive_history(
         lines.append("- 当前还没有 nightly escalation 事件。")
     else:
         for occurred_at, overdue_pages, escalated_pages in nightly_escalation_events[:20]:
-            overdue_titles = [
-                f"[{page_titles_by_path.get(path, path)}](../../{path})"
-                for path in overdue_pages[:3]
-            ]
+            overdue_titles = [f"[{page_titles_by_path.get(path, path)}](../../{path})" for path in overdue_pages[:3]]
             escalated_titles = [
-                f"[{page_titles_by_path.get(path, path)}](../../{path})"
-                for path in escalated_pages[:3]
+                f"[{page_titles_by_path.get(path, path)}](../../{path})" for path in escalated_pages[:3]
             ]
             detail_parts = [
                 f"overdue `{len(overdue_pages)}`",
@@ -294,9 +278,7 @@ def render_cognitive_history(
         lines.append("- 当前还没有 concept rewrite 事件。")
     else:
         for occurred_at, title, path, detail in rewrite_events[:20]:
-            lines.append(
-                f"- [{title}](../../{path}) | occurred `{occurred_at or 'unknown'}` | {detail}"
-            )
+            lines.append(f"- [{title}](../../{path}) | occurred `{occurred_at or 'unknown'}` | {detail}")
     lines.extend(["", "## 最近认知事件"])
     if not recent_events:
         lines.append("- 当前还没有 review history 事件。")
@@ -325,12 +307,18 @@ def render_cognitive_history(
     if long_history_pages:
         lines.append(f"- 从 `{min(len(long_history_pages), 5)}` 个长历史页面里提炼更稳定的 judgment pattern。")
     if judgment_relation_events:
-        lines.append(f"- 复查最近 `{min(len(judgment_relation_events), 5)}` 次 judgment relation 变更，确认支持/反证关系仍然有效。")
+        lines.append(
+            f"- 复查最近 `{min(len(judgment_relation_events), 5)}` 次 judgment relation 变更，确认支持/反证关系仍然有效。"
+        )
     if nightly_escalation_events:
         lines.append(f"- 优先处理最近 `{min(len(nightly_escalation_events), 5)}` 次 nightly 升级事件里仍然活跃的页面。")
     if rewrite_events:
-        lines.append(f"- 检查最近 `{min(len(rewrite_events), 5)}` 个 concept rewrite 事件，确认 verify / revert 闭环已经跑通。")
-    if not any((drifted_pages, snapshot_gap_pages, long_history_pages, judgment_relation_events, nightly_escalation_events)):
+        lines.append(
+            f"- 检查最近 `{min(len(rewrite_events), 5)}` 个 concept rewrite 事件，确认 verify / revert 闭环已经跑通。"
+        )
+    if not any(
+        (drifted_pages, snapshot_gap_pages, long_history_pages, judgment_relation_events, nightly_escalation_events)
+    ):
         lines.append("- 当前认知历史层比较干净，继续靠 nightly 累积 review history。")
     lines.extend(
         [

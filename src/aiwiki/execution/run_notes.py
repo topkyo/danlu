@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from ..app_utils import slugify
+from ..utils.text import slugify
 
 RUN_NOTES_GENERATED_BY = "aiwiki-run-notes"
 
@@ -43,9 +43,7 @@ def write_run_notes_frontmatter(path: Path, *, run_id: str, run_notes_ref: str =
         path.write_text("\n".join(synthesized).rstrip() + "\n", encoding="utf-8")
         return
     filtered = lines[:1] + [
-        line
-        for line in lines[1:close_idx]
-        if not line.startswith("run_id:") and not line.startswith("run_notes_path:")
+        line for line in lines[1:close_idx] if not line.startswith("run_id:") and not line.startswith("run_notes_path:")
     ]
     new_close_idx = len(filtered)
     filtered.append(lines[close_idx])

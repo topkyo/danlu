@@ -15,7 +15,8 @@ from pathlib import Path
 from typing import Any
 from urllib import error
 
-from aiwiki.app_utils import FetchPolicyError, atomic_write_text, safe_fetch
+from aiwiki.utils.io import atomic_write_text
+from aiwiki.utils.security import FetchPolicyError, safe_fetch
 
 from .config import (
     BACKEND_ANTHROPIC_API,
@@ -436,7 +437,9 @@ def probe_backend(config: LLMConfig, workdir: Path, timeout_seconds: int | None 
     }
 
 
-def probe_available_backends(config: LLMConfig, workdir: Path, timeout_seconds: int | None = None) -> list[dict[str, Any]]:
+def probe_available_backends(
+    config: LLMConfig, workdir: Path, timeout_seconds: int | None = None
+) -> list[dict[str, Any]]:
     probes: list[dict[str, Any]] = []
     for backend in _available_probe_backends(config):
         probe_config = replace(
@@ -619,7 +622,10 @@ def _write_raw_response(root: Path, raw_text: str) -> str:
 
 def _classify_backend_error(message: str) -> str:
     text = str(message or "").lower()
-    if any(pattern in text for pattern in ("usage limit", "rate limit", "upgrade to pro", "purchase more credits", "quota", "402")):
+    if any(
+        pattern in text
+        for pattern in ("usage limit", "rate limit", "upgrade to pro", "purchase more credits", "quota", "402")
+    ):
         return "quota"
     if any(pattern in text for pattern in ("timed out", "timeout")):
         return "timeout"

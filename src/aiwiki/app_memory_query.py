@@ -12,17 +12,17 @@ from pathlib import Path
 from typing import Any
 
 from .app_protocol import protocol_query_route_config
-from .app_state import (
-    DEFAULT_PROTOCOL,
-    load_json_document,
-    load_query_route_telemetry,
-    load_runtime_history,
-    query_route_telemetry_path,
-    relative_path,
-    save_query_route_telemetry,
-)
-from .app_utils import parse_frontmatter, question_signature, sha256_bytes, tokenize, utc_now
+from .app_state_paths import query_route_telemetry_path
 from .content.io import preserved_section
+from .execution.history import load_runtime_history
+from .planner.state import load_query_route_telemetry, save_query_route_telemetry
+from .state.constants import DEFAULT_PROTOCOL
+from .state.io import load_json_document
+from .utils.hash import question_signature, sha256_bytes
+from .utils.markdown import parse_frontmatter
+from .utils.path import relative_path
+from .utils.text import tokenize
+from .utils.time import utc_now
 
 
 def fallback_query_route_config() -> dict[str, Any]:
@@ -91,7 +91,10 @@ def select_machine_memory_query_strategy(
 
 
 def _route_anchor_candidates(scores: dict[str, int], prefix: str, limit: int) -> list[str]:
-    return [f"{prefix}:{item_id}" for item_id, _score in sorted(scores.items(), key=lambda item: (-item[1], item[0]))[:limit]]
+    return [
+        f"{prefix}:{item_id}"
+        for item_id, _score in sorted(scores.items(), key=lambda item: (-item[1], item[0]))[:limit]
+    ]
 
 
 def _machine_memory_query_payload_hash(
@@ -183,12 +186,22 @@ def machine_memory_node_metadata(memory: dict[str, Any], node_key: str) -> dict[
         source_id = node_key.removeprefix("source:")
         source_nodes = {node["id"]: node for node in memory.get("source_nodes", [])}
         node = source_nodes.get(source_id, {})
-        return {"kind": "source", "id": source_id, "title": node.get("title", source_id), "path": node.get("source_page", f"wiki/sources/{source_id}.md")}
+        return {
+            "kind": "source",
+            "id": source_id,
+            "title": node.get("title", source_id),
+            "path": node.get("source_page", f"wiki/sources/{source_id}.md"),
+        }
     if node_key.startswith("judgment:"):
         page_id = node_key.removeprefix("judgment:")
         judgment_nodes = {node["page_id"]: node for node in memory.get("judgment_nodes", [])}
         node = judgment_nodes.get(page_id, {})
-        return {"kind": "judgment", "page_id": page_id, "title": node.get("title", page_id), "path": node.get("path", f"wiki/judgments/{page_id}.md")}
+        return {
+            "kind": "judgment",
+            "page_id": page_id,
+            "title": node.get("title", page_id),
+            "path": node.get("path", f"wiki/judgments/{page_id}.md"),
+        }
     if node_key.startswith("elixir:"):
         elixir_id = node_key.removeprefix("elixir:")
         elixir_nodes = {node["elixir_id"]: node for node in memory.get("elixir_nodes", [])}
@@ -202,19 +215,44 @@ def machine_memory_node_metadata(memory: dict[str, Any], node_key: str) -> dict[
     concept_slug = node_key.removeprefix("concept:")
     concept_nodes = {node["slug"]: node for node in memory.get("concept_nodes", [])}
     node = concept_nodes.get(concept_slug, {})
-    return {"kind": "concept", "slug": concept_slug, "title": node.get("title", concept_slug), "path": f"wiki/concepts/{concept_slug}.md"}
+    return {
+        "kind": "concept",
+        "slug": concept_slug,
+        "title": node.get("title", concept_slug),
+        "path": f"wiki/concepts/{concept_slug}.md",
+    }
 
 
 def ranked_machine_memory_anchor_nodes(
-    direct_source_scores: dict[str, int], direct_concept_scores: dict[str, int], expanded_source_scores: dict[str, int], expanded_concept_scores: dict[str, int], *, strategy: str = "concept-first"
+    direct_source_scores: dict[str, int],
+    direct_concept_scores: dict[str, int],
+    expanded_source_scores: dict[str, int],
+    expanded_concept_scores: dict[str, int],
+    *,
+    strategy: str = "concept-first",
 ) -> list[str]:
     anchors: list[str] = []
     if strategy == "source-first":
-        candidate_groups = (_route_anchor_candidates(direct_source_scores, "source", 4), _route_anchor_candidates(direct_concept_scores, "concept", 3), _route_anchor_candidates(expanded_source_scores, "source", 4), _route_anchor_candidates(expanded_concept_scores, "concept", 3))
+        candidate_groups = (
+            _route_anchor_candidates(direct_source_scores, "source", 4),
+            _route_anchor_candidates(direct_concept_scores, "concept", 3),
+            _route_anchor_candidates(expanded_source_scores, "source", 4),
+            _route_anchor_candidates(expanded_concept_scores, "concept", 3),
+        )
     elif strategy == "graph-walk":
-        candidate_groups = (_route_anchor_candidates(direct_concept_scores, "concept", 3), _route_anchor_candidates(direct_source_scores, "source", 3), _route_anchor_candidates(expanded_concept_scores, "concept", 4), _route_anchor_candidates(expanded_source_scores, "source", 4))
+        candidate_groups = (
+            _route_anchor_candidates(direct_concept_scores, "concept", 3),
+            _route_anchor_candidates(direct_source_scores, "source", 3),
+            _route_anchor_candidates(expanded_concept_scores, "concept", 4),
+            _route_anchor_candidates(expanded_source_scores, "source", 4),
+        )
     else:
-        candidate_groups = (_route_anchor_candidates(direct_concept_scores, "concept", 4), _route_anchor_candidates(direct_source_scores, "source", 3), _route_anchor_candidates(expanded_concept_scores, "concept", 4), _route_anchor_candidates(expanded_source_scores, "source", 3))
+        candidate_groups = (
+            _route_anchor_candidates(direct_concept_scores, "concept", 4),
+            _route_anchor_candidates(direct_source_scores, "source", 3),
+            _route_anchor_candidates(expanded_concept_scores, "concept", 4),
+            _route_anchor_candidates(expanded_source_scores, "source", 3),
+        )
     for group in candidate_groups:
         for anchor in group:
             if anchor not in anchors:
@@ -249,28 +287,55 @@ def shortest_machine_memory_path(adjacency: dict[str, dict[str, str]], start: st
     return list(reversed(path))
 
 
-def render_machine_memory_route(memory: dict[str, Any], adjacency: dict[str, dict[str, str]], path: list[str]) -> dict[str, Any]:
+def render_machine_memory_route(
+    memory: dict[str, Any], adjacency: dict[str, dict[str, str]], path: list[str]
+) -> dict[str, Any]:
     nodes = [machine_memory_node_metadata(memory, node_key) for node_key in path]
     edges: list[dict[str, str]] = []
     for left, right in zip(path, path[1:], strict=False):
         edge_type = adjacency.get(left, {}).get(right, "")
         if edge_type == "HAS_CONCEPT":
             if left.startswith("source:"):
-                edges.append({"type": edge_type, "left": left.removeprefix("source:"), "right": right.removeprefix("concept:")})
+                edges.append(
+                    {"type": edge_type, "left": left.removeprefix("source:"), "right": right.removeprefix("concept:")}
+                )
             else:
-                edges.append({"type": edge_type, "left": right.removeprefix("source:"), "right": left.removeprefix("concept:")})
+                edges.append(
+                    {"type": edge_type, "left": right.removeprefix("source:"), "right": left.removeprefix("concept:")}
+                )
         elif edge_type == "SUPPORTS_JUDGMENT":
             if left.startswith("source:"):
-                edges.append({"type": edge_type, "left": left.removeprefix("source:"), "right": right.removeprefix("judgment:")})
+                edges.append(
+                    {"type": edge_type, "left": left.removeprefix("source:"), "right": right.removeprefix("judgment:")}
+                )
             else:
-                edges.append({"type": edge_type, "left": right.removeprefix("source:"), "right": left.removeprefix("judgment:")})
+                edges.append(
+                    {"type": edge_type, "left": right.removeprefix("source:"), "right": left.removeprefix("judgment:")}
+                )
         else:
-            edges.append({"type": edge_type or "RELATED_CONCEPT", "left": left.split(":", 1)[-1], "right": right.split(":", 1)[-1]})
+            edges.append(
+                {
+                    "type": edge_type or "RELATED_CONCEPT",
+                    "left": left.split(":", 1)[-1],
+                    "right": right.split(":", 1)[-1],
+                }
+            )
     return {"start": nodes[0], "goal": nodes[-1], "length": max(0, len(path) - 1), "nodes": nodes, "edges": edges}
 
 
-def build_machine_memory_query_routes(memory: dict[str, Any], adjacency: dict[str, dict[str, str]], direct_source_scores: dict[str, int], direct_concept_scores: dict[str, int], expanded_source_scores: dict[str, int], expanded_concept_scores: dict[str, int], *, strategy: str = "concept-first") -> list[dict[str, Any]]:
-    anchor_nodes = ranked_machine_memory_anchor_nodes(direct_source_scores, direct_concept_scores, expanded_source_scores, expanded_concept_scores, strategy=strategy)
+def build_machine_memory_query_routes(
+    memory: dict[str, Any],
+    adjacency: dict[str, dict[str, str]],
+    direct_source_scores: dict[str, int],
+    direct_concept_scores: dict[str, int],
+    expanded_source_scores: dict[str, int],
+    expanded_concept_scores: dict[str, int],
+    *,
+    strategy: str = "concept-first",
+) -> list[dict[str, Any]]:
+    anchor_nodes = ranked_machine_memory_anchor_nodes(
+        direct_source_scores, direct_concept_scores, expanded_source_scores, expanded_concept_scores, strategy=strategy
+    )
     routes: list[dict[str, Any]] = []
     seen_routes: set[tuple[str, ...]] = set()
     max_routes = 6 if strategy == "graph-walk" else 4
@@ -291,11 +356,35 @@ def build_machine_memory_query_routes(memory: dict[str, Any], adjacency: dict[st
     return routes
 
 
-def record_query_route_telemetry(root: Path, *, question: str, machine_query: dict[str, Any], protocol: str = DEFAULT_PROTOCOL, occurred_at: str | None = None) -> dict[str, Any]:
+def record_query_route_telemetry(
+    root: Path,
+    *,
+    question: str,
+    machine_query: dict[str, Any],
+    protocol: str = DEFAULT_PROTOCOL,
+    occurred_at: str | None = None,
+) -> dict[str, Any]:
     occurred_at = occurred_at or utc_now()
     telemetry_state = load_query_route_telemetry(root)
     entries = [dict(entry) for entry in telemetry_state.get("entries", []) if isinstance(entry, dict)]
-    entry = {"query_signature": question_signature(question), "question_preview": question.strip()[:160], "occurred_at": occurred_at, "protocol": protocol, "selected_strategy": str(machine_query.get("selected_strategy") or ""), "selection_reason": str(machine_query.get("selection_reason") or ""), "matched_terms": list(machine_query.get("matched_terms", []) or [])[:8], "matched_source_markers": list(machine_query.get("matched_source_markers", []) or [])[:4], "matched_graph_markers": list(machine_query.get("matched_graph_markers", []) or [])[:4], "route_count": len(machine_query.get("query_routes", []) or []), "ranked_source_ids": list(machine_query.get("ranked_source_ids", []) or [])[:5], "ranked_concept_slugs": list(machine_query.get("ranked_concept_slugs", []) or [])[:5], "ranked_judgment_ids": list(machine_query.get("ranked_judgment_ids", []) or [])[:5], "ranked_elixir_ids": list(machine_query.get("ranked_elixir_ids", []) or [])[:5], "touched_component_ids": list(machine_query.get("touched_component_ids", []) or [])[:5], "planner_next_action_id": str((machine_query.get("planner_next_action") or {}).get("action_id") or "")}
+    entry = {
+        "query_signature": question_signature(question),
+        "question_preview": question.strip()[:160],
+        "occurred_at": occurred_at,
+        "protocol": protocol,
+        "selected_strategy": str(machine_query.get("selected_strategy") or ""),
+        "selection_reason": str(machine_query.get("selection_reason") or ""),
+        "matched_terms": list(machine_query.get("matched_terms", []) or [])[:8],
+        "matched_source_markers": list(machine_query.get("matched_source_markers", []) or [])[:4],
+        "matched_graph_markers": list(machine_query.get("matched_graph_markers", []) or [])[:4],
+        "route_count": len(machine_query.get("query_routes", []) or []),
+        "ranked_source_ids": list(machine_query.get("ranked_source_ids", []) or [])[:5],
+        "ranked_concept_slugs": list(machine_query.get("ranked_concept_slugs", []) or [])[:5],
+        "ranked_judgment_ids": list(machine_query.get("ranked_judgment_ids", []) or [])[:5],
+        "ranked_elixir_ids": list(machine_query.get("ranked_elixir_ids", []) or [])[:5],
+        "touched_component_ids": list(machine_query.get("touched_component_ids", []) or [])[:5],
+        "planner_next_action_id": str((machine_query.get("planner_next_action") or {}).get("action_id") or ""),
+    }
     entries.insert(0, entry)
     strategy_counts: dict[str, int] = {}
     protocol_counts: dict[str, int] = {}
@@ -306,7 +395,15 @@ def record_query_route_telemetry(root: Path, *, question: str, machine_query: di
             strategy_counts[strategy] = strategy_counts.get(strategy, 0) + 1
         if scoped_protocol:
             protocol_counts[scoped_protocol] = protocol_counts.get(scoped_protocol, 0) + 1
-    document = {"version": 1, "updated_at": occurred_at, "state_path": relative_path(root, query_route_telemetry_path(root)), "entries": entries[:24], "strategy_counts": strategy_counts, "protocol_counts": protocol_counts, "last_entry": entry}
+    document = {
+        "version": 1,
+        "updated_at": occurred_at,
+        "state_path": relative_path(root, query_route_telemetry_path(root)),
+        "entries": entries[:24],
+        "strategy_counts": strategy_counts,
+        "protocol_counts": protocol_counts,
+        "last_entry": entry,
+    }
     save_query_route_telemetry(root, document)
     return document
 
@@ -329,7 +426,28 @@ def recent_execution_dry_runs(root: Path, *, limit: int = 8) -> list[dict[str, A
         affected_paths = preview.get("affected_paths") if isinstance(preview.get("affected_paths"), list) else []
         if not affected_paths and isinstance(safe_preview.get("affected_paths"), list):
             affected_paths = safe_preview.get("affected_paths")
-        records.append({"event_type": event_type, "title": str(payload.get("title") or event.get("action_id") or event.get("entry_id") or event.get("slug") or event_type), "occurred_at": str(event.get("occurred_at") or payload.get("generated_at") or ""), "preview_path": preview_path, "bundle_path": str(event.get("bundle_path") or payload.get("bundle_path") or ""), "apply_mode": str(payload.get("apply_mode") or preview.get("apply_mode") or safe_preview.get("apply_mode") or event_type), "affected_paths": [str(path) for path in affected_paths if isinstance(path, str) and path]})
+        records.append(
+            {
+                "event_type": event_type,
+                "title": str(
+                    payload.get("title")
+                    or event.get("action_id")
+                    or event.get("entry_id")
+                    or event.get("slug")
+                    or event_type
+                ),
+                "occurred_at": str(event.get("occurred_at") or payload.get("generated_at") or ""),
+                "preview_path": preview_path,
+                "bundle_path": str(event.get("bundle_path") or payload.get("bundle_path") or ""),
+                "apply_mode": str(
+                    payload.get("apply_mode")
+                    or preview.get("apply_mode")
+                    or safe_preview.get("apply_mode")
+                    or event_type
+                ),
+                "affected_paths": [str(path) for path in affected_paths if isinstance(path, str) and path],
+            }
+        )
         if len(records) >= limit:
             break
     return records
@@ -338,10 +456,24 @@ def recent_execution_dry_runs(root: Path, *, limit: int = 8) -> list[dict[str, A
 def concept_page_snapshot(root: Path, slug: str) -> dict[str, Any]:
     path = root / "wiki" / "concepts" / f"{slug}.md"
     if not path.exists():
-        return {"path": relative_path(root, path), "title": slug, "source_signature": "", "source_pages": [], "summary": "", "content": ""}
+        return {
+            "path": relative_path(root, path),
+            "title": slug,
+            "source_signature": "",
+            "source_pages": [],
+            "summary": "",
+            "content": "",
+        }
     content = path.read_text(encoding="utf-8", errors="replace")
     frontmatter = parse_frontmatter(content)
     source_pages = frontmatter.get("source_pages", [])
     if not isinstance(source_pages, list):
         source_pages = []
-    return {"path": relative_path(root, path), "title": str(frontmatter.get("title") or path.stem), "source_signature": str(frontmatter.get("source_signature") or ""), "source_pages": [str(item) for item in source_pages if isinstance(item, str)], "summary": preserved_section(content, "Summary", ""), "content": content}
+    return {
+        "path": relative_path(root, path),
+        "title": str(frontmatter.get("title") or path.stem),
+        "source_signature": str(frontmatter.get("source_signature") or ""),
+        "source_pages": [str(item) for item in source_pages if isinstance(item, str)],
+        "summary": preserved_section(content, "Summary", ""),
+        "content": content,
+    }

@@ -5,8 +5,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from ..app_protocol import page_focus_score
-from ..app_state import DEFAULT_PROTOCOL
-from ..app_utils import parse_iso_datetime
+from ..state.constants import DEFAULT_PROTOCOL
+from ..utils.time import parse_iso_datetime
 
 
 def evaluate_page_aging(page: dict[str, str], now: datetime | None = None) -> dict[str, str]:
@@ -67,4 +67,3 @@ def collect_aging_signals(
         "escalated": escalated,
         "scheduled": scheduled,
     }
-

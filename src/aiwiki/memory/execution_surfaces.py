@@ -26,33 +26,28 @@ from ..app_protocol import (
     REWRITE_PROPOSAL_STATUSES,
     protocol_title,
 )
-from ..app_state import (
-    DEFAULT_PROTOCOL,
+from ..app_state_paths import (
     concept_rewrite_proposal_page_path,
     concept_rewrite_state_path,
     execution_policy_log_path,
     execution_receipt_history_path,
-    load_concept_rewrite_state,
-    load_manual_link_state,
-    save_concept_rewrite_state,
 )
-from ..app_utils import (
-    parse_frontmatter,
-    relative_path,
-    render_frontmatter,
-    sha256_bytes,
-    slugify,
-)
-from ..content.memory import (
-    action_priority_rank,
+from ..content.material import load_manual_link_state
+from ..content.rewrite import load_concept_rewrite_state, save_concept_rewrite_state
+from ..execution.policy import (
     execution_band_label,
     execution_policy_profile,
     load_execution_policy_decision_history_strict,
     load_execution_receipt_history_strict,
-    rewrite_proposal_is_apply_ready,
-    safe_apply_preview,
 )
+from ..execution.repair_plan import rewrite_proposal_is_apply_ready
 from ..render.html_theme import html_meta_theme, html_theme_css
+from ..state.constants import DEFAULT_PROTOCOL
+from ..utils.hash import sha256_bytes
+from ..utils.markdown import parse_frontmatter, render_frontmatter
+from ..utils.path import relative_path
+from ..utils.text import slugify
+from .action_core import action_priority_rank, safe_apply_preview
 from .execution_surface_helpers import concept_quality_summary_lines
 
 
@@ -152,7 +147,9 @@ def render_execution_proposal_page(proposal: dict[str, Any], *, compiled_at: str
             "- [机器记忆修复计划](../indexes/machine-memory-repair-plan.md)",
             "- [机器记忆动作队列](../indexes/machine-memory-actions.md)",
             "- [炉心面板](../indexes/furnace-center.md)",
-            f"- [Execution Bundle](../../{proposal.get('bundle_path', '')})" if proposal.get("bundle_path") else "- Execution Bundle: none",
+            f"- [Execution Bundle](../../{proposal.get('bundle_path', '')})"
+            if proposal.get("bundle_path")
+            else "- Execution Bundle: none",
         ]
     )
     return f"{frontmatter}\n\n" + "\n".join(lines).strip() + "\n"
@@ -200,10 +197,15 @@ def collect_execution_consistency_signals(
         title = str(action.get("title") or action_id)
         primary_path = str(action.get("primary_path") or "")
 
-        if status == "resolved" and latest_operation != "apply" and apply_mode in {
-            "manual-link-state",
-            "citation-snapshot-refresh",
-        }:
+        if (
+            status == "resolved"
+            and latest_operation != "apply"
+            and apply_mode
+            in {
+                "manual-link-state",
+                "citation-snapshot-refresh",
+            }
+        ):
             signals.append(
                 {
                     "severity": "error",
@@ -534,44 +536,62 @@ def render_execution_audit_html(audit: dict[str, Any]) -> str:
         ("Revert", str(audit.get("counts", {}).get("revert", 0))),
         ("Bundle Safe", str(audit.get("counts", {}).get("bundle_safe", 0))),
     ]
-    band_markup = "".join(
-        f"<li><strong>{html.escape(str(row.get('label') or row.get('band') or 'band'))}</strong>"
-        f" <span class=\"item-meta\">{html.escape(str(row.get('band') or ''))}</span>"
-        f"<div class=\"metric-inline\">count {html.escape(str(row.get('count') or 0))}</div></li>"
-        for row in audit.get("policy_bands", [])
-    ) or "<li>当前还没有可审计的 execution policy band。</li>"
-    apply_markup = "".join(
-        f"<li><strong>{html.escape(str(item.get('title') or item.get('action_id') or 'receipt'))}</strong>"
-        f"<div class=\"item-meta\">{html.escape(str(item.get('action_id') or ''))} / {html.escape(str(item.get('protocol') or DEFAULT_PROTOCOL))}</div>"
-        f"<div>{html.escape(str(item.get('applied_at') or ''))}</div></li>"
-        for item in audit.get("recent_apply", [])
-    ) or "<li>当前还没有 apply receipt。</li>"
-    revert_markup = "".join(
-        f"<li><strong>{html.escape(str(item.get('title') or item.get('action_id') or 'receipt'))}</strong>"
-        f"<div class=\"item-meta\">{html.escape(str(item.get('action_id') or ''))} / {html.escape(str(item.get('protocol') or DEFAULT_PROTOCOL))}</div>"
-        f"<div>{html.escape(str(item.get('applied_at') or ''))}</div></li>"
-        for item in audit.get("recent_revert", [])
-    ) or "<li>当前还没有 revert receipt。</li>"
-    protocol_markup = "".join(
-        f"<li><strong>{html.escape(str(row.get('title') or row.get('protocol') or 'protocol'))}</strong>"
-        f" <span class=\"item-meta\">{html.escape(str(row.get('protocol') or ''))}</span>"
-        f"<div>receipts {html.escape(str(row.get('count') or 0))}</div></li>"
-        for row in audit.get("protocols", [])
-    ) or "<li>当前还没有 protocol 级 execution history。</li>"
-    action_markup = "".join(
-        f"<li><strong>{html.escape(str(action.get('title') or action.get('id') or 'action'))}</strong>"
-        f"<div class=\"item-meta\">{html.escape(str(action.get('execution_band_label') or action.get('execution_band') or ''))}"
-        f" / {html.escape(str(action.get('execution_policy') or 'triage'))}"
-        f" / receipts {html.escape(str(action.get('receipt_count') or 0))}</div>"
-        f"<div>{html.escape(str(action.get('policy_summary') or ''))}</div></li>"
-        for action in audit.get("actions", [])
-    ) or "<li>当前还没有 action audit rows。</li>"
-    consistency_markup = "".join(
-        f"<li><strong>{html.escape(str(signal.get('title') or signal.get('action_id') or 'signal'))}</strong>"
-        f" <span class=\"item-meta\">{html.escape(str(signal.get('severity') or 'warn'))}</span>"
-        f"<div>{html.escape(str(signal.get('message') or ''))}</div></li>"
-        for signal in audit.get("consistency_signals", [])
-    ) or "<li>当前没有 execution consistency signal。</li>"
+    band_markup = (
+        "".join(
+            f"<li><strong>{html.escape(str(row.get('label') or row.get('band') or 'band'))}</strong>"
+            f' <span class="item-meta">{html.escape(str(row.get("band") or ""))}</span>'
+            f'<div class="metric-inline">count {html.escape(str(row.get("count") or 0))}</div></li>'
+            for row in audit.get("policy_bands", [])
+        )
+        or "<li>当前还没有可审计的 execution policy band。</li>"
+    )
+    apply_markup = (
+        "".join(
+            f"<li><strong>{html.escape(str(item.get('title') or item.get('action_id') or 'receipt'))}</strong>"
+            f'<div class="item-meta">{html.escape(str(item.get("action_id") or ""))} / {html.escape(str(item.get("protocol") or DEFAULT_PROTOCOL))}</div>'
+            f"<div>{html.escape(str(item.get('applied_at') or ''))}</div></li>"
+            for item in audit.get("recent_apply", [])
+        )
+        or "<li>当前还没有 apply receipt。</li>"
+    )
+    revert_markup = (
+        "".join(
+            f"<li><strong>{html.escape(str(item.get('title') or item.get('action_id') or 'receipt'))}</strong>"
+            f'<div class="item-meta">{html.escape(str(item.get("action_id") or ""))} / {html.escape(str(item.get("protocol") or DEFAULT_PROTOCOL))}</div>'
+            f"<div>{html.escape(str(item.get('applied_at') or ''))}</div></li>"
+            for item in audit.get("recent_revert", [])
+        )
+        or "<li>当前还没有 revert receipt。</li>"
+    )
+    protocol_markup = (
+        "".join(
+            f"<li><strong>{html.escape(str(row.get('title') or row.get('protocol') or 'protocol'))}</strong>"
+            f' <span class="item-meta">{html.escape(str(row.get("protocol") or ""))}</span>'
+            f"<div>receipts {html.escape(str(row.get('count') or 0))}</div></li>"
+            for row in audit.get("protocols", [])
+        )
+        or "<li>当前还没有 protocol 级 execution history。</li>"
+    )
+    action_markup = (
+        "".join(
+            f"<li><strong>{html.escape(str(action.get('title') or action.get('id') or 'action'))}</strong>"
+            f'<div class="item-meta">{html.escape(str(action.get("execution_band_label") or action.get("execution_band") or ""))}'
+            f" / {html.escape(str(action.get('execution_policy') or 'triage'))}"
+            f" / receipts {html.escape(str(action.get('receipt_count') or 0))}</div>"
+            f"<div>{html.escape(str(action.get('policy_summary') or ''))}</div></li>"
+            for action in audit.get("actions", [])
+        )
+        or "<li>当前还没有 action audit rows。</li>"
+    )
+    consistency_markup = (
+        "".join(
+            f"<li><strong>{html.escape(str(signal.get('title') or signal.get('action_id') or 'signal'))}</strong>"
+            f' <span class="item-meta">{html.escape(str(signal.get("severity") or "warn"))}</span>'
+            f"<div>{html.escape(str(signal.get('message') or ''))}</div></li>"
+            for signal in audit.get("consistency_signals", [])
+        )
+        or "<li>当前没有 execution consistency signal。</li>"
+    )
     return "\n".join(
         [
             "<!doctype html>",
@@ -585,11 +605,11 @@ def render_execution_audit_html(audit: dict[str, Any]) -> str:
             "</head>",
             "<body>",
             "  <main>",
-            "    <section class=\"panel\">",
+            '    <section class="panel">',
             "      <h1>Execution Audit</h1>",
             f"      <p>当前协议 <strong>{html.escape(str(audit.get('active_protocol') or DEFAULT_PROTOCOL))}</strong> · 最近编译 {html.escape(str(audit.get('compiled_at') or ''))}</p>",
-            "      <p><a href=\"../../wiki/indexes/execution-audit.md\">Markdown 审计页</a> · <a href=\"../../wiki/indexes/furnace-center.md\">炉心面板</a></p>",
-            "      <div class=\"meta\">",
+            '      <p><a href="../../wiki/indexes/execution-audit.md">Markdown 审计页</a> · <a href="../../wiki/indexes/furnace-center.md">炉心面板</a></p>',
+            '      <div class="meta">',
             *[
                 "\n".join(
                     [
@@ -603,7 +623,7 @@ def render_execution_audit_html(audit: dict[str, Any]) -> str:
             ],
             "      </div>",
             "    </section>",
-            "    <section class=\"grid\">",
+            '    <section class="grid">',
             f'      <div class="card"><h2>Policy Bands</h2><ul>{band_markup}</ul></div>',
             f'      <div class="card"><h2>Protocol Breakdown</h2><ul>{protocol_markup}</ul></div>',
             f'      <div class="card"><h2>Recent Apply</h2><ul>{apply_markup}</ul></div>',
@@ -635,9 +655,11 @@ def render_concept_quality(memory: dict[str, Any]) -> str:
         quality=quality,
         rewrite_state=rewrite_state,
     )
-    lines.extend([
-        "## Hard Concepts",
-    ])
+    lines.extend(
+        [
+            "## Hard Concepts",
+        ]
+    )
     if not hard_concepts:
         lines.append("- 当前还没有 `hardness` >= `medium` 的概念页。")
     else:
@@ -649,10 +671,12 @@ def render_concept_quality(memory: dict[str, Any]) -> str:
                 f" | sources `{concept.get('source_count', 0)}`"
                 f" | quality `{concept.get('quality_score', 0)}`"
             )
-    lines.extend([
-        "",
-        "## Rewrite Now",
-    ])
+    lines.extend(
+        [
+            "",
+            "## Rewrite Now",
+        ]
+    )
     if not weak_concepts:
         lines.append("- 当前没有需要立即重写的概念页。")
     else:
@@ -829,9 +853,7 @@ def reconcile_concept_rewrite_proposals(
         verification_checked_at = str(previous.get("verification_checked_at") or "")
         verification_summary = str(previous.get("verification_summary") or "")
         verification_issues = [
-            str(item)
-            for item in previous.get("verification_issues", [])
-            if isinstance(item, str) and item
+            str(item) for item in previous.get("verification_issues", []) if isinstance(item, str) and item
         ]
         last_applied_at = str(previous.get("last_applied_at") or applied_at)
         if signature_changed:
@@ -936,7 +958,9 @@ def reconcile_concept_rewrite_proposals(
         "inactive": len(inactive_records),
         "pending_review": sum(1 for proposal in active_records if proposal.get("pending_review") == "true"),
         "apply_ready": sum(1 for proposal in active_records if proposal.get("apply_ready")),
-        "verified_passed": sum(1 for proposal in active_records + inactive_records if proposal.get("verification_status") == "passed"),
+        "verified_passed": sum(
+            1 for proposal in active_records + inactive_records if proposal.get("verification_status") == "passed"
+        ),
         "revert_ready": sum(
             1
             for proposal in active_records + inactive_records
@@ -961,9 +985,7 @@ def render_concept_rewrite_proposal_page(proposal: dict[str, Any]) -> str:
     if not verification_status:
         verification_status = "pending" if proposal.get("status") == "applied" else "not-run"
     verification_issues = [
-        str(item)
-        for item in proposal.get("verification_issues", [])
-        if isinstance(item, str) and item
+        str(item) for item in proposal.get("verification_issues", []) if isinstance(item, str) and item
     ]
     frontmatter = render_frontmatter(
         {

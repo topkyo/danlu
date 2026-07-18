@@ -121,7 +121,13 @@ def _runtime_history_raw_added_to_signals(
     protocol = event.get("protocol")
     emitted_at = _normalize_emitted_at(event.get("occurred_at") or event.get("imported_at"))
     stored_path = event.get("stored_path") or event.get("note_path") or event.get("raw_path")
-    if not isinstance(protocol, str) or not protocol or emitted_at is None or not isinstance(stored_path, str) or not stored_path:
+    if (
+        not isinstance(protocol, str)
+        or not protocol
+        or emitted_at is None
+        or not isinstance(stored_path, str)
+        or not stored_path
+    ):
         return []
 
     source_ids = _string_list(event.get("source_ids"))
@@ -165,9 +171,7 @@ def _runtime_history_learning_threshold_to_signals(
 ) -> list[SignalSeed]:
     protocol = event.get("protocol")
     emitted_at = _normalize_emitted_at(event.get("occurred_at"))
-    learning_ids = _unique_sorted_strings(
-        _string_list(event.get("learning_ids")) + _string_list(event.get("aged_ids"))
-    )
+    learning_ids = _unique_sorted_strings(_string_list(event.get("learning_ids")) + _string_list(event.get("aged_ids")))
     if not isinstance(protocol, str) or not protocol or emitted_at is None or not learning_ids:
         return []
 
@@ -177,9 +181,7 @@ def _runtime_history_learning_threshold_to_signals(
 
     threshold_days = event.get("threshold_days")
     threshold_identity = str(threshold_days) if isinstance(threshold_days, (int, str)) else ""
-    evidence = _unique_sorted_strings(
-        _string_list(event.get("learning_paths")) + [event.get("audit_path")]
-    )
+    evidence = _unique_sorted_strings(_string_list(event.get("learning_paths")) + [event.get("audit_path")])
 
     scope: dict[str, Any] = {
         "protocol": protocol,

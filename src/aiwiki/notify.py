@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from aiwiki.app_utils import FetchPolicyError, safe_fetch
+from aiwiki.utils.security import FetchPolicyError, safe_fetch
 
 from .execution.audit_preview import append_audit
 
@@ -218,8 +218,7 @@ def _safe_record_notify_failed(
             )
         except Exception as record_exc:
             logger.warning(
-                "notify failure recording failed for channel=%s reason=%s; "
-                "original_error=%s; recording_error=%s",
+                "notify failure recording failed for channel=%s reason=%s; original_error=%s; recording_error=%s",
                 channel,
                 reason,
                 type(original_exc).__name__,

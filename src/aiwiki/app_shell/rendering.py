@@ -26,27 +26,13 @@ from ..app_protocol import (
     ensure_layout,
     load_protocol_state,
 )
-from ..app_state import (
-    DEFAULT_PROTOCOL,
-    active_material_archive_entries,
+from ..app_state_paths import (
     agent_workbench_path,
     domain_pilots_path,
     execution_audit_html_path,
     execution_audit_path,
     furnace_center_html_path,
     llm_receipt_log_path,
-    load_archive_candidates_state,
-    load_compile_state,
-    load_concept_rewrite_state,
-    load_json_document,
-    load_knowledge_lifecycle_state,
-    load_llm_receipt_history,
-    load_machine_memory,
-    load_manifest,
-    load_material_archive_state,
-    load_planner_state,
-    load_query_route_telemetry,
-    load_runtime_history,
     machine_memory_graph_html_path,
     nightly_health_state_path,
     output_packs_index_path,
@@ -56,28 +42,30 @@ from ..app_state import (
     shell_summary_path,
 )
 from ..app_types import ProtocolState, ShellSummary
-from ..app_utils import (
-    parse_frontmatter,
-    relative_path,
-    strip_frontmatter,
-    tokenize,
-    utc_now,
-    write_if_changed_ignoring_timestamps,
-    write_json_document_if_changed_ignoring_generated_timestamps,
-)
+from ..compile.state import load_compile_state
 from ..config import LLMConfig
+from ..content.archive import (
+    active_material_archive_entries,
+    load_archive_candidates_state,
+    load_material_archive_state,
+)
 from ..content.io import (
     collect_recent_output_artifacts,
     summarize_runtime_event_for_shell,
 )
-from ..content.memory import (
+from ..content.rewrite import load_concept_rewrite_state
+from ..execution.history import load_llm_receipt_history, load_runtime_history
+from ..execution.l3_proposals import list_l3_proposals
+from ..execution.policy import load_execution_receipt_history
+from ..lifecycle.knowledge import load_knowledge_lifecycle_state
+from ..llm import classify_backend_error
+from ..memory.action_core import (
     action_priority_rank,
     action_status_rank,
     action_supports_low_risk_apply,
-    load_execution_receipt_history,
 )
-from ..execution.l3_proposals import list_l3_proposals
-from ..llm import classify_backend_error
+from ..memory.state import load_machine_memory
+from ..planner.state import load_planner_state, load_query_route_telemetry
 from ..render.paths import (
     execution_bundle_path,
     execution_proposal_path,
@@ -87,6 +75,17 @@ from ..render.views import (
     judgment_asset_shell_record,
     judgment_asset_summary,
 )
+from ..state.constants import DEFAULT_PROTOCOL
+from ..state.io import load_json_document
+from ..state.manifest import load_manifest
+from ..utils.io import (
+    write_if_changed_ignoring_timestamps,
+    write_json_document_if_changed_ignoring_generated_timestamps,
+)
+from ..utils.markdown import parse_frontmatter, strip_frontmatter
+from ..utils.path import relative_path
+from ..utils.text import tokenize
+from ..utils.time import utc_now
 
 
 def render_product_shell_html(summary: ShellSummary) -> str:
@@ -94,6 +93,7 @@ def render_product_shell_html(summary: ShellSummary) -> str:
         if not target:
             return ""
         return os.path.relpath(target, start="output/control").replace(os.sep, "/")
+
     locale_text = {
         "zh": {
             "Furnace Product Shell": "炼丹炉 Product Shell",
@@ -235,38 +235,50 @@ def render_product_shell_html(summary: ShellSummary) -> str:
         return f"<p>{html.escape(text(locale, 'No query route telemetry has been recorded yet.'))}</p>"
 
     def render_runs(locale: str) -> str:
-        return "".join(
-            f"<li><code>{escape_value(locale, run.get('event_type'), fallback='runtime')}</code>"
-            f" · {html.escape(str(run.get('occurred_at') or ''))}"
-            f" · {html.escape(str(run.get('title') or run.get('summary') or ''))}</li>"
-            for run in recent_runs[:6]
-            if isinstance(run, dict)
-        ) or f"<li>{html.escape(text(locale, 'No runtime events yet.'))}</li>"
+        return (
+            "".join(
+                f"<li><code>{escape_value(locale, run.get('event_type'), fallback='runtime')}</code>"
+                f" · {html.escape(str(run.get('occurred_at') or ''))}"
+                f" · {html.escape(str(run.get('title') or run.get('summary') or ''))}</li>"
+                for run in recent_runs[:6]
+                if isinstance(run, dict)
+            )
+            or f"<li>{html.escape(text(locale, 'No runtime events yet.'))}</li>"
+        )
 
     def render_receipts(locale: str) -> str:
-        return "".join(
-            f"<li><code>{escape_value(locale, receipt.get('operation'), fallback='apply')}</code>"
-            f" · {html.escape(str(receipt.get('title') or receipt.get('action_id') or text(locale, 'receipt')))}"
-            f" · {html.escape(str(receipt.get('applied_at') or ''))}</li>"
-            for receipt in recent_receipts[:6]
-            if isinstance(receipt, dict)
-        ) or f"<li>{html.escape(text(locale, 'No execution receipts yet.'))}</li>"
+        return (
+            "".join(
+                f"<li><code>{escape_value(locale, receipt.get('operation'), fallback='apply')}</code>"
+                f" · {html.escape(str(receipt.get('title') or receipt.get('action_id') or text(locale, 'receipt')))}"
+                f" · {html.escape(str(receipt.get('applied_at') or ''))}</li>"
+                for receipt in recent_receipts[:6]
+                if isinstance(receipt, dict)
+            )
+            or f"<li>{html.escape(text(locale, 'No execution receipts yet.'))}</li>"
+        )
 
     def render_suggested(locale: str) -> str:
-        return "".join(
-            f"<li><strong>{html.escape(str(action.get('title') or text(locale, 'action')))}</strong>"
-            f" · <code>{html.escape(str(action.get('command') or ''))}</code></li>"
-            for action in suggested_actions[:6]
-            if isinstance(action, dict)
-        ) or f"<li>{html.escape(text(locale, 'No suggested actions yet.'))}</li>"
+        return (
+            "".join(
+                f"<li><strong>{html.escape(str(action.get('title') or text(locale, 'action')))}</strong>"
+                f" · <code>{html.escape(str(action.get('command') or ''))}</code></li>"
+                for action in suggested_actions[:6]
+                if isinstance(action, dict)
+            )
+            or f"<li>{html.escape(text(locale, 'No suggested actions yet.'))}</li>"
+        )
 
     def render_drift(locale: str) -> str:
-        return "".join(
-            f"<li><code>{escape_value(locale, item.get('kind'), fallback='drift')}</code>"
-            f" · {html.escape(str(item.get('message') or item.get('path') or text(locale, 'warning')))}</li>"
-            for item in drift_warnings[:6]
-            if isinstance(item, dict)
-        ) or f"<li>{html.escape(text(locale, 'No drift warnings.'))}</li>"
+        return (
+            "".join(
+                f"<li><code>{escape_value(locale, item.get('kind'), fallback='drift')}</code>"
+                f" · {html.escape(str(item.get('message') or item.get('path') or text(locale, 'warning')))}</li>"
+                for item in drift_warnings[:6]
+                if isinstance(item, dict)
+            )
+            or f"<li>{html.escape(text(locale, 'No drift warnings.'))}</li>"
+        )
 
     def render_llm(locale: str) -> str:
         rows = [

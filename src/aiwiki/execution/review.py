@@ -14,13 +14,13 @@ Migration invariants (same as B1..B6):
   * ``compile_wiki`` comes from ``..compile.pipeline``, not from the
     ``..compile`` package ``__init__`` re-export (B4 oracle rule).
   * ``extract_provenance_paths`` / ``build_citation_snapshots`` /
-    ``analyze_citation_snapshots`` come from ``..app_utils``.
+    ``analyze_citation_snapshots`` come from ``..utils.markdown``.
   * ``append_review_history_entry`` / ``review_history_entries`` /
     ``entry_lookup_maps`` / ``entry_ids_from_paths`` come from
     ``..app_content``.
 - ``utc_now`` is resolved lazily at **call time** via
-  ``from .. import app_utils as _app_utils; _app_utils.utc_now()``
-  so that ``patch("aiwiki.app_utils.utc_now", ...)`` patches
+  ``from ..utils.time import utc_now; utc_now()``
+  so that ``patch("aiwiki.utils.time.utc_now", ...)`` patches
   (acceptance tests + downstream suites) continue to take effect after
   the owner flip.
 """
@@ -33,27 +33,7 @@ from typing import Any
 
 from ..app_lifecycle import judgment_lifecycle_profile, valid_curated_statuses
 from ..app_protocol import ensure_layout, schedule_review_windows
-from ..app_state import (
-    DEFAULT_PROTOCOL,
-    append_runtime_history,
-    execution_receipt_history_path,
-    load_manifest,
-    runtime_history_path,
-)
-from ..app_utils import (
-    _restore_snapshots,
-    _snapshot_file_bytes,
-    analyze_citation_snapshots,
-    build_citation_snapshots,
-    extract_provenance_paths,
-    parse_frontmatter,
-    relative_path,
-    render_frontmatter,
-    runtime_write_operation,
-    sha256_bytes,
-    strip_frontmatter,
-    upsert_markdown_section,
-)
+from ..app_state_paths import execution_receipt_history_path, runtime_history_path
 from ..compile.pipeline import compile_wiki
 from ..content.io import (
     append_review_history_entry,
@@ -68,7 +48,22 @@ from ..lifecycle.templates import (
     repair_curated_page_body,
 )
 from ..render.paths import append_wiki_log
+from ..state.constants import DEFAULT_PROTOCOL
+from ..state.manifest import load_manifest
+from ..utils.hash import sha256_bytes
+from ..utils.io import _restore_snapshots, _snapshot_file_bytes, runtime_write_operation
+from ..utils.markdown import (
+    analyze_citation_snapshots,
+    build_citation_snapshots,
+    extract_provenance_paths,
+    parse_frontmatter,
+    render_frontmatter,
+    strip_frontmatter,
+    upsert_markdown_section,
+)
+from ..utils.path import relative_path
 from .audit_preview import AUDIT_STREAM_PATH
+from .history import append_runtime_history
 from .receipts import write_execution_receipt
 
 
@@ -116,11 +111,13 @@ def review_page(
     note: str | None = None,
     confidence: str | None = None,
 ) -> dict[str, Any]:
-    from .. import app_utils as _app_utils
+    from ..utils.io import atomic_write_text
+    from ..utils.security import safe_resolve_within
+    from ..utils.time import utc_now
 
     ensure_layout(root)
     candidate = Path(page)
-    target = _app_utils.safe_resolve_within(
+    target = safe_resolve_within(
         candidate if candidate.is_absolute() else (root / candidate),
         root,
     )
@@ -137,18 +134,14 @@ def review_page(
         )
     if kind not in {"decision", "judgment"}:
         raise ValueError(
-            "Only decision or judgment pages can enter the review workflow; "
-            "expected one of: ('decision', 'judgment')"
+            "Only decision or judgment pages can enter the review workflow; expected one of: ('decision', 'judgment')"
         )
     current_status = str(frontmatter.get("status") or "")
     status = resolve_thin_review_transition(kind, current_status, status)
     valid_statuses = valid_curated_statuses(kind)
     if status not in valid_statuses:
-        raise ValueError(
-            f"Unsupported review status for {kind}: {status!r}; "
-            f"expected one of: {tuple(valid_statuses)}"
-        )
-    reviewed_at = _app_utils.utc_now()
+        raise ValueError(f"Unsupported review status for {kind}: {status!r}; expected one of: {tuple(valid_statuses)}")
+    reviewed_at = utc_now()
     frontmatter["status"] = status
     frontmatter["reviewed_at"] = reviewed_at
     frontmatter["formed_at"] = str(frontmatter.get("formed_at") or frontmatter.get("last_compiled_at") or reviewed_at)
@@ -174,7 +167,9 @@ def review_page(
         protocol=str(frontmatter.get("protocol") or DEFAULT_PROTOCOL),
         supporting_body=previous_supporting_body,
     )
-    artifact_refs = [str(item) for item in frontmatter.get("source_files", []) if isinstance(item, str) and item.strip()]
+    artifact_refs = [
+        str(item) for item in frontmatter.get("source_files", []) if isinstance(item, str) and item.strip()
+    ]
     body = repair_curated_page_body(
         kind=kind,
         protocol=str(frontmatter.get("protocol") or DEFAULT_PROTOCOL),
@@ -252,7 +247,7 @@ def review_page(
     }
     receipt: dict[str, Any] | None = None
     try:
-        _app_utils.atomic_write_text(
+        atomic_write_text(
             target,
             f"{render_frontmatter(frontmatter)}\n\n{updated_body.strip()}\n",
         )

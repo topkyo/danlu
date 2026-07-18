@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .app_utils import slugify
+from .utils.text import slugify
 
 
 def manifest_path(root: Path) -> Path:

@@ -44,6 +44,7 @@ def l3_auto_adopt_min_evidence_from_env() -> int:
         )
         return DEFAULT_L3_AUTO_ADOPT_MIN_EVIDENCE
 
+
 @dataclass
 class LLMConfig:
     backend: str
@@ -252,15 +253,11 @@ def _read_env() -> dict[str, Any]:
     deepseek_base_url = (
         os.environ.get("AIWIKI_DEEPSEEK_BASE_URL") or os.environ.get("DEEPSEEK_BASE_URL") or DEFAULT_DEEPSEEK_BASE_URL
     ).rstrip("/")
-    opencode_base_url = (
-        os.environ.get("AIWIKI_OPENCODE_BASE_URL") or DEFAULT_OPENCODE_BASE_URL
-    ).rstrip("/")
-    base_url = (
-        os.environ.get("AIWIKI_LLM_BASE_URL") or os.environ.get("OPENAI_BASE_URL") or DEFAULT_BASE_URL
-    ).rstrip("/")
-    anthropic_base_url = (
-        os.environ.get("AIWIKI_ANTHROPIC_BASE_URL") or DEFAULT_ANTHROPIC_BASE_URL
-    ).rstrip("/")
+    opencode_base_url = (os.environ.get("AIWIKI_OPENCODE_BASE_URL") or DEFAULT_OPENCODE_BASE_URL).rstrip("/")
+    base_url = (os.environ.get("AIWIKI_LLM_BASE_URL") or os.environ.get("OPENAI_BASE_URL") or DEFAULT_BASE_URL).rstrip(
+        "/"
+    )
+    anthropic_base_url = (os.environ.get("AIWIKI_ANTHROPIC_BASE_URL") or DEFAULT_ANTHROPIC_BASE_URL).rstrip("/")
     timeout_seconds = int(os.environ.get("AIWIKI_LLM_TIMEOUT", "120"))
     temperature = float(os.environ.get("AIWIKI_LLM_TEMPERATURE", "0.2"))
     max_context_chars_override = (os.environ.get("AIWIKI_LLM_MAX_CONTEXT_CHARS") or "").strip()
@@ -439,10 +436,7 @@ def _missing_backend_message(values: dict[str, Any]) -> str:
     available = _available_backends(values)
     if not requested:
         if available:
-            return (
-                "No LLM backend selected. "
-                f"Set `AIWIKI_LLM_BACKEND` explicitly to one of: {', '.join(available)}."
-            )
+            return f"No LLM backend selected. Set `AIWIKI_LLM_BACKEND` explicitly to one of: {', '.join(available)}."
         return (
             "No LLM backend selected. "
             "Configure one of `deepseek-api|opencode-api|anthropic-api|openai-api`, "
@@ -453,10 +447,7 @@ def _missing_backend_message(values: dict[str, Any]) -> str:
             "LLM backend resolution failed. "
             f"Requested `{requested}` but available backends are: {', '.join(available)}."
         )
-    return (
-        "LLM backend resolution failed. "
-        f"Requested `{requested}` but its required CLI/key is unavailable."
-    )
+    return f"LLM backend resolution failed. Requested `{requested}` but its required CLI/key is unavailable."
 
 
 def _auth_mode_for_backend(backend: str) -> str:

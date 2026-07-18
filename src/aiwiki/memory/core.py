@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from ..app_utils import sha256_bytes
+from ..utils.hash import sha256_bytes
 
 
 def machine_memory_snapshot_is_reusable(memory: dict[str, Any]) -> bool:

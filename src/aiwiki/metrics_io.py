@@ -10,11 +10,12 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any, Iterable
 
-from aiwiki.app_utils import parse_frontmatter, relative_path
 from aiwiki.execution.alchemy import CANDIDATE_ELIXIR_DIR
 from aiwiki.execution.l3_proposals import STAGING_PROPOSALS_DIR
 from aiwiki.metrics import MetricsSnapshot, OutputMeta, ProposalMeta, ReceiptMeta, WikiPageMeta
 from aiwiki.render.paths import execution_receipts_dir, legacy_execution_receipt_path
+from aiwiki.utils.markdown import parse_frontmatter
+from aiwiki.utils.path import relative_path
 
 _PAGE_REVIEW_CLOSE_STATUSES = {
     "approved": "approve",
@@ -68,7 +69,9 @@ def _read_wiki_pages(root: Path) -> Iterable[WikiPageMeta]:
             yield WikiPageMeta(
                 path=_safe_relative_path(root, path),
                 has_source_url=bool(str(frontmatter.get("source_url") or "").strip() or source_files),
-                has_captured_at=bool(str(frontmatter.get("captured_at") or frontmatter.get("source_sha256") or "").strip()),
+                has_captured_at=bool(
+                    str(frontmatter.get("captured_at") or frontmatter.get("source_sha256") or "").strip()
+                ),
                 has_derived_from=bool(_as_string_list(frontmatter.get("derived_from")) or source_files),
                 updated_at=str(frontmatter.get("updated_at") or ""),
                 mtime_epoch=stat.st_mtime,
@@ -139,7 +142,10 @@ def _read_receipts(root: Path) -> Iterable[ReceiptMeta]:
 
 
 def _read_page_review_receipts(root: Path) -> Iterable[ReceiptMeta]:
-    for directory, expected_kind in ((root / "wiki" / "decisions", "decision"), (root / "wiki" / "judgments", "judgment")):
+    for directory, expected_kind in (
+        (root / "wiki" / "decisions", "decision"),
+        (root / "wiki" / "judgments", "judgment"),
+    ):
         try:
             paths = sorted(directory.glob("*.md")) if directory.exists() else []
         except OSError:
@@ -189,7 +195,9 @@ def _read_elixir_reference_receipts(root: Path) -> Iterable[ReceiptMeta]:
             subject_id = str(frontmatter.get("elixir_id") or path.stem).strip()
             if not subject_id:
                 continue
-            applied_at = str(frontmatter.get("promoted_at") or frontmatter.get("created_at") or frontmatter.get("updated_at") or "").strip()
+            applied_at = str(
+                frontmatter.get("promoted_at") or frontmatter.get("created_at") or frontmatter.get("updated_at") or ""
+            ).strip()
             if not applied_at:
                 continue
             rel_path = _safe_relative_path(root, path)
@@ -289,7 +297,9 @@ def _receipt_from_payload(payload: dict[str, Any], fallback_path: str) -> Receip
         operation=str(payload.get("operation") or ""),
         subject_kind=str(payload.get("subject_kind") or ""),
         subject_id=subject_id,
-        target_subject_id=str(payload.get("target_subject_id") or payload.get("target_file") or payload.get("primary_path") or ""),
+        target_subject_id=str(
+            payload.get("target_subject_id") or payload.get("target_file") or payload.get("primary_path") or ""
+        ),
         applied_at=str(payload.get("applied_at") or payload.get("occurred_at") or payload.get("created_at") or ""),
         receipt_path=str(payload.get("receipt_path") or fallback_path),
     )
@@ -361,7 +371,9 @@ def _read_outputs(root: Path) -> Iterable[OutputMeta]:
             frontmatter = parse_frontmatter(path.read_text(encoding="utf-8", errors="replace"))
         except (OSError, UnicodeError):
             continue
-        derived_from = _as_string_list(frontmatter.get("derived_from")) or _as_string_list(frontmatter.get("source_files"))
+        derived_from = _as_string_list(frontmatter.get("derived_from")) or _as_string_list(
+            frontmatter.get("source_files")
+        )
         yield OutputMeta(
             path=_safe_relative_path(root, path),
             derived_from=derived_from,

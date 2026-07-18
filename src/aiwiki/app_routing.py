@@ -60,10 +60,8 @@ from .app_protocol import (
     protocol_title,
     schedule_review_windows,
 )
-from .app_state import (
-    DEFAULT_PROTOCOL,
+from .app_state_paths import (
     active_corpora_state_path,
-    active_material_archive_entries,
     agent_workbench_path,
     concept_rewrite_proposal_page_path,
     concept_rewrite_state_path,
@@ -75,19 +73,6 @@ from .app_state import (
     execution_policy_log_path,
     execution_receipt_history_path,
     furnace_center_html_path,
-    load_active_corpora_state,
-    load_archive_candidates_state,
-    load_concept_rewrite_state,
-    load_json_document,
-    load_knowledge_lifecycle_state,
-    load_machine_memory,
-    load_machine_memory_action_state,
-    load_machine_memory_build_state,
-    load_manifest,
-    load_manual_link_state,
-    load_material_archive_state,
-    load_query_route_telemetry,
-    load_runtime_history,
     machine_memory_action_state_path,
     machine_memory_graph_html_path,
     machine_memory_history_path,
@@ -95,32 +80,17 @@ from .app_state import (
     output_packs_index_path,
     query_route_telemetry_path,
     review_center_html_path,
-    save_active_corpora_state,
-    save_archive_candidates_state,
-    save_concept_rewrite_state,
-    save_machine_memory_action_state,
-    save_material_routing_state,
-    save_material_state,
-    save_query_route_telemetry,
     shell_summary_path,
 )
-from .app_utils import (
-    analyze_citation_snapshots,
-    extract_provenance_paths,
-    html_safe_json_literal,
-    parse_frontmatter,
-    parse_iso_datetime,
-    question_signature,
-    read_text_preview,
-    relative_path,
-    render_frontmatter,
-    sha256_bytes,
-    slugify,
-    tokenize,
-    utc_now,
-    write_if_changed,
-)
+from .compile.build import load_machine_memory_build_state
 from .config import LLMConfig
+from .content.archive import (
+    active_material_archive_entries,
+    load_archive_candidates_state,
+    load_material_archive_state,
+    save_archive_candidates_state,
+    save_material_routing_state,
+)
 from .content.concepts import concept_label_to_slug
 from .content.io import (
     collect_recent_output_artifacts,
@@ -131,27 +101,41 @@ from .content.io import (
     source_summary_or_preview,
     summarize_runtime_event_for_shell,
 )
-from .content.memory import (
-    action_priority_rank,
-    action_status_rank,
-    action_supports_low_risk_apply,
-    describe_machine_memory_action,
+from .content.material import (
+    load_active_corpora_state,
+    load_manual_link_state,
+    save_active_corpora_state,
+    save_material_state,
+)
+from .content.rewrite import load_concept_rewrite_state, save_concept_rewrite_state
+from .execution.history import load_runtime_history
+from .execution.policy import (
     execution_band_label,
     execution_policy_profile,
     load_execution_policy_decision_history,
     load_execution_receipt_history,
+)
+from .execution.repair_plan import rewrite_proposal_is_apply_ready
+from .lifecycle.knowledge import load_knowledge_lifecycle_state
+from .memory.action_core import (
+    action_priority_rank,
+    action_status_rank,
+    action_supports_low_risk_apply,
+    describe_machine_memory_action,
     machine_memory_concept_input_signature,
     machine_memory_source_input_signature,
-    rewrite_proposal_is_apply_ready,
     safe_apply_preview,
     validate_low_risk_action_targets,
 )
+from .memory.action_state import load_machine_memory_action_state, save_machine_memory_action_state
 from .memory.scoring import (
     protocol_hints_for_material,
     recency_score_for_timestamp,
     timestamp_is_newer,
     update_latest_timestamp,
 )
+from .memory.state import load_machine_memory
+from .planner.state import load_query_route_telemetry, save_query_route_telemetry
 from .render.paths import (
     execution_bundle_path,
     execution_proposal_path,
@@ -161,6 +145,22 @@ from .render.views import (
     judgment_asset_shell_record,
     judgment_asset_summary,
 )
+from .state.constants import DEFAULT_PROTOCOL
+from .state.io import load_json_document
+from .state.manifest import load_manifest
+from .utils.hash import question_signature, sha256_bytes
+from .utils.io import write_if_changed
+from .utils.json_utils import html_safe_json_literal
+from .utils.markdown import (
+    analyze_citation_snapshots,
+    extract_provenance_paths,
+    parse_frontmatter,
+    read_text_preview,
+    render_frontmatter,
+)
+from .utils.path import relative_path
+from .utils.text import slugify, tokenize
+from .utils.time import parse_iso_datetime, utc_now
 
 
 def material_protocol_score(
@@ -498,7 +498,9 @@ def build_archive_candidate_state(
         previous_candidate = previous_by_entry.get(entry_id, {})
         blocked_by_judgment_ids = sorted(set(material_entry.get("supports_judgment_ids", [])) & active_judgment_ids)
         last_query_hit_at = parse_iso_datetime(str(material_entry.get("last_query_hit_at") or ""))
-        query_stale = last_query_hit_at is None or (datetime.now(timezone.utc) - last_query_hit_at) > ARCHIVE_QUERY_STALE_AFTER
+        query_stale = (
+            last_query_hit_at is None or (datetime.now(timezone.utc) - last_query_hit_at) > ARCHIVE_QUERY_STALE_AFTER
+        )
         touch_stale = recency_score_for_timestamp(str(material_entry.get("last_touched_at") or "")) <= 0.4
         total_score = float(routing_snapshot.get("total_score", 0.0) or 0.0)
         is_bridge = bool(routing_snapshot.get("is_bridge"))
@@ -525,13 +527,19 @@ def build_archive_candidate_state(
                 reason_codes.append("low-routing-score")
             if str(material_entry.get("temperature") or "") == "cold":
                 reason_codes.append("already-cold")
-            recommended_temperature = "archived" if str(material_entry.get("temperature") or "") == "cold" and total_score < 1.2 else "cold"
+            recommended_temperature = (
+                "archived" if str(material_entry.get("temperature") or "") == "cold" and total_score < 1.2 else "cold"
+            )
             status = "suggested"
             if blocked_by_judgment_ids:
                 status = "deferred"
             # Deferred means the candidate already crossed the archive bar once.
             # When the blocking judgments clear, it should resume at ready.
-            elif previous_candidate and str(previous_candidate.get("status") or "") in {"suggested", "ready", "deferred"}:
+            elif previous_candidate and str(previous_candidate.get("status") or "") in {
+                "suggested",
+                "ready",
+                "deferred",
+            }:
                 status = "ready"
             entries.append(
                 {
@@ -569,7 +577,7 @@ def build_archive_candidate_state(
                         "reactivation_signals": reactivation_signals,
                         "status": "reactivated",
                     }
-    )
+                )
     return {"version": 1, "generated_at": generated_at, "entries": entries}
 
 
@@ -645,12 +653,7 @@ def active_corpus_bridge_evidence_ids(
                 continue
             left = str(edge.get("left") or "")
             right = str(edge.get("right") or "")
-            if (
-                left in source_set
-                and left not in blocked_source_ids
-                and right in bridge_concepts
-                and left not in seen
-            ):
+            if left in source_set and left not in blocked_source_ids and right in bridge_concepts and left not in seen:
                 seen.add(left)
                 bridge_ids.append(left)
     if routing_state:

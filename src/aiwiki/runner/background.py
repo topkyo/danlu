@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from aiwiki.app_utils import atomic_write_text
+from aiwiki.utils.io import atomic_write_text
 
 
 def background_jobs_dir(root: Path) -> Path:

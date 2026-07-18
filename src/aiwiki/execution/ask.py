@@ -11,18 +11,16 @@ Owns the two query-facing execution surfaces previously defined inline in
   ``wiki/judgments/`` with frontmatter, citations, review schedule, and wiki
   log entry; recompiles at the end. Product CLI accepts judgment only.
 
-These functions stay importable as ``aiwiki.app_compile.ask_question`` and
-``aiwiki.app_compile.file_back`` through the PEP 562 compat seam at the
-bottom of ``app_compile.py`` (``_LAZY_OWNERS`` now points these two names at
-this module). No caller needs to change.
+Callers should import directly from this module; ``app_compile`` no longer
+re-exports these names (the historical PEP 562 ``_LAZY_OWNERS`` seam was
+removed once compat callers converged on direct owner imports).
 
-Note: ``utc_now`` is imported from ``aiwiki.app_compile`` (not
-``aiwiki.app_utils``) because acceptance tests + downstream suites
-patch ``aiwiki.app_utils.utc_now`` as a hot-patch seam. Resolving through
-the re-export keeps those patches effective.
+Note: ``utc_now`` is imported lazily from ``aiwiki.utils.time`` inside each
+function body so that ``patch("aiwiki.utils.time.utc_now")`` in acceptance
+tests + downstream suites still intercepts the call.
 
-``rank_concepts`` stays in ``aiwiki.app_compile`` (out of EP-018B scope) —
-we import it lazily via the seam for the same reason.
+``rank_concepts`` is owned by ``aiwiki.compile.ranking`` — we import it
+lazily from that owner for the same hot-patch symmetry reason.
 """
 
 from __future__ import annotations
@@ -58,41 +56,31 @@ from ..app_routing import (
     upsert_active_corpus,
 )
 from ..app_shell import build_shell_summary, write_shell_summary
-from ..app_state import (
-    active_archived_material_ids,
-    append_runtime_history,
-    load_active_corpora_state,
-    load_archive_candidates_state,
-    load_machine_memory,
-    load_manifest,
-    load_material_routing_state,
-    load_material_state,
-    load_output_candidates_state,
-    load_runtime_history,
-    output_candidates_state_path,
-    upsert_output_candidate,
-)
-from ..app_utils import (
-    _restore_file_bytes,
-    _snapshot_file_bytes,
+from ..app_state_paths import output_candidates_state_path
+from ..compile import compile_wiki
+from ..content.archive import active_archived_material_ids, load_archive_candidates_state, load_material_routing_state
+from ..content.io import sync_manifest_with_raw
+from ..content.material import load_active_corpora_state, load_material_state
+from ..input_router import is_obsidian_open_link
+from ..memory.graph import build_machine_memory_query
+from ..memory.state import load_machine_memory
+from ..notify import notify_report_generated
+from ..render.paths import append_wiki_log
+from ..state.manifest import load_manifest
+from ..utils.hash import question_signature
+from ..utils.io import _restore_file_bytes, _snapshot_file_bytes, runtime_write_operation
+from ..utils.markdown import (
     build_citation_snapshots,
     extract_provenance_paths,
-    next_available_stem,
     parse_frontmatter,
-    question_signature,
-    relative_path,
     render_frontmatter,
-    runtime_write_operation,
-    slugify,
     strip_frontmatter,
     upsert_markdown_section,
 )
-from ..compile import compile_wiki
-from ..content.io import sync_manifest_with_raw
-from ..input_router import is_obsidian_open_link
-from ..memory.graph import build_machine_memory_query
-from ..notify import notify_report_generated
-from ..render.paths import append_wiki_log
+from ..utils.path import next_available_stem, relative_path
+from ..utils.text import slugify
+from .candidates import load_output_candidates_state, upsert_output_candidate
+from .history import append_runtime_history, load_runtime_history
 from .receipts import write_execution_receipt
 from .run_notes import run_id_for_artifact, write_run_notes, write_run_notes_frontmatter
 
@@ -102,14 +90,8 @@ NEXT_STEP_HINTS = {
         "如需人工审阅，请用 aiwiki file-back <artifact> 写入 wiki/judgments/。"
         "如需进入金丹链路（alchemy-start），请先用 aiwiki promote <output_ref> 注册 corpus candidate。"
     ),
-    "judgment": (
-        "next: aiwiki review-page {path} "
-        "--status <tentative|tracking|confirmed|rejected>"
-    ),
-    "decision": (
-        "next: aiwiki review-page {path} "
-        "--status <proposed|approved|needs-revisit|superseded>"
-    ),
+    "judgment": ("next: aiwiki review-page {path} --status <tentative|tracking|confirmed|rejected>"),
+    "decision": ("next: aiwiki review-page {path} --status <proposed|approved|needs-revisit|superseded>"),
 }
 
 READABLE_FILENAME_MAX_CHARS = 72
@@ -144,18 +126,18 @@ def _file_back_entry_seed(kind: str, title: str) -> str:
     stem = _readable_filename_stem(title, fallback=kind)
     return f"{kind}-{stem}"
 
-# ``utc_now`` and ``rank_concepts`` are resolved lazily via
-# ``aiwiki.app_compile`` inside each function body. Reasons:
+
+# ``utc_now`` is resolved lazily via ``aiwiki.utils.time`` inside each
+# function body. Reason: ``utc_now`` is a hot-patch target. Acceptance
+# tests + downstream suites patch it (originally ``tests/test_app.py``) as
+# ``patch("aiwiki.utils.time.utc_now", ...)``. A module-level
+# ``from ..utils.time import utc_now`` would bind ``ask.utc_now`` to the
+# original callable at import time and defeat that patch everywhere in
+# this module.
 #
-# - ``utc_now`` is a hot-patch target. Acceptance tests + downstream suites
-#   patch it (originally ``tests/test_app.py``) as
-#   ``patch("aiwiki.app_utils.utc_now", ...)``. A module-level
-#   ``from ..app_compile import utc_now`` would bind ``ask.utc_now`` to the
-#   original callable at import time and defeat that patch everywhere in
-#   this module.
-# - ``rank_concepts`` is still defined in ``aiwiki.app_compile`` (out of
-#   EP-018B scope). If a future EP flips it to a new owner, the lazy
-#   lookup keeps working without touching this file.
+# ``rank_concepts`` is imported lazily from ``aiwiki.compile.ranking``
+# (its owner since the reverse-dependency cleanup) inside the function
+# body for symmetry with ``utc_now``.
 #
 # The same rationale applies to ``apply_machine_memory_action`` in
 # ``execution/runtime_surfaces.py``; see that module for the matching
@@ -293,9 +275,7 @@ def _build_graph_anchor_node_ids(
     # anchors despite the report citing real evidence.
     if not source_ids and ranked_sources:
         source_ids = [
-            str(entry.get("id"))
-            for entry in ranked_sources[:4]
-            if isinstance(entry, dict) and entry.get("id")
+            str(entry.get("id")) for entry in ranked_sources[:4] if isinstance(entry, dict) and entry.get("id")
         ]
     if not concept_slugs and ranked_concepts:
         concept_slugs = [
@@ -370,9 +350,7 @@ def _resolve_anchor_md_link(anchor: str, memory: dict[str, Any], base: Path) -> 
     return None
 
 
-def _append_graph_anchor_section(
-    destination: Path, *, anchors: list[str], memory: dict[str, Any]
-) -> None:
+def _append_graph_anchor_section(destination: Path, *, anchors: list[str], memory: dict[str, Any]) -> None:
     """Upsert a 关系图谱锚点 section with clickable .md links into the artifact body."""
     if not anchors:
         return
@@ -389,9 +367,7 @@ def _append_graph_anchor_section(
     destination.write_text(body.rstrip() + "\n", encoding="utf-8")
 
 
-def apply_graph_anchors_to_artifact(
-    destination: Path, *, anchors: list[str], memory: dict[str, Any]
-) -> None:
+def apply_graph_anchors_to_artifact(destination: Path, *, anchors: list[str], memory: dict[str, Any]) -> None:
     """Write graph anchor frontmatter and the human-readable anchor section.
 
     Used by deterministic ``ask_question`` immediately and by ``run_ask``
@@ -425,8 +401,9 @@ def ask_question(
     write_graph_anchors: bool = True,
     notify: bool = True,
 ) -> dict[str, Any]:
-    from .. import app_compile as _app_compile
-    from .. import app_utils as _app_utils
+    from ..compile.ranking import rank_concepts
+    from ..utils.security import safe_resolve_within
+    from ..utils.time import utc_now
 
     if is_obsidian_open_link(question):
         raise ValueError("obsidian open links are navigation targets, not questions")
@@ -461,7 +438,7 @@ def ask_question(
         no_cache=no_cache,
     )
     compound_source_boosts, compound_concept_boosts = compound_rank_boosts(memory, machine_query)
-    ranked_concepts = _app_compile.rank_concepts(
+    ranked_concepts = rank_concepts(
         root,
         question,
         boost_concept_slugs=set(machine_query["ranked_concept_slugs"]) | compound_concept_boosts,
@@ -473,7 +450,7 @@ def ask_question(
             if isinstance(source_page, str) and source_page.startswith("wiki/sources/") and source_page.endswith(".md"):
                 boosted_ids.add(Path(source_page).stem)
     ranked = rank_sources(root, entries, question, boost_source_ids=boosted_ids, protocol=active_protocol)
-    created_at = _app_utils.utc_now()
+    created_at = utc_now()
     artifact_seed = _output_artifact_seed(question, output_format)
 
     if output_format != "report":
@@ -614,9 +591,7 @@ def ask_question(
     last_route_entry = route_telemetry.get("last_entry") if isinstance(route_telemetry, dict) else {}
     if isinstance(last_route_entry, dict):
         machine_query["route_telemetry"] = {
-            key: value
-            for key, value in last_route_entry.items()
-            if key not in {"occurred_at", "question_preview"}
+            key: value for key, value in last_route_entry.items() if key not in {"occurred_at", "question_preview"}
         }
     else:
         machine_query["route_telemetry"] = dict(machine_query.get("route_telemetry") or {})
@@ -754,12 +729,13 @@ def file_back(
     kind: str = "judgment",
     protocol: str | None = None,
 ) -> dict[str, Any]:
-    from .. import app_utils as _app_utils
+    from ..utils.security import safe_resolve_within
+    from ..utils.time import utc_now
 
     ensure_layout(root)
     root_resolved = root.resolve(strict=False)
     candidate = Path(artifact)
-    artifact_path = _app_utils.safe_resolve_within(
+    artifact_path = safe_resolve_within(
         candidate if candidate.is_absolute() else (root / candidate),
         root,
     )
@@ -772,8 +748,10 @@ def file_back(
             "file-back accepts judgment only; derived and decision kinds were removed from the product CLI."
         )
 
-    filed_at = _app_utils.utc_now()
-    artifact_ref = relative_path(root, artifact_path) if artifact_path.is_relative_to(root_resolved) else str(artifact_path)
+    filed_at = utc_now()
+    artifact_ref = (
+        relative_path(root, artifact_path) if artifact_path.is_relative_to(root_resolved) else str(artifact_path)
+    )
     original = artifact_path.read_text(encoding="utf-8", errors="replace")
     original_frontmatter = parse_frontmatter(original)
     citations = extract_provenance_paths(root, original)
@@ -829,9 +807,7 @@ def file_back(
     # research gets hypothesis / falsification, etc. Empty values are
     # intentional placeholders — lint stays happy, downstream consumers see
     # the schema slot.
-    frontmatter_payload.update(
-        protocol_judgment_extra_fields(resolved_protocol, kind)
-    )
+    frontmatter_payload.update(protocol_judgment_extra_fields(resolved_protocol, kind))
     frontmatter_payload.update(
         curated_frontmatter_hints(kind=kind, protocol=resolved_protocol, supporting_body=stripped)
     )

@@ -89,18 +89,11 @@ from .app_routing import (
     upsert_active_corpus,
 )
 from .app_shell import build_shell_summary, write_shell_summary
-from .app_state import (
-    DEFAULT_PROTOCOL,
-    JUDGMENT_LIFECYCLE_STATES,
-    KNOWLEDGE_LIFECYCLE_KINDS,
-    KNOWLEDGE_LIFECYCLE_STATES,
-    active_archived_material_ids,
+from .app_state_paths import (
     active_corpora_state_path,
-    active_material_archive_entries,
     agent_pack_path,
     agent_workbench_path,
     aging_report_path,
-    append_runtime_history,
     archive_candidates_state_path,
     cognitive_history_path,
     compile_state_path,
@@ -108,13 +101,7 @@ from .app_state import (
     concept_quality_path,
     concept_rewrite_index_path,
     concept_rewrite_state_path,
-    default_concept_build_state,
-    default_domain_pilot_build_state,
-    default_machine_memory_build_state,
-    default_output_pack_build_state,
-    default_ranking_build_state,
     domain_pilot_build_state_path,
-    ensure_knowledge_lifecycle_override_state,
     execution_audit_html_path,
     execution_audit_path,
     execution_policy_log_path,
@@ -123,20 +110,6 @@ from .app_state import (
     judgment_assets_path,
     knowledge_lifecycle_override_state_path,
     knowledge_lifecycle_state_path,
-    load_active_corpora_state,
-    load_archive_candidates_state,
-    load_concept_rewrite_state,
-    load_json_document,
-    load_knowledge_lifecycle_state,
-    load_machine_memory,
-    load_machine_memory_action_state,
-    load_manifest,
-    load_manual_link_state,
-    load_material_archive_state,
-    load_material_routing_state,
-    load_material_state,
-    load_output_candidates_state,
-    load_ranking_build_state,
     machine_memory_action_state_path,
     machine_memory_actions_path,
     machine_memory_build_state_path,
@@ -159,41 +132,26 @@ from .app_state import (
     ranking_build_state_path,
     repair_backlog_path,
     review_center_html_path,
-    save_compile_state,
-    save_concept_rewrite_state,
-    save_knowledge_lifecycle_override_state,
-    save_machine_memory_action_state,
-    save_manual_link_state,
-    save_material_archive_state,
-    save_output_candidates_state,
     shell_summary_path,
-    upsert_output_candidate,
 )
-from .app_utils import (
-    analyze_citation_snapshots,
-    atomic_write_text,
-    build_citation_snapshots,
-    compiled_source_sha,
-    extract_provenance_paths,
-    next_available_stem,
-    parse_frontmatter,
-    question_signature,
-    read_text_preview,
-    relative_path,
-    render_frontmatter,
-    render_scalar,
-    runtime_write_operation,
-    sha256_bytes,
-    slugify,
-    strip_frontmatter,
-    tokenize,
-    upsert_markdown_section,
-    utc_now,
-    write_if_changed,
-    write_if_changed_ignoring_timestamps,
-    write_json_document_if_changed_ignoring_generated_timestamps,
+from .compile.build import (
+    default_concept_build_state,
+    default_domain_pilot_build_state,
+    default_machine_memory_build_state,
+    default_output_pack_build_state,
+    default_ranking_build_state,
+    load_ranking_build_state,
 )
+from .compile.state import save_compile_state
 from .config import LLMConfig
+from .content.archive import (
+    active_archived_material_ids,
+    active_material_archive_entries,
+    load_archive_candidates_state,
+    load_material_archive_state,
+    load_material_routing_state,
+    save_material_archive_state,
+)
 from .content.concepts import (
     build_concept_quality,
     build_concept_records,
@@ -224,27 +182,48 @@ from .content.io import (
     source_summary_or_preview,
     sync_manifest_with_raw,
 )
+from .content.material import (
+    load_active_corpora_state,
+    load_manual_link_state,
+    load_material_state,
+    save_manual_link_state,
+)
 from .content.memory import (
-    _validate_rewrite_candidate_markdown,
-    action_supports_low_risk_apply,
-    append_execution_policy_decisions,
-    build_machine_memory_repair_plan,
-    build_page_patch_plan,
     concept_summary_is_placeholder,
+    remove_stale_generated_markdown_files,
+)
+from .content.outputs import classify_recurring_output_kind
+from .content.rewrite import load_concept_rewrite_state, save_concept_rewrite_state
+from .execution.candidates import load_output_candidates_state, save_output_candidates_state, upsert_output_candidate
+from .execution.history import append_runtime_history
+from .execution.lifecycle import concept_lifecycle_entry, concept_page_path
+from .execution.patch_plan import build_page_patch_plan
+from .execution.policy import (
+    append_execution_policy_decisions,
     execution_policy_decision_record,
     load_execution_receipt_history,
-    placeholder_concept_slugs,
-    remove_stale_generated_execution_bundle_files,
-    remove_stale_generated_execution_proposal_pages,
-    remove_stale_generated_markdown_files,
+)
+from .execution.repair_plan import (
+    _validate_rewrite_candidate_markdown,
+    build_machine_memory_repair_plan,
     repair_execution_proposals,
     rewrite_proposal_candidate_is_current,
     rewrite_proposal_is_apply_ready,
+)
+from .lifecycle.knowledge import (
+    ensure_knowledge_lifecycle_override_state,
+    load_knowledge_lifecycle_state,
+    save_knowledge_lifecycle_override_state,
+)
+from .memory.action_core import (
+    action_supports_low_risk_apply,
+    placeholder_concept_slugs,
+    remove_stale_generated_execution_bundle_files,
+    remove_stale_generated_execution_proposal_pages,
     safe_apply_preview,
     validate_low_risk_action_targets,
 )
-from .content.outputs import classify_recurring_output_kind
-from .execution.lifecycle import concept_lifecycle_entry, concept_page_path
+from .memory.action_state import load_machine_memory_action_state, save_machine_memory_action_state
 from .memory.actions import reconcile_machine_memory_actions
 from .memory.build_plan import plan_machine_memory_build
 from .memory.builder import build_machine_memory
@@ -274,6 +253,7 @@ from .memory.graph import (
 from .memory.graph_builder import build_machine_memory_graph
 from .memory.health import build_machine_memory_health
 from .memory.judgment_assets import attach_judgment_assets_to_machine_memory
+from .memory.state import load_machine_memory
 from .memory.status import (
     render_drift_report,
     render_graph_health,
@@ -321,15 +301,43 @@ from .render.views import (
     render_master_index,
     render_review_queue,
 )
+from .state.constants import (
+    DEFAULT_PROTOCOL,
+    JUDGMENT_LIFECYCLE_STATES,
+    KNOWLEDGE_LIFECYCLE_KINDS,
+    KNOWLEDGE_LIFECYCLE_STATES,
+)
+from .state.io import load_json_document
+from .state.manifest import load_manifest
+from .utils.hash import compiled_source_sha, question_signature, sha256_bytes
+from .utils.io import (
+    atomic_write_text,
+    runtime_write_operation,
+    write_if_changed,
+    write_if_changed_ignoring_timestamps,
+    write_json_document_if_changed_ignoring_generated_timestamps,
+)
+from .utils.markdown import (
+    analyze_citation_snapshots,
+    build_citation_snapshots,
+    extract_provenance_paths,
+    parse_frontmatter,
+    read_text_preview,
+    render_frontmatter,
+    render_scalar,
+    strip_frontmatter,
+    upsert_markdown_section,
+)
+from .utils.path import next_available_stem, relative_path
+from .utils.text import slugify, tokenize
+from .utils.time import utc_now
 
 
 @runtime_write_operation
 def set_active_protocol(root: Path, protocol: str) -> dict[str, Any]:
     candidate = protocol.strip().lower()
     if candidate != DEFAULT_PROTOCOL:
-        raise ValueError(
-            f"Unknown protocol: {protocol}. Only '{DEFAULT_PROTOCOL}' is supported."
-        )
+        raise ValueError(f"Unknown protocol: {protocol}. Only '{DEFAULT_PROTOCOL}' is supported.")
     active = resolve_protocol(root, protocol)
     path = protocol_state_path(root)
     atomic_write_text(path, json.dumps({"version": 1, "active_protocol": active}, indent=2, sort_keys=True) + "\n")
@@ -544,7 +552,9 @@ def build_agent_packs(
     apply_ready_actions = [action for action in ready_actions if action_supports_low_risk_apply(action)]
     all_actions = [*health.get("actions", []), *health.get("inactive_actions", [])]
     revert_ready_actions = [
-        action for action in all_actions if str(action.get("status") or "") == "resolved" and action.get("last_receipt_path")
+        action
+        for action in all_actions
+        if str(action.get("status") or "") == "resolved" and action.get("last_receipt_path")
     ]
     execution_audit = build_execution_audit_snapshot(root, memory, active_protocol=active_protocol)
     packs: list[dict[str, str]] = []
@@ -593,10 +603,7 @@ def build_agent_packs(
                 f"待补判断资产 `{len(missing_asset_pages)}`",
                 f"证据漂移页面 `{len(drifted_pages)}`",
             ]
-            actions = [
-                f"补齐 `{page['path']}` 的反证 / 失效条件 / 下一信号。"
-                for page in missing_asset_pages[:5]
-            ]
+            actions = [f"补齐 `{page['path']}` 的反证 / 失效条件 / 下一信号。" for page in missing_asset_pages[:5]]
             if recent_outputs:
                 actions.append(f"检查最近输出 `{recent_outputs[0]['path']}` 是否值得晋升成 decision / judgment。")
             links = [
@@ -617,10 +624,7 @@ def build_agent_packs(
                 f"推进 lifecycle concept `{entry.get('title') or entry.get('page_id') or 'unknown'}`，状态 `{display_knowledge_lifecycle_state(str(entry.get('lifecycle_state') or 'unknown'))}`。"
                 for entry in concept_backlog[:3]
             ]
-            actions.extend(
-                f"复查 `{page['path']}`，因为它已被新证据挑战。"
-                for page in drifted_pages[:3]
-            )
+            actions.extend(f"复查 `{page['path']}`，因为它已被新证据挑战。" for page in drifted_pages[:3])
             if retired_concepts:
                 retired = retired_concepts[0]
                 actions.append(
@@ -668,9 +672,7 @@ def build_agent_packs(
                 for action in apply_ready_actions[:5]
             ]
             if revert_ready_actions:
-                actions.append(
-                    f"必要时回滚 `{revert_ready_actions[0].get('id', '')}`，保持 low-risk execution 可逆。"
-                )
+                actions.append(f"必要时回滚 `{revert_ready_actions[0].get('id', '')}`，保持 low-risk execution 可逆。")
             if not actions:
                 actions = ["当前没有可执行动作，继续监控 execution audit 和 consistency signals。"]
             links = [

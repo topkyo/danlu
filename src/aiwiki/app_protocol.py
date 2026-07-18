@@ -25,17 +25,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, cast
 
-from .app_state import (
-    DEFAULT_PROTOCOL,
-    load_json_document_strict,
-    manifest_path,
-)
+from .app_state_paths import manifest_path
 from .app_types import ProtocolDescriptor, ProtocolRuntimeSchema, ProtocolState
-from .app_utils import (
-    atomic_write_text,
-    parse_iso_datetime,
-    relative_path,
-)
 from .config import LLMConfig
 from .protocol.descriptors import (
     AGENT_PACK_LIBRARY,
@@ -95,6 +86,11 @@ from .protocol.templates import (
     PROTOCOL_SECTION_FILES,
     PROTOCOL_SECTION_TITLES,
 )
+from .state.constants import DEFAULT_PROTOCOL
+from .state.io import load_json_document_strict
+from .utils.io import atomic_write_text
+from .utils.path import relative_path
+from .utils.time import parse_iso_datetime
 
 
 def ensure_layout(root: Path) -> None:
@@ -146,26 +142,33 @@ def default_protocol_runtime_schema(slug: str) -> ProtocolRuntimeSchema:
     execution_policy_rules.update(PROTOCOL_EXECUTION_POLICY_RULES.get(slug, {}))
     route_config = dict(PROTOCOL_QUERY_ROUTE_CONFIG.get(DEFAULT_PROTOCOL, {}))
     route_config.update(PROTOCOL_QUERY_ROUTE_CONFIG.get(slug, {}))
-    return cast(ProtocolRuntimeSchema, {
-        "version": 1,
-        "slug": slug,
-        "title": metadata["title"],
-        "summary": metadata["summary"],
-        "review_windows": review_windows,
-        "output_guidance": {
-            output_format: list(lines)
-            for output_format, lines in PROTOCOL_OUTPUT_GUIDANCE.get(slug, PROTOCOL_OUTPUT_GUIDANCE[DEFAULT_PROTOCOL]).items()
+    return cast(
+        ProtocolRuntimeSchema,
+        {
+            "version": 1,
+            "slug": slug,
+            "title": metadata["title"],
+            "summary": metadata["summary"],
+            "review_windows": review_windows,
+            "output_guidance": {
+                output_format: list(lines)
+                for output_format, lines in PROTOCOL_OUTPUT_GUIDANCE.get(
+                    slug, PROTOCOL_OUTPUT_GUIDANCE[DEFAULT_PROTOCOL]
+                ).items()
+            },
+            "execution_policy": {
+                "accepted_rules": execution_policy_rules,
+            },
+            "query_routes": {
+                "default_strategy": str(route_config.get("default_strategy") or "concept-first"),
+                "strategy_order": list(
+                    route_config.get("strategy_order") or ["concept-first", "graph-walk", "source-first"]
+                ),
+                "source_markers": list(route_config.get("source_markers") or []),
+                "graph_markers": list(route_config.get("graph_markers") or []),
+            },
         },
-        "execution_policy": {
-            "accepted_rules": execution_policy_rules,
-        },
-        "query_routes": {
-            "default_strategy": str(route_config.get("default_strategy") or "concept-first"),
-            "strategy_order": list(route_config.get("strategy_order") or ["concept-first", "graph-walk", "source-first"]),
-            "source_markers": list(route_config.get("source_markers") or []),
-            "graph_markers": list(route_config.get("graph_markers") or []),
-        },
-    })
+    )
 
 
 def load_protocol_runtime_schema(root: Path, slug: str) -> ProtocolRuntimeSchema:
@@ -227,15 +230,18 @@ def available_protocols(root: Path) -> list[str]:
 
 def protocol_descriptor(root: Path, slug: str) -> ProtocolDescriptor:
     base = root / "schema" / "protocols" / slug
-    return cast(ProtocolDescriptor, {
-        "slug": slug,
-        "title": protocol_title(slug),
-        "summary": protocol_summary(slug),
-        "paths": {
-            "index": relative_path(root, base / "index.md"),
-            **{section: relative_path(root, base / f"{section}.md") for section in PROTOCOL_SECTION_FILES},
+    return cast(
+        ProtocolDescriptor,
+        {
+            "slug": slug,
+            "title": protocol_title(slug),
+            "summary": protocol_summary(slug),
+            "paths": {
+                "index": relative_path(root, base / "index.md"),
+                **{section: relative_path(root, base / f"{section}.md") for section in PROTOCOL_SECTION_FILES},
+            },
         },
-    })
+    )
 
 
 def load_protocol_state(root: Path) -> ProtocolState:
@@ -249,12 +255,15 @@ def load_protocol_state(root: Path) -> ProtocolState:
     normalized = {"version": 1, "active_protocol": active}
     if state != normalized:
         atomic_write_text(path, json.dumps(normalized, indent=2, sort_keys=True) + "\n")
-    return cast(ProtocolState, {
-        **normalized,
-        "available_protocols": available,
-        "protocols": [protocol_descriptor(root, slug) for slug in available],
-        "state_path": relative_path(root, path),
-    })
+    return cast(
+        ProtocolState,
+        {
+            **normalized,
+            "available_protocols": available,
+            "protocols": [protocol_descriptor(root, slug) for slug in available],
+            "state_path": relative_path(root, path),
+        },
+    )
 
 
 def resolve_protocol(root: Path, protocol: str | None = None) -> str:
@@ -263,9 +272,7 @@ def resolve_protocol(root: Path, protocol: str | None = None) -> str:
         return str(state.get("active_protocol") or DEFAULT_PROTOCOL)
     candidate = protocol.strip().lower()
     if candidate != DEFAULT_PROTOCOL:
-        raise ValueError(
-            f"Unknown protocol: {protocol}. Only '{DEFAULT_PROTOCOL}' is supported."
-        )
+        raise ValueError(f"Unknown protocol: {protocol}. Only '{DEFAULT_PROTOCOL}' is supported.")
     return candidate
 
 
@@ -277,13 +284,9 @@ def protocol_runtime_summary(slug: str) -> list[str]:
     else:
         lines.append("- Review window overrides:")
         for (kind, status), (revisit_days, escalate_days) in sorted(windows.items()):
-            lines.append(
-                f"  - `{kind}:{status}` -> revisit `{revisit_days}`d / escalate `{escalate_days}`d"
-            )
+            lines.append(f"  - `{kind}:{status}` -> revisit `{revisit_days}`d / escalate `{escalate_days}`d")
     prefixes = PROTOCOL_PROMOTION_PREFIXES.get(slug, PROTOCOL_PROMOTION_PREFIXES[DEFAULT_PROTOCOL])
-    lines.append(
-        f"- Auto-promotion 标题前缀：decision `{prefixes['decision']}` / judgment `{prefixes['judgment']}`"
-    )
+    lines.append(f"- Auto-promotion 标题前缀：decision `{prefixes['decision']}` / judgment `{prefixes['judgment']}`")
     review_focus = PROTOCOL_LIBRARY.get(slug, {}).get("review", [])
     nightly_focus = PROTOCOL_LIBRARY.get(slug, {}).get("nightly", [])
     if review_focus:
@@ -358,7 +361,9 @@ def protocol_output_guidance(root: Path, protocol: str, output_format: str) -> t
 
 
 def protocol_execution_policy_rule(root: Path, protocol: str, action_kind: str) -> dict[str, Any]:
-    default_rules = default_protocol_runtime_schema(DEFAULT_PROTOCOL).get("execution_policy", {}).get("accepted_rules", {})
+    default_rules = (
+        default_protocol_runtime_schema(DEFAULT_PROTOCOL).get("execution_policy", {}).get("accepted_rules", {})
+    )
     protocol_rules = load_protocol_runtime_schema(root, protocol).get("execution_policy", {}).get("accepted_rules", {})
     rule = protocol_rules.get(action_kind) or default_rules.get(action_kind) or {}
     if not isinstance(rule, dict):
@@ -380,7 +385,9 @@ def protocol_query_route_config(root: Path, protocol: str) -> dict[str, Any]:
     if not isinstance(protocol_config, dict):
         protocol_config = default_config
     return {
-        "default_strategy": str(protocol_config.get("default_strategy") or default_config.get("default_strategy") or "concept-first"),
+        "default_strategy": str(
+            protocol_config.get("default_strategy") or default_config.get("default_strategy") or "concept-first"
+        ),
         "strategy_order": [
             str(item)
             for item in protocol_config.get("strategy_order", default_config.get("strategy_order", []))

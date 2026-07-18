@@ -7,7 +7,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from .app_state import load_llm_receipt_history
+from .execution.history import load_llm_receipt_history
 from .llm import classify_backend_error
 
 
@@ -25,7 +25,9 @@ def aggregate_llm_telemetry(root: Path, *, limit: int = 50) -> dict[str, Any]:
 
     for item in recent:
         status_counts[str(item.get("status") or "unknown")] += 1
-        backend = str(item.get("backend_effective") or item.get("backend") or item.get("backend_requested") or "unknown")
+        backend = str(
+            item.get("backend_effective") or item.get("backend") or item.get("backend_requested") or "unknown"
+        )
         backend_counts[backend] += 1
         model = str(item.get("model_final") or item.get("model") or item.get("model_selected") or "")
         if model:
@@ -75,8 +77,9 @@ def _percentile(values: list[int], pct: int) -> int | None:
 def aggregate_backend_telemetry(root: Path, *, limit: int = 100) -> dict[str, Any]:
     """Summarize recent execution and LLM receipts for operator backend usage."""
 
-    from .app_state import execution_receipt_history_path, load_jsonl_documents
+    from .app_state_paths import execution_receipt_history_path
     from .metrics_io import _receipt_json_paths
+    from .state.io import load_jsonl_documents
 
     records: list[dict[str, Any]] = []
     seen_receipt_paths: set[str] = set()
@@ -119,20 +122,11 @@ def aggregate_backend_telemetry(root: Path, *, limit: int = 100) -> dict[str, An
             legacy_empty_status += 1
             status = "legacy-empty"
         status_counts[status] += 1
-        backend = str(
-            item.get("llm_backend")
-            or item.get("backend")
-            or item.get("backend_effective")
-            or ""
-        ).strip()
+        backend = str(item.get("llm_backend") or item.get("backend") or item.get("backend_effective") or "").strip()
         if backend:
             backend_counts[backend] += 1
 
-    llm_history = [
-        item
-        for item in load_llm_receipt_history(root)
-        if isinstance(item, dict)
-    ]
+    llm_history = [item for item in load_llm_receipt_history(root) if isinstance(item, dict)]
     llm_ordered = [
         item
         for _, item in sorted(
@@ -151,10 +145,7 @@ def aggregate_backend_telemetry(root: Path, *, limit: int = 100) -> dict[str, An
         llm_status = str(item.get("status") or "unknown")
         llm_status_counts[llm_status] += 1
         backend = str(
-            item.get("backend_effective")
-            or item.get("backend")
-            or item.get("backend_requested")
-            or "unknown"
+            item.get("backend_effective") or item.get("backend") or item.get("backend_requested") or "unknown"
         )
         llm_backend_counts[backend] += 1
         model = str(item.get("model_final") or item.get("model") or item.get("model_selected") or "")
@@ -178,7 +169,7 @@ def aggregate_backend_telemetry(root: Path, *, limit: int = 100) -> dict[str, An
                 "created_at": str(item.get("created_at") or ""),
                 "raw_response_path": str(item.get("raw_response_path") or ""),
             }
-            )
+        )
     return {
         "kind": "backend-telemetry-report",
         "version": 2,
@@ -216,19 +207,14 @@ def _llm_failure_category(item: dict[str, Any]) -> str:
     if explicit in {"quota", "timeout", "auth", "unavailable"}:
         return explicit
     text = " ".join(
-        str(item.get(key) or "")
-        for key in ("error", "failure_reason", "primary_error", "fallback_reason")
+        str(item.get(key) or "") for key in ("error", "failure_reason", "primary_error", "fallback_reason")
     ).strip()
     return classify_backend_error(text or explicit)
 
 
 def _receipt_timestamp(item: dict[str, Any]) -> str:
     return str(
-        item.get("applied_at")
-        or item.get("created_at")
-        or item.get("generated_at")
-        or item.get("updated_at")
-        or ""
+        item.get("applied_at") or item.get("created_at") or item.get("generated_at") or item.get("updated_at") or ""
     )
 
 

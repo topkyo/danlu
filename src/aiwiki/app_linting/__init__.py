@@ -2,6 +2,7 @@
 
 Subpackage façade — re-exports all symbols for backward compatibility.
 """
+
 from __future__ import annotations
 
 import sys

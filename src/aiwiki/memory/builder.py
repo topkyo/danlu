@@ -5,9 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..app_utils import parse_frontmatter, tokenize
 from ..content.concepts import concept_label_to_slug, normalize_concept_hardness, parse_causal_links
 from ..content.io import source_summary_or_preview
+from ..utils.markdown import parse_frontmatter
+from ..utils.text import tokenize
 
 
 def build_machine_memory(
@@ -114,9 +115,7 @@ def build_machine_memory(
             index_term(token, concept_slug=record["slug"])
 
     drift = {
-        "missing_raw_files": [
-            entry["stored_path"] for entry in entries if not (root / entry["stored_path"]).exists()
-        ],
+        "missing_raw_files": [entry["stored_path"] for entry in entries if not (root / entry["stored_path"]).exists()],
         "missing_source_pages": [
             f"wiki/sources/{entry['id']}.md"
             for entry in entries

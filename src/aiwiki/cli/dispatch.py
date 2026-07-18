@@ -229,7 +229,11 @@ def _handle_runtime_workflows(args: argparse.Namespace, root: Path) -> tuple[obj
 def _handle_ops(args: argparse.Namespace, root: Path) -> tuple[object, str | None]:
     text_output = None
     if args.handler_command == "llm-check":
-        result = llm_probe(root, probe_all=args.probe_all, timeout_seconds=args.probe_timeout) if args.probe or args.probe_all else llm_status()
+        result = (
+            llm_probe(root, probe_all=args.probe_all, timeout_seconds=args.probe_timeout)
+            if args.probe or args.probe_all
+            else llm_status()
+        )
         if getattr(args, "format", "json") == "human":
             from aiwiki.cli.llm_check_render import render_llm_check_human
 

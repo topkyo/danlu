@@ -12,17 +12,15 @@ Design notes:
 - All imports go to the TRUE origin module, never through ``app_compile``
   re-exports (``compile_wiki`` uses ``..compile.pipeline`` and not
   ``..compile`` per B4 oracle review).
-- The five hot-patch targets (``utc_now``, ``entry_concept_terms``,
-  ``build_machine_memory``, ``build_ranking_source_record``,
-  ``build_ranking_concept_record``) stay directly bound in
-  ``aiwiki.app_compile``. For the one B5 actually calls (``utc_now``),
+- The hot-patch target ``utc_now`` is owned by ``aiwiki.utils.time``;
   we use function-body lazy lookup
-  (``from .. import app_utils as _app_utils; _app_utils.utc_now()``)
-  so that ``patch("aiwiki.app_utils.utc_now")`` in tests continues to
-  take effect.
-- ``append_wiki_log`` comes from ``render.paths``. The legacy
-  ``app_content`` / ``app_render`` facades still re-export it for
-  compatibility, but owner modules should use the direct origin.
+  (``from ..utils.time import utc_now; utc_now()``)
+  so that ``patch("aiwiki.utils.time.utc_now")`` in tests continues to
+  take effect. The other ranking helpers (``build_ranking_source_record``,
+  ``build_ranking_concept_record``) are now owned by
+  ``aiwiki.compile.ranking``.
+- ``append_wiki_log`` comes from ``render.paths``. Owner modules should
+  use the direct origin.
 """
 
 from __future__ import annotations
@@ -37,36 +35,30 @@ from ..app_execution import write_execution_dry_run_document
 from ..app_lifecycle import rewrite_proposal_needs_review
 from ..app_memory_query import concept_page_snapshot
 from ..app_protocol import REWRITE_PROPOSAL_STATUSES, ensure_layout
-from ..app_state import (
-    append_runtime_history,
+from ..app_state_paths import (
     concept_rewrite_state_path,
     execution_receipt_history_path,
-    load_concept_rewrite_state,
-    load_machine_memory,
     rewrite_dry_run_path,
     runtime_history_path,
-    save_concept_rewrite_state,
-)
-from ..app_utils import (
-    _restore_snapshots,
-    _snapshot_file_bytes,
-    atomic_write_text,
-    parse_frontmatter,
-    relative_path,
-    runtime_write_operation,
-    sha256_bytes,
 )
 from ..compile.pipeline import compile_wiki
 from ..content.io import preserved_section
-from ..content.memory import (
+from ..content.rewrite import load_concept_rewrite_state, save_concept_rewrite_state
+from ..memory.execution_surfaces import concept_rewrite_proposal_digest
+from ..memory.state import load_machine_memory
+from ..render.paths import append_wiki_log
+from ..utils.hash import sha256_bytes
+from ..utils.io import _restore_snapshots, _snapshot_file_bytes, atomic_write_text, runtime_write_operation
+from ..utils.markdown import parse_frontmatter
+from ..utils.path import relative_path
+from .audit_preview import AUDIT_STREAM_PATH
+from .history import append_runtime_history
+from .receipts import write_execution_receipt
+from .repair_plan import (
     _validate_rewrite_candidate_markdown,
     rewrite_proposal_candidate_is_current,
     rewrite_proposal_is_apply_ready,
 )
-from ..memory.execution_surfaces import concept_rewrite_proposal_digest
-from ..render.paths import append_wiki_log
-from .audit_preview import AUDIT_STREAM_PATH
-from .receipts import write_execution_receipt
 
 logger = logging.getLogger(__name__)
 
@@ -239,20 +231,18 @@ def _save_concept_rewrite_proposals(root: Path, proposals: list[dict[str, Any]])
 
 def _evaluate_concept_rewrite_verification(root: Path, proposal: dict[str, Any]) -> dict[str, Any]:
     # Lazy-resolve ``utc_now`` via ``app_compile`` so that any
-    # ``patch("aiwiki.app_utils.utc_now", ...)`` monkeypatch sites
+    # ``patch("aiwiki.utils.time.utc_now", ...)`` monkeypatch sites
     # (acceptance tests including test_acceptance_loop's _copy_case_and_fix_clock_from
     # and downstream suites) still take effect on this migrated function.
-    # Module-level ``from ..app_utils import utc_now`` would bind the
+    # Module-level ``from ..utils.time import utc_now`` would bind the
     # original callable at import time and bypass the patch.
-    from .. import app_utils as _app_utils
+    from ..utils.time import utc_now
 
     slug = str(proposal.get("slug") or "")
     target_path = str(proposal.get("target_path") or f"wiki/concepts/{slug}.md")
     expected_source_signature = str(proposal.get("source_signature") or "")
     expected_source_pages = sorted(
-        str(item)
-        for item in proposal.get("source_pages", [])
-        if isinstance(item, str) and item
+        str(item) for item in proposal.get("source_pages", []) if isinstance(item, str) and item
     )
     candidate_summary = preserved_section(str(proposal.get("candidate_markdown") or ""), "Summary", "").strip()
     snapshot = concept_page_snapshot(root, slug)
@@ -269,9 +259,7 @@ def _evaluate_concept_rewrite_verification(root: Path, proposal: dict[str, Any])
         if expected_source_signature and str(frontmatter.get("source_signature") or "") != expected_source_signature:
             issues.append("source-signature-drift")
         current_source_pages = sorted(
-            str(item)
-            for item in frontmatter.get("source_pages", [])
-            if isinstance(item, str) and item
+            str(item) for item in frontmatter.get("source_pages", []) if isinstance(item, str) and item
         )
         if current_source_pages != expected_source_pages:
             issues.append("source-pages-drift")
@@ -292,9 +280,7 @@ def _evaluate_concept_rewrite_verification(root: Path, proposal: dict[str, Any])
         issues.append("missing-machine-memory-node")
     else:
         node_source_pages = sorted(
-            str(item)
-            for item in concept_node.get("source_pages", [])
-            if isinstance(item, str) and item
+            str(item) for item in concept_node.get("source_pages", []) if isinstance(item, str) and item
         )
         if node_source_pages != expected_source_pages:
             issues.append("machine-memory-source-drift")
@@ -319,7 +305,7 @@ def _evaluate_concept_rewrite_verification(root: Path, proposal: dict[str, Any])
         "slug": slug,
         "target_path": target_path,
         "status": verification_status,
-        "checked_at": _app_utils.utc_now(),
+        "checked_at": utc_now(),
         "summary": verification_summary,
         "issues": issues,
         "quality_score": int(quality_record.get("quality_score", 0)) if isinstance(quality_record, dict) else 0,
@@ -383,19 +369,20 @@ def review_concept_rewrite(
     *,
     note: str | None = None,
 ) -> dict[str, Any]:
-    from .. import app_utils as _app_utils
+    from ..utils.time import utc_now
 
     ensure_layout(root)
     if status not in REWRITE_PROPOSAL_STATUSES:
         raise ValueError(
-            f"Unsupported concept rewrite status: {status!r}; "
-            f"expected one of: {REWRITE_PROPOSAL_STATUSES}"
+            f"Unsupported concept rewrite status: {status!r}; expected one of: {REWRITE_PROPOSAL_STATUSES}"
         )
     proposals = _load_concept_rewrite_proposals(root)
     target = _find_concept_rewrite_proposal(proposals, slug)
     if status == "accepted" and not rewrite_proposal_candidate_is_current(root, target):
-        raise RuntimeError("Concept rewrite proposal candidate is stale or invalid. Run run-compile again before accepting.")
-    reviewed_at = _app_utils.utc_now()
+        raise RuntimeError(
+            "Concept rewrite proposal candidate is stale or invalid. Run run-compile again before accepting."
+        )
+    reviewed_at = utc_now()
     target["status"] = status
     target["reviewed_at"] = reviewed_at
     target["review_note"] = note or ""
@@ -443,7 +430,7 @@ def apply_concept_rewrite(
     note: str | None = None,
     dry_run: bool = False,
 ) -> dict[str, Any]:
-    from .. import app_utils as _app_utils
+    from ..utils.time import utc_now
 
     ensure_layout(root)
     proposals = _load_concept_rewrite_proposals(root)
@@ -472,7 +459,7 @@ def apply_concept_rewrite(
         normalized_source_pages,
     )
     if dry_run:
-        previewed_at = _app_utils.utc_now()
+        previewed_at = utc_now()
         current_markdown = concept_path.read_text(encoding="utf-8", errors="replace")
         dry_run_path = rewrite_dry_run_path(root, slug)
         payload = {
@@ -532,7 +519,7 @@ def apply_concept_rewrite(
     receipt: dict[str, Any] | None = None
     try:
         atomic_write_text(concept_path, new_content)
-        applied_at = _app_utils.utc_now()
+        applied_at = utc_now()
         target["status"] = "applied"
         target["applied_at"] = applied_at
         target["last_applied_at"] = applied_at
@@ -674,7 +661,7 @@ def verify_concept_rewrite(root: Path, slug: str, *, note: str | None = None) ->
 
 @runtime_write_operation
 def revert_concept_rewrite(root: Path, slug: str, *, note: str | None = None) -> dict[str, Any]:
-    from .. import app_utils as _app_utils
+    from ..utils.time import utc_now
 
     ensure_layout(root)
     proposals = _load_concept_rewrite_proposals(root)
@@ -698,7 +685,7 @@ def revert_concept_rewrite(root: Path, slug: str, *, note: str | None = None) ->
     receipt: dict[str, Any] | None = None
     try:
         atomic_write_text(concept_path, previous_markdown.strip() + "\n")
-        reverted_at = _app_utils.utc_now()
+        reverted_at = utc_now()
         target["status"] = "accepted"
         target["reviewed_at"] = reverted_at
         target["review_note"] = note or "Reverted applied rewrite proposal."
@@ -771,7 +758,9 @@ def revert_concept_rewrite(root: Path, slug: str, *, note: str | None = None) ->
                     source_signature=str(target.get("source_signature") or ""),
                 ),
                 "llm_receipt_id": str(target.get("llm_receipt_id") or ""),
-                "llm_receipt_ref": target.get("llm_receipt_ref") if isinstance(target.get("llm_receipt_ref"), dict) else {},
+                "llm_receipt_ref": target.get("llm_receipt_ref")
+                if isinstance(target.get("llm_receipt_ref"), dict)
+                else {},
                 "autonomy_decision": {
                     "autonomy_domain": "non_core_semantic",
                     "execution_strategy": "semantic_revert",

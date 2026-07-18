@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Any
 
 from ..app_protocol import protocol_title
-from ..app_state import DEFAULT_PROTOCOL
-from ..app_utils import parse_frontmatter
+from ..state.constants import DEFAULT_PROTOCOL
+from ..utils.markdown import parse_frontmatter
 from .views import judgment_asset_summary, render_curated_page_summary
 
 
@@ -84,9 +84,7 @@ def collect_curated_relation_rows(root: Path, pages: list[dict[str, str]]) -> li
                         "source_path": page_path,
                         "source_id": str(page.get("page_id") or ""),
                         "relation": relation,
-                        "target_title": str(
-                            (resolved or {}).get("title") or reference or "unknown relation target"
-                        ),
+                        "target_title": str((resolved or {}).get("title") or reference or "unknown relation target"),
                         "target_path": str((resolved or {}).get("path") or ""),
                         "target_id": target_id,
                         "resolved": "true" if resolved else "false",

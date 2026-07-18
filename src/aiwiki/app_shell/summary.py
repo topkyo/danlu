@@ -18,9 +18,7 @@ from ..app_protocol import (
     ensure_layout,
     load_protocol_state,
 )
-from ..app_state import (
-    DEFAULT_PROTOCOL,
-    active_material_archive_entries,
+from ..app_state_paths import (
     agent_workbench_path,
     domain_pilots_path,
     execution_audit_html_path,
@@ -29,18 +27,6 @@ from ..app_state import (
     execution_center_path,
     furnace_center_html_path,
     llm_receipt_log_path,
-    load_archive_candidates_state,
-    load_compile_state,
-    load_concept_rewrite_state,
-    load_json_document,
-    load_knowledge_lifecycle_state,
-    load_llm_receipt_history,
-    load_machine_memory,
-    load_manifest,
-    load_material_archive_state,
-    load_planner_state,
-    load_query_route_telemetry,
-    load_runtime_history,
     machine_memory_graph_html_path,
     nightly_health_state_path,
     output_packs_index_path,
@@ -50,26 +36,21 @@ from ..app_state import (
     shell_summary_path,
 )
 from ..app_types import ProtocolState, ShellSummary
-from ..app_utils import (
-    parse_frontmatter,
-    relative_path,
-    strip_frontmatter,
-    tokenize,
-    utc_now,
-    write_if_changed_ignoring_timestamps,
-    write_json_document_if_changed_ignoring_generated_timestamps,
-)
+from ..compile.state import load_compile_state
 from ..config import LLMConfig
-from ..content.io import collect_recent_output_artifacts, summarize_runtime_event_for_shell
-from ..content.memory import (
-    action_priority_rank,
-    action_status_rank,
-    action_supports_low_risk_apply,
-    load_execution_receipt_history,
+from ..content.archive import (
+    active_material_archive_entries,
+    load_archive_candidates_state,
+    load_material_archive_state,
 )
+from ..content.io import collect_recent_output_artifacts, summarize_runtime_event_for_shell
+from ..content.rewrite import load_concept_rewrite_state
+from ..execution.history import load_llm_receipt_history, load_runtime_history
 from ..execution.l3_proposals import list_l3_proposals
+from ..execution.policy import load_execution_receipt_history
 from ..input_router import is_obsidian_open_link
 from ..lifecycle.aging import collect_aging_signals
+from ..lifecycle.knowledge import load_knowledge_lifecycle_state
 from ..lifecycle.status import (
     action_transition_profile,
     archive_transition_profile,
@@ -80,12 +61,30 @@ from ..lifecycle.status import (
     valid_curated_statuses,
 )
 from ..llm import classify_backend_error
+from ..memory.action_core import (
+    action_priority_rank,
+    action_status_rank,
+    action_supports_low_risk_apply,
+)
+from ..memory.state import load_machine_memory
+from ..planner.state import load_planner_state, load_query_route_telemetry
 from ..render.paths import execution_bundle_path, execution_proposal_path
 from ..render.views import (
     judgment_asset_attention_sort_key,
     judgment_asset_shell_record,
     judgment_asset_summary,
 )
+from ..state.constants import DEFAULT_PROTOCOL
+from ..state.io import load_json_document
+from ..state.manifest import load_manifest
+from ..utils.io import (
+    write_if_changed_ignoring_timestamps,
+    write_json_document_if_changed_ignoring_generated_timestamps,
+)
+from ..utils.markdown import parse_frontmatter, strip_frontmatter
+from ..utils.path import relative_path
+from ..utils.text import tokenize
+from ..utils.time import utc_now
 from .compound_suggest import build_compound_suggest
 from .controls import (
     rewrite_followup_actions_for_controls,
@@ -253,7 +252,9 @@ def _build_nightly_summary(root: Path, nightly_state: dict[str, Any]) -> dict[st
             stale_reason = "latest run-nightly LLM receipt has no matching execution receipt proof"
     execution_receipt_stale = bool(stale_reason)
     error_text = _first_non_empty(llm_receipt, ["error", "failure_reason", "primary_error", "fallback_reason"])
-    error_class = str(llm_receipt.get("error_class") or "") or (classify_backend_error(error_text) if error_text else "")
+    error_class = str(llm_receipt.get("error_class") or "") or (
+        classify_backend_error(error_text) if error_text else ""
+    )
     rerun_command = _build_llm_rerun_command(llm_receipt) if llm_receipt and llm_status != "success" else ""
     return {
         "available": nightly_health_state_path(root).exists(),
@@ -282,9 +283,7 @@ def _build_nightly_summary(root: Path, nightly_state: dict[str, Any]) -> dict[st
             "receipt_path": "" if execution_receipt_stale else str(execution_receipt.get("receipt_path") or ""),
             "target_file": "" if execution_receipt_stale else str(execution_receipt.get("target_file") or ""),
             "stale": execution_receipt_stale,
-            "stale_receipt_path": str(execution_receipt.get("receipt_path") or "")
-            if execution_receipt_stale
-            else "",
+            "stale_receipt_path": str(execution_receipt.get("receipt_path") or "") if execution_receipt_stale else "",
             "stale_reason": stale_reason,
         },
         "rerun_command": rerun_command,
@@ -642,9 +641,7 @@ def thin_shell_summary_for_persist(summary: ShellSummary) -> ShellSummary:
         "compound_suggest": dict(summary.get("compound_suggest", {}))
         if isinstance(summary.get("compound_suggest"), dict)
         else {},
-        "suggested_next_actions": _filter_live_suggested_next_actions(
-            summary.get("suggested_next_actions")
-        ),
+        "suggested_next_actions": _filter_live_suggested_next_actions(summary.get("suggested_next_actions")),
         "recent_outputs": list(summary.get("recent_outputs", []))
         if isinstance(summary.get("recent_outputs"), list)
         else [],
@@ -687,7 +684,9 @@ def _filter_shell_route_telemetry(route_telemetry: dict[str, Any]) -> dict[str, 
 def _action_review_backlog_counts(execution_controls: dict[str, Any]) -> dict[str, int]:
     actions = execution_controls.get("actions") if isinstance(execution_controls, dict) else []
     action_controls = [item for item in actions if isinstance(item, dict)] if isinstance(actions, list) else []
-    machine_memory_actions = [item for item in action_controls if bool(item.get("can_apply")) or bool(item.get("can_review"))]
+    machine_memory_actions = [
+        item for item in action_controls if bool(item.get("can_apply")) or bool(item.get("can_review"))
+    ]
     ready_actions = [
         item
         for item in action_controls
@@ -695,6 +694,7 @@ def _action_review_backlog_counts(execution_controls: dict[str, Any]) -> dict[st
         and (bool(item.get("can_apply")) or bool(item.get("can_review")) or bool(item.get("can_revert")))
     ]
     return {"machine_memory_actions": len(machine_memory_actions), "ready_actions": len(ready_actions)}
+
 
 def _counter_evidence_pages_from_memory(counter_evidence_scan: Any) -> list[dict[str, Any]]:
     """P0 — 把 memory.health.counter_evidence_scan.pages 抽成 today_feed 友好结构。
@@ -731,10 +731,7 @@ def _counter_evidence_pages_from_memory(counter_evidence_scan: Any) -> list[dict
                 "subject": str(item.get("subject") or item.get("title") or item.get("page_title") or path),
                 "summary": str(item.get("summary") or item.get("reason") or default_summary),
                 "detected_at": str(
-                    item.get("detected_at")
-                    or item.get("updated_at")
-                    or counter_evidence_scan.get("generated_at")
-                    or ""
+                    item.get("detected_at") or item.get("updated_at") or counter_evidence_scan.get("generated_at") or ""
                 ),
                 "protocol": str(item.get("protocol") or ""),
             }
@@ -755,11 +752,7 @@ def _build_metrics_history_delta(root: Path, generated_at: str) -> dict[str, Any
 
         snapshot = build_metrics_snapshot(root)
         metrics = compute_metrics(snapshot)
-        current: dict[str, float] = {
-            str(m.key): float(m.value)
-            for m in metrics
-            if isinstance(m.value, (int, float))
-        }
+        current: dict[str, float] = {str(m.key): float(m.value) for m in metrics if isinstance(m.value, (int, float))}
         if not current:
             return {"available": False, "reason": "no current metrics"}
 

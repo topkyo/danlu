@@ -5,7 +5,7 @@ for elixir lifecycle (start → distill → finalize → promote/demote/revert).
 
 Boundary: mutation only. Higher-level orchestration lives in
 ``runner/alchemy.py``. Transactional helpers (``_snapshot_file_bytes`` /
-``_restore_file_bytes``) live in ``aiwiki.app_utils``.
+``_restore_file_bytes``) live in ``aiwiki.utils.io``.
 """
 
 from __future__ import annotations
@@ -27,23 +27,18 @@ from ..app_execution import (
     find_latest_elixir_promotion_receipt,
 )
 from ..app_protocol import PROTOCOL_ELIXIR_REVIEW_DAYS
-from ..app_state import execution_receipt_history_path, load_active_corpora_state, load_output_candidates_state
-from ..app_utils import (
-    _restore_file_bytes,
-    _restore_snapshots,
-    _snapshot_file_bytes,
-    atomic_write_text,
-    next_available_stem,
-    parse_frontmatter,
-    relative_path,
-    sha256_bytes,
-    slugify,
-    strip_frontmatter,
-    utc_now,
-)
+from ..app_state_paths import execution_receipt_history_path
+from ..content.material import load_active_corpora_state
 from ..render.paths import execution_receipts_dir
+from ..utils.hash import sha256_bytes
+from ..utils.io import _restore_file_bytes, _restore_snapshots, _snapshot_file_bytes, atomic_write_text
+from ..utils.markdown import parse_frontmatter, strip_frontmatter
+from ..utils.path import next_available_stem, relative_path
+from ..utils.text import slugify
+from ..utils.time import utc_now
 from .alchemy_helpers import validate_promote_gate
 from .audit_preview import AUDIT_STREAM_PATH
+from .candidates import load_output_candidates_state
 
 ELIXIR_DIR = "wiki/elixirs"
 CANDIDATE_ELIXIR_DIR = ".aiwiki/staging/elixirs"
@@ -234,14 +229,13 @@ def _persist_receipt_transactionally(
         except Exception as rollback_exc:
             raise half_write_error_factory("receipt_rollback") from rollback_exc
         raise receipt_error_cls(
-            f"{operation}_receipt_error: receipt persistence failed for elixir {elixir_id}; "
-            "mutation rolled back"
+            f"{operation}_receipt_error: receipt persistence failed for elixir {elixir_id}; mutation rolled back"
         ) from receipt_exc
     return receipt_path
 
 
 # distill_history is stored as a JSON string in frontmatter because the simple YAML
-# helpers in app_utils do not round-trip nested list-of-maps structures reliably.
+# helpers in utils.markdown do not round-trip nested list-of-maps structures reliably.
 
 
 def list_promoted_outputs_for_corpus(root: Path, corpus_id: str) -> list[dict[str, Any]]:
@@ -267,7 +261,13 @@ def list_promoted_outputs_for_corpus(root: Path, corpus_id: str) -> list[dict[st
         artifact_ref = str(candidate.get("artifact_ref") or "")
         promoted_to = str(candidate.get("promoted_to") or "")
         if promoted_to:
-            results.append({"artifact_ref": artifact_ref, "promoted_to": promoted_to, "question": str(candidate.get("question") or "")})
+            results.append(
+                {
+                    "artifact_ref": artifact_ref,
+                    "promoted_to": promoted_to,
+                    "question": str(candidate.get("question") or ""),
+                }
+            )
     return results
 
 
@@ -419,9 +419,7 @@ def apply_legacy_elixir_migration(root: Path, *, limit: int = 50, note: str | No
             _restore_snapshots(candidate_snapshots)
         except Exception as rollback_exc:
             raise LegacyMigrationHalfWriteError(phase="mutation_rollback") from rollback_exc
-        raise LegacyMigrationApplyError(
-            "legacy_migration_error: mutation failed; rolled back"
-        ) from tx_exc
+        raise LegacyMigrationApplyError("legacy_migration_error: mutation failed; rolled back") from tx_exc
 
     # Phase 4: receipt (transactional).
     receipt_path_str = ""
@@ -551,7 +549,10 @@ def preview_superseded_elixir_cleanup(root: Path, *, limit: int = 50) -> dict[st
                 else:
                     target_path = (root / superseded_by).resolve()
                     settled_root = (root / ELIXIR_DIR).resolve()
-                    if not (target_path == settled_root or settled_root in target_path.parents) or target_path.suffix != ".md":
+                    if (
+                        not (target_path == settled_root or settled_root in target_path.parents)
+                        or target_path.suffix != ".md"
+                    ):
                         status = "candidate_conflict"
                         reason = f"superseded_by outside settled elixir plane: {superseded_by}"
                         cleanup_supported = False
@@ -661,9 +662,7 @@ def apply_superseded_elixir_cleanup(root: Path, *, limit: int = 50, note: str | 
             _restore_snapshots(candidate_snapshots)
         except Exception as rollback_exc:
             raise SupersededCleanupHalfWriteError(phase="mutation_rollback") from rollback_exc
-        raise SupersededCleanupApplyError(
-            "superseded_cleanup_error: mutation failed; rolled back"
-        ) from tx_exc
+        raise SupersededCleanupApplyError("superseded_cleanup_error: mutation failed; rolled back") from tx_exc
 
     # Phase 4: receipt (transactional).
     receipt_path_str = ""
@@ -756,17 +755,19 @@ def _validate_source_outputs(root: Path, refs: list[str], *, allowed: set[str]) 
                 raise ValueError(f"source output missing: {ref}")
             frontmatter = _parse_elixir_frontmatter(path)
             if str(frontmatter.get("elixir_state") or "") != "settled":
-                raise ValueError(f"引用金丹 {ref} 当前状态为 {frontmatter.get('elixir_state') or 'unknown'}，只能引用 settled 金丹")
+                raise ValueError(
+                    f"引用金丹 {ref} 当前状态为 {frontmatter.get('elixir_state') or 'unknown'}，只能引用 settled 金丹"
+                )
             continue
         raise ValueError(f"source output must be under wiki/derived/ or wiki/elixirs/: {ref}")
 
 
 def _settled_path(root: Path, elixir_id: str) -> Path:
-    return (root / ELIXIR_DIR / f"{elixir_id}.md")
+    return root / ELIXIR_DIR / f"{elixir_id}.md"
 
 
 def _candidate_path(root: Path, elixir_id: str) -> Path:
-    return (root / CANDIDATE_ELIXIR_DIR / f"{elixir_id}.md")
+    return root / CANDIDATE_ELIXIR_DIR / f"{elixir_id}.md"
 
 
 def _resolve_elixir_id(root: Path, elixir_id: str) -> str:
@@ -962,19 +963,21 @@ def _scaffold_elixir_markdown(
         "updated_at": updated_at,
         "distill_history_json": json.dumps(distill_history or [], ensure_ascii=False),
     }
-    body = body or "\n".join([
-        "# Elixir",
-        "",
-        "## Thesis",
-        "- Pending refinement.",
-        "",
-        "## Evidence",
-        "- Pending refinement.",
-        "",
-        "## Open Questions",
-        "- Pending refinement.",
-        "",
-    ])
+    body = body or "\n".join(
+        [
+            "# Elixir",
+            "",
+            "## Thesis",
+            "- Pending refinement.",
+            "",
+            "## Evidence",
+            "- Pending refinement.",
+            "",
+            "## Open Questions",
+            "- Pending refinement.",
+            "",
+        ]
+    )
     return _render_inserted_frontmatter(frontmatter) + body.rstrip() + "\n"
 
 
@@ -982,7 +985,9 @@ def _elixir_body_has_pending_refinement(body: str) -> bool:
     return bool(_PENDING_REFINEMENT_RE.search(body))
 
 
-def _first_section_lines(markdown: str, headings: tuple[str, ...], *, fallback: list[str], max_lines: int = 6) -> list[str]:
+def _first_section_lines(
+    markdown: str, headings: tuple[str, ...], *, fallback: list[str], max_lines: int = 6
+) -> list[str]:
     for heading in headings:
         match = re.search(rf"(?ms)^## {re.escape(heading)}\n(.*?)(?=^## |\Z)", markdown)
         if not match:
@@ -1036,19 +1041,21 @@ def _seed_elixir_body_from_sources(root: Path, *, topic: str, source_outputs: li
         fallback=["- Review counter evidence and refresh this elixir before relying on it for a stronger claim."],
         max_lines=5,
     )
-    return "\n".join([
-        "# Elixir",
-        "",
-        "## Thesis",
-        *thesis,
-        "",
-        "## Evidence",
-        *evidence,
-        "",
-        "## Open Questions",
-        *questions,
-        "",
-    ])
+    return "\n".join(
+        [
+            "# Elixir",
+            "",
+            "## Thesis",
+            *thesis,
+            "",
+            "## Evidence",
+            *evidence,
+            "",
+            "## Open Questions",
+            *questions,
+            "",
+        ]
+    )
 
 
 def _render_inserted_frontmatter(frontmatter: dict[str, Any]) -> str:
@@ -1181,7 +1188,9 @@ def start_elixir(
     }
 
 
-def distill_elixir(root: Path, elixir_id: str, *, question: str, include_elixir_ids: list[str] | None = None) -> dict[str, Any]:
+def distill_elixir(
+    root: Path, elixir_id: str, *, question: str, include_elixir_ids: list[str] | None = None
+) -> dict[str, Any]:
     normalized_id = _resolve_elixir_id(root, elixir_id)
     source_path, frontmatter = _read_elixir_anywhere(root, normalized_id)
     if source_path.resolve().parent == (root / ELIXIR_DIR).resolve():
@@ -1232,7 +1241,15 @@ def distill_elixir(root: Path, elixir_id: str, *, question: str, include_elixir_
     history = frontmatter.get("distill_history") if isinstance(frontmatter.get("distill_history"), list) else []
     history = list(history)
     history.append({"iteration": iteration, "question": question, "at": utc_now()})
-    frontmatter.update({"iteration": iteration, "derived_from": merged, "elixir_state": "distilling", "updated_at": utc_now(), "distill_history": history})
+    frontmatter.update(
+        {
+            "iteration": iteration,
+            "derived_from": merged,
+            "elixir_state": "distilling",
+            "updated_at": utc_now(),
+            "distill_history": history,
+        }
+    )
     original = source_path.read_text(encoding="utf-8", errors="replace")
     body = original.split("---", 2)[-1]
     body = body.lstrip("\n")
@@ -1318,9 +1335,7 @@ def _default_elixir_review_after(*, protocol: str) -> str:
     Returns YYYY-MM-DD (UTC). Falls back to the general window when the
     protocol is unknown.
     """
-    days = PROTOCOL_ELIXIR_REVIEW_DAYS.get(
-        protocol.strip(), PROTOCOL_ELIXIR_REVIEW_DAYS["general"]
-    )
+    days = PROTOCOL_ELIXIR_REVIEW_DAYS.get(protocol.strip(), PROTOCOL_ELIXIR_REVIEW_DAYS["general"])
     return (datetime.now(timezone.utc) + timedelta(days=days)).date().isoformat()
 
 
@@ -1359,11 +1374,7 @@ def promote_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> di
     validate_promote_gate(frontmatter)
 
     counter_evidence_items = [str(item).strip() for item in frontmatter.get("counter_evidence", [])]
-    counter_evidence_provenance = (
-        "none_found"
-        if counter_evidence_items == ["NONE_FOUND"]
-        else "real"
-    )
+    counter_evidence_provenance = "none_found" if counter_evidence_items == ["NONE_FOUND"] else "real"
 
     original = candidate_path.read_text(encoding="utf-8", errors="replace")
     body = original.split("---", 2)[-1].lstrip("\n")

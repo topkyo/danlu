@@ -6,9 +6,11 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .app_utils import atomic_write_text, relative_path, utc_now
 from .drop import drop_note
 from .execution.ask import ask_question
+from .utils.io import atomic_write_text
+from .utils.path import relative_path
+from .utils.time import utc_now
 
 QUEUE_DIR = ".aiwiki/queue"
 QUEUE_VERSION = 1
@@ -69,7 +71,9 @@ def drain_vault_queue(root: Path, *, limit: int = 5, execute: bool = False) -> d
         try:
             result = _execute_queue_item(root, claimed)
             receipt = _write_queue_receipt(root, queue_path, claimed, status="done", result=result)
-            final_item = _update_queue_item(root, queue_path, claimed, status="done", receipt_path=receipt["receipt_path"])
+            final_item = _update_queue_item(
+                root, queue_path, claimed, status="done", receipt_path=receipt["receipt_path"]
+            )
             processed.append(
                 {
                     "id": final_item["id"],
@@ -83,7 +87,9 @@ def drain_vault_queue(root: Path, *, limit: int = 5, execute: bool = False) -> d
         except Exception as exc:  # explicit per-item failure; continue draining remaining queue items.
             message = str(exc) or exc.__class__.__name__
             receipt = _write_queue_receipt(root, queue_path, claimed, status="failed", error=message)
-            final_item = _update_queue_item(root, queue_path, claimed, status="failed", error=message, receipt_path=receipt["receipt_path"])
+            final_item = _update_queue_item(
+                root, queue_path, claimed, status="failed", error=message, receipt_path=receipt["receipt_path"]
+            )
             processed.append(
                 {
                     "id": final_item["id"],
@@ -172,10 +178,17 @@ def _execute_queue_item(root: Path, item: dict[str, Any]) -> dict[str, Any]:
         return _execute_note_item(root, item)
     if kind == "ask":
         return _execute_ask_item(root, item)
-    if kind == "drop" and _queue_argv(item)[:2] and _queue_argv(item)[0] == "drop" and _queue_argv(item)[1] in {"markdown", "md", "note"}:
+    if (
+        kind == "drop"
+        and _queue_argv(item)[:2]
+        and _queue_argv(item)[0] == "drop"
+        and _queue_argv(item)[1] in {"markdown", "md", "note"}
+    ):
         return _execute_note_item(root, item)
     if kind == "drop":
-        raise ValueError("Vault queue drop requires desktop full runtime for this material kind; no execution was performed.")
+        raise ValueError(
+            "Vault queue drop requires desktop full runtime for this material kind; no execution was performed."
+        )
     raise ValueError(f"Unsupported vault queue kind: {kind or 'missing'}")
 
 
@@ -194,7 +207,9 @@ def _execute_note_item(root: Path, item: dict[str, Any]) -> dict[str, Any]:
         title = parsed.get("title", title)
         note_kind = parsed.get("kind", note_kind)
         allow_sensitive = parsed.get("allow_sensitive", allow_sensitive)
-    result = drop_note(root, source or None, title=title, text=text or None, kind=note_kind, allow_sensitive=allow_sensitive)
+    result = drop_note(
+        root, source or None, title=title, text=text or None, kind=note_kind, allow_sensitive=allow_sensitive
+    )
     return {"action": "drop-note", **result}
 
 

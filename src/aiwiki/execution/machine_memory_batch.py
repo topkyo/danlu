@@ -9,9 +9,9 @@ used to live in ``aiwiki.app_compile``:
 - ``_build_batch_id``
 - ``_load_latest_action_apply_batch_receipt``
 
-Dependencies come from true owner modules (``render.paths``, ``app_utils``,
-sibling execution owners). ``utc_now`` is resolved lazily via ``app_utils``
-so ``patch("aiwiki.app_utils.utc_now", ...)`` remains effective.
+Dependencies come from true owner modules (``render.paths``, ``utils.time``,
+sibling execution owners). ``utc_now`` is resolved lazily via ``utils.time``
+so ``patch("aiwiki.utils.time.utc_now", ...)`` remains effective.
 """
 
 from __future__ import annotations
@@ -24,21 +24,19 @@ from ..app_execution import (
     write_execution_batch_receipt_document,
 )
 from ..app_protocol import ensure_layout
-from ..app_state import (
-    append_runtime_history,
-    execution_batch_receipt_path,
-    load_json_document_strict,
-    load_machine_memory_action_state_strict,
-    load_runtime_history_strict,
-    runtime_history_path,
-)
-from ..app_utils import relative_path, runtime_write_operation, slugify
-from ..content.memory import action_supports_low_risk_apply
+from ..app_state_paths import execution_batch_receipt_path, runtime_history_path
+from ..memory.action_core import action_supports_low_risk_apply
+from ..memory.action_state import load_machine_memory_action_state_strict
 from ..render.paths import append_wiki_log
+from ..state.io import load_json_document_strict
+from ..utils.io import runtime_write_operation
+from ..utils.path import relative_path
+from ..utils.text import slugify
 from . import machine_memory_actions as _machine_memory_actions
 from . import review as _review
 from .alchemy import _restore_file_bytes, _snapshot_file_bytes
 from .audit_preview import AUDIT_STREAM_PATH
+from .history import append_runtime_history, load_runtime_history_strict
 
 
 class MachineMemoryActionApplyBatchReceiptError(RuntimeError):
@@ -50,10 +48,10 @@ class MachineMemoryActionApplyBatchReceiptHalfWriteError(RuntimeError):
 
 
 def _build_batch_id(prefix: str, subjects: list[str]) -> str:
-    from .. import app_utils as _app_utils
+    from ..utils.time import utc_now
 
     first_subject = next((subject for subject in subjects if subject), "item")
-    return f"{prefix}-{_app_utils.utc_now()}-{slugify(first_subject)}"
+    return f"{prefix}-{utc_now()}-{slugify(first_subject)}"
 
 
 def _load_latest_action_apply_batch_receipt(root: Path, batch_id: str | None) -> dict[str, Any]:
@@ -90,7 +88,7 @@ def review_pages_batch(
     note: str | None = None,
     confidence: str | None = None,
 ) -> dict[str, Any]:
-    from .. import app_utils as _app_utils
+    from ..utils.time import utc_now
 
     ensure_layout(root)
     ordered_pages: list[str] = []
@@ -103,11 +101,8 @@ def review_pages_batch(
         ordered_pages.append(normalized)
     if not ordered_pages:
         raise ValueError("Batch review requires at least one page.")
-    items = [
-        _review.review_page(root, page, status, note=note, confidence=confidence)
-        for page in ordered_pages
-    ]
-    generated_at = _app_utils.utc_now()
+    items = [_review.review_page(root, page, status, note=note, confidence=confidence) for page in ordered_pages]
+    generated_at = utc_now()
     batch_id = _build_batch_id("review-page-batch", ordered_pages)
     receipt = build_execution_batch_receipt(
         root,
@@ -160,7 +155,7 @@ def apply_machine_memory_actions_batch(
     note: str | None = None,
     dry_run: bool = False,
 ) -> dict[str, Any]:
-    from .. import app_utils as _app_utils
+    from ..utils.time import utc_now
 
     ensure_layout(root)
     ordered_ids: list[str] = []
@@ -199,7 +194,7 @@ def apply_machine_memory_actions_batch(
             bundle_path=str(preview.get("bundle_path") or ""),
         )
         items.append(applied)
-    generated_at = _app_utils.utc_now()
+    generated_at = utc_now()
     batch_id = _build_batch_id(operation, ordered_ids)
     receipt = build_execution_batch_receipt(
         root,
@@ -277,7 +272,7 @@ def revert_machine_memory_action_batch(
     batch_id: str | None = None,
     note: str | None = None,
 ) -> dict[str, Any]:
-    from .. import app_utils as _app_utils
+    from ..utils.time import utc_now
 
     ensure_layout(root)
     target_receipt = _load_latest_action_apply_batch_receipt(root, batch_id)
@@ -297,7 +292,7 @@ def revert_machine_memory_action_batch(
         _machine_memory_actions.revert_machine_memory_action(root, action_id, note=note)
         for action_id in reversed(action_ids)
     ]
-    generated_at = _app_utils.utc_now()
+    generated_at = utc_now()
     revert_batch_id = _build_batch_id("action-revert-batch", action_ids)
     receipt = build_execution_batch_receipt(
         root,

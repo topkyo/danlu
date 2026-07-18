@@ -14,8 +14,8 @@ from pathlib import Path
 from typing import Any
 
 from .app_protocol import ensure_layout
-from .app_utils import render_json_document, write_if_changed
 from .execution.runtime_surfaces import shell_status
+from .utils.io import render_json_document, write_if_changed
 from .vault_obsidian_graph import DEFAULT_OBSIDIAN_GRAPH
 
 PLUGIN_ID = "furnace-product-shell"
@@ -153,6 +153,7 @@ USER_HIDDEN_FOLDER_PATHS: tuple[str, ...] = (
     "output/review",
     "output/slides",
 )
+
 
 def _folder_label_selectors(path: str) -> tuple[str, ...]:
     return (
@@ -309,7 +310,7 @@ def _default_workspace_document() -> dict[str, Any]:
                                 "type": "markdown",
                             },
                             "type": "leaf",
-                        }
+                        },
                     ],
                     "currentTab": 0,
                     "id": "main-tabs",
@@ -396,8 +397,8 @@ def _render_vault_readme(runtime_root: Path) -> str:
                 "```bash",
                 "./scripts/aiwiki-launcher.sh shell-status",
                 "./scripts/aiwiki-launcher.sh compile",
-                "./scripts/aiwiki-launcher.sh drop markdown --title \"晨间观察\" --text \"记录今天的新线索\"",
-                "./scripts/aiwiki-launcher.sh run-ask-submit \"今天最重要的变化是什么？\" --format report",
+                './scripts/aiwiki-launcher.sh drop markdown --title "晨间观察" --text "记录今天的新线索"',
+                './scripts/aiwiki-launcher.sh run-ask-submit "今天最重要的变化是什么？" --format report',
                 "./scripts/aiwiki-launcher.sh nightly",
                 "```",
                 "",
@@ -473,7 +474,7 @@ def _render_vault_home() -> str:
                 "```bash",
                 "./scripts/aiwiki-launcher.sh shell-status",
                 "./scripts/aiwiki-launcher.sh compile",
-                "./scripts/aiwiki-launcher.sh run-ask-submit \"总结今天的关键变化\" --format report",
+                './scripts/aiwiki-launcher.sh run-ask-submit "总结今天的关键变化" --format report',
                 "./scripts/aiwiki-launcher.sh nightly",
                 "```",
                 "",
@@ -528,7 +529,7 @@ def _render_launcher_script(runtime_root: Path) -> str:
             '    [ -n "$line" ] || continue',
             '    export "$line"',
             "  done < <(",
-            '    python3 - "$PLUGIN_DATA" <<\'PY\'',
+            "    python3 - \"$PLUGIN_DATA\" <<'PY'",
             "import json",
             "import sys",
             "from pathlib import Path",
@@ -548,11 +549,11 @@ def _render_launcher_script(runtime_root: Path) -> str:
             '    ("anthropic-api", "claude-sonnet-4-20250514", "llmAnthropicApiKey", "AIWIKI_ANTHROPIC_API_KEY", "llmAnthropicBaseUrl", "AIWIKI_ANTHROPIC_BASE_URL"),',
             '    ("openai-api", "gpt-4.1-mini", "llmCustomOpenaiApiKey", "AIWIKI_LLM_API_KEY", "llmCustomOpenaiBaseUrl", "AIWIKI_LLM_BASE_URL"),',
             "]",
-            "profile_model = \"\"",
-            "key_setting = \"\"",
-            "key_env = \"\"",
-            "base_setting = \"\"",
-            "base_env = \"\"",
+            'profile_model = ""',
+            'key_setting = ""',
+            'key_env = ""',
+            'base_setting = ""',
+            'base_env = ""',
             "default_models = []",
             "for item in profiles:",
             "    item_backend, item_model, item_key_setting, item_key_env, item_base_setting, item_base_env = item",
@@ -569,16 +570,16 @@ def _render_launcher_script(runtime_root: Path) -> str:
             "    configured_model = profile_model",
             'exports = [("AIWIKI_LLM_BACKEND", backend), ("AIWIKI_LLM_MODEL", configured_model or profile_model)]',
             "if key_setting and key_env:",
-            "    exports.append((key_env, settings.get(key_setting, \"\")))",
+            '    exports.append((key_env, settings.get(key_setting, "")))',
             "if base_setting and base_env:",
-            "    exports.append((base_env, settings.get(base_setting, \"\")))",
+            '    exports.append((base_env, settings.get(base_setting, "")))',
             "for env_name, value in exports:",
             "    if isinstance(value, str) and value.strip():",
             '        print(env_name + "=" + value.strip())',
             "PY",
             "  )",
             "fi",
-            'if command -v aiwiki >/dev/null 2>&1; then',
+            "if command -v aiwiki >/dev/null 2>&1; then",
             '  exec aiwiki --root "$VAULT_ROOT" "$@"',
             "fi",
             'export PYTHONPATH="$RUNTIME_ROOT/src${PYTHONPATH:+:$PYTHONPATH}"',

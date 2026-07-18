@@ -26,9 +26,7 @@ from ..app_protocol import (
     ensure_layout,
     load_protocol_state,
 )
-from ..app_state import (
-    DEFAULT_PROTOCOL,
-    active_material_archive_entries,
+from ..app_state_paths import (
     agent_workbench_path,
     domain_pilots_path,
     execution_audit_html_path,
@@ -37,18 +35,6 @@ from ..app_state import (
     execution_center_path,
     furnace_center_html_path,
     llm_receipt_log_path,
-    load_archive_candidates_state,
-    load_compile_state,
-    load_concept_rewrite_state,
-    load_json_document,
-    load_knowledge_lifecycle_state,
-    load_llm_receipt_history,
-    load_machine_memory,
-    load_manifest,
-    load_material_archive_state,
-    load_planner_state,
-    load_query_route_telemetry,
-    load_runtime_history,
     machine_memory_graph_html_path,
     nightly_health_state_path,
     output_packs_index_path,
@@ -58,29 +44,31 @@ from ..app_state import (
     shell_summary_path,
 )
 from ..app_types import ProtocolState, ShellSummary
-from ..app_utils import (
-    parse_frontmatter,
-    relative_path,
-    strip_frontmatter,
-    tokenize,
-    utc_now,
-    write_if_changed_ignoring_timestamps,
-    write_json_document_if_changed_ignoring_generated_timestamps,
-)
+from ..compile.state import load_compile_state
 from ..config import LLMConfig
+from ..content.archive import (
+    active_material_archive_entries,
+    load_archive_candidates_state,
+    load_material_archive_state,
+)
 from ..content.io import (
     collect_recent_output_artifacts,
     summarize_runtime_event_for_shell,
 )
-from ..content.memory import (
+from ..content.rewrite import load_concept_rewrite_state
+from ..execution.history import load_llm_receipt_history, load_runtime_history
+from ..execution.l3_proposals import list_l3_proposals
+from ..execution.policy import load_execution_receipt_history
+from ..input_router import is_obsidian_open_link
+from ..lifecycle.knowledge import load_knowledge_lifecycle_state
+from ..llm import classify_backend_error
+from ..memory.action_core import (
     action_priority_rank,
     action_status_rank,
     action_supports_low_risk_apply,
-    load_execution_receipt_history,
 )
-from ..execution.l3_proposals import list_l3_proposals
-from ..input_router import is_obsidian_open_link
-from ..llm import classify_backend_error
+from ..memory.state import load_machine_memory
+from ..planner.state import load_planner_state, load_query_route_telemetry
 from ..render.paths import (
     execution_bundle_path,
     execution_proposal_path,
@@ -90,6 +78,17 @@ from ..render.views import (
     judgment_asset_shell_record,
     judgment_asset_summary,
 )
+from ..state.constants import DEFAULT_PROTOCOL
+from ..state.io import load_json_document
+from ..state.manifest import load_manifest
+from ..utils.io import (
+    write_if_changed_ignoring_timestamps,
+    write_json_document_if_changed_ignoring_generated_timestamps,
+)
+from ..utils.markdown import parse_frontmatter, strip_frontmatter
+from ..utils.path import relative_path
+from ..utils.text import tokenize
+from ..utils.time import utc_now
 from .helpers import (
     LLM_PRIMARY_HEALTH_EVENTS,
     _build_llm_rerun_command,
@@ -109,6 +108,7 @@ def shell_recent_runs(root: Path, *, limit: int = 8) -> list[dict[str, Any]]:
         if len(runs) >= limit:
             break
     return runs
+
 
 def shell_latest_shell_sync_run(root: Path) -> dict[str, Any]:
     """Return a metadata snapshot of the on-disk shell-summary.json.
@@ -163,6 +163,7 @@ def shell_latest_shell_sync_run(root: Path) -> dict[str, Any]:
         "active_protocol": str(document.get("active_protocol") or ""),
     }
 
+
 def shell_recent_receipts(root: Path, *, limit: int = 8) -> list[dict[str, Any]]:
     receipts = load_execution_receipt_history(root)
     summaries = [
@@ -181,6 +182,7 @@ def shell_recent_receipts(root: Path, *, limit: int = 8) -> list[dict[str, Any]]
         if not is_obsidian_open_link(str(receipt.get("question") or ""))
     ]
     return summaries[:limit]
+
 
 def shell_latest_llm_run(root: Path) -> dict[str, Any]:
     receipt = _latest_llm_receipt(root, preferred_events=LLM_PRIMARY_HEALTH_EVENTS)
@@ -232,6 +234,7 @@ def shell_latest_llm_run(root: Path) -> dict[str, Any]:
         "rerun_command": _build_llm_rerun_command(receipt),
         "target": target,
     }
+
 
 def shell_llm_health(root: Path, llm_status: dict[str, Any], *, latest_llm_run: dict[str, Any]) -> dict[str, Any]:
     configured = bool(llm_status.get("configured"))
@@ -344,6 +347,7 @@ def shell_llm_health(root: Path, llm_status: dict[str, Any], *, latest_llm_run: 
         "route_drift_reason": "Current route changed since the last recorded ask." if route_drift else "",
     }
 
+
 def shell_search_results(
     root: Path,
     query: str,
@@ -410,6 +414,7 @@ def shell_search_results(
         "results": results[:limit],
     }
 
+
 def shell_drift_warnings(
     memory: dict[str, Any],
     *,
@@ -470,6 +475,7 @@ def shell_drift_warnings(
                 }
             )
     return warnings[:8]
+
 
 _BATCH_HINT_THRESHOLD = 3
 _BATCH_HINT_MAX = 3
@@ -620,6 +626,7 @@ def shell_suggested_next_actions(
     remaining = max(0, 8 - len(batch_hints))
     return list(batch_hints) + deduped[:remaining]
 
+
 def shell_dashboard(
     summary: ShellSummary,
     *,
@@ -633,9 +640,17 @@ def shell_dashboard(
     recent_receipts = summary.get("recent_receipts", [])
     return {
         "cards": [
-            {"id": "pending-review", "label": "Pending review", "value": review_counts.get("pending_decisions", 0) + review_counts.get("pending_judgments", 0)},
+            {
+                "id": "pending-review",
+                "label": "Pending review",
+                "value": review_counts.get("pending_decisions", 0) + review_counts.get("pending_judgments", 0),
+            },
             {"id": "ready-actions", "label": "Ready actions", "value": review_counts.get("ready_actions", 0)},
-            {"id": "planner-blocked", "label": "Planner blocked", "value": planner.get("counts", {}).get("blocked", 0) if isinstance(planner, dict) else 0},
+            {
+                "id": "planner-blocked",
+                "label": "Planner blocked",
+                "value": planner.get("counts", {}).get("blocked", 0) if isinstance(planner, dict) else 0,
+            },
             {"id": "l3-proposals", "label": "L3 proposals", "value": review_counts.get("l3_proposal_attention", 0)},
             {"id": "drift-warnings", "label": "Drift warnings", "value": len(drift_warnings)},
         ],

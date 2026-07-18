@@ -6,10 +6,9 @@ Owns the two top-level runtime orchestrators previously defined inline in
 - ``nightly_health``: deterministic compile + lint + health state write.
 - ``shell_status``: build and persist the product-shell summary.
 
-These functions stay importable as ``aiwiki.app_compile.nightly_health`` and
-``aiwiki.app_compile.shell_status`` through the PEP 562 compat seam at the
-bottom of ``app_compile.py`` (``_LAZY_OWNERS`` now points these two names at
-this module). No caller needs to change.
+Callers should import directly from this module; ``app_compile`` no longer
+re-exports these names (the historical PEP 562 ``_LAZY_OWNERS`` seam was
+removed once compat callers converged on direct owner imports).
 """
 
 from __future__ import annotations
@@ -20,9 +19,10 @@ from typing import Any
 from ..app_linting import lint_wiki, write_nightly_health
 from ..app_protocol import ensure_layout
 from ..app_shell import build_shell_summary, write_shell_summary
-from ..app_state import nightly_health_state_path
-from ..app_utils import relative_path, runtime_write_lock, runtime_write_operation
+from ..app_state_paths import nightly_health_state_path
 from ..compile import compile_wiki
+from ..utils.io import runtime_write_lock, runtime_write_operation
+from ..utils.path import relative_path
 
 
 def nightly_health(root: Path) -> dict[str, Any]:

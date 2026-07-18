@@ -22,7 +22,9 @@ FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures" / "acceptance" / "M6
 REFRESH = os.environ.get("AIWIKI_ACCEPTANCE_REFRESH") == "1"
 
 
-def _load_jsonl(path: Path) -> list[dict[str, object]]:  # pragma: no cover - exercised by explicit pytest acceptance gate
+def _load_jsonl(
+    path: Path,
+) -> list[dict[str, object]]:  # pragma: no cover - exercised by explicit pytest acceptance gate
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
@@ -85,7 +87,9 @@ def _should_normalize(rel: str) -> bool:  # pragma: no cover - explicit gate
     return any(rel.endswith(suffix) for suffix in _NORMALIZED_JSONL_SUFFIXES)
 
 
-def _write_or_compare(path: Path, actual: bytes) -> None:  # pragma: no cover - exercised by explicit pytest acceptance gate
+def _write_or_compare(
+    path: Path, actual: bytes
+) -> None:  # pragma: no cover - exercised by explicit pytest acceptance gate
     if REFRESH:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(actual)
@@ -93,7 +97,9 @@ def _write_or_compare(path: Path, actual: bytes) -> None:  # pragma: no cover - 
     assert actual == _load_golden(path)
 
 
-def _assert_files_byte_equal(root: Path, expected_dir: Path, relpaths: list[str]) -> None:  # pragma: no cover - explicit gate
+def _assert_files_byte_equal(
+    root: Path, expected_dir: Path, relpaths: list[str]
+) -> None:  # pragma: no cover - explicit gate
     for rel in relpaths:
         golden = expected_dir / "files" / f"{rel.replace('/', '__')}.golden"
         actual = (root / rel).read_bytes()
@@ -106,8 +112,7 @@ def _assert_files_byte_equal(root: Path, expected_dir: Path, relpaths: list[str]
                 continue
             golden_bytes = _normalize_jsonl_dynamic_fields(_load_golden(golden))
             assert actual_for_compare == golden_bytes, (
-                f"normalized JSONL byte mismatch at {rel}\n"
-                f"actual={actual_for_compare!r}\nexpected={golden_bytes!r}"
+                f"normalized JSONL byte mismatch at {rel}\nactual={actual_for_compare!r}\nexpected={golden_bytes!r}"
             )
             continue
         _write_or_compare(golden, actual)
@@ -377,7 +382,9 @@ def test_replay_idempotency_and_presentation_acceptance(  # pragma: no cover - e
     _write_or_compare(stdout_dir / "pass1-02-planner-log-replay.json", out2)
     _write_or_compare(stdout_dir / "pass1-03-alchemy-auto-dry-run.json", out3)
     _write_or_compare(stdout_dir / "pass1-04-today.txt", out4)
-    _assert_files_byte_equal(vault, case / "expected", [".aiwiki/state/signals.jsonl", ".aiwiki/state/planner-log.jsonl"])
+    _assert_files_byte_equal(
+        vault, case / "expected", [".aiwiki/state/signals.jsonl", ".aiwiki/state/planner-log.jsonl"]
+    )
     if REFRESH:
         pytest.fail("Goldens refreshed; rerun without AIWIKI_ACCEPTANCE_REFRESH to verify.")
 
@@ -504,7 +511,9 @@ def test_heavy_after_llm_invariant(  # pragma: no cover - explicit pytest accept
         "alchemy-propose-generated",
         "alchemy-lane-completed",
     ]
-    heavy_events = [record.get("event_type") for record in audit_events if record.get("event_type") in heavy_event_types]
+    heavy_events = [
+        record.get("event_type") for record in audit_events if record.get("event_type") in heavy_event_types
+    ]
     assert heavy_events == heavy_event_types, f"audit envelope mismatch: {heavy_events}"
 
     audit_text = (vault / ".aiwiki/state/audit.jsonl").read_text(encoding="utf-8")
@@ -514,7 +523,9 @@ def test_heavy_after_llm_invariant(  # pragma: no cover - explicit pytest accept
     assert "l3-proposal-apply" not in audit_text
 
     for record in primitive_receipts:
-        assert record.get("llm_invoked", False) is False, f"heavy primitive receipt should NOT mark llm_invoked: {record}"
+        assert record.get("llm_invoked", False) is False, (
+            f"heavy primitive receipt should NOT mark llm_invoked: {record}"
+        )
 
     _assert_files_byte_equal(
         vault,
@@ -594,9 +605,7 @@ def test_universal_input_routing(  # pragma: no cover - explicit pytest acceptan
     bare_out = _run_cli(vault, ["drop", f"note: {bare_source}"])
     bare_payload = json.loads(bare_out)
 
-    _, typed_vault = _copy_case_and_fix_clock_from(
-        "M6.2", "case_universal_input", tmp_path / "typed", monkeypatch
-    )
+    _, typed_vault = _copy_case_and_fix_clock_from("M6.2", "case_universal_input", tmp_path / "typed", monkeypatch)
     typed_source = str(typed_vault / "inputs" / "universal-note.md")
     typed_out = _run_cli(typed_vault, ["drop", "note", typed_source])
     typed_payload = json.loads(typed_out)
@@ -648,8 +657,8 @@ def test_file_back_rejects_non_judgment_kind(  # pragma: no cover - explicit pyt
 
 def test_file_back_rejects_path_outside_vault(tmp_path: Path) -> None:
     """Vault path safety: file_back must reject artifacts outside the workspace root."""
-    from aiwiki.app_utils import PathOutsideWorkspaceError
     from aiwiki.execution.ask import file_back
+    from aiwiki.utils.security import PathOutsideWorkspaceError
 
     vault = tmp_path / "vault"
     outside = tmp_path / "outside-report.md"
@@ -661,8 +670,8 @@ def test_file_back_rejects_path_outside_vault(tmp_path: Path) -> None:
 
 def test_review_page_rejects_path_outside_vault(tmp_path: Path) -> None:
     """Vault path safety: review_page must reject targets outside the workspace root."""
-    from aiwiki.app_utils import PathOutsideWorkspaceError
     from aiwiki.execution.review import review_page
+    from aiwiki.utils.security import PathOutsideWorkspaceError
 
     vault = tmp_path / "vault"
     outside = tmp_path / "outside-judgment.md"
@@ -800,7 +809,12 @@ def test_light_primitives_compile_lint_acceptance(  # pragma: no cover - explici
         "alchemy-lane-primitive",
         "alchemy-lane-completed",
     ]
-    assert [record["subject"]["id"] for record in audit] == ["light:all", "light:all:compile", "light:all:lint", "light:all"]
+    assert [record["subject"]["id"] for record in audit] == [
+        "light:all",
+        "light:all:compile",
+        "light:all:lint",
+        "light:all",
+    ]
     llm_receipts = _load_jsonl(vault / ".aiwiki/logs/llm-receipts.jsonl")
     assert len(llm_receipts) == 1 and llm_receipts[0]["status"] == "failed"
 
@@ -851,12 +865,21 @@ def test_light_primitives_nightly_acceptance(  # pragma: no cover - explicit pyt
     assert [record["subject"]["id"] for record in audit] == ["light:all", "", "light:all:nightly", "light:all"]
     assert len(_load_jsonl(vault / ".aiwiki/logs/llm-receipts.jsonl")) == 1
 
-    b2a_receipts = _load_jsonl(FIXTURE_ROOT / "case_light_primitives_compile_lint/expected/files/.aiwiki__state__execution-receipts.jsonl.golden")
-    b2a_audit = _load_jsonl(FIXTURE_ROOT / "case_light_primitives_compile_lint/expected/files/.aiwiki__state__audit.jsonl.golden")
+    b2a_receipts = _load_jsonl(
+        FIXTURE_ROOT
+        / "case_light_primitives_compile_lint/expected/files/.aiwiki__state__execution-receipts.jsonl.golden"
+    )
+    b2a_audit = _load_jsonl(
+        FIXTURE_ROOT / "case_light_primitives_compile_lint/expected/files/.aiwiki__state__audit.jsonl.golden"
+    )
     assert set(b2a_receipts[0]) == set(receipts[0])
     stable = {"kind", "generated_by", "operation", "audit_stream", "audit_event", "lane", "scope", "status", "version"}
     assert {key: b2a_receipts[0][key] for key in stable} == {key: receipts[0][key] for key in stable}
-    assert {record["event_type"] for record in b2a_audit} == {"alchemy-lane-started", "alchemy-lane-primitive", "alchemy-lane-completed"}
+    assert {record["event_type"] for record in b2a_audit} == {
+        "alchemy-lane-started",
+        "alchemy-lane-primitive",
+        "alchemy-lane-completed",
+    }
     assert {record["event_type"] for record in audit if record["event_type"] != "nightly"} == {
         "alchemy-lane-started",
         "alchemy-lane-primitive",
@@ -966,9 +989,9 @@ def test_elixir_stage3_compounding(  # pragma: no cover - explicit pytest accept
     if not REFRESH:
         derived_at_start = list(start_payload.get("derived_from") or [])
         assert f"wiki/elixirs/{elixir_old}.md" in derived_at_start, derived_at_start
-        assert any(
-            isinstance(ref, str) and ref.startswith("wiki/derived/") for ref in derived_at_start
-        ), derived_at_start
+        assert any(isinstance(ref, str) and ref.startswith("wiki/derived/") for ref in derived_at_start), (
+            derived_at_start
+        )
 
     out_distill = _run_cli(
         vault,
@@ -1004,24 +1027,20 @@ def test_elixir_stage3_compounding(  # pragma: no cover - explicit pytest accept
         assert elixir_old in parent_ids, f"trace did not reach old elixir: {parent_ids}"
 
     if not REFRESH:
-        from aiwiki.app_utils import parse_frontmatter
+        from aiwiki.utils.markdown import parse_frontmatter
 
         settled_path = vault / "wiki" / "elixirs" / f"{elixir_new}.md"
         assert settled_path.is_file()
         settled_fm = parse_frontmatter(settled_path.read_text(encoding="utf-8"))
         derived_settled = list(settled_fm.get("derived_from") or [])
         assert f"wiki/elixirs/{elixir_old}.md" in derived_settled, derived_settled
-        assert any(
-            isinstance(ref, str) and ref.startswith("wiki/derived/") for ref in derived_settled
-        ), derived_settled
+        assert any(isinstance(ref, str) and ref.startswith("wiki/derived/") for ref in derived_settled), derived_settled
 
         receipts = _load_jsonl(vault / ".aiwiki" / "state" / "execution-receipts.jsonl")
         promote_receipts = [
             r
             for r in receipts
-            if isinstance(r, dict)
-            and r.get("subject_kind") == "elixir_promotion"
-            and r.get("subject_id") == elixir_new
+            if isinstance(r, dict) and r.get("subject_kind") == "elixir_promotion" and r.get("subject_id") == elixir_new
         ]
         assert promote_receipts, "no elixir_promotion receipt for new elixir"
         bundle = promote_receipts[-1].get("bundle")
@@ -1061,13 +1080,9 @@ def test_file_back_judgment_preserves_derived_promoted_to(  # pragma: no cover -
 
     _run_cli(vault, ["file-back", report_ref, "--title", "D3 old review"])
 
-    candidates_state = json.loads(
-        (vault / ".aiwiki" / "state" / "output-candidates.json").read_text(encoding="utf-8")
-    )
+    candidates_state = json.loads((vault / ".aiwiki" / "state" / "output-candidates.json").read_text(encoding="utf-8"))
     matched = [
-        candidate
-        for candidate in candidates_state.get("candidates", [])
-        if candidate.get("artifact_ref") == report_ref
+        candidate for candidate in candidates_state.get("candidates", []) if candidate.get("artifact_ref") == report_ref
     ]
     assert len(matched) == 1, candidates_state
     promoted_to = str(matched[0].get("promoted_to") or "")
@@ -1122,7 +1137,7 @@ def test_file_back_judgment_preserves_derived_promoted_to(  # pragma: no cover -
 
 def test_strict_loader_raises_on_corrupt_state(tmp_path: Path) -> None:
     """M9-P0.4 acceptance: strict loader surfaces corruption instead of silent fallback."""
-    from aiwiki.app_state import (
+    from aiwiki.state.io import (
         CorruptStateError,
         load_jsonl_documents,
         load_jsonl_documents_strict,
@@ -1248,14 +1263,12 @@ def test_l3_proposal_apply_then_revert(  # pragma: no cover - explicit pytest ac
 
     `aiwiki.execution.l3_proposals.utc_now` is patched by
     `_copy_case_and_fix_clock_from` (module-local binding via
-    `from aiwiki.app_utils import utc_now`). `_unique_l3_action_id` is
+    `from aiwiki.utils.time import utc_now`). `_unique_l3_action_id` is
     suffix-stable from `proposal_id`, so receipt paths are deterministic.
     This case is the documented exception to the `l3-proposal-apply`
     stop-line scan in `test_acceptance_no_stop_line_violations`.
     """
-    case, vault = _copy_case_and_fix_clock_from(
-        "D", "case_l3_proposal_apply_revert", tmp_path, monkeypatch
-    )
+    case, vault = _copy_case_and_fix_clock_from("D", "case_l3_proposal_apply_revert", tmp_path, monkeypatch)
     apply_result, revert_result = _run_l3_proposal_apply_revert(vault)
 
     assert apply_result["state"] == "accepted"

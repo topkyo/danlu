@@ -5,20 +5,17 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from aiwiki.app_utils import (
-    atomic_write_text,
-    parse_frontmatter,
-    relative_path,
-    render_frontmatter,
-    sha256_bytes,
-    slugify,
-    strip_frontmatter,
-)
 from aiwiki.execution.l3_proposals import STAGING_JUDGE_PROPOSAL_DIR
 from aiwiki.runner import alchemy_support as support
+from aiwiki.utils.hash import sha256_bytes
+from aiwiki.utils.io import atomic_write_text
+from aiwiki.utils.markdown import parse_frontmatter, render_frontmatter, strip_frontmatter
+from aiwiki.utils.path import relative_path
+from aiwiki.utils.text import slugify
 
 ALCHEMY_JUDGE_REFRESH_START = support.ALCHEMY_JUDGE_REFRESH_START
 ALCHEMY_JUDGE_REFRESH_END = support.ALCHEMY_JUDGE_REFRESH_END
+
 
 def materialize_alchemy_judge_refresh(
     root: Path,
@@ -32,14 +29,24 @@ def materialize_alchemy_judge_refresh(
     try:
         target.relative_to(root.resolve())
     except ValueError:
-        return {"status": "skipped", "candidate_id": candidate_id, "target_ref": target_ref, "reason": "target_outside_root"}
+        return {
+            "status": "skipped",
+            "candidate_id": candidate_id,
+            "target_ref": target_ref,
+            "reason": "target_outside_root",
+        }
     if not target.exists():
         return {"status": "skipped", "candidate_id": candidate_id, "target_ref": target_ref, "reason": "target_missing"}
     original = target.read_text(encoding="utf-8", errors="replace")
     frontmatter = parse_frontmatter(original)
     kind = str(frontmatter.get("kind") or "")
     if kind not in {"decision", "judgment"}:
-        return {"status": "skipped", "candidate_id": candidate_id, "target_ref": target_ref, "reason": "not_judgment_asset"}
+        return {
+            "status": "skipped",
+            "candidate_id": candidate_id,
+            "target_ref": target_ref,
+            "reason": "not_judgment_asset",
+        }
     before_hash = sha256_bytes(original.encode("utf-8"))
     body = strip_frontmatter(original).strip()
     section = support.render_alchemy_judge_refresh_section(preview=preview, candidate=candidate)
@@ -182,4 +189,3 @@ def resolve_alchemy_judge_proposal_path(root: Path, proposal: str | Path) -> Pat
     if not resolved.exists() or not resolved.is_file():
         raise FileNotFoundError(f"judge proposal not found: {proposal}")
     return resolved
-

@@ -20,12 +20,10 @@ from ..app_lifecycle import (
     sort_knowledge_lifecycle_entries,
 )
 from ..app_protocol import PROTOCOL_LIBRARY, page_focus_score, protocol_title
-from ..app_state import (
-    DEFAULT_PROTOCOL,
-    JUDGMENT_LIFECYCLE_STATES,
-    default_knowledge_lifecycle_state,
-)
-from ..app_utils import render_frontmatter, slugify
+from ..lifecycle.knowledge import default_knowledge_lifecycle_state
+from ..state.constants import DEFAULT_PROTOCOL, JUDGMENT_LIFECYCLE_STATES
+from ..utils.markdown import render_frontmatter
+from ..utils.text import slugify
 from .packs import workspace_link
 
 
@@ -206,9 +204,7 @@ def judgment_asset_summary(
         if str(page.get("path") or "")
     }
     attention_pages = [
-        page
-        for page in pages
-        if shell_records.get(str(page.get("path") or ""), {}).get("attention_reasons")
+        page for page in pages if shell_records.get(str(page.get("path") or ""), {}).get("attention_reasons")
     ]
     attention_records = [
         shell_records[str(page.get("path") or "")]
@@ -314,7 +310,7 @@ def render_curated_index(
     lines.extend(
         [
             "",
-        f"## {section_name}",
+            f"## {section_name}",
         ]
     )
     if not pages:
@@ -508,11 +504,7 @@ def render_agent_workbench(
         lines.append("- 当前还没有 agent packs。")
     else:
         for pack in packs:
-            lines.append(
-                f"- [{pack['title']}](../../{pack['path']})"
-                f" | role `{pack['role']}`"
-                f" | {pack['mission']}"
-            )
+            lines.append(f"- [{pack['title']}](../../{pack['path']}) | role `{pack['role']}` | {pack['mission']}")
     lines.extend(
         [
             "",
@@ -570,11 +562,7 @@ def render_review_queue(
     counter_evidence_scan = counter_evidence_scan or {}
     queue = review_queue(decisions, judgments, active_protocol=active_protocol)
     aging = collect_aging_signals(decisions, judgments, active_protocol=active_protocol)
-    counter_evidence_pages = [
-        dict(item)
-        for item in counter_evidence_scan.get("pages", [])
-        if isinstance(item, dict)
-    ]
+    counter_evidence_pages = [dict(item) for item in counter_evidence_scan.get("pages", []) if isinstance(item, dict)]
     concept_backlog = sort_knowledge_lifecycle_entries(
         select_knowledge_lifecycle_entries(
             knowledge_lifecycle,
@@ -744,11 +732,7 @@ def render_aging_report(
         lines.append("- 把 lifecycle `revisit` 项和时间窗口型 overdue 项一起看，避免只盯 review date 而忽略证据失效。")
     if not aging["overdue"] and not aging["escalated"]:
         lines.append("- 当前 aging 状态健康，继续通过 nightly 跟踪。")
-    stale_reviewed = [
-        page
-        for page in pages
-        if page.get("pending_review") != "true" and page.get("revisit_after")
-    ]
+    stale_reviewed = [page for page in pages if page.get("pending_review") != "true" and page.get("revisit_after")]
     if stale_reviewed:
         lines.append("- 已审页面如仍保留复审窗口，必要时在下一次 review 中收紧或清空。")
     return "\n".join(lines) + "\n"
@@ -775,7 +759,9 @@ def render_review_center_html(
     )
 
 
-def protocol_execution_receipts(execution_audit: dict[str, Any], protocol: str, *, limit: int = 8) -> list[dict[str, str]]:
+def protocol_execution_receipts(
+    execution_audit: dict[str, Any], protocol: str, *, limit: int = 8
+) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     protocol_buckets = execution_audit.get("recent_by_protocol", {})
     for bucket_name, label in (("recent_apply", "apply"), ("recent_revert", "revert")):
@@ -811,7 +797,7 @@ def furnace_quick_commands(
 ) -> list[str]:
     _ = (apply_ready_actions, apply_ready_rewrites)
     commands = [
-        f"PYTHONPATH=src python3 -m aiwiki.cli --root . ask \"对当前主题做协议化总结\" --format report --protocol {active_protocol}",
+        f'PYTHONPATH=src python3 -m aiwiki.cli --root . ask "对当前主题做协议化总结" --format report --protocol {active_protocol}',
         "PYTHONPATH=src python3 -m aiwiki.cli --root . compile",
         "PYTHONPATH=src python3 -m aiwiki.cli --root . nightly",
         "PYTHONPATH=src python3 -m aiwiki.cli --root . review-queue --json",

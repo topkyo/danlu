@@ -7,8 +7,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from ..app_protocol import PROTOCOL_LIBRARY, protocol_focus_score
-from ..app_state import DEFAULT_PROTOCOL
-from ..app_utils import parse_iso_datetime
+from ..state.constants import DEFAULT_PROTOCOL
+from ..utils.time import parse_iso_datetime
 
 
 def timestamp_is_newer(candidate: str, current: str) -> bool:

@@ -5,7 +5,9 @@ from __future__ import annotations
 from typing import Any
 
 
-def concept_quality_summary_lines(*, compiled_at: str, quality: dict[str, Any], rewrite_state: dict[str, Any]) -> list[str]:
+def concept_quality_summary_lines(
+    *, compiled_at: str, quality: dict[str, Any], rewrite_state: dict[str, Any]
+) -> list[str]:
     counts = quality.get("counts", {})
     return [
         "# 概念质量",

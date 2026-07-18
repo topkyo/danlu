@@ -31,6 +31,7 @@ def priority_for_kind(kind: str) -> int:
 
     return _PRIORITY[str(kind)]
 
+
 _REVIEW_BUCKET_COPY: dict[str, tuple[str, str]] = {
     "counter_evidence_candidates": ("补充反证候选", "检查新来源是否足以反驳既有判断"),
     "escalated_actions": ("处理升级动作", "处理已升级、需要人工确认的动作"),

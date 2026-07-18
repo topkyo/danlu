@@ -15,8 +15,8 @@ from ..app_lifecycle import (
     review_queue,
 )
 from ..app_protocol import PROTOCOL_LIBRARY, protocol_title
-from ..app_state import DEFAULT_PROTOCOL
-from ..content.memory import action_supports_low_risk_apply
+from ..memory.action_core import action_supports_low_risk_apply
+from ..state.constants import DEFAULT_PROTOCOL
 from .html_theme import html_meta_theme, html_theme_css
 from .packs import compact_section_lines, protocol_output_pack_rows
 from .pilots import protocol_scorecard
@@ -27,7 +27,7 @@ from .views import furnace_quick_commands, protocol_execution_receipts
 def render_furnace_center_page_item(page: dict[str, str]) -> str:
     return (
         f'<li><a href="../../{html.escape(page["path"])}">{html.escape(page["title"])}</a>'
-        f" <span class=\"item-meta\">{html.escape(display_curated_status(page.get('status', 'unknown')))}</span></li>"
+        f' <span class="item-meta">{html.escape(display_curated_status(page.get("status", "unknown")))}</span></li>'
     )
 
 
@@ -35,7 +35,7 @@ def render_furnace_center_action_item(action: dict[str, Any]) -> str:
     command = html.escape(str(action.get("command_hint") or ""))
     return (
         f"<li><strong>{html.escape(str(action.get('title') or 'unnamed action'))}</strong>"
-        f" <span class=\"item-meta\">{html.escape(str(action.get('priority') or 'medium'))} / {html.escape(display_action_status(str(action.get('status') or 'proposed')))}</span>"
+        f' <span class="item-meta">{html.escape(str(action.get("priority") or "medium"))} / {html.escape(display_action_status(str(action.get("status") or "proposed")))}</span>'
         f"<div><code>{html.escape(str(action.get('primary_path') or ''))}</code></div>"
         f"{f'<div><code>{command}</code></div>' if command else ''}</li>"
     )
@@ -45,9 +45,9 @@ def render_furnace_center_rewrite_item(proposal: dict[str, Any]) -> str:
     slug = html.escape(str(proposal.get("slug") or ""))
     target = html.escape(str(proposal.get("target_path") or f"wiki/concepts/{slug}.md"))
     return (
-        f"<li><strong><a href=\"../../wiki/rewrite-proposals/{slug}.md\">"
+        f'<li><strong><a href="../../wiki/rewrite-proposals/{slug}.md">'
         f"{html.escape(str(proposal.get('title') or slug))}</a></strong>"
-        f" <span class=\"item-meta\">{html.escape(display_rewrite_proposal_status(str(proposal.get('status') or 'proposed')))}</span>"
+        f' <span class="item-meta">{html.escape(display_rewrite_proposal_status(str(proposal.get("status") or "proposed")))}</span>'
         f"<div><code>{target}</code></div></li>"
     )
 
@@ -55,9 +55,9 @@ def render_furnace_center_rewrite_item(proposal: dict[str, Any]) -> str:
 def render_furnace_center_review_action_item(action: dict[str, Any]) -> str:
     command = html.escape(str(action.get("review_command") or ""))
     return (
-        f"<li><strong><a href=\"../../{html.escape(str(action.get('page_path') or ''))}\">"
+        f'<li><strong><a href="../../{html.escape(str(action.get("page_path") or ""))}">'
         f"{html.escape(str(action.get('title') or 'review action'))}</a></strong>"
-        f" <span class=\"item-meta\">{html.escape(str(action.get('priority') or 'medium'))}</span>"
+        f' <span class="item-meta">{html.escape(str(action.get("priority") or "medium"))}</span>'
         f"<div>{html.escape(', '.join(action.get('reason_codes', [])) or 'none')}</div>"
         f"{f'<div><code>{command}</code></div>' if command else ''}</li>"
     )
@@ -66,7 +66,7 @@ def render_furnace_center_review_action_item(action: dict[str, Any]) -> str:
 def render_furnace_center_output_item(artifact: dict[str, str]) -> str:
     return (
         f'<li><a href="../../{html.escape(artifact["path"])}">{html.escape(artifact["title"])}</a>'
-        f" <span class=\"item-meta\">{html.escape(artifact['format'] or 'unknown')} / "
+        f' <span class="item-meta">{html.escape(artifact["format"] or "unknown")} / '
         f"{html.escape(artifact['protocol'] or DEFAULT_PROTOCOL)} / "
         f"{html.escape(artifact['created_at'] or 'unknown')}</span></li>"
     )
@@ -76,10 +76,10 @@ def render_furnace_center_proposal_item(proposal: dict[str, Any]) -> str:
     patch_count = len(proposal.get("page_patch_plan", []))
     return (
         f"<li><strong>{html.escape(str(proposal.get('action_id') or 'proposal'))}</strong>"
-        f" <span class=\"item-meta\">risk {html.escape(str(proposal.get('risk') or 'medium'))}</span>"
+        f' <span class="item-meta">risk {html.escape(str(proposal.get("risk") or "medium"))}</span>'
         f"<div>{html.escape(str(proposal.get('summary') or ''))}</div>"
         f"<div><code>{html.escape(', '.join(proposal.get('target_paths', [])) or 'none')}</code></div>"
-        f"<div class=\"item-meta\">patch steps {patch_count}</div></li>"
+        f'<div class="item-meta">patch steps {patch_count}</div></li>'
     )
 
 
@@ -125,7 +125,9 @@ def render_furnace_center(
         for proposal in plan.get("execution_proposals", [])
         if isinstance(proposal, dict) and str(proposal.get("protocol") or DEFAULT_PROTOCOL) == active_protocol
     ]
-    judgment_lifecycle_focus = lifecycle_summary.get("under_review_judgments", []) + lifecycle_summary.get("revised_judgments", [])
+    judgment_lifecycle_focus = lifecycle_summary.get("under_review_judgments", []) + lifecycle_summary.get(
+        "revised_judgments", []
+    )
     page_patch_steps = sum(len(proposal.get("page_patch_plan", [])) for proposal in execution_proposals)
     recent_reviewed = queue.get("recently_reviewed", [])[:6]
     scorecard = protocol_scorecard(domain_pilots, active_protocol)
@@ -192,9 +194,7 @@ def render_furnace_center(
         lines.append("")
         lines.append("### Apply-Ready Rewrites")
         for proposal in apply_ready_rewrites[:8]:
-            lines.append(
-                f"- `{proposal['target_path']}` | proposal `{proposal['slug']}`"
-            )
+            lines.append(f"- `{proposal['target_path']}` | proposal `{proposal['slug']}`")
     if execution_proposals:
         lines.append("")
         lines.append("### Execution Proposals")
@@ -240,11 +240,15 @@ def render_furnace_center(
             f" | stage `{scorecard.get('stage', 'seed')}`"
             f" | {scorecard.get('summary', '')}"
         )
-        gaps = compact_section_lines(scorecard.get("content", ""), "Gaps", fallback="- 当前没有明显结构性缺口。", limit=4)
+        gaps = compact_section_lines(
+            scorecard.get("content", ""), "Gaps", fallback="- 当前没有明显结构性缺口。", limit=4
+        )
         lines.append("")
         lines.append("### 当前缺口")
         lines.extend(gaps)
-        next_moves_lines = compact_section_lines(scorecard.get("content", ""), "Next Moves", fallback="- 当前没有额外 next moves。", limit=4)
+        next_moves_lines = compact_section_lines(
+            scorecard.get("content", ""), "Next Moves", fallback="- 当前没有额外 next moves。", limit=4
+        )
         lines.append("")
         lines.append("### 下一动作")
         lines.extend(next_moves_lines)
@@ -302,9 +306,7 @@ def render_furnace_center(
     else:
         for pack in pack_rows:
             lines.append(
-                f"- [{pack['title']}](../../{pack['path']})"
-                f" | kind `{pack['kind']}`"
-                f" | meta `{pack['meta'] or 'n/a'}`"
+                f"- [{pack['title']}](../../{pack['path']}) | kind `{pack['kind']}` | meta `{pack['meta'] or 'n/a'}`"
             )
 
     lines.extend(["", "## 最近执行回执"])
@@ -399,7 +401,9 @@ def render_furnace_center_html(
         for proposal in plan.get("execution_proposals", [])
         if isinstance(proposal, dict) and str(proposal.get("protocol") or DEFAULT_PROTOCOL) == active_protocol
     ]
-    judgment_lifecycle_focus = lifecycle_summary.get("under_review_judgments", []) + lifecycle_summary.get("revised_judgments", [])
+    judgment_lifecycle_focus = lifecycle_summary.get("under_review_judgments", []) + lifecycle_summary.get(
+        "revised_judgments", []
+    )
     page_patch_steps = sum(len(proposal.get("page_patch_plan", [])) for proposal in execution_proposals)
     recent_reviewed = queue.get("recently_reviewed", [])[:8]
     scorecard = protocol_scorecard(domain_pilots, active_protocol)
@@ -434,8 +438,16 @@ def render_furnace_center_html(
 
     protocol_focus = PROTOCOL_LIBRARY.get(active_protocol, {}).get("review", [])[:3]
     nightly_focus = PROTOCOL_LIBRARY.get(active_protocol, {}).get("nightly", [])[:3]
-    pending_markup = "".join(render_furnace_center_page_item(page) for page in pending_items[:8]) or "<li>当前没有待审项目。</li>"
-    aging_markup = "".join(render_furnace_center_page_item(page) for page in (aging.get("escalated", []) + aging.get("overdue", []))[:8]) or "<li>当前没有已到期或升级项目。</li>"
+    pending_markup = (
+        "".join(render_furnace_center_page_item(page) for page in pending_items[:8]) or "<li>当前没有待审项目。</li>"
+    )
+    aging_markup = (
+        "".join(
+            render_furnace_center_page_item(page)
+            for page in (aging.get("escalated", []) + aging.get("overdue", []))[:8]
+        )
+        or "<li>当前没有已到期或升级项目。</li>"
+    )
     judgment_lifecycle_markup = (
         "".join(render_review_center_lifecycle_item(entry) for entry in judgment_lifecycle_focus[:8])
         or "<li>当前没有 judgment lifecycle 焦点。</li>"
@@ -444,41 +456,70 @@ def render_furnace_center_html(
         "".join(render_furnace_center_review_action_item(action) for action in judgment_review_actions[:8])
         or "<li>当前没有 judgment review action。</li>"
     )
-    apply_action_markup = "".join(render_furnace_center_action_item(action) for action in apply_ready_actions[:8]) or "<li>当前没有可直接 apply 的低风险动作。</li>"
-    rewrite_markup = "".join(render_furnace_center_rewrite_item(proposal) for proposal in apply_ready_rewrites[:8]) or "<li>当前没有可直接 apply 的 rewrite proposal。</li>"
-    proposal_markup = "".join(render_furnace_center_proposal_item(proposal) for proposal in execution_proposals[:8]) or "<li>当前没有 execution proposal。</li>"
-    output_markup = "".join(render_furnace_center_output_item(artifact) for artifact in recent_outputs[:10]) or "<li>当前还没有 recent outputs。</li>"
-    reviewed_markup = "".join(render_furnace_center_page_item(page) for page in recent_reviewed) or "<li>当前还没有最近已审项目。</li>"
-    focus_markup = "".join(f"<li>{html.escape(item)}</li>" for item in protocol_focus + nightly_focus) or "<li>当前协议没有额外焦点。</li>"
+    apply_action_markup = (
+        "".join(render_furnace_center_action_item(action) for action in apply_ready_actions[:8])
+        or "<li>当前没有可直接 apply 的低风险动作。</li>"
+    )
+    rewrite_markup = (
+        "".join(render_furnace_center_rewrite_item(proposal) for proposal in apply_ready_rewrites[:8])
+        or "<li>当前没有可直接 apply 的 rewrite proposal。</li>"
+    )
+    proposal_markup = (
+        "".join(render_furnace_center_proposal_item(proposal) for proposal in execution_proposals[:8])
+        or "<li>当前没有 execution proposal。</li>"
+    )
+    output_markup = (
+        "".join(render_furnace_center_output_item(artifact) for artifact in recent_outputs[:10])
+        or "<li>当前还没有 recent outputs。</li>"
+    )
+    reviewed_markup = (
+        "".join(render_furnace_center_page_item(page) for page in recent_reviewed)
+        or "<li>当前还没有最近已审项目。</li>"
+    )
+    focus_markup = (
+        "".join(f"<li>{html.escape(item)}</li>" for item in protocol_focus + nightly_focus)
+        or "<li>当前协议没有额外焦点。</li>"
+    )
     lifecycle_backlog_markup = (
-        "".join(render_review_center_lifecycle_item(entry) for entry in lifecycle_summary.get("concept_backlog", [])[:10])
+        "".join(
+            render_review_center_lifecycle_item(entry) for entry in lifecycle_summary.get("concept_backlog", [])[:10]
+        )
         or "<li>当前没有 lifecycle concept backlog。</li>"
     )
     retired_concept_markup = (
-        "".join(render_review_center_lifecycle_item(entry) for entry in lifecycle_summary.get("retired_concepts", [])[:10])
+        "".join(
+            render_review_center_lifecycle_item(entry) for entry in lifecycle_summary.get("retired_concepts", [])[:10]
+        )
         or "<li>当前没有 retired concept。</li>"
     )
-    pack_markup = "".join(
-        f"<li><strong><a href=\"../../{html.escape(row['path'])}\">{html.escape(row['title'])}</a></strong>"
-        f" <span class=\"item-meta\">{html.escape(row['kind'])} / {html.escape(row['meta'] or 'n/a')}</span></li>"
-        for row in pack_rows[:10]
-    ) or "<li>当前协议还没有 review pack / decision memo / SOP draft。</li>"
-    receipt_markup = "".join(
-        f"<li><strong>{html.escape(row['title'])}</strong>"
-        f" <span class=\"item-meta\">{html.escape(row['kind'])} / {html.escape(row['action_id'])}</span>"
-        f"<div><code>{html.escape(row['receipt_path'] or '.aiwiki/state/execution-receipts.jsonl')}</code></div>"
-        f"<div class=\"item-meta\">{html.escape(row['applied_at'] or 'unknown')}</div></li>"
-        for row in receipt_rows[:10]
-    ) or "<li>当前协议还没有 execution receipt。</li>"
-    quick_command_markup = "".join(
-        f"<li><code>{html.escape(command)}</code></li>" for command in quick_commands
-    ) or "<li>当前没有额外快速命令。</li>"
+    pack_markup = (
+        "".join(
+            f'<li><strong><a href="../../{html.escape(row["path"])}">{html.escape(row["title"])}</a></strong>'
+            f' <span class="item-meta">{html.escape(row["kind"])} / {html.escape(row["meta"] or "n/a")}</span></li>'
+            for row in pack_rows[:10]
+        )
+        or "<li>当前协议还没有 review pack / decision memo / SOP draft。</li>"
+    )
+    receipt_markup = (
+        "".join(
+            f"<li><strong>{html.escape(row['title'])}</strong>"
+            f' <span class="item-meta">{html.escape(row["kind"])} / {html.escape(row["action_id"])}</span>'
+            f"<div><code>{html.escape(row['receipt_path'] or '.aiwiki/state/execution-receipts.jsonl')}</code></div>"
+            f'<div class="item-meta">{html.escape(row["applied_at"] or "unknown")}</div></li>'
+            for row in receipt_rows[:10]
+        )
+        or "<li>当前协议还没有 execution receipt。</li>"
+    )
+    quick_command_markup = (
+        "".join(f"<li><code>{html.escape(command)}</code></li>" for command in quick_commands)
+        or "<li>当前没有额外快速命令。</li>"
+    )
     scorecard_markup = (
         "\n".join(
             [
                 f'<p><strong><a href="../../{html.escape(str(scorecard.get("path") or ""))}">{html.escape(str(scorecard.get("title") or "Pilot Scorecard"))}</a></strong></p>',
                 f'<p class="item-meta">stage {html.escape(str(scorecard.get("stage") or "seed"))} · {html.escape(str(scorecard.get("summary") or ""))}</p>',
-                '<ul>'
+                "<ul>"
                 + "".join(
                     f"<li>{html.escape(line.lstrip('- ').strip())}</li>"
                     for line in compact_section_lines(
@@ -544,8 +585,8 @@ def render_furnace_center_html(
             f'    <div class="panel"><h2>Judgment Review Actions</h2><ul>{judgment_action_markup}</ul></div>',
             '    <div class="panel"><h2>生命周期治理</h2>'
             f'<p class="item-meta">review {html.escape(str(lifecycle_summary.get("counts", {}).get("review_concepts", 0)))}'
-            f' · revisit {html.escape(str(lifecycle_summary.get("counts", {}).get("revisit_concepts", 0)))}'
-            f' · active {html.escape(str(lifecycle_summary.get("counts", {}).get("active_concepts", 0)))}</p>'
+            f" · revisit {html.escape(str(lifecycle_summary.get('counts', {}).get('revisit_concepts', 0)))}"
+            f" · active {html.escape(str(lifecycle_summary.get('counts', {}).get('active_concepts', 0)))}</p>"
             f"<ul>{lifecycle_backlog_markup}</ul></div>",
             f'    <div class="panel"><h2>已退役概念</h2><ul>{retired_concept_markup}</ul></div>',
             f'    <div class="panel"><h2>Safe Apply</h2><ul>{apply_action_markup}</ul></div>',
@@ -559,12 +600,12 @@ def render_furnace_center_html(
             f'    <div class="panel"><h2>最近执行回执</h2><ul>{receipt_markup}</ul></div>',
             f'    <div class="panel"><h2>快速命令</h2><ul>{quick_command_markup}</ul></div>',
             '    <div class="panel"><h2>系统状态</h2><ul>'
-            f'<li>graph components <code>{html.escape(str(health.get("component_count", 0)))}</code></li>'
-            f'<li>bridge concepts <code>{html.escape(str(len(health.get("bridge_concept_slugs", []))))}</code></li>'
-            f'<li>conflict signals <code>{html.escape(str(concept_quality.get("counts", {}).get("conflict_signals", 0)))}</code></li>'
-            f'<li>gap signals <code>{html.escape(str(concept_quality.get("counts", {}).get("gap_signals", 0)))}</code></li>'
-            f'<li>rewrite candidates <code>{html.escape(str(concept_quality.get("counts", {}).get("rewrite_candidates", 0)))}</code></li>'
-            f'<li>ready batches <code>{html.escape(str(plan.get("counts", {}).get("batches", 0)))}</code></li>'
+            f"<li>graph components <code>{html.escape(str(health.get('component_count', 0)))}</code></li>"
+            f"<li>bridge concepts <code>{html.escape(str(len(health.get('bridge_concept_slugs', []))))}</code></li>"
+            f"<li>conflict signals <code>{html.escape(str(concept_quality.get('counts', {}).get('conflict_signals', 0)))}</code></li>"
+            f"<li>gap signals <code>{html.escape(str(concept_quality.get('counts', {}).get('gap_signals', 0)))}</code></li>"
+            f"<li>rewrite candidates <code>{html.escape(str(concept_quality.get('counts', {}).get('rewrite_candidates', 0)))}</code></li>"
+            f"<li>ready batches <code>{html.escape(str(plan.get('counts', {}).get('batches', 0)))}</code></li>"
             "</ul></div>",
             "  </section>",
             "</main>",

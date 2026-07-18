@@ -6,7 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from ..app_utils import runtime_write_operation
+from ..utils.io import runtime_write_operation
 from .content_step import compile_content_phase
 from .context import CompileContext, start_compile_context
 from .output_step import compile_output_phase
@@ -30,4 +30,6 @@ def _compile_steps() -> tuple[CompileStep, ...]:
         compile_runtime_phase,
         compile_output_phase,
     )
+
+
 __all__ = ["compile_wiki"]

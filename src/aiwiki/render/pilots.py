@@ -20,13 +20,14 @@ from ..app_lifecycle import (
     render_knowledge_lifecycle_entry_summary,
 )
 from ..app_protocol import PROTOCOL_LIBRARY, protocol_title
-from ..app_state import (
-    DEFAULT_PROTOCOL,
-    load_domain_pilot_build_state,
-    load_knowledge_lifecycle_state,
-    load_material_routing_state,
-)
-from ..app_utils import relative_path, render_frontmatter, sha256_bytes, slugify
+from ..compile.build import load_domain_pilot_build_state
+from ..content.archive import load_material_routing_state
+from ..lifecycle.knowledge import load_knowledge_lifecycle_state
+from ..state.constants import DEFAULT_PROTOCOL
+from ..utils.hash import sha256_bytes
+from ..utils.markdown import render_frontmatter
+from ..utils.path import relative_path
+from ..utils.text import slugify
 from .packs import pack_workspace_link
 
 
@@ -212,8 +213,12 @@ def build_domain_pilot_scorecard(
             for page in [*protocol_decisions, *protocol_judgments]
             if str(page.get("reviewed_at") or "") and str(page.get("pending_review") or "") != "true"
         ),
-        "pending": sum(1 for page in [*protocol_decisions, *protocol_judgments] if page.get("pending_review") == "true"),
-        "overdue": sum(1 for page in [*protocol_decisions, *protocol_judgments] if page.get("overdue_review") == "true"),
+        "pending": sum(
+            1 for page in [*protocol_decisions, *protocol_judgments] if page.get("pending_review") == "true"
+        ),
+        "overdue": sum(
+            1 for page in [*protocol_decisions, *protocol_judgments] if page.get("overdue_review") == "true"
+        ),
         "escalation": sum(
             1 for page in [*protocol_decisions, *protocol_judgments] if page.get("escalation_candidate") == "true"
         ),
@@ -239,7 +244,9 @@ def build_domain_pilot_scorecard(
         lifecycle_counts.get("ambiguity_bridge_concepts", 0)
     )
     if ambiguity_count:
-        gaps.append(f"有 `{ambiguity_count}` 个 protocol-related concept 仍处于 mixed / bridge ambiguity，需要人工校准归属。")
+        gaps.append(
+            f"有 `{ambiguity_count}` 个 protocol-related concept 仍处于 mixed / bridge ambiguity，需要人工校准归属。"
+        )
     if metrics["decisions"] + metrics["judgments"] == 0:
         gaps.append("还没有该协议的 `decision / judgment` 资产。")
     if metrics["reviewed"] == 0:

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..app_utils import slugify
+from ..utils.text import slugify
 
 
 def render_machine_memory_topology(memory: dict[str, Any]) -> str:
@@ -207,5 +207,3 @@ def render_machine_memory_topology(memory: dict[str, Any]) -> str:
         ]
     )
     return "\n".join(lines) + "\n"
-
-

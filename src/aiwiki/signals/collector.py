@@ -6,7 +6,7 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any
 
-from ..app_utils import atomic_append_line, runtime_write_lock
+from ..utils.io import atomic_append_line, runtime_write_lock
 from . import adapters
 from .schema import PROTOCOLS, SCHEMA_VERSION, canonical_dumps, compute_dedupe_key, parse_trace_id, validate
 
@@ -89,7 +89,9 @@ def collect_signals(
                         dedupe_key = compute_dedupe_key(seed.record_base, seed.source_identity)
                     except Exception:
                         invalid_count += 1
-                        _append_skip_example(skip_examples, reason="dedupe_key_build_failed", source=source, line=line_no)
+                        _append_skip_example(
+                            skip_examples, reason="dedupe_key_build_failed", source=source, line=line_no
+                        )
                         continue
 
                     existing_trace = existing_dedupe_to_trace.get(dedupe_key)
@@ -111,7 +113,9 @@ def collect_signals(
                     validation = validate(full_record)
                     if not validation.ok:
                         invalid_count += 1
-                        _append_skip_example(skip_examples, reason="signal_validation_failed", source=source, line=line_no)
+                        _append_skip_example(
+                            skip_examples, reason="signal_validation_failed", source=source, line=line_no
+                        )
                         continue
 
                     batch_records.append(full_record)
@@ -175,9 +179,7 @@ def _load_existing_dedupe_map(signals_path: Path) -> dict[str, str]:
 
             validation = validate(record)
             if not validation.ok:
-                raise ValueError(
-                    f"invalid signals.jsonl record at line {line_no}: {'; '.join(validation.errors)}"
-                )
+                raise ValueError(f"invalid signals.jsonl record at line {line_no}: {'; '.join(validation.errors)}")
 
             dedupe_key = str(record.get("dedupe_key") or "")
             existing_trace_id = str(record.get("trace_id") or "")

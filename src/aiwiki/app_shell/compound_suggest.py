@@ -6,10 +6,11 @@ import shlex
 from pathlib import Path
 from typing import Any
 
-from ..app_utils import parse_frontmatter, question_signature
 from ..content.io import find_promoted_curated_page
 from ..content.outputs import normalize_query_signature
 from ..execution.alchemy import ELIXIR_DIR, list_promoted_outputs_for_corpus
+from ..utils.hash import question_signature
+from ..utils.markdown import parse_frontmatter
 
 _COMPOUND_SUGGEST_MAX = 3
 _REPORT_SCAN_LIMIT = 8
@@ -120,11 +121,7 @@ def _load_report_context(root: Path, report_path: str) -> dict[str, Any] | None:
     used_refs = _frontmatter_string_list(frontmatter, "used_refs")
     if not used_refs:
         used_refs = _frontmatter_string_list(frontmatter, "used_context_refs")
-    corpus_id = str(
-        frontmatter.get("active_corpus_id")
-        or frontmatter.get("corpus_id")
-        or ""
-    ).strip()
+    corpus_id = str(frontmatter.get("active_corpus_id") or frontmatter.get("corpus_id") or "").strip()
     return {
         "path": report_path,
         "title": str(frontmatter.get("title") or query or Path(report_path).stem),
@@ -176,10 +173,7 @@ def _file_back_command(report_path: str) -> str:
 
 
 def _alchemy_start_command(*, corpus_id: str, topic: str) -> str:
-    return (
-        f"{_CLI_PREFIX} alchemy-start {shlex.quote(corpus_id)} "
-        f"--topic {shlex.quote(topic)}"
-    )
+    return f"{_CLI_PREFIX} alchemy-start {shlex.quote(corpus_id)} --topic {shlex.quote(topic)}"
 
 
 def build_compound_suggest(
@@ -276,10 +270,7 @@ def build_compound_suggest(
             reason_parts.append("conflict-or-extend")
 
         use_alchemy = bool(
-            linked_elixirs
-            and multi_turn
-            and corpus_id
-            and list_promoted_outputs_for_corpus(root, corpus_id)
+            linked_elixirs and multi_turn and corpus_id and list_promoted_outputs_for_corpus(root, corpus_id)
         )
         if use_alchemy:
             action = "alchemy-start"
@@ -314,7 +305,9 @@ def build_compound_suggest(
             str(item.get("report_path") or ""),
         )
     )
-    items = [{key: value for key, value in item.items() if key != "score"} for item in candidates[:_COMPOUND_SUGGEST_MAX]]
+    items = [
+        {key: value for key, value in item.items() if key != "score"} for item in candidates[:_COMPOUND_SUGGEST_MAX]
+    ]
     return {
         "available": bool(items),
         "count": len(items),

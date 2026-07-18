@@ -8,11 +8,12 @@ from pathlib import Path
 from typing import Any, Callable
 
 from aiwiki import autonomy_policy
-from aiwiki.app_state import execution_receipt_history_path
-from aiwiki.app_utils import relative_path, utc_now
+from aiwiki.app_state_paths import execution_receipt_history_path
 from aiwiki.execution.audit_preview import AUDIT_STREAM_PATH
 from aiwiki.render.paths import execution_receipt_path
 from aiwiki.runner import alchemy_support as support
+from aiwiki.utils.path import relative_path
+from aiwiki.utils.time import utc_now
 
 ApplyPrimitive = Callable[..., dict[str, Any]]
 GlobalPrimitive = Callable[[Path], dict[str, Any]]
@@ -360,7 +361,9 @@ def run_receipted_lane_primitive(
         raise RuntimeError(f"primitive {primitive!r} is not present in the dry-run plan for lane {lane!r}")
     if plan_step.get("apply_supported") is not True:
         blocker = str(plan_step.get("apply_blocker") or "not_apply_supported")
-        raise RuntimeError(f"primitive {primitive!r} is not apply-supported in the dry-run plan for lane {lane!r}: {blocker}")
+        raise RuntimeError(
+            f"primitive {primitive!r} is not apply-supported in the dry-run plan for lane {lane!r}: {blocker}"
+        )
 
     scoped_apply = deps.get(f"{primitive}_apply")
     if primitive in {"review", "distill", "propose"} and callable(scoped_apply):
@@ -425,7 +428,9 @@ def run_receipted_lane_primitive(
     )
     receipt_path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        deps["atomic_write_text"](receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+        deps["atomic_write_text"](
+            receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+        )
         deps["append_execution_receipt_history"](root, receipt)
     except Exception as tx_exc:
         try:

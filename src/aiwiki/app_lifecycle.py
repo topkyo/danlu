@@ -44,61 +44,19 @@ from .app_protocol import (
     save_manifest,
     schedule_review_windows,
 )
-from .app_state import (
-    DEFAULT_PROTOCOL,
-    KNOWLEDGE_LIFECYCLE_STATES,
-    active_knowledge_lifecycle_overrides,
-    default_compile_state,
-    default_knowledge_lifecycle_state,
-    ensure_knowledge_lifecycle_override_state,
+from .app_state_paths import (
     execution_policy_log_path,
     execution_receipt_history_path,
-    load_active_corpora_state,
-    load_concept_build_state,
-    load_concept_rewrite_state,
-    load_domain_pilot_build_state,
-    load_json_document,
-    load_knowledge_lifecycle_state,
-    load_machine_memory,
-    load_machine_memory_action_state,
-    load_manifest,
-    load_manual_link_state,
-    load_material_routing_state,
-    load_output_pack_build_state,
-    load_runtime_history,
     manual_link_state_path,
     material_archive_action_id,
     material_archive_state_path,
     material_state_path,
-    save_knowledge_lifecycle_override_state,
-    save_knowledge_lifecycle_state,
 )
 from .app_types import JudgmentAsset
-from .app_utils import (
-    STOP_WORDS,
-    analyze_citation_snapshots,
-    build_citation_snapshots,
-    compiled_source_sha,
-    detect_kind,
-    extract_provenance_paths,
-    first_markdown_heading,
-    next_identifier,
-    normalize_workspace_path,
-    parse_frontmatter,
-    raw_note_metadata,
-    relative_path,
-    render_frontmatter,
-    replace_first_markdown_heading,
-    runtime_write_operation,
-    sha256_bytes,
-    sha256_file,
-    slugify,
-    strip_frontmatter,
-    tokenize,
-    upsert_markdown_section,
-    utc_now,
-)
+from .compile.build import load_concept_build_state, load_domain_pilot_build_state, load_output_pack_build_state
+from .compile.state import default_compile_state
 from .config import LLMConfig
+from .content.archive import load_material_routing_state
 from .content.concepts import build_concept_quality
 from .content.io import (
     curated_asset_section_snapshot,
@@ -108,14 +66,23 @@ from .content.io import (
     review_history_entries,
     source_summary_or_preview,
 )
+from .content.material import load_active_corpora_state, load_manual_link_state
+from .content.rewrite import load_concept_rewrite_state
+from .execution.history import load_runtime_history
 from .lifecycle.aging import collect_aging_signals, evaluate_page_aging
 from .lifecycle.knowledge import (
+    active_knowledge_lifecycle_overrides,
+    default_knowledge_lifecycle_state,
     display_judgment_lifecycle_state,
     display_knowledge_lifecycle_state,
     display_protocol_relevance_ambiguity,
     display_protocol_relevance_mode,
+    ensure_knowledge_lifecycle_override_state,
     knowledge_lifecycle_counts,
+    load_knowledge_lifecycle_state,
     render_knowledge_lifecycle_entry_summary,
+    save_knowledge_lifecycle_override_state,
+    save_knowledge_lifecycle_state,
     select_knowledge_lifecycle_entries,
     sort_knowledge_lifecycle_entries,
 )
@@ -143,6 +110,28 @@ from .lifecycle.status import (
     valid_curated_statuses,
 )
 from .lifecycle.templates import curated_page_template
+from .memory.action_state import load_machine_memory_action_state
+from .memory.state import load_machine_memory
+from .state.constants import DEFAULT_PROTOCOL, KNOWLEDGE_LIFECYCLE_STATES
+from .state.io import load_json_document
+from .state.manifest import load_manifest
+from .utils.hash import compiled_source_sha, sha256_bytes, sha256_file
+from .utils.io import runtime_write_operation
+from .utils.markdown import (
+    analyze_citation_snapshots,
+    build_citation_snapshots,
+    extract_provenance_paths,
+    first_markdown_heading,
+    parse_frontmatter,
+    raw_note_metadata,
+    render_frontmatter,
+    replace_first_markdown_heading,
+    strip_frontmatter,
+    upsert_markdown_section,
+)
+from .utils.path import next_identifier, normalize_workspace_path, relative_path
+from .utils.text import STOP_WORDS, detect_kind, slugify, tokenize
+from .utils.time import utc_now
 
 
 def sort_curated_pages(pages: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -224,11 +213,7 @@ def collect_curated_pages(root: Path, folder: str, expected_kind: str) -> list[d
             )
             for heading in CURATED_ASSET_SECTION_ORDER
         }
-        citations = [
-            str(path)
-            for path in frontmatter.get("citations", [])
-            if isinstance(path, str) and path.strip()
-        ]
+        citations = [str(path) for path in frontmatter.get("citations", []) if isinstance(path, str) and path.strip()]
         asset_frontmatter = judgment_asset_frontmatter(
             frontmatter=frontmatter,
             page_id=str(frontmatter.get("id") or path.stem),
@@ -283,15 +268,11 @@ def collect_curated_pages(root: Path, folder: str, expected_kind: str) -> list[d
                 "has_next_signals_metadata": "true" if "next_signals" in frontmatter else "false",
                 "has_formed_at_metadata": "true" if "formed_at" in frontmatter else "false",
                 "has_last_reviewed_metadata": "true" if "last_reviewed" in frontmatter else "false",
-                "has_structured_counter_evidence": "true"
-                if asset_frontmatter.get("counter_evidence")
-                else "false",
+                "has_structured_counter_evidence": "true" if asset_frontmatter.get("counter_evidence") else "false",
                 "has_structured_invalidation_rule": "true"
                 if str(asset_frontmatter.get("invalidation_rule") or "").strip()
                 else "false",
-                "has_structured_next_signals": "true"
-                if asset_frontmatter.get("next_signals")
-                else "false",
+                "has_structured_next_signals": "true" if asset_frontmatter.get("next_signals") else "false",
             }
         )
     enriched: list[dict[str, str]] = []
@@ -329,9 +310,7 @@ def review_queue(
         ),
     )
     reviewed = [
-        page
-        for page in decisions + judgments
-        if page.get("reviewed_at") and page.get("pending_review") != "true"
+        page for page in decisions + judgments if page.get("reviewed_at") and page.get("pending_review") != "true"
     ]
     reviewed = sorted(reviewed, key=lambda page: (page.get("reviewed_at", ""), page["title"].lower()), reverse=True)
     return {
@@ -491,11 +470,7 @@ def build_knowledge_lifecycle_entry(
     page_path = root / str(page.get("path") or "")
     content = page_path.read_text(encoding="utf-8", errors="replace") if page_path.exists() else ""
     frontmatter = parse_frontmatter(content)
-    citations = [
-        str(item)
-        for item in frontmatter.get("citations", [])
-        if isinstance(item, str) and item.strip()
-    ]
+    citations = [str(item) for item in frontmatter.get("citations", []) if isinstance(item, str) and item.strip()]
     if not citations and content:
         citations = extract_provenance_paths(root, content)
     source_ids = entry_ids_from_paths(path_to_entry_id, citations)
@@ -556,11 +531,7 @@ def build_concept_lifecycle_entry(
     content = path.read_text(encoding="utf-8", errors="replace")
     frontmatter = parse_frontmatter(content)
     slug = path.stem
-    source_pages = [
-        str(item)
-        for item in frontmatter.get("source_pages", [])
-        if isinstance(item, str) and item.strip()
-    ]
+    source_pages = [str(item) for item in frontmatter.get("source_pages", []) if isinstance(item, str) and item.strip()]
     source_ids = entry_ids_from_paths(path_to_entry_id, source_pages)
     active_corpus_ids = knowledge_lifecycle_active_corpus_ids(
         source_ids,
@@ -637,9 +608,7 @@ def apply_knowledge_lifecycle_override(
     if override_state not in KNOWLEDGE_LIFECYCLE_STATES:
         return normalized
     override_reason_codes = [
-        str(reason)
-        for reason in override.get("reason_codes", [])
-        if isinstance(reason, str) and reason.strip()
+        str(reason) for reason in override.get("reason_codes", []) if isinstance(reason, str) and reason.strip()
     ]
     normalized["derived_lifecycle_state"] = str(entry.get("lifecycle_state") or "")
     normalized["derived_reason_codes"] = list(entry.get("reason_codes") or [])
@@ -664,10 +633,7 @@ def clear_stale_knowledge_lifecycle_overrides(
     *,
     cleared_at: str,
 ) -> dict[str, Any]:
-    current_concept_paths = {
-        relative_path(root, path)
-        for path in sorted((root / "wiki" / "concepts").glob("*.md"))
-    }
+    current_concept_paths = {relative_path(root, path) for path in sorted((root / "wiki" / "concepts").glob("*.md"))}
     entries: list[dict[str, Any]] = []
     changed = False
     for raw_entry in override_state.get("entries", []):
@@ -722,12 +688,7 @@ def knowledge_lifecycle_governance_summary(
         ),
         active_protocol=active_protocol,
     )
-    concept_counts = (
-        knowledge_lifecycle.get("counts", {})
-        .get("by_kind", {})
-        .get("concept", {})
-        .get("by_state", {})
-    )
+    concept_counts = knowledge_lifecycle.get("counts", {}).get("by_kind", {}).get("concept", {}).get("by_state", {})
     curated_entries = sort_knowledge_lifecycle_entries(
         select_knowledge_lifecycle_entries(
             knowledge_lifecycle,
@@ -822,10 +783,14 @@ def build_knowledge_lifecycle_document(
     decision_pages = decisions if decisions is not None else collect_curated_pages(root, "decisions", "decision")
     judgment_pages = judgments if judgments is not None else collect_curated_pages(root, "judgments", "judgment")
     concept_memory = memory if memory is not None else load_machine_memory(root)
-    concept_quality = build_concept_quality(root, concept_memory) if concept_memory else {
-        "weak_concepts": [],
-        "stable_concepts": [],
-    }
+    concept_quality = (
+        build_concept_quality(root, concept_memory)
+        if concept_memory
+        else {
+            "weak_concepts": [],
+            "stable_concepts": [],
+        }
+    )
     concept_quality_by_slug = {
         str(record.get("slug") or ""): dict(record)
         for record in (concept_quality.get("all_concepts", []) or [])

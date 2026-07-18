@@ -33,12 +33,7 @@ def _looks_like_local_path(value: str) -> bool:
         return True
     if "\\" in value:
         return True
-    if (
-        len(value) >= 3
-        and value[0].isalpha()
-        and value[1] == ":"
-        and value[2] in ("\\", "/")
-    ):
+    if len(value) >= 3 and value[0].isalpha() and value[1] == ":" and value[2] in ("\\", "/"):
         return True
     # POSIX nested path: must contain '/' and have no whitespace around it
     if "/" in value and not any(ch.isspace() for ch in value):

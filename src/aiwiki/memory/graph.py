@@ -27,11 +27,15 @@ from ..app_memory_query import (
     select_machine_memory_query_strategy,
 )
 from ..app_protocol import PENDING_ACTION_STATUSES, action_focus_score
-from ..app_state import DEFAULT_PROTOCOL, machine_memory_history_path
-from ..app_utils import atomic_append_jsonl, html_safe_json_literal, question_signature, tokenize
-from ..content.memory import action_priority_rank, action_supports_low_risk_apply
+from ..app_state_paths import machine_memory_history_path
 from ..memory.source_records import machine_memory_source_runtime_record
 from ..render.html_theme import html_meta_theme, html_theme_css
+from ..state.constants import DEFAULT_PROTOCOL
+from ..utils.hash import question_signature
+from ..utils.io import atomic_append_jsonl
+from ..utils.json_utils import html_safe_json_literal
+from ..utils.text import tokenize
+from .action_core import action_priority_rank, action_supports_low_risk_apply
 from .scoring import machine_memory_query_time_focus
 
 # Single source of truth for relationship graph language.
@@ -139,7 +143,8 @@ def collect_report_anchors(root: Path, *, limit: int = 50) -> dict[str, list[dic
     Empty / unreadable reports are skipped silently rather than raising,
     so a stray malformed artifact does not break compile.
     """
-    from ..app_utils import parse_frontmatter, relative_path
+    from ..utils.markdown import parse_frontmatter
+    from ..utils.path import relative_path
 
     candidates: list[tuple[float, Path]] = []
     for relative in _REPORT_ANCHOR_DIRS:
@@ -168,11 +173,7 @@ def collect_report_anchors(root: Path, *, limit: int = 50) -> dict[str, list[dic
         anchors = report_memory_anchor_ids(frontmatter)
         if not anchors:
             continue
-        title = (
-            str(frontmatter.get("title") or "").strip()
-            or str(frontmatter.get("id") or "").strip()
-            or path.stem
-        )
+        title = str(frontmatter.get("title") or "").strip() or str(frontmatter.get("id") or "").strip() or path.stem
         report_path = relative_path(root, path)
         record = {"title": title, "path": report_path}
         for anchor in anchors:
@@ -216,9 +217,9 @@ def build_report_subgraph(root: Path, report_path: str) -> dict[str, Any]:
 
     Stdlib only; the caller wires this into the CLI / plugin.
     """
-    from ..app_state import load_machine_memory
-    from ..app_utils import parse_frontmatter
     from ..memory.graph_builder import build_machine_memory_graph
+    from ..utils.markdown import parse_frontmatter
+    from .state import load_machine_memory
 
     report_rel = str(report_path or "").strip()
     if not report_rel:
@@ -229,9 +230,7 @@ def build_report_subgraph(root: Path, report_path: str) -> dict[str, Any]:
     try:
         absolute.relative_to(root_resolved)
     except ValueError as exc:
-        raise ReportSubgraphError(
-            f"report path is outside the vault root: {report_rel}"
-        ) from exc
+        raise ReportSubgraphError(f"report path is outside the vault root: {report_rel}") from exc
     if not absolute.is_file():
         raise ReportSubgraphError(f"report not found: {report_rel}")
 
@@ -239,30 +238,21 @@ def build_report_subgraph(root: Path, report_path: str) -> dict[str, Any]:
     frontmatter = parse_frontmatter(text)
     anchors = report_memory_anchor_ids(frontmatter)
     if not anchors:
-        raise ReportSubgraphError(
-            f"report {report_rel} has no machine-memory graph anchors in frontmatter"
-        )
+        raise ReportSubgraphError(f"report {report_rel} has no machine-memory graph anchors in frontmatter")
 
     memory = load_machine_memory(root)
     if not isinstance(memory, dict) or not memory.get("compiled_at"):
-        raise ReportSubgraphError(
-            "machine memory is not compiled; run `aiwiki advanced compile` first"
-        )
+        raise ReportSubgraphError("machine memory is not compiled; run `aiwiki advanced compile` first")
     try:
         graph = build_machine_memory_graph(memory, root=root)
     except Exception as exc:  # corrupt/incomplete memory shape
         raise ReportSubgraphError(
-            f"machine memory is corrupt or incomplete ({type(exc).__name__}: {exc}); "
-            "rerun `aiwiki advanced compile`"
+            f"machine memory is corrupt or incomplete ({type(exc).__name__}: {exc}); rerun `aiwiki advanced compile`"
         ) from exc
-    nodes_by_id: dict[str, dict[str, Any]] = {
-        str(node.get("id") or ""): node for node in graph.get("nodes", [])
-    }
+    nodes_by_id: dict[str, dict[str, Any]] = {str(node.get("id") or ""): node for node in graph.get("nodes", [])}
     missing = [anchor for anchor in anchors if anchor not in nodes_by_id]
     if missing:
-        raise ReportSubgraphError(
-            f"report {report_rel} references unknown graph nodes: {', '.join(missing)}"
-        )
+        raise ReportSubgraphError(f"report {report_rel} references unknown graph nodes: {', '.join(missing)}")
 
     anchor_set = set(anchors)
     edges_in: list[dict[str, Any]] = []
@@ -361,7 +351,9 @@ def render_report_subgraph_markdown(subgraph: dict[str, Any]) -> str:
             if kind not in seen_kinds:
                 seen_kinds.append(kind)
         for kind in seen_kinds:
-            kind_zh = {"source": "来源", "concept": "概念", "judgment": "判断", "elixir": "金丹"}.get(kind, kind or "节点")
+            kind_zh = {"source": "来源", "concept": "概念", "judgment": "判断", "elixir": "金丹"}.get(
+                kind, kind or "节点"
+            )
             lines.append(f"### {kind_zh}")
             lines.append("")
             for node in by_kind[kind]:
@@ -459,15 +451,11 @@ def render_machine_memory_graph_html(
     edge_style = relation_style
 
     judgment_protocol_by_id = {
-        page_id: str(node.get("protocol") or DEFAULT_PROTOCOL)
-        for page_id, node in judgment_nodes.items()
+        page_id: str(node.get("protocol") or DEFAULT_PROTOCOL) for page_id, node in judgment_nodes.items()
     }
     source_protocol_by_id = {
         source_id: resolve_protocol(
-            {
-                judgment_protocol_by_id.get(page_id, "")
-                for page_id in judgment_by_source.get(source_id, set())
-            }
+            {judgment_protocol_by_id.get(page_id, "") for page_id in judgment_by_source.get(source_id, set())}
         )
         for source_id in source_nodes
     }
@@ -479,6 +467,7 @@ def render_machine_memory_graph_html(
             if slug in [str(item) for item in node.get("concept_slugs", []) if isinstance(item, str)]
         }
         concept_protocol_by_slug[slug] = resolve_protocol(protocols)
+
     def has_cjk(text: str) -> bool:
         return any("\u4e00" <= char <= "\u9fff" for char in text)
 
@@ -509,9 +498,7 @@ def render_machine_memory_graph_html(
     if neighbor_ids:
         expanded_ids = display_node_ids | neighbor_ids
         graph_nodes = [
-            node
-            for node in raw_graph_nodes
-            if str(node.get("id") or "") in expanded_ids and has_markdown_page(node)
+            node for node in raw_graph_nodes if str(node.get("id") or "") in expanded_ids and has_markdown_page(node)
         ]
         display_node_ids = {str(node.get("id") or "") for node in graph_nodes}
     graph_edges = [
@@ -537,8 +524,16 @@ def render_machine_memory_graph_html(
     current_y = 36
     section_width = 980
     for component in components:
-        source_ids = [source_id for source_id in component.get("source_ids", []) if source_id in source_nodes and f"source:{source_id}" in display_node_ids]
-        concept_slugs = [slug for slug in component.get("concept_slugs", []) if slug in concept_nodes and f"concept:{slug}" in display_node_ids]
+        source_ids = [
+            source_id
+            for source_id in component.get("source_ids", [])
+            if source_id in source_nodes and f"source:{source_id}" in display_node_ids
+        ]
+        concept_slugs = [
+            slug
+            for slug in component.get("concept_slugs", [])
+            if slug in concept_nodes and f"concept:{slug}" in display_node_ids
+        ]
         judgment_ids = sorted(
             {
                 page_id
@@ -728,13 +723,15 @@ def render_machine_memory_graph_html(
         label = html.escape(truncate_label(title))
         rx = x - 120
         ry = y - 22
-        component_label = component_label_by_id.get(component_id, component_display_label(component_id) if component_id else "未分组")
+        component_label = component_label_by_id.get(
+            component_id, component_display_label(component_id) if component_id else "未分组"
+        )
         node_fragments.append(
             "\n".join(
                 [
                     f'<g class="graph-node" data-node-id="{html.escape(node_id)}" data-kind="{html.escape(kind)}" data-component="{html.escape(component_id)}" data-protocol="{html.escape(protocol)}" data-title="{safe_title.lower()}">',
                     f'  <a href="{href}">',
-                    f'    <title>{safe_title}</title>',
+                    f"    <title>{safe_title}</title>",
                     f'    <rect x="{rx}" y="{ry}" width="240" height="44" rx="14" fill="{fill}" stroke="{stroke}" stroke-width="2" />',
                     f'    <text x="{x}" y="{y - 3}" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">{label}</text>',
                     f'    <text x="{x}" y="{y + 14}" text-anchor="middle" fill="{subtitle_fill}" font-size="11">{html.escape(subtitle)}</text>',
@@ -744,15 +741,15 @@ def render_machine_memory_graph_html(
             )
         )
         node_rows.append(
-            "<li class=\"node-row\""
-            f" data-node-id=\"{html.escape(node_id)}\""
-            f" data-kind=\"{html.escape(kind)}\""
-            f" data-component=\"{html.escape(component_id)}\""
-            f" data-protocol=\"{html.escape(protocol)}\""
-            f" data-title=\"{safe_title.lower()}\">"
-            f"<button type=\"button\" class=\"node-detail-button\" data-node-id=\"{html.escape(node_id)}\">详情</button> "
-            f"<a href=\"{href}\">{safe_title}</a>"
-            f" <span class=\"node-meta\">{html.escape(subtitle)} · {html.escape(component_label)} · 连接 {degree_map.get(node_id, 0)}</span>"
+            '<li class="node-row"'
+            f' data-node-id="{html.escape(node_id)}"'
+            f' data-kind="{html.escape(kind)}"'
+            f' data-component="{html.escape(component_id)}"'
+            f' data-protocol="{html.escape(protocol)}"'
+            f' data-title="{safe_title.lower()}">'
+            f'<button type="button" class="node-detail-button" data-node-id="{html.escape(node_id)}">详情</button> '
+            f'<a href="{href}">{safe_title}</a>'
+            f' <span class="node-meta">{html.escape(subtitle)} · {html.escape(component_label)} · 连接 {degree_map.get(node_id, 0)}</span>'
             "</li>"
         )
         referenced_by = list(report_anchors.get(node_id, [])) if report_anchors else []
@@ -817,7 +814,9 @@ def render_machine_memory_graph_html(
     )
     protocol_options = "".join(
         f'<option value="{html.escape(protocol)}">{html.escape(protocol_label(protocol))}</option>'
-        for protocol in sorted({str(record.get("protocol") or "") for record in node_records if str(record.get("protocol") or "")})
+        for protocol in sorted(
+            {str(record.get("protocol") or "") for record in node_records if str(record.get("protocol") or "")}
+        )
     )
     node_rows_markup = "".join(node_rows) or "<li>当前没有可浏览的节点。</li>"
     default_node_id = ""
@@ -843,13 +842,18 @@ def render_machine_memory_graph_html(
     relation_summary_rows: list[tuple[str, str, int]] = []
     for edge_type, count in sorted(relation_counts_by_type.items()):
         relation_summary_rows.append((edge_type, edge_relation_label(edge_type), count))
-    relation_summary_items = "".join(
-        f"<li><strong>{html.escape(label)}</strong>：{count} 条</li>"
-        for edge_type, label, count in relation_summary_rows
-    ) or "<li>当前没有关系边。</li>"
+    relation_summary_items = (
+        "".join(
+            f"<li><strong>{html.escape(label)}</strong>：{count} 条</li>"
+            for edge_type, label, count in relation_summary_rows
+        )
+        or "<li>当前没有关系边。</li>"
+    )
 
     report_index: dict[str, dict[str, Any]] = {}
-    node_title_by_id = {str(record.get("id") or ""): str(record.get("title") or record.get("id") or "") for record in node_records}
+    node_title_by_id = {
+        str(record.get("id") or ""): str(record.get("title") or record.get("id") or "") for record in node_records
+    }
     for node_id, reports in sorted(report_anchors.items()):
         for report in reports:
             path = str(report.get("path") or "").strip()
@@ -865,10 +869,13 @@ def render_machine_memory_graph_html(
     report_cards: list[str] = []
     for report in sorted(report_index.values(), key=lambda item: str(item.get("title") or item.get("path") or ""))[:12]:
         anchors = list(report.get("anchors") or [])[:8]
-        anchor_buttons = "".join(
-            f'<button type="button" class="report-anchor-link" data-node-id="{html.escape(str(anchor.get("node_id") or ""))}">{html.escape(str(anchor.get("title") or anchor.get("node_id") or "证据锚点"))}</button>'
-            for anchor in anchors
-        ) or '<span class="muted">暂无可点开的证据锚点。</span>'
+        anchor_buttons = (
+            "".join(
+                f'<button type="button" class="report-anchor-link" data-node-id="{html.escape(str(anchor.get("node_id") or ""))}">{html.escape(str(anchor.get("title") or anchor.get("node_id") or "证据锚点"))}</button>'
+                for anchor in anchors
+            )
+            or '<span class="muted">暂无可点开的证据锚点。</span>'
+        )
         report_cards.append(
             "".join(
                 [
@@ -895,7 +902,7 @@ def render_machine_memory_graph_html(
             '<html lang="zh-CN">',
             "<head>",
             html_meta_theme(),
-            '  <title>炼丹炉报告证据图谱</title>',
+            "  <title>炼丹炉报告证据图谱</title>",
             "  <style>",
             html_theme_css(),
             "    /* Graph-specific */ ",
@@ -941,14 +948,17 @@ def render_machine_memory_graph_html(
             "</head>",
             "<body>",
             "<main>",
-            "  <section class=\"panel\">",
+            '  <section class="panel">',
             "    <h1>报告证据图谱</h1>",
             f"    <p>编译时间：<code>{html.escape(str(memory.get('compiled_at', '')))}</code> | 图谱摘要：<code>{html.escape(str(graph.get('digest', '')))}</code></p>",
             "    <p>这是给读报告的人用的追溯入口：先看报告，再点证据锚点回到材料、判断和概念。内部 wiki 资产结构只作为解释层，默认不要求普通用户理解或浏览。</p>",
-            "    <div class=\"meta\">",
-            *[f'      <div class="card"><div class="metric">{html.escape(item.split()[-1])}</div><div class="metric-label">{html.escape(" ".join(item.split()[:-1]) or item)}</div></div>' for item in summary_items],
+            '    <div class="meta">',
+            *[
+                f'      <div class="card"><div class="metric">{html.escape(item.split()[-1])}</div><div class="metric-label">{html.escape(" ".join(item.split()[:-1]) or item)}</div></div>'
+                for item in summary_items
+            ],
             "    </div>",
-            "    <div class=\"legend\">",
+            '    <div class="legend">',
             '      <span class="source">来源</span>',
             '      <span class="judgment">判断</span>',
             '      <span class="concept">概念</span>',
@@ -1105,7 +1115,7 @@ def render_machine_memory_graph_html(
             "        .slice(0, 8)",
             "        .map((edge) => {",
             "          const otherNodeId = edge.source === nodeId ? edge.target : edge.source;",
-            "          return `<li>${edge.label || '关系'}：<button type=\"button\" class=\"relation-node-link\" data-node-id=\"${otherNodeId}\">${otherNodeId}</button></li>`;",
+            '          return `<li>${edge.label || \'关系\'}：<button type="button" class="relation-node-link" data-node-id="${otherNodeId}">${otherNodeId}</button></li>`;',
             "        })",
             "        .join('') || '<li>暂无直接关系。</li>';",
             "      const referencedReports = Array.isArray(node.referenced_by) ? node.referenced_by : [];",
@@ -1122,7 +1132,7 @@ def render_machine_memory_graph_html(
             "        `<div>引用此节点的报告：<ul>${referencedItems}</ul></div>`,",
             "        `<div>详情页：<code>${node.page_path}</code></div>`,",
             "        `<div>${node.secondary_metric || ''}</div>`,",
-            "        `<div><a href=\"${node.href}\">打开页面</a></div>`",
+            '        `<div><a href="${node.href}">打开页面</a></div>`',
             "      ].join('');",
             "      nodeDetails.querySelectorAll('.relation-node-link').forEach((button) => {",
             "        button.addEventListener('click', () => renderDetails(button.dataset.nodeId || ''));",
@@ -1250,7 +1260,10 @@ def _build_machine_memory_query_json(
     confirmed_judgment_nodes = {
         str(node.get("page_id") or ""): node
         for node in memory.get("judgment_nodes", [])
-        if isinstance(node, dict) and str(node.get("kind") or "") == "judgment" and str(node.get("status") or "") == "confirmed" and node.get("page_id")
+        if isinstance(node, dict)
+        and str(node.get("kind") or "") == "judgment"
+        and str(node.get("status") or "") == "confirmed"
+        and node.get("page_id")
     }
     elixir_nodes = {
         str(node.get("elixir_id") or ""): node
@@ -1413,11 +1426,7 @@ def _build_machine_memory_query_json(
             str(item.get("title") or item.get("entry_id") or "").lower(),
         )
     )
-    ranked_source_ids = [
-        str(item.get("entry_id") or "")
-        for item in source_rank_records[:8]
-        if item.get("entry_id")
-    ]
+    ranked_source_ids = [str(item.get("entry_id") or "") for item in source_rank_records[:8] if item.get("entry_id")]
     ranked_concept_slugs = [
         concept_slug
         for concept_slug, _score in sorted(
@@ -1531,9 +1540,7 @@ def _build_machine_memory_query_json(
         }
     )
     touched_components = [
-        component
-        for component in health.get("components", [])
-        if component.get("id") in touched_component_ids
+        component for component in health.get("components", []) if component.get("id") in touched_component_ids
     ]
     proposal_by_action_id = {
         str(proposal.get("action_id") or ""): proposal
@@ -1550,8 +1557,12 @@ def _build_machine_memory_query_json(
     ranked_concept_set = set(ranked_concept_slugs) | set(direct_concept_scores)
 
     def action_hits(action: dict[str, Any]) -> bool:
-        source_hit = bool(ranked_source_set & {str(item) for item in action.get("source_ids", []) if isinstance(item, str)})
-        concept_hit = bool(ranked_concept_set & {str(item) for item in action.get("concept_slugs", []) if isinstance(item, str)})
+        source_hit = bool(
+            ranked_source_set & {str(item) for item in action.get("source_ids", []) if isinstance(item, str)}
+        )
+        concept_hit = bool(
+            ranked_concept_set & {str(item) for item in action.get("concept_slugs", []) if isinstance(item, str)}
+        )
         component_hit = bool(action.get("component_id")) and action.get("component_id") in touched_component_ids
         return source_hit or concept_hit or component_hit
 
@@ -1657,8 +1668,7 @@ def _build_machine_memory_query_json(
         "archive_recall_hints": archive_recall_hints,
         "bridge_concept_slugs": bridge_concept_slugs,
         "supporting_edges": [
-            {"type": edge_type, "left": left, "right": right}
-            for edge_type, left, right in sorted(supporting_edges)
+            {"type": edge_type, "left": left, "right": right} for edge_type, left, right in sorted(supporting_edges)
         ],
         "query_routes": query_routes,
         "touched_component_ids": touched_component_ids,
@@ -1724,10 +1734,7 @@ def build_machine_memory_query(
         if snapshot is not None:
             cached_memory = snapshot.get("memory")
             cached_memory_hash = str(snapshot.get("memory_hash") or "")
-            if (
-                isinstance(cached_memory, dict)
-                and cached_memory_hash == query_cache_memory_hash(memory)
-            ):
+            if isinstance(cached_memory, dict) and cached_memory_hash == query_cache_memory_hash(memory):
                 result = _build_machine_memory_query_json(
                     cached_memory,
                     question,
@@ -1787,26 +1794,36 @@ def summarize_machine_memory_transition(previous: dict[str, Any], current: dict[
     current_judgment_ids = {node["page_id"] for node in current.get("judgment_nodes", [])}
     previous_terms = set(previous.get("term_index", {}).keys())
     current_terms = set(current.get("term_index", {}).keys())
-    previous_edges = {
-        ("HAS_CONCEPT", edge["source_id"], edge["concept_slug"])
-        for edge in previous.get("edges", {}).get("source_to_concept", [])
-    } | {
-        ("SUPPORTS_JUDGMENT", edge["source_id"], edge["page_id"])
-        for edge in previous.get("edges", {}).get("source_to_judgment", [])
-    } | {
-        ("RELATED_CONCEPT", edge["from"], edge["to"])
-        for edge in previous.get("edges", {}).get("concept_to_concept", [])
-    } | _judgment_relation_edge_signatures(previous)
-    current_edges = {
-        ("HAS_CONCEPT", edge["source_id"], edge["concept_slug"])
-        for edge in current.get("edges", {}).get("source_to_concept", [])
-    } | {
-        ("SUPPORTS_JUDGMENT", edge["source_id"], edge["page_id"])
-        for edge in current.get("edges", {}).get("source_to_judgment", [])
-    } | {
-        ("RELATED_CONCEPT", edge["from"], edge["to"])
-        for edge in current.get("edges", {}).get("concept_to_concept", [])
-    } | _judgment_relation_edge_signatures(current)
+    previous_edges = (
+        {
+            ("HAS_CONCEPT", edge["source_id"], edge["concept_slug"])
+            for edge in previous.get("edges", {}).get("source_to_concept", [])
+        }
+        | {
+            ("SUPPORTS_JUDGMENT", edge["source_id"], edge["page_id"])
+            for edge in previous.get("edges", {}).get("source_to_judgment", [])
+        }
+        | {
+            ("RELATED_CONCEPT", edge["from"], edge["to"])
+            for edge in previous.get("edges", {}).get("concept_to_concept", [])
+        }
+        | _judgment_relation_edge_signatures(previous)
+    )
+    current_edges = (
+        {
+            ("HAS_CONCEPT", edge["source_id"], edge["concept_slug"])
+            for edge in current.get("edges", {}).get("source_to_concept", [])
+        }
+        | {
+            ("SUPPORTS_JUDGMENT", edge["source_id"], edge["page_id"])
+            for edge in current.get("edges", {}).get("source_to_judgment", [])
+        }
+        | {
+            ("RELATED_CONCEPT", edge["from"], edge["to"])
+            for edge in current.get("edges", {}).get("concept_to_concept", [])
+        }
+        | _judgment_relation_edge_signatures(current)
+    )
     previous_digest = previous.get("digest", "")
     current_digest = current["digest"]
     return {

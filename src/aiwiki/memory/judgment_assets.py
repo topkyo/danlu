@@ -5,10 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..app_state import DEFAULT_PROTOCOL, load_manifest
-from ..app_utils import analyze_citation_snapshots, parse_frontmatter, strip_frontmatter, tokenize
 from ..content.io import preserved_section
 from ..execution.alchemy import ELIXIR_DIR
+from ..state.constants import DEFAULT_PROTOCOL
+from ..state.manifest import load_manifest
+from ..utils.markdown import analyze_citation_snapshots, parse_frontmatter, strip_frontmatter
+from ..utils.text import tokenize
 
 
 def _empty_term_bucket() -> dict[str, set[str]]:
@@ -27,11 +29,7 @@ def _normalize_term_index(term_index: dict[str, Any]) -> dict[str, dict[str, set
             continue
         bucket = _empty_term_bucket()
         for key in bucket:
-            bucket[key] = {
-                str(item)
-                for item in payload.get(key, [])
-                if isinstance(item, str) and str(item).strip()
-            }
+            bucket[key] = {str(item) for item in payload.get(key, []) if isinstance(item, str) and str(item).strip()}
         normalized[str(term)] = bucket
     return normalized
 

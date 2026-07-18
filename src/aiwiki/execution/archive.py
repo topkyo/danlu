@@ -5,10 +5,9 @@ This module owns the two material-archive execution entry points:
 * :func:`apply_material_archive`
 * :func:`revert_material_archive`
 
-They were previously defined in :mod:`aiwiki.app_compile`. The monolithic
-module now exposes them lazily through ``_LAZY_OWNERS`` so existing
-callers (``aiwiki.app_compile.apply_material_archive(...)`` etc.) keep
-working without re-importing.
+They were previously defined in :mod:`aiwiki.app_compile` and have since
+been migrated here as the canonical owner. Callers should import directly
+from :mod:`aiwiki.execution.archive`.
 
 Import policy (mirrors EP-018B1/B2/B3):
 
@@ -16,8 +15,8 @@ Import policy (mirrors EP-018B1/B2/B3):
   from that module (not round-tripped through ``app_compile``).
 * The single hot-patch target used by this group — ``utc_now`` — is
   looked up lazily inside each function body via
-  ``from .. import app_utils as _app_utils; _app_utils.utc_now()``
-  so that ``patch("aiwiki.app_utils.utc_now")`` patches
+  ``from ..utils.time import utc_now; utc_now()``
+  so that ``patch("aiwiki.utils.time.utc_now")`` patches
   (acceptance tests + downstream suites) still intercept the call
   through the migrated path.
 * ``execution_bundle_path`` / ``execution_receipt_path`` / ``append_wiki_log``
@@ -43,29 +42,32 @@ from ..app_execution import (
 )
 from ..app_protocol import ensure_layout, load_protocol_state
 from ..app_queries import wiki_requires_compile
-from ..app_state import (
-    DEFAULT_PROTOCOL,
-    active_material_archive_entries,
-    append_runtime_history,
+from ..app_state_paths import (
     archive_candidates_state_path,
     archive_dry_run_path,
-    load_archive_candidates_state,
-    load_json_document_strict,
-    load_manifest,
-    load_material_archive_state,
-    load_material_state,
     material_archive_action_id,
     material_state_path,
+)
+from ..compile.pipeline import compile_wiki
+from ..content.archive import (
+    active_material_archive_entries,
+    load_archive_candidates_state,
+    load_material_archive_state,
     save_material_archive_state,
 )
-from ..app_utils import atomic_write_text, relative_path, runtime_write_operation
-from ..compile.pipeline import compile_wiki
 from ..content.io import sync_manifest_with_raw
+from ..content.material import load_material_state
 from ..render.paths import (
     append_wiki_log,
     execution_bundle_path,
     execution_receipt_path,
 )
+from ..state.constants import DEFAULT_PROTOCOL
+from ..state.io import load_json_document_strict
+from ..state.manifest import load_manifest
+from ..utils.io import atomic_write_text, runtime_write_operation
+from ..utils.path import relative_path
+from .history import append_runtime_history
 
 logger = logging.getLogger(__name__)
 
@@ -79,8 +81,8 @@ def apply_material_archive(
     dry_run: bool = False,
 ) -> dict[str, Any]:
     # Hot-patch seam: ``utc_now`` is patched via
-    # ``patch("aiwiki.app_utils.utc_now")``. Lazy import preserves it.
-    from .. import app_utils as _app_utils
+    # ``patch("aiwiki.utils.time.utc_now")``. Lazy import preserves it.
+    from ..utils.time import utc_now
 
     ensure_layout(root)
     manifest = sync_manifest_with_raw(root)
@@ -140,7 +142,7 @@ def apply_material_archive(
     title = str(manifest_entry.get("title") or entry_id)
     source_path = f"wiki/sources/{entry_id}.md"
     protocol = str(load_protocol_state(root)["active_protocol"] or DEFAULT_PROTOCOL)
-    applied_at = _app_utils.utc_now()
+    applied_at = utc_now()
     bundle = build_material_archive_bundle(
         root,
         entry_id=entry_id,
@@ -318,7 +320,7 @@ def revert_material_archive(
     *,
     note: str | None = None,
 ) -> dict[str, Any]:
-    from .. import app_utils as _app_utils
+    from ..utils.time import utc_now
 
     ensure_layout(root)
     manifest = sync_manifest_with_raw(root)
@@ -327,12 +329,8 @@ def revert_material_archive(
         manifest = load_manifest(root)
 
     material_archive_state = load_material_archive_state(root)
-    archive_entries = [
-        dict(item) for item in material_archive_state.get("entries", []) if isinstance(item, dict)
-    ]
-    target = next(
-        (item for item in archive_entries if str(item.get("entry_id") or "") == entry_id), None
-    )
+    archive_entries = [dict(item) for item in material_archive_state.get("entries", []) if isinstance(item, dict)]
+    target = next((item for item in archive_entries if str(item.get("entry_id") or "") == entry_id), None)
     if target is None or not bool(target.get("active", False)):
         raise RuntimeError(f"No active archived material exists for entry: {entry_id}")
 
@@ -361,7 +359,7 @@ def revert_material_archive(
     title = str(manifest_entry.get("title") or target.get("title") or entry_id)
     source_path = str(target.get("source_path") or f"wiki/sources/{entry_id}.md")
     protocol = str(load_protocol_state(root)["active_protocol"] or DEFAULT_PROTOCOL)
-    reverted_at = _app_utils.utc_now()
+    reverted_at = utc_now()
     revert_receipt = build_material_archive_receipt(
         root,
         entry_id=entry_id,

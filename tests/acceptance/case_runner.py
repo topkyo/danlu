@@ -70,7 +70,7 @@ def _copy_case_and_fix_clock_from(  # pragma: no cover - exercised by explicit p
     monkeypatch.setattr("aiwiki.clock.utc_now", lambda: FIXED_NOW)
     monkeypatch.setattr("aiwiki.runner.alchemy.utc_now", lambda: FIXED_NOW.isoformat())
     monkeypatch.setattr("aiwiki.execution.alchemy.utc_now", lambda: FIXED_NOW.isoformat())
-    monkeypatch.setattr("aiwiki.app_utils.utc_now", lambda: FIXED_NOW.isoformat())
+    monkeypatch.setattr("aiwiki.utils.time.utc_now", lambda: FIXED_NOW.isoformat())
     monkeypatch.setattr("aiwiki.drop.utc_now", lambda: FIXED_NOW.isoformat())
     monkeypatch.setattr("aiwiki.content.io.utc_now", lambda: FIXED_NOW.isoformat())
     monkeypatch.setattr("aiwiki.render.paths.utc_now", lambda: FIXED_NOW.isoformat())
@@ -84,7 +84,7 @@ def _copy_case_and_fix_clock_from(  # pragma: no cover - exercised by explicit p
     monkeypatch.setattr("aiwiki.app_execution.datetime", _FixedDateTime)
     monkeypatch.setattr("aiwiki.execution.alchemy.datetime", _FixedDateTime)
     monkeypatch.setattr("aiwiki.execution.audit_preview.datetime", _FixedDateTime)
-    monkeypatch.setattr("aiwiki.content.memory.datetime", _FixedDateTime)
+    monkeypatch.setattr("aiwiki.memory.action_core.datetime", _FixedDateTime)
     monkeypatch.setattr("aiwiki.app_linting.datetime", _FixedDateTime)
     monkeypatch.setattr("aiwiki.app_queries.datetime", _FixedDateTime)
     uuids = itertools.count(1)
@@ -156,7 +156,7 @@ def _run_drop_url(  # pragma: no cover - exercised by explicit pytest acceptance
     materialization (raw note + wiki/sources/log + runtime-history + audit
     mirror). `_fetch_url` is the only external boundary; everything else is
     local. `utc_now` is already patched by `_copy_case_and_fix_clock_from`
-    across `aiwiki.drop`, `aiwiki.render.paths`, and `aiwiki.app_utils`.
+    across `aiwiki.drop`, `aiwiki.render.paths`, and `aiwiki.utils.time`.
     `_timestamped_stem` is slugify-only (no real timestamp), so `note_path`
     is stem-stable from `title`.
     """
@@ -251,12 +251,14 @@ def _build_alchemy_auto_preview(  # pragma: no cover - exercised by explicit pyt
     }
 
 
-def _run_observe_setup(vault: Path) -> tuple[bytes, bytes, bytes]:  # pragma: no cover - exercised by explicit pytest acceptance gate
+def _run_observe_setup(
+    vault: Path,
+) -> tuple[bytes, bytes, bytes]:  # pragma: no cover - exercised by explicit pytest acceptance gate
     """Function-level setup replacing deleted signals/planner/alchemy-auto CLI."""
 
-    from aiwiki.app_utils import utc_now
     from aiwiki.planner import write_planner_log
     from aiwiki.signals import collect_signals
+    from aiwiki.utils.time import utc_now
 
     signals_result = collect_signals(
         vault,
@@ -332,7 +334,7 @@ def _run_l3_proposal_apply_revert(  # pragma: no cover - exercised by explicit p
     `_unique_l3_action_id` derives action_id from `{prefix}-{proposal_id}` +
     next-available suffix (not time-based), so receipt paths are deterministic.
     `utc_now` is already patched by `_copy_case_and_fix_clock_from` for
-    `aiwiki.app_utils` (used inside l3_proposals.py via `from aiwiki.app_utils
+    `aiwiki.utils.time` (used inside l3_proposals.py via `from aiwiki.utils.time
     import utc_now`).
     """
     from aiwiki.execution.l3_proposals import (

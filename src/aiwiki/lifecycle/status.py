@@ -168,9 +168,7 @@ def curated_page_transition_profile(kind: str, status: str) -> dict[str, Any]:
 
     confirmed_status = "approved" if normalized_kind == "decision" else "confirmed"
     discarded_status = "superseded" if normalized_kind == "decision" else "rejected"
-    pending_statuses = (
-        {"proposed", "needs-revisit"} if normalized_kind == "decision" else {"tentative", "tracking"}
-    )
+    pending_statuses = {"proposed", "needs-revisit"} if normalized_kind == "decision" else {"tentative", "tracking"}
 
     if normalized_status == discarded_status:
         return transition_profile([])
@@ -248,4 +246,3 @@ def archive_transition_profile(*, can_apply: bool, can_revert: bool) -> dict[str
     if can_revert:
         return transition_profile(["revert"], preferred_transitions=["revert"], default_transition="revert")
     return transition_profile([])
-

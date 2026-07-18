@@ -8,28 +8,24 @@ from pathlib import Path
 from typing import Any
 
 from ..app_protocol import CAUSAL_RELATION_TYPES, CONCEPT_HARDNESS_LEVELS, CONFLICT_SIGNAL_PAIRS, EVIDENCE_GAP_MARKERS
-from ..app_state import load_concept_build_state, load_manual_link_state
-from ..app_utils import (
-    STOP_WORDS,
+from ..compile.build import load_concept_build_state
+from ..utils.hash import compiled_source_sha, sha256_bytes
+from ..utils.markdown import (
     build_citation_snapshots,
-    compiled_source_sha,
     extract_provenance_paths,
     first_markdown_heading,
-    normalize_workspace_path,
     parse_frontmatter,
-    parse_iso_datetime,
     raw_note_metadata,
-    relative_path,
     render_frontmatter,
     replace_first_markdown_heading,
-    sha256_bytes,
-    slugify,
     strip_frontmatter,
-    tokenize,
     upsert_markdown_section,
-    utc_now,
 )
+from ..utils.path import normalize_workspace_path, relative_path
+from ..utils.text import STOP_WORDS, slugify, tokenize
+from ..utils.time import parse_iso_datetime, utc_now
 from .io import load_source_page_context, preserved_section, source_summary_or_preview
+from .material import load_manual_link_state
 
 CONCEPT_RENDER_SCHEMA_VERSION = 4
 
@@ -62,13 +58,19 @@ def concept_candidates(entries: list[dict[str, Any]]) -> list[str]:
             counts[token] = counts.get(token, 0) + 1
     ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
     return [token for token, _count in ranked[:10]]
+
+
 def concept_label_to_slug(label: str) -> str:
     return slugify(label)[:64]
+
+
 def concept_label_to_title(label: str) -> str:
     words = [word for word in label.split() if word]
     if not words:
         return "Concept"
     return " ".join(word.capitalize() for word in words)
+
+
 _GENERIC_SOURCE_TITLE_TERMS = {
     "readme",
     "readmemd",
@@ -213,6 +215,8 @@ def entry_concept_terms(entry: dict[str, Any], context: str, max_terms: int = 5)
             scores[token] = scores.get(token, 0) + count
     ranked = sorted(scores.items(), key=lambda item: (-item[1], -len(item[0]), item[0]))
     return [label for label, _score in ranked[:max_terms]]
+
+
 def concept_source_input_signature(entry: dict[str, Any], context: str, manual_slugs: list[str]) -> str:
     payload = {
         "entry_id": str(entry.get("id") or ""),
@@ -223,6 +227,8 @@ def concept_source_input_signature(entry: dict[str, Any], context: str, manual_s
         "noise_floor_version": CONCEPT_NOISE_FLOOR_VERSION,
     }
     return sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+
+
 def build_concept_records(
     root: Path,
     entries: list[dict[str, Any]],
@@ -310,11 +316,17 @@ def build_concept_records(
         "generated_at": generated_at,
         "entry_records": entry_records,
     }
-    return ranked_records, filtered_entry_terms, {
-        "state_document": state_document,
-        "dirty_concept_source_ids": dirty_concept_source_ids,
-        "clean_concept_source_ids": clean_concept_source_ids,
-    }
+    return (
+        ranked_records,
+        filtered_entry_terms,
+        {
+            "state_document": state_document,
+            "dirty_concept_source_ids": dirty_concept_source_ids,
+            "clean_concept_source_ids": clean_concept_source_ids,
+        },
+    )
+
+
 def concept_source_signature(record: dict[str, Any]) -> str:
     payload = {
         "slug": record["slug"],
@@ -324,13 +336,14 @@ def concept_source_signature(record: dict[str, Any]) -> str:
         "manual_source_ids": sorted(record.get("manual_source_ids", [])),
     }
     return sha256_bytes(json.dumps(payload, sort_keys=True).encode("utf-8"))
+
+
 def concept_source_pages(record: dict[str, Any]) -> list[str]:
     return [f"wiki/sources/{entry_id}.md" for entry_id in record["entry_ids"]]
+
+
 def concept_render_signature(root: Path, record: dict[str, Any]) -> str:
-    source_contexts = [
-        load_source_page_context(root, relative)
-        for relative in concept_source_pages(record)
-    ]
+    source_contexts = [load_source_page_context(root, relative) for relative in concept_source_pages(record)]
     payload = {
         "render_schema_version": CONCEPT_RENDER_SCHEMA_VERSION,
         "title": record["title"],
@@ -347,6 +360,8 @@ def concept_render_signature(root: Path, record: dict[str, Any]) -> str:
         ],
     }
     return sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+
+
 def _normalize_summary_snippet(text: Any, *, limit: int = 200) -> str:
     if not isinstance(text, str):
         return ""
@@ -358,6 +373,8 @@ def _normalize_summary_snippet(text: Any, *, limit: int = 200) -> str:
     if len(snippet) <= limit:
         return snippet
     return snippet[: limit - 1].rstrip() + "…"
+
+
 def _concept_summary_matches_legacy_placeholder(summary: Any) -> bool:
     normalized = _normalize_summary_snippet(summary).lower()
     if not normalized.startswith("this concept currently appears in"):
@@ -367,6 +384,8 @@ def _concept_summary_matches_legacy_placeholder(summary: Any) -> bool:
         or "source page" in normalized
         or "wiki/sources/" in normalized
     )
+
+
 def _concept_clue_from_context(context: dict[str, str]) -> str:
     summary = str(context.get("summary") or "")
     preview_bits: list[str] = []
@@ -448,6 +467,8 @@ def render_concept_summary_fallback(record: dict[str, Any], source_contexts: lis
     else:
         summary_lines.append("- 下一步优先收敛多来源共识、冲突点与适用边界，再把稳定结论沉淀到这里。")
     return "\n".join(summary_lines)
+
+
 def normalize_concept_hardness(value: Any, *, default: str = "soft") -> str:
     normalized_default = str(default).strip().lower()
     if normalized_default not in CONCEPT_HARDNESS_LEVELS:
@@ -458,11 +479,15 @@ def normalize_concept_hardness(value: Any, *, default: str = "soft") -> str:
     if normalized in CONCEPT_HARDNESS_LEVELS:
         return normalized
     return normalized_default
+
+
 def concept_hardness_rank(value: Any) -> int:
     return {label: index for index, label in enumerate(CONCEPT_HARDNESS_LEVELS)}.get(
         normalize_concept_hardness(value),
         0,
     )
+
+
 def parse_causal_links(frontmatter: dict[str, Any]) -> list[dict[str, str]]:
     """Parse causal_links from concept frontmatter.
 
@@ -491,6 +516,8 @@ def parse_causal_links(frontmatter: dict[str, Any]) -> list[dict[str, str]]:
             continue
         result.append({"target": target, "relation": relation, "evidence": evidence})
     return result
+
+
 def render_concept_conflict_lines(source_contexts: list[dict[str, str]]) -> list[str]:
     signals = detect_concept_conflict_signals(source_contexts)
     if not signals:
@@ -499,6 +526,8 @@ def render_concept_conflict_lines(source_contexts: list[dict[str, str]]) -> list
     for signal in signals[:6]:
         lines.append(f"- `{signal['label']}` | sources `{', '.join(signal.get('source_pages', [])) or 'none'}`")
     return lines
+
+
 def render_concept_gap_lines(source_contexts: list[dict[str, str]]) -> list[str]:
     gaps = detect_concept_gap_signals(source_contexts)
     if not gaps:
@@ -509,6 +538,8 @@ def render_concept_gap_lines(source_contexts: list[dict[str, str]]) -> list[str]
             f"- `{gap.get('kind', 'unknown')}` | source `{gap.get('path', 'n/a')}` | markers `{', '.join(gap.get('markers', [])) or 'none'}`"
         )
     return lines
+
+
 def render_concept_causal_lines(
     causal_links: list[dict[str, str]],
     record_lookup: dict[str, dict[str, Any]],
@@ -530,6 +561,8 @@ def render_concept_causal_lines(
             line += f" — {evidence}"
         lines.append(line)
     return lines
+
+
 def render_concept_page(record: dict[str, Any], compiled_at: str, existing_page: str) -> str:
     existing_frontmatter = parse_frontmatter(existing_page)
     source_changed = existing_frontmatter.get("source_signature") not in ("", record["source_signature"])
@@ -548,8 +581,7 @@ def render_concept_page(record: dict[str, Any], compiled_at: str, existing_page:
     source_pages = concept_source_pages(record)
     render_signature = str(record.get("render_signature") or concept_render_signature(record["root"], record))
     source_contexts = [
-        load_source_page_context(record["root"], f"wiki/sources/{entry_id}.md")
-        for entry_id in record["entry_ids"]
+        load_source_page_context(record["root"], f"wiki/sources/{entry_id}.md") for entry_id in record["entry_ids"]
     ]
     summary_fallback = render_concept_summary_fallback(record, source_contexts)
     existing_summary = preserved_section(existing_page, "Summary", "").strip() if not source_changed else ""
@@ -573,23 +605,22 @@ def render_concept_page(record: dict[str, Any], compiled_at: str, existing_page:
         )
     ] or ["- No related concepts yet."]
     frontmatter_data: dict[str, Any] = {
-            "id": f"concept-{record['slug']}",
-            "kind": "concept",
-            "status": "compiled",
-            "title": record["title"],
-            "source_pages": source_pages,
-            "source_signature": record["source_signature"],
-            "render_signature": render_signature,
-            "citations": citations,
-            "generated_by": "aiwiki-compile",
-            "last_compiled_at": compiled_at,
-            "confidence": confidence,
-            "hardness": hardness,
+        "id": f"concept-{record['slug']}",
+        "kind": "concept",
+        "status": "compiled",
+        "title": record["title"],
+        "source_pages": source_pages,
+        "source_signature": record["source_signature"],
+        "render_signature": render_signature,
+        "citations": citations,
+        "generated_by": "aiwiki-compile",
+        "last_compiled_at": compiled_at,
+        "confidence": confidence,
+        "hardness": hardness,
     }
     if causal_links:
         frontmatter_data["causal_links"] = [
-            f"{link['target']}|{link['relation']}|{link.get('evidence', '')}"
-            for link in causal_links
+            f"{link['target']}|{link['relation']}|{link.get('evidence', '')}" for link in causal_links
         ]
     frontmatter = render_frontmatter(frontmatter_data)
     material_excerpt = _concept_material_excerpt_lines(source_contexts)
@@ -628,6 +659,8 @@ def render_concept_page(record: dict[str, Any], compiled_at: str, existing_page:
         "- Keep contradictions and missing evidence explicit.",
     ]
     return "\n".join(lines) + "\n"
+
+
 def render_sources_index(entries: list[dict[str, Any]], compiled_at: str) -> str:
     lines = [
         "# 来源索引",
@@ -641,11 +674,10 @@ def render_sources_index(entries: list[dict[str, Any]], compiled_at: str) -> str
         lines.append("- 还没有登记任何来源。")
     else:
         for entry in entries:
-            lines.append(
-                f"- [{entry['title']}](../sources/{entry['id']}.md) "
-                f"({entry['kind']}, {entry['source_type']})"
-            )
+            lines.append(f"- [{entry['title']}](../sources/{entry['id']}.md) ({entry['kind']}, {entry['source_type']})")
     return "\n".join(lines) + "\n"
+
+
 def render_concepts_index(concepts: list[dict[str, Any]], compiled_at: str) -> str:
     lines = [
         "# 概念索引",
@@ -660,12 +692,14 @@ def render_concepts_index(concepts: list[dict[str, Any]], compiled_at: str) -> s
     else:
         for concept in concepts:
             lines.append(
-                f"- [{concept['title']}](../concepts/{concept['slug']}.md) "
-                f"({len(concept['entries'])} source(s))"
+                f"- [{concept['title']}](../concepts/{concept['slug']}.md) ({len(concept['entries'])} source(s))"
             )
     return "\n".join(lines) + "\n"
+
+
 def concept_quality_tokens(label: str) -> set[str]:
     return {token for token in tokenize(label) if token not in STOP_WORDS}
+
 
 def detect_concept_conflict_signals(source_contexts: list[dict[str, str]]) -> list[dict[str, Any]]:
     by_path = {
@@ -704,6 +738,8 @@ def detect_concept_conflict_signals(source_contexts: list[dict[str, str]]) -> li
             }
         )
     return signals
+
+
 def detect_concept_gap_signals(source_contexts: list[dict[str, str]]) -> list[dict[str, Any]]:
     gaps: list[dict[str, Any]] = []
     for context in source_contexts:
@@ -712,15 +748,21 @@ def detect_concept_gap_signals(source_contexts: list[dict[str, str]]) -> list[di
         status = str(context.get("status") or "")
         summary = str(context.get("summary") or "").lower()
         if status == "missing":
-            gaps.append({"kind": "missing-source-page", "path": path, "title": title, "markers": ["missing-source-page"]})
+            gaps.append(
+                {"kind": "missing-source-page", "path": path, "title": title, "markers": ["missing-source-page"]}
+            )
             continue
         if status == "placeholder":
-            gaps.append({"kind": "pending-source-summary", "path": path, "title": title, "markers": ["pending-source-summary"]})
+            gaps.append(
+                {"kind": "pending-source-summary", "path": path, "title": title, "markers": ["pending-source-summary"]}
+            )
             continue
         markers = sorted({marker for marker in EVIDENCE_GAP_MARKERS if marker in summary})
         if markers:
             gaps.append({"kind": "evidence-gap", "path": path, "title": title, "markers": markers})
     return gaps
+
+
 def concept_source_freshness_score(
     source_contexts: list[dict[str, str]],
     *,
@@ -748,6 +790,8 @@ def concept_source_freshness_score(
     if average_age <= 90:
         return 55
     return 35
+
+
 def concept_quality_metrics(
     source_pages: list[str],
     source_contexts: list[dict[str, str]],
@@ -767,10 +811,7 @@ def concept_quality_metrics(
     evidence_depth_score = max(0, round(evidence_ratio * 100) - gap_penalty)
     freshness_score = concept_source_freshness_score(source_contexts, compiled_at=compiled_at)
     quality_score = round(
-        coverage_score * 0.28
-        + consistency_score * 0.32
-        + evidence_depth_score * 0.25
-        + freshness_score * 0.15
+        coverage_score * 0.28 + consistency_score * 0.32 + evidence_depth_score * 0.25 + freshness_score * 0.15
     )
     return {
         "source_coverage": coverage_score,
@@ -782,6 +823,8 @@ def concept_quality_metrics(
         "placeholder_sources": placeholder_count,
         "missing_sources": missing_count,
     }
+
+
 def concept_quality_band(quality_score: int) -> str:
     if quality_score >= 85:
         return "strong"
@@ -790,6 +833,8 @@ def concept_quality_band(quality_score: int) -> str:
     if quality_score >= 55:
         return "watch"
     return "fragile"
+
+
 def concept_rewrite_priority(
     score: int,
     issues: list[str],
@@ -804,6 +849,8 @@ def concept_rewrite_priority(
     if score > 0 or quality_score < 85:
         return "low"
     return ""
+
+
 def concept_rewrite_strategy(record: dict[str, Any]) -> str:
     issues = set(record.get("issues", []))
     steps: list[str] = []
@@ -820,6 +867,8 @@ def concept_rewrite_strategy(record: dict[str, Any]) -> str:
     if "merge-boundary" in issues:
         steps.append("检查是否需要合并或拆分概念边界。")
     return " ".join(steps[:3]) or "保持当前概念总结。"
+
+
 def build_concept_quality(root: Path, memory: dict[str, Any]) -> dict[str, Any]:
     placeholder_slugs = set(_placeholder_concept_slugs(root))
     singleton_slugs = set(memory.get("health", {}).get("singleton_concept_slugs", []))
@@ -844,7 +893,12 @@ def build_concept_quality(root: Path, memory: dict[str, Any]) -> dict[str, Any]:
             shared_tokens = sorted(left_tokens & right_tokens)
             left_slug = str(left.get("slug") or "")
             right_slug = str(right.get("slug") or "")
-            subset_match = left_tokens <= right_tokens or right_tokens <= left_tokens or left_slug in right_slug or right_slug in left_slug
+            subset_match = (
+                left_tokens <= right_tokens
+                or right_tokens <= left_tokens
+                or left_slug in right_slug
+                or right_slug in left_slug
+            )
             if not subset_match and len(shared_tokens) < 2:
                 continue
             merge_candidates.append(
@@ -1040,10 +1094,14 @@ def build_concept_quality(root: Path, memory: dict[str, Any]) -> dict[str, Any]:
         concept_records.values(),
         key=lambda item: (-int(item.get("score", 0)), int(item.get("quality_score", 0)), item.get("title", "").lower()),
     )
-    average_quality_score = round(
-        sum(int(record.get("quality_score", 0)) for record in all_concepts) / len(all_concepts),
-        1,
-    ) if all_concepts else 0.0
+    average_quality_score = (
+        round(
+            sum(int(record.get("quality_score", 0)) for record in all_concepts) / len(all_concepts),
+            1,
+        )
+        if all_concepts
+        else 0.0
+    )
     quality_bands = {
         band: sum(1 for record in all_concepts if str(record.get("quality_band") or "") == band)
         for band in ("strong", "stable", "watch", "fragile")
@@ -1090,14 +1148,17 @@ def _entry_concept_terms_via_facade(entry: dict[str, Any], context: str) -> list
 
 def _active_manual_source_concept_links(root: Path) -> dict[str, set[str]]:
     from .io import active_manual_source_concept_links
+
     return active_manual_source_concept_links(root)
 
 
 def _placeholder_concept_slugs(root: Path) -> list[str]:
-    from .memory import placeholder_concept_slugs
+    from ..memory.action_core import placeholder_concept_slugs
+
     return placeholder_concept_slugs(root)
 
 
 def _action_priority_rank(priority: str) -> int:
-    from .memory import action_priority_rank
+    from ..memory.action_core import action_priority_rank
+
     return action_priority_rank(priority)

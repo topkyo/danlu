@@ -224,7 +224,9 @@ def _review_queue_detail_buckets(summary: dict[str, object]) -> dict[str, list[d
                 if "counter-evidence-candidate" in {str(reason) for reason in item.get("reason_codes", [])}
             ]
         if has_backlog("l3_proposals"):
-            buckets["l3_proposals"] = [_l3_review_item(item) for item in l3_proposals if bool(item.get("needs_attention"))]
+            buckets["l3_proposals"] = [
+                _l3_review_item(item) for item in l3_proposals if bool(item.get("needs_attention"))
+            ]
 
     if isinstance(execution_controls, dict):
         actions = [item for item in execution_controls.get("actions", []) if isinstance(item, dict)]
@@ -275,10 +277,7 @@ def review_queue_command(
         out = {
             "generated_at": str(summary.get("generated_at") or ""),
             "active_protocol": str(summary.get("active_protocol") or ""),
-            "buckets": {
-                k: v
-                for k, v in sorted(buckets.items())
-            },
+            "buckets": {k: v for k, v in sorted(buckets.items())},
             "total": sum(len(v) for v in buckets.values()),
         }
         print(json.dumps(out, indent=2, ensure_ascii=False))
@@ -385,17 +384,10 @@ def metrics_command(root: Path, *, as_json: bool = False, delta: str | None = No
     # M7.3.1 Stage B: append history snapshot (best-effort).
     now_iso = snapshot.now_iso
     # Numeric subset for delta math.
-    numeric_metrics = {
-        str(m.key): float(m.value)
-        for m in metrics
-        if isinstance(m.value, (int, float))
-    }
+    numeric_metrics = {str(m.key): float(m.value) for m in metrics if isinstance(m.value, (int, float))}
     # Full history record keeps all 7 keys (None becomes null in JSONL) so
     # later samples can always line up against the same schema.
-    history_record = {
-        str(m.key): (float(m.value) if isinstance(m.value, (int, float)) else None)
-        for m in metrics
-    }
+    history_record = {str(m.key): (float(m.value) if isinstance(m.value, (int, float)) else None) for m in metrics}
     metrics_history.append_snapshot(root, now_iso, history_record)
 
     if as_json:
@@ -587,5 +579,3 @@ def _read_text_argument(root: Path, value: str) -> str:
 
 def _build_parser() -> argparse.ArgumentParser:
     return build_parser()
-
-

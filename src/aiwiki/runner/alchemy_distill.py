@@ -145,7 +145,9 @@ def run_alchemy_distill_apply_impl(
         receipt["skipped"] = skipped
         receipt["changed"] = bool(refreshed)
         receipt["result_summary"] = {"refreshed": refreshed, "skipped": skipped}
-        deps["atomic_write_text"](receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+        deps["atomic_write_text"](
+            receipt_path, json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+        )
         deps["append_execution_receipt_history"](root, receipt)
         deps["append_runtime_history"](
             root,

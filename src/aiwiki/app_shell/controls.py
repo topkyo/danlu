@@ -26,9 +26,7 @@ from ..app_protocol import (
     ensure_layout,
     load_protocol_state,
 )
-from ..app_state import (
-    DEFAULT_PROTOCOL,
-    active_material_archive_entries,
+from ..app_state_paths import (
     agent_workbench_path,
     domain_pilots_path,
     execution_audit_html_path,
@@ -37,18 +35,6 @@ from ..app_state import (
     execution_center_path,
     furnace_center_html_path,
     llm_receipt_log_path,
-    load_archive_candidates_state,
-    load_compile_state,
-    load_concept_rewrite_state,
-    load_json_document,
-    load_knowledge_lifecycle_state,
-    load_llm_receipt_history,
-    load_machine_memory,
-    load_manifest,
-    load_material_archive_state,
-    load_planner_state,
-    load_query_route_telemetry,
-    load_runtime_history,
     machine_memory_graph_html_path,
     nightly_health_state_path,
     output_packs_index_path,
@@ -58,28 +44,30 @@ from ..app_state import (
     shell_summary_path,
 )
 from ..app_types import ProtocolState, ShellSummary
-from ..app_utils import (
-    parse_frontmatter,
-    relative_path,
-    strip_frontmatter,
-    tokenize,
-    utc_now,
-    write_if_changed_ignoring_timestamps,
-    write_json_document_if_changed_ignoring_generated_timestamps,
-)
+from ..compile.state import load_compile_state
 from ..config import LLMConfig
+from ..content.archive import (
+    active_material_archive_entries,
+    load_archive_candidates_state,
+    load_material_archive_state,
+)
 from ..content.io import (
     collect_recent_output_artifacts,
     summarize_runtime_event_for_shell,
 )
-from ..content.memory import (
+from ..content.rewrite import load_concept_rewrite_state
+from ..execution.history import load_llm_receipt_history, load_runtime_history
+from ..execution.l3_proposals import list_l3_proposals
+from ..execution.policy import load_execution_receipt_history
+from ..lifecycle.knowledge import load_knowledge_lifecycle_state
+from ..llm import classify_backend_error
+from ..memory.action_core import (
     action_priority_rank,
     action_status_rank,
     action_supports_low_risk_apply,
-    load_execution_receipt_history,
 )
-from ..execution.l3_proposals import list_l3_proposals
-from ..llm import classify_backend_error
+from ..memory.state import load_machine_memory
+from ..planner.state import load_planner_state, load_query_route_telemetry
 from ..render.paths import (
     execution_bundle_path,
     execution_proposal_path,
@@ -89,6 +77,17 @@ from ..render.views import (
     judgment_asset_shell_record,
     judgment_asset_summary,
 )
+from ..state.constants import DEFAULT_PROTOCOL
+from ..state.io import load_json_document
+from ..state.manifest import load_manifest
+from ..utils.io import (
+    write_if_changed_ignoring_timestamps,
+    write_json_document_if_changed_ignoring_generated_timestamps,
+)
+from ..utils.markdown import parse_frontmatter, strip_frontmatter
+from ..utils.path import relative_path
+from ..utils.text import tokenize
+from ..utils.time import utc_now
 
 
 def shell_review_controls(
@@ -205,6 +204,7 @@ def shell_review_controls(
         "l3_proposals": l3_controls,
     }
 
+
 def l3_proposal_control_object(proposal: dict[str, Any]) -> dict[str, Any]:
     proposal_id = str(proposal.get("proposal_id") or "")
     kind = str(proposal.get("kind") or "")
@@ -242,6 +242,7 @@ def l3_proposal_control_object(proposal: dict[str, Any]) -> dict[str, Any]:
         "needs_attention": needs_attention,
         "command_hints": {},
     }
+
 
 def rewrite_control_object(root: Path, proposal: dict[str, Any]) -> dict[str, Any] | None:
     if not isinstance(proposal, dict):
@@ -282,6 +283,7 @@ def rewrite_control_object(root: Path, proposal: dict[str, Any]) -> dict[str, An
         **profile,
     }
 
+
 def rewrite_control_objects_for_paths(root: Path, proposal_paths: list[str]) -> list[dict[str, Any]]:
     normalized_paths = [str(path).strip() for path in proposal_paths if str(path).strip()]
     if not normalized_paths:
@@ -308,6 +310,7 @@ def rewrite_control_objects_for_paths(root: Path, proposal_paths: list[str]) -> 
         controls.append(control)
     return controls
 
+
 def rewrite_followup_action(control: dict[str, Any]) -> dict[str, Any] | None:
     slug = str(control.get("slug") or "").strip()
     if not slug:
@@ -317,16 +320,14 @@ def rewrite_followup_action(control: dict[str, Any]) -> dict[str, Any] | None:
     proposal_path = str(control.get("proposal_path") or "").strip()
     target_path = str(control.get("target_path") or "").strip()
     allowed_transitions = [
-        str(item)
-        for item in control.get("allowed_transitions", [])
-        if isinstance(item, str) and item.strip()
+        str(item) for item in control.get("allowed_transitions", []) if isinstance(item, str) and item.strip()
     ]
     preferred_transitions = [
-        str(item)
-        for item in control.get("preferred_transitions", [])
-        if isinstance(item, str) and item.strip()
+        str(item) for item in control.get("preferred_transitions", []) if isinstance(item, str) and item.strip()
     ]
-    default_transition = str(control.get("default_transition") or (allowed_transitions[0] if allowed_transitions else "")).strip()
+    default_transition = str(
+        control.get("default_transition") or (allowed_transitions[0] if allowed_transitions else "")
+    ).strip()
     base = {
         "slug": slug,
         "status": status,
@@ -349,12 +350,13 @@ def rewrite_followup_action(control: dict[str, Any]) -> dict[str, Any] | None:
             "title": title,
             "command": "PYTHONPATH=src python3 -m aiwiki.cli --root . review-queue --json",
             "path": proposal_path or target_path,
-            "reason": "rewrite-apply-ready" if bool(control.get("can_apply")) else (
-                "rewrite-review-needed" if bool(control.get("pending_review")) else f"rewrite-{status or 'review'}"
-            ),
+            "reason": "rewrite-apply-ready"
+            if bool(control.get("can_apply"))
+            else ("rewrite-review-needed" if bool(control.get("pending_review")) else f"rewrite-{status or 'review'}"),
             "transition": default_transition,
         }
     return None
+
 
 def rewrite_followup_actions_for_controls(rewrite_controls: list[dict[str, Any]]) -> list[dict[str, Any]]:
     actions: list[dict[str, Any]] = []
@@ -372,12 +374,14 @@ def rewrite_followup_actions_for_controls(rewrite_controls: list[dict[str, Any]]
         actions.append(action)
     return actions
 
+
 def rewrite_followup_payload_for_paths(root: Path, proposal_paths: list[str]) -> dict[str, Any]:
     rewrite_controls = rewrite_control_objects_for_paths(root, proposal_paths)
     return {
         "updated_rewrite_proposals": rewrite_controls,
         "rewrite_followup_actions": rewrite_followup_actions_for_controls(rewrite_controls),
     }
+
 
 def shell_action_control_objects(
     root: Path,
@@ -455,6 +459,7 @@ def shell_action_control_objects(
     )
     return controls
 
+
 def shell_archive_control_objects(
     root: Path,
     *,
@@ -528,6 +533,7 @@ def shell_archive_control_objects(
         )
     )
     return controls
+
 
 def shell_execution_controls(root: Path, memory: dict[str, Any]) -> dict[str, Any]:
     repair_plan = memory.get("health", {}).get("repair_plan", {})

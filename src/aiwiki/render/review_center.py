@@ -15,8 +15,9 @@ from ..app_lifecycle import (
     knowledge_lifecycle_governance_summary,
     review_queue,
 )
-from ..app_state import DEFAULT_PROTOCOL, default_knowledge_lifecycle_state
-from ..content.memory import action_supports_low_risk_apply
+from ..lifecycle.knowledge import default_knowledge_lifecycle_state
+from ..memory.action_core import action_supports_low_risk_apply
+from ..state.constants import DEFAULT_PROTOCOL
 from .html_theme import html_meta_theme, html_theme_css
 
 
@@ -24,11 +25,7 @@ def render_review_center_page_item(page: dict[str, str]) -> str:
     path = html.escape(f"../../{page['path']}")
     status = html.escape(display_curated_status(page.get("status", "") or "unknown"))
     revisit = html.escape(page.get("revisit_after", "") or "none")
-    return (
-        f'<li><a href="{path}">{html.escape(page["title"])}</a>'
-        f" | status {status}"
-        f" | revisit {revisit}</li>"
-    )
+    return f'<li><a href="{path}">{html.escape(page["title"])}</a> | status {status} | revisit {revisit}</li>'
 
 
 def render_review_center_action_item(action: dict[str, Any]) -> str:
@@ -74,7 +71,7 @@ def render_review_center_rewrite_item(item: dict[str, Any]) -> str:
 def render_review_center_review_action_item(action: dict[str, Any]) -> str:
     command = html.escape(str(action.get("review_command") or ""))
     return (
-        f"<li><a href=\"../../{html.escape(str(action.get('page_path') or ''))}\">"
+        f'<li><a href="../../{html.escape(str(action.get("page_path") or ""))}">'
         f"{html.escape(str(action.get('title') or 'review action'))}</a>"
         f" | priority {html.escape(str(action.get('priority') or 'medium'))}"
         f" | reasons {html.escape(', '.join(action.get('reason_codes', [])) or 'none')}"
@@ -89,13 +86,14 @@ def render_review_center_lifecycle_item(entry: dict[str, Any]) -> str:
     state = html.escape(display_knowledge_lifecycle_state(str(entry.get("lifecycle_state") or "")))
     judgment_state = ""
     if kind in {"decision", "judgment"} and str(entry.get("judgment_lifecycle_state") or ""):
-        judgment_state = (
-            " | judgment "
-            + html.escape(display_judgment_lifecycle_state(str(entry.get("judgment_lifecycle_state") or "")))
+        judgment_state = " | judgment " + html.escape(
+            display_judgment_lifecycle_state(str(entry.get("judgment_lifecycle_state") or ""))
         )
     override = ""
     if bool(entry.get("override_active")):
-        override = f" | override {html.escape(str(entry.get('override_state') or entry.get('lifecycle_state') or 'unknown'))}"
+        override = (
+            f" | override {html.escape(str(entry.get('override_state') or entry.get('lifecycle_state') or 'unknown'))}"
+        )
     invalidation_signals = entry.get("invalidation_signals", [])
     invalidation = ""
     if isinstance(invalidation_signals, list) and invalidation_signals:
@@ -140,27 +138,53 @@ def render_review_center_html(
     conflict_signals = concept_quality.get("conflict_signals", [])
     rewrite_proposals = rewrite_state.get("proposals", [])
     apply_ready_rewrites = [proposal for proposal in rewrite_proposals if proposal.get("apply_ready")]
-    judgment_lifecycle_focus = lifecycle_summary.get("under_review_judgments", []) + lifecycle_summary.get("revised_judgments", [])
+    judgment_lifecycle_focus = lifecycle_summary.get("under_review_judgments", []) + lifecycle_summary.get(
+        "revised_judgments", []
+    )
 
-    pending_list = "".join(render_review_center_page_item(page) for page in pending_items[:12]) or "<li>当前没有待审项目。</li>"
-    overdue_list = "".join(render_review_center_page_item(page) for page in aging.get("overdue", [])[:10]) or "<li>当前没有已到期待复审页面。</li>"
-    escalated_list = "".join(render_review_center_page_item(page) for page in aging.get("escalated", [])[:10]) or "<li>当前没有需要升级处理的页面。</li>"
+    pending_list = (
+        "".join(render_review_center_page_item(page) for page in pending_items[:12]) or "<li>当前没有待审项目。</li>"
+    )
+    overdue_list = (
+        "".join(render_review_center_page_item(page) for page in aging.get("overdue", [])[:10])
+        or "<li>当前没有已到期待复审页面。</li>"
+    )
+    escalated_list = (
+        "".join(render_review_center_page_item(page) for page in aging.get("escalated", [])[:10])
+        or "<li>当前没有需要升级处理的页面。</li>"
+    )
     lifecycle_backlog_list = (
-        "".join(render_review_center_lifecycle_item(entry) for entry in lifecycle_summary.get("concept_backlog", [])[:10])
+        "".join(
+            render_review_center_lifecycle_item(entry) for entry in lifecycle_summary.get("concept_backlog", [])[:10]
+        )
         or "<li>当前没有 lifecycle concept backlog。</li>"
     )
     retired_concept_list = (
-        "".join(render_review_center_lifecycle_item(entry) for entry in lifecycle_summary.get("retired_concepts", [])[:10])
+        "".join(
+            render_review_center_lifecycle_item(entry) for entry in lifecycle_summary.get("retired_concepts", [])[:10]
+        )
         or "<li>当前没有 retired concept。</li>"
     )
-    ready_action_list = "".join(render_review_center_action_item(action) for action in ready_actions[:10]) or "<li>当前没有 ready repair action。</li>"
+    ready_action_list = (
+        "".join(render_review_center_action_item(action) for action in ready_actions[:10])
+        or "<li>当前没有 ready repair action。</li>"
+    )
     apply_ready_action_list = (
         "".join(render_review_center_action_item(action) for action in apply_ready_actions[:8])
         or "<li>当前没有可直接 semi-auto apply 的低风险动作。</li>"
     )
-    rewrite_list = "".join(render_review_center_concept_item(item) for item in rewrite_candidates[:10]) or "<li>当前没有高优先级弱概念页。</li>"
-    conflict_list = "".join(render_review_center_concept_item(item) for item in conflict_signals[:10]) or "<li>当前没有显式概念冲突信号。</li>"
-    rewrite_proposal_list = "".join(render_review_center_rewrite_item(item) for item in rewrite_proposals[:10]) or "<li>当前没有 rewrite proposal。</li>"
+    rewrite_list = (
+        "".join(render_review_center_concept_item(item) for item in rewrite_candidates[:10])
+        or "<li>当前没有高优先级弱概念页。</li>"
+    )
+    conflict_list = (
+        "".join(render_review_center_concept_item(item) for item in conflict_signals[:10])
+        or "<li>当前没有显式概念冲突信号。</li>"
+    )
+    rewrite_proposal_list = (
+        "".join(render_review_center_rewrite_item(item) for item in rewrite_proposals[:10])
+        or "<li>当前没有 rewrite proposal。</li>"
+    )
     judgment_action_list = (
         "".join(render_review_center_review_action_item(action) for action in judgment_review_actions[:10])
         or "<li>当前没有 judgment review action。</li>"

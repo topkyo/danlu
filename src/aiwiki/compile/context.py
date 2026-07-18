@@ -7,14 +7,17 @@ from pathlib import Path
 from typing import Any
 
 from ..app_protocol import ensure_layout, load_protocol_state
-from ..app_state import load_compile_state, load_json_document_strict, load_manifest, machine_memory_state_path
-from ..app_utils import (
-    relative_path,
-    utc_now,
+from ..app_state_paths import machine_memory_state_path
+from ..content.io import sync_manifest_with_raw
+from ..state.io import load_json_document_strict
+from ..state.manifest import load_manifest
+from ..utils.io import (
     write_if_changed_ignoring_timestamps,
     write_json_document_if_changed_ignoring_generated_timestamps,
 )
-from ..content.io import sync_manifest_with_raw
+from ..utils.path import relative_path
+from ..utils.time import utc_now
+from .state import load_compile_state
 
 
 @dataclass
@@ -118,14 +121,14 @@ def start_compile_context(root: Path) -> CompileContext:
     manifest = sync_manifest_with_raw(root)
     entries: list[dict[str, Any]] = manifest["entries"]
     # Preserve the long-lived test seam that patches `aiwiki.app_compile.utc_now`.
-    from .. import app_utils as compile_facade
+    from ..utils.time import utc_now
 
     return CompileContext(
         root=root,
         previous_manifest=previous_manifest,
         manifest=manifest,
         entries=entries,
-        compiled_at=compile_facade.utc_now(),
+        compiled_at=utc_now(),
         protocol_state=load_protocol_state(root),
         previous_compile_state=load_compile_state(root),
         previous_memory=load_json_document_strict(machine_memory_state_path(root)),

@@ -5,12 +5,12 @@ receipt action_id），输出 provenance 树。
 
 设计：
 - read-only，纯派生，每次重扫（vault 规模够小）
-- ID 路由按前缀 / 形态识别 6 类
+- ID 路由按前缀 / 形态识别 9 类
 - 循环引用：visited set + 二次访问标记 (cycle)
 - 默认向上（parents），`--children/--depth` 切换
 
 不引入第三方依赖；只用 stdlib + 既有 helper：
-- `aiwiki.app_utils.parse_frontmatter`
+- `aiwiki.utils.markdown.parse_frontmatter`
 - `aiwiki.execution.l3_proposals.load_l3_proposal_state`
 """
 
@@ -21,9 +21,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
-from aiwiki.app_utils import parse_frontmatter
 from aiwiki.execution.alchemy import CANDIDATE_ELIXIR_DIR
 from aiwiki.execution.l3_proposals import STAGING_PROPOSALS_DIR
+from aiwiki.utils.markdown import parse_frontmatter
 
 # 资产种类 — 用前缀 / 路径形态识别
 AssetKind = str  # "raw" | "source" | "concept" | "derived" | "judgment" | "decision" | "elixir" | "proposal" | "receipt" | "unknown"
@@ -197,9 +197,7 @@ def _resolve_source(root: Path, asset_id: str, *, direction: str, depth: int, vi
             raw_rel = _normalize_raw_ref(raw_ref)
             if not raw_rel:
                 continue
-            node.parents.append(
-                _resolve_any(root, raw_rel, direction="up", depth=depth - 1, visited=visited)
-            )
+            node.parents.append(_resolve_any(root, raw_rel, direction="up", depth=depth - 1, visited=visited))
     if direction in {"down", "both"}:
         # 哪些 judgments/decisions/elixirs 引用此 source
         node.children.extend(
@@ -238,9 +236,7 @@ def _resolve_source(root: Path, asset_id: str, *, direction: str, depth: int, vi
             if derived_id in seen_derived:
                 continue
             seen_derived.add(derived_id)
-            node.children.append(
-                _resolve_any(root, derived_id, direction=direction, depth=depth - 1, visited=visited)
-            )
+            node.children.append(_resolve_any(root, derived_id, direction=direction, depth=depth - 1, visited=visited))
     return node
 
 
@@ -260,9 +256,7 @@ def _resolve_concept(root: Path, asset_id: str, *, direction: str, depth: int, v
             ref = src_ref.strip()
             if not ref:
                 continue
-            node.parents.append(
-                _resolve_any(root, ref, direction="up", depth=depth - 1, visited=visited)
-            )
+            node.parents.append(_resolve_any(root, ref, direction="up", depth=depth - 1, visited=visited))
     # concept 是叶子节点：source→concept 边由 source 侧 down 展开提供，避免双向重复
     return node
 
@@ -286,9 +280,7 @@ def _resolve_derived(root: Path, asset_id: str, *, direction: str, depth: int, v
                 continue
             # strip anchor fragment if any (`wiki/sources/x.md#sha256`)
             target = ref.split("#", 1)[0] if "#" in ref else ref
-            node.parents.append(
-                _resolve_any(root, target, direction="up", depth=depth - 1, visited=visited)
-            )
+            node.parents.append(_resolve_any(root, target, direction="up", depth=depth - 1, visited=visited))
     if direction in {"down", "both"}:
         # 哪些 elixir 引用此 derived 页面
         seen_elixir: set[str] = set()
@@ -324,9 +316,7 @@ def _resolve_judgment(root: Path, asset_id: str, *, direction: str, depth: int, 
             citation = cit.strip()
             if not citation:
                 continue
-            node.parents.append(
-                _resolve_any(root, citation, direction="up", depth=depth - 1, visited=visited)
-            )
+            node.parents.append(_resolve_any(root, citation, direction="up", depth=depth - 1, visited=visited))
     if direction in {"down", "both"}:
         # 找 decision.supports 反向 + elixir derived_from
         for dec_path, dec_fm in _iter_curated_pages(root, "wiki/decisions"):
@@ -361,16 +351,12 @@ def _resolve_decision(root: Path, asset_id: str, *, direction: str, depth: int, 
             target = support.strip()
             if not target:
                 continue
-            node.parents.append(
-                _resolve_any(root, target, direction="up", depth=depth - 1, visited=visited)
-            )
+            node.parents.append(_resolve_any(root, target, direction="up", depth=depth - 1, visited=visited))
         for cit in _as_str_list(fm.get("citations")):
             target = cit.strip()
             if not target:
                 continue
-            node.parents.append(
-                _resolve_any(root, target, direction="up", depth=depth - 1, visited=visited)
-            )
+            node.parents.append(_resolve_any(root, target, direction="up", depth=depth - 1, visited=visited))
     return node
 
 
@@ -406,16 +392,12 @@ def _resolve_elixir(root: Path, asset_id: str, *, direction: str, depth: int, vi
             target = ref.strip()
             if not target:
                 continue
-            node.parents.append(
-                _resolve_any(root, target, direction="up", depth=depth - 1, visited=visited)
-            )
+            node.parents.append(_resolve_any(root, target, direction="up", depth=depth - 1, visited=visited))
         for ref in _as_str_list(fm.get("evidence")):
             target = ref.strip()
             if not target:
                 continue
-            node.parents.append(
-                _resolve_any(root, target, direction="up", depth=depth - 1, visited=visited)
-            )
+            node.parents.append(_resolve_any(root, target, direction="up", depth=depth - 1, visited=visited))
     return node
 
 
@@ -455,9 +437,7 @@ def _resolve_proposal(root: Path, asset_id: str, *, direction: str, depth: int, 
                 target = str(ref or "").strip()
                 if not target:
                     continue
-                node.parents.append(
-                    _resolve_any(root, target, direction="up", depth=depth - 1, visited=visited)
-                )
+                node.parents.append(_resolve_any(root, target, direction="up", depth=depth - 1, visited=visited))
     return node
 
 
@@ -492,12 +472,14 @@ def _resolve_receipt(root: Path, asset_id: str, *, direction: str, depth: int, v
         id=asset_id,
         kind="receipt",
         label=f"receipt: {subject_kind} {subject_id}",
-        metadata={"subject_kind": subject_kind, "subject_id": subject_id, "operation": str(matched.get("operation") or "")},
+        metadata={
+            "subject_kind": subject_kind,
+            "subject_id": subject_id,
+            "operation": str(matched.get("operation") or ""),
+        },
     )
     if direction in {"up", "both"} and subject_id:
-        node.parents.append(
-            _resolve_any(root, subject_id, direction="up", depth=depth - 1, visited=visited)
-        )
+        node.parents.append(_resolve_any(root, subject_id, direction="up", depth=depth - 1, visited=visited))
     return node
 
 
@@ -617,9 +599,7 @@ def _find_referrers(
             citations = _as_str_list(fm.get("citations"))
             if any(c.strip() == source_rel or source_id in c for c in citations):
                 node_id = str(fm.get("id") or path.stem)
-                referrers.append(
-                    _resolve_any(root, node_id, direction=direction, depth=depth, visited=visited)
-                )
+                referrers.append(_resolve_any(root, node_id, direction=direction, depth=depth, visited=visited))
     return referrers
 
 

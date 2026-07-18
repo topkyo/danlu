@@ -14,9 +14,7 @@ Extracted from aiwiki.app_render (EP-017A step 2). Owns:
 - render_output_packs_index
 - protocol_output_pack_rows
 
-External callers should keep importing via aiwiki.app_render facade to
-preserve the B2/B5/B6/B7 true-origin convention; direct imports from
-aiwiki.render.packs are also valid for new code.
+External callers should import directly from aiwiki.render.packs.
 
 Lazy import discipline (EP-017A step 0 root-cause fix for the
 ``app_render <-> app_content`` module-load cycle): the three symbols
@@ -41,14 +39,11 @@ from ..app_lifecycle import (
     sort_curated_pages,
 )
 from ..app_protocol import PROTOCOL_LIBRARY, page_focus_score, protocol_title
-from ..app_state import DEFAULT_PROTOCOL, load_output_pack_build_state
-from ..app_utils import (
-    parse_frontmatter,
-    relative_path,
-    render_frontmatter,
-    sha256_bytes,
-    sha256_file,
-)
+from ..compile.build import load_output_pack_build_state
+from ..state.constants import DEFAULT_PROTOCOL
+from ..utils.hash import sha256_bytes, sha256_file
+from ..utils.markdown import parse_frontmatter, render_frontmatter
+from ..utils.path import relative_path
 from .paths import (
     decision_memo_path,
     execution_bundle_path,
@@ -127,7 +122,9 @@ def output_pack_reviewed_candidates(
     decisions: list[dict[str, str]],
     judgments: list[dict[str, str]],
 ) -> list[dict[str, str]]:
-    return sort_curated_pages([page for page in decisions + judgments if page.get("reviewed_at") and page.get("pending_review") != "true"])
+    return sort_curated_pages(
+        [page for page in decisions + judgments if page.get("reviewed_at") and page.get("pending_review") != "true"]
+    )
 
 
 def output_pack_repair_plan_candidates(memory: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -142,7 +139,11 @@ def output_pack_repair_plan_candidates(memory: dict[str, Any]) -> tuple[list[dic
 
 
 def output_pack_state_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [{key: value for key, value in record.items() if key != "content"} for record in records if isinstance(record, dict)]
+    return [
+        {key: value for key, value in record.items() if key != "content"}
+        for record in records
+        if isinstance(record, dict)
+    ]
 
 
 def output_pack_group_is_reusable(root: Path, records: list[dict[str, Any]]) -> bool:
@@ -237,7 +238,7 @@ def output_pack_sop_group_input_signature(
     *,
     active_protocol: str,
 ) -> str:
-    from ..content.memory import action_supports_low_risk_apply
+    from ..memory.action_core import action_supports_low_risk_apply
 
     payload = {
         "active_protocol": active_protocol,
@@ -355,7 +356,7 @@ def build_output_pack_review_packs(
             "",
             "## Commands",
             f"- `PYTHONPATH=src python3 -m aiwiki.cli --root . review-page {page['path']} --status "
-            f"{'approved' if kind == 'decision' else 'confirmed'} --note \"Review pack follow-up.\"`",
+            f'{"approved" if kind == "decision" else "confirmed"} --note "Review pack follow-up."`',
             "",
             "## Citations",
         ]
@@ -612,16 +613,12 @@ def build_output_pack_sop_drafts(
     active_protocol: str,
     compiled_at: str,
 ) -> tuple[list[dict[str, Any]], int]:
-    from ..content.memory import (
-        action_supports_low_risk_apply,
-        execution_band_label,
-    )
+    from ..execution.policy import execution_band_label
+    from ..memory.action_core import action_supports_low_risk_apply
 
     sop_drafts: list[dict[str, Any]] = []
     proposal_by_action = {
-        str(proposal.get("action_id") or ""): proposal
-        for proposal in execution_proposals
-        if proposal.get("action_id")
+        str(proposal.get("action_id") or ""): proposal for proposal in execution_proposals if proposal.get("action_id")
     }
     pattern_frequencies = extract_sop_pattern_frequencies(ready_actions, execution_proposals)
     proposal_count = 0
@@ -650,7 +647,9 @@ def build_output_pack_sop_drafts(
         )
         patch_plan = proposal.get("page_patch_plan", [])
         bundle_path = str(proposal.get("bundle_path") or "")
-        safe_preview = proposal.get("safe_apply_preview") if isinstance(proposal.get("safe_apply_preview"), dict) else {}
+        safe_preview = (
+            proposal.get("safe_apply_preview") if isinstance(proposal.get("safe_apply_preview"), dict) else {}
+        )
         lines = [
             frontmatter_text,
             "",
@@ -672,14 +671,10 @@ def build_output_pack_sop_drafts(
             f"1. 先查看 review-queue / execution proposal `{action_id}`，确认 patch plan 与 bundle。",
         ]
         if bundle_path:
-            lines.append(
-                f"2. 如果执行边界仍允许，再按 proposal 页面说明处理 bundle `{bundle_path}`。"
-            )
+            lines.append(f"2. 如果执行边界仍允许，再按 proposal 页面说明处理 bundle `{bundle_path}`。")
         else:
             lines.append("2. 当前没有 bundle，先回到 execution proposal 页面确认执行边界。")
-        lines.append(
-            "3. 如需回滚，查看 execution audit 中对应 receipt 与 revert 说明。"
-        )
+        lines.append("3. 如需回滚，查看 execution audit 中对应 receipt 与 revert 说明。")
         lines.extend(["", "## Page-Level Patch Plan"])
         if not patch_plan:
             lines.append("- 当前没有页级 patch step。")
@@ -705,9 +700,7 @@ def build_output_pack_sop_drafts(
             lines.append(f"- Apply mode: `{safe_preview.get('apply_mode', 'dry-run')}`")
             lines.append(f"- Bundle path: `{safe_preview.get('bundle_path', '') or 'none'}`")
             lines.extend(
-                f"- {step}"
-                for step in safe_preview.get("steps", [])[:6]
-                if isinstance(step, str) and step.strip()
+                f"- {step}" for step in safe_preview.get("steps", [])[:6] if isinstance(step, str) and step.strip()
             )
         lines.extend(
             [
@@ -721,8 +714,12 @@ def build_output_pack_sop_drafts(
                 ),
                 "",
                 "## Related Links",
-                f"- {pack_workspace_link(str(proposal.get('proposal_path') or ''), 'Execution Proposal')}" if proposal.get("proposal_path") else "- Execution Proposal: none",
-                f"- {pack_workspace_link(bundle_path, 'Execution Bundle')}" if bundle_path else "- Execution Bundle: none",
+                f"- {pack_workspace_link(str(proposal.get('proposal_path') or ''), 'Execution Proposal')}"
+                if proposal.get("proposal_path")
+                else "- Execution Proposal: none",
+                f"- {pack_workspace_link(bundle_path, 'Execution Bundle')}"
+                if bundle_path
+                else "- Execution Bundle: none",
                 "- [执行审计](../../../wiki/indexes/execution-audit.md)",
                 "- [机器记忆修复计划](../../../wiki/indexes/machine-memory-repair-plan.md)",
             ]
@@ -942,7 +939,8 @@ def build_output_packs_incremental(
 
     lifecycle_reusable = (
         isinstance(previous_group_records.get("lifecycle_summary"), dict)
-        and str(previous_group_records["lifecycle_summary"].get("input_signature") or "") == signatures["lifecycle_summary"]
+        and str(previous_group_records["lifecycle_summary"].get("input_signature") or "")
+        == signatures["lifecycle_summary"]
     )
     if lifecycle_reusable:
         clean_groups.append("lifecycle_summary")
@@ -1025,10 +1023,7 @@ def build_output_packs_incremental(
         "version": 1,
         "generated_at": compiled_at,
         "active_protocol": active_protocol,
-        "group_records": {
-            group: {"input_signature": signature}
-            for group, signature in signatures.items()
-        },
+        "group_records": {group: {"input_signature": signature} for group, signature in signatures.items()},
         "lifecycle_summary": lifecycle_summary,
         "review_packs": output_pack_state_records(review_packs),
         "decision_memos": output_pack_state_records(decision_memos),
@@ -1091,7 +1086,7 @@ def render_output_packs_index(output_packs: dict[str, Any], compiled_at: str, ac
     lines.extend(
         [
             "",
-        "## Review Packs",
+            "## Review Packs",
         ]
     )
     if not review_packs:

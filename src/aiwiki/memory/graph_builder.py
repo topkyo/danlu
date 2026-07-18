@@ -6,8 +6,10 @@ import json
 from pathlib import Path
 from typing import Any
 
-from ..app_state import DEFAULT_PROTOCOL
-from ..app_utils import parse_frontmatter, relative_path, sha256_bytes, strip_frontmatter
+from ..state.constants import DEFAULT_PROTOCOL
+from ..utils.hash import sha256_bytes
+from ..utils.markdown import parse_frontmatter, strip_frontmatter
+from ..utils.path import relative_path
 
 
 def _existing_markdown_graph_path(root: Path | None, path: str) -> str | None:

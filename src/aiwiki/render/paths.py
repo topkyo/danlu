@@ -14,7 +14,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..app_protocol import ensure_layout
-from ..app_utils import parse_frontmatter, slugify, utc_now
+from ..utils.markdown import parse_frontmatter
+from ..utils.text import slugify
+from ..utils.time import utc_now
 
 # Kept bound for acceptance monkeypatch: `aiwiki.render.paths.utc_now`.
 _ = utc_now
@@ -50,9 +52,7 @@ def remove_stale_generated_concept_pages(root: Path, active_slugs: set[str]) -> 
     return removed_count
 
 
-def remove_stale_generated_concept_pages_detailed(
-    root: Path, active_slugs: set[str]
-) -> tuple[int, list[str]]:
+def remove_stale_generated_concept_pages_detailed(root: Path, active_slugs: set[str]) -> tuple[int, list[str]]:
     """Same as `remove_stale_generated_concept_pages` but also returns the removed slugs.
 
     Used by the compile pipeline to emit a `concept-noise-pruned` wiki log entry when
@@ -157,4 +157,3 @@ def resolve_execution_receipt_path(root: Path, action_id: str) -> Path:
     if legacy.exists():
         return legacy
     return primary
-

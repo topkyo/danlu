@@ -11,12 +11,8 @@ from ..app_compile_ops import render_protocols_dashboard
 from ..app_lifecycle import build_knowledge_lifecycle_document
 from ..app_protocol import DEFAULT_DASHBOARD_FILES, MANAGED_DASHBOARD_TEMPLATE_FILES
 from ..app_routing import build_material_state_documents
-from ..app_state import (
-    DEFAULT_PROTOCOL,
-    append_runtime_history,
+from ..app_state_paths import (
     archive_candidates_state_path,
-    default_machine_memory_build_state,
-    default_ranking_build_state,
     knowledge_lifecycle_state_path,
     machine_memory_build_state_path,
     machine_memory_graph_html_path,
@@ -29,14 +25,6 @@ from ..app_state import (
     query_route_telemetry_path,
     ranking_build_state_path,
 )
-from ..app_utils import (
-    parse_frontmatter,
-    parse_iso_datetime,
-    relative_path,
-    strip_frontmatter,
-    tokenize,
-    write_json_document_if_changed_ignoring_generated_timestamps,
-)
 from ..content.concepts import build_concept_quality
 from ..content.io import (
     collect_output_density_artifacts,
@@ -44,11 +32,12 @@ from ..content.io import (
     entry_ids_from_paths,
     entry_lookup_maps,
 )
-from ..content.memory import (
+from ..execution.history import append_runtime_history
+from ..execution.policy import (
     append_execution_policy_decisions,
     execution_policy_decision_record,
 )
-from ..content.memory import (
+from ..execution.repair_plan import (
     build_machine_memory_repair_plan as build_machine_memory_repair_plan_memory,
 )
 from ..lifecycle.aging import collect_aging_signals
@@ -74,6 +63,13 @@ from ..memory.graph_builder import build_machine_memory_graph
 from ..memory.health import build_machine_memory_health
 from ..memory.judgment_assets import attach_judgment_assets_to_machine_memory
 from ..memory.status import render_machine_memory_index
+from ..state.constants import DEFAULT_PROTOCOL
+from ..utils.io import write_json_document_if_changed_ignoring_generated_timestamps
+from ..utils.markdown import parse_frontmatter, strip_frontmatter
+from ..utils.path import relative_path
+from ..utils.text import tokenize
+from ..utils.time import parse_iso_datetime
+from .build import default_machine_memory_build_state, default_ranking_build_state
 from .context import CompileContext
 
 logger = logging.getLogger(__name__)
@@ -83,11 +79,7 @@ def _curated_page_scan_record(root: Path, page: dict[str, str]) -> dict[str, Any
     page_path = root / str(page.get("path") or "")
     content = page_path.read_text(encoding="utf-8", errors="replace") if page_path.exists() else ""
     frontmatter = parse_frontmatter(content)
-    citations = [
-        str(path)
-        for path in frontmatter.get("citations", [])
-        if isinstance(path, str) and path.strip()
-    ]
+    citations = [str(path) for path in frontmatter.get("citations", []) if isinstance(path, str) and path.strip()]
     tokens = set(tokenize(f"{page.get('title', '')}\n{strip_frontmatter(content)}"))
     return {
         "citations": citations,
@@ -106,12 +98,8 @@ def _candidate_is_covered_by_review(
     status = str(frontmatter.get("status") or "")
     if status not in {"approved", "confirmed"}:
         return False
-    reviewed_at = parse_iso_datetime(
-        str(frontmatter.get("last_reviewed") or frontmatter.get("reviewed_at") or "")
-    )
-    source_updated_at = parse_iso_datetime(
-        str(source_entry.get("updated_at") or source_entry.get("imported_at") or "")
-    )
+    reviewed_at = parse_iso_datetime(str(frontmatter.get("last_reviewed") or frontmatter.get("reviewed_at") or ""))
+    source_updated_at = parse_iso_datetime(str(source_entry.get("updated_at") or source_entry.get("imported_at") or ""))
     if reviewed_at is None or source_updated_at is None:
         return False
     return reviewed_at > source_updated_at
@@ -144,11 +132,7 @@ def _counter_evidence_scan_phase(context: CompileContext) -> dict[str, Any]:
             source_entry = entry_by_id.get(source_id, {})
             if _candidate_is_covered_by_review(scan_record, source_entry):
                 continue
-            source_terms = {
-                token
-                for label in context.entry_terms.get(source_id, [])
-                for token in tokenize(label)
-            }
+            source_terms = {token for label in context.entry_terms.get(source_id, []) for token in tokenize(label)}
             source_terms.update(tokenize(f"{source_entry.get('title', '')}\n{context.previews.get(source_id, '')}"))
             overlap = sorted(source_terms & scan_record["tokens"])
             if len(overlap) < 2:
@@ -183,11 +167,7 @@ def _counter_evidence_scan_phase(context: CompileContext) -> dict[str, Any]:
                     "source_ids": [candidate["source_id"] for candidate in page_candidates],
                     "source_pages": [candidate["source_page"] for candidate in page_candidates],
                     "shared_terms": sorted(
-                        {
-                            term
-                            for candidate in page_candidates
-                            for term in candidate.get("shared_terms", [])
-                        }
+                        {term for candidate in page_candidates for term in candidate.get("shared_terms", [])}
                     )[:10],
                 }
             )
@@ -263,13 +243,9 @@ def _build_judgment_review_actions(
     aging: dict[str, list[dict[str, str]]],
     counter_evidence_scan: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    from ..app_utils import slugify
+    from ..utils.text import slugify
 
-    page_by_path = {
-        str(page.get("path") or ""): page
-        for page in decisions + judgments
-        if str(page.get("path") or "")
-    }
+    page_by_path = {str(page.get("path") or ""): page for page in decisions + judgments if str(page.get("path") or "")}
     action_by_path: dict[str, dict[str, Any]] = {}
     priority_rank = {"high": 0, "medium": 1, "low": 2}
 
@@ -374,7 +350,7 @@ def _append_judgment_relation_history_event(
     *,
     occurred_at: str,
 ) -> None:
-    from ..app_state import append_runtime_history
+    from ..execution.history import append_runtime_history
 
     previous_signatures = _judgment_relation_signatures(previous_memory)
     current_signatures = _judgment_relation_signatures(current_memory)
@@ -398,13 +374,16 @@ def _append_judgment_relation_history_event(
             "event_type": "judgment-relation-refresh",
             "occurred_at": occurred_at,
             "added_relations": [_judgment_relation_descriptor(signature, current_nodes) for signature in added[:12]],
-            "removed_relations": [_judgment_relation_descriptor(signature, previous_nodes) for signature in removed[:12]],
+            "removed_relations": [
+                _judgment_relation_descriptor(signature, previous_nodes) for signature in removed[:12]
+            ],
         },
     )
 
 
 def compile_runtime_phase(context: CompileContext) -> None:
-    from .. import app_compile as compile_facade
+    from ..memory.builder import build_machine_memory
+    from .ranking import build_ranking_state
 
     # Round 51: managed static dashboard templates are runtime-owned. Refresh
     # them via CompileContext so compile status accounts for the write.
@@ -437,13 +416,12 @@ def compile_runtime_phase(context: CompileContext) -> None:
     context.dirty_machine_memory_concept_slugs = list(machine_memory_build.get("dirty_concept_slugs", []))
     context.clean_machine_memory_concept_slugs = list(machine_memory_build.get("clean_concept_slugs", []))
     context.machine_memory_core_reused = bool(
-        machine_memory_build.get("inputs_clean")
-        and machine_memory_snapshot_is_reusable(context.previous_memory)
+        machine_memory_build.get("inputs_clean") and machine_memory_snapshot_is_reusable(context.previous_memory)
     )
     if context.machine_memory_core_reused:
         context.memory = reuse_machine_memory_core(context.previous_memory, context.compiled_at)
     else:
-        context.memory = compile_facade.build_machine_memory(
+        context.memory = build_machine_memory(
             context.root,
             context.entries,
             context.concepts,
@@ -564,7 +542,7 @@ def compile_runtime_phase(context: CompileContext) -> None:
         active_protocol=context.protocol_state["active_protocol"],
     )
 
-    ranking_build = compile_facade.build_ranking_state(
+    ranking_build = build_ranking_state(
         context.root,
         context.entries,
         context.concepts,

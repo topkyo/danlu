@@ -8,18 +8,18 @@ from pathlib import Path
 from typing import Any
 
 from aiwiki.app_protocol import CONCEPT_HARDNESS_LEVELS, load_protocol_state
-from aiwiki.app_utils import (
-    TEXT_EXTENSIONS,
-    parse_frontmatter,
-    read_text_preview,
-    relative_path,
-    render_scalar,
-    strip_frontmatter,
-)
 from aiwiki.config import LLMConfig
 from aiwiki.content.io import preserved_section
 from aiwiki.content.memory import concept_summary_is_placeholder
 from aiwiki.runner.interfaces import SupportsComplete
+from aiwiki.utils.markdown import (
+    TEXT_EXTENSIONS,
+    parse_frontmatter,
+    read_text_preview,
+    render_scalar,
+    strip_frontmatter,
+)
+from aiwiki.utils.path import relative_path
 
 ASK_INDEX_PAGES_BASE = (
     "wiki/indexes/index.md",
@@ -106,7 +106,6 @@ LINT_PROMPT_PROFILES = {
 }
 
 
-
 def _system_prompt(kind: str) -> str:
     if kind == "compile":
         return (
@@ -120,8 +119,7 @@ def _system_prompt(kind: str) -> str:
             "Return only the full replacement artifact, grounded in the provided source pages."
         )
     return (
-        "You review a research wiki for semantic issues. "
-        "Return only the markdown report requested by the user prompt."
+        "You review a research wiki for semantic issues. Return only the markdown report requested by the user prompt."
     )
 
 
@@ -158,7 +156,7 @@ def _build_compile_prompt(
             "## Hard Constraints",
             f"- Preserve frontmatter `id: {entry['id']}`.",
             "- Preserve `kind: source`.",
-            f"- Preserve `source_files: [\"{entry['stored_path']}\"]`.",
+            f'- Preserve `source_files: ["{entry["stored_path"]}"]`.',
             f"- Preserve `source_sha256: {entry['sha256']}`.",
             *note_kind_lines,
             "- Keep the `Source Record` section and update the `Summary` section with grounded prose.",
@@ -211,7 +209,9 @@ def _build_concept_compile_prompt(
         )
     omitted_source_pages = max(0, len(source_pages) - profile["max_source_pages"])
     if omitted_source_pages:
-        source_sections.append(f"- Omitted `{omitted_source_pages}` additional source page(s) for prompt profile `{prompt_profile}`.")
+        source_sections.append(
+            f"- Omitted `{omitted_source_pages}` additional source page(s) for prompt profile `{prompt_profile}`."
+        )
     related_sections: list[str] = []
     for slug in related_slugs[: profile["max_related_concepts"]]:
         page = root / "wiki" / "concepts" / f"{slug}.md"
@@ -229,13 +229,19 @@ def _build_concept_compile_prompt(
         )
     omitted_related = max(0, len(related_slugs) - profile["max_related_concepts"])
     if omitted_related:
-        related_sections.append(f"- Omitted `{omitted_related}` additional related concept(s) for prompt profile `{prompt_profile}`.")
+        related_sections.append(
+            f"- Omitted `{omitted_related}` additional related concept(s) for prompt profile `{prompt_profile}`."
+        )
     frontmatter = parse_frontmatter(current_page)
-    quality_lines = [
-        f"- Rewrite priority: `{quality_record.get('priority', 'n/a')}`",
-        f"- Issues: `{', '.join(quality_record.get('issues', [])) or 'none'}`",
-        f"- Strategy: {quality_record.get('rewrite_strategy', 'Keep the concept grounded and explicit.')}",
-    ] if quality_record else ["- No extra concept-quality signal was attached."]
+    quality_lines = (
+        [
+            f"- Rewrite priority: `{quality_record.get('priority', 'n/a')}`",
+            f"- Issues: `{', '.join(quality_record.get('issues', [])) or 'none'}`",
+            f"- Strategy: {quality_record.get('rewrite_strategy', 'Keep the concept grounded and explicit.')}",
+        ]
+        if quality_record
+        else ["- No extra concept-quality signal was attached."]
+    )
     if quality_record and quality_record.get("conflict_signals"):
         for signal in quality_record.get("conflict_signals", [])[: profile["max_quality_signals"]]:
             quality_lines.append(
@@ -307,9 +313,7 @@ def _rewrite_candidate_slugs(memory: dict[str, Any], *, exclude: set[str]) -> li
 def _rewrite_candidate_record(memory: dict[str, Any], slug: str) -> dict[str, Any]:
     quality = memory.get("health", {}).get("concept_quality", {})
     weak_by_slug = {
-        str(record.get("slug") or ""): record
-        for record in quality.get("weak_concepts", [])
-        if isinstance(record, dict)
+        str(record.get("slug") or ""): record for record in quality.get("weak_concepts", []) if isinstance(record, dict)
     }
     for candidate in quality.get("rewrite_candidates", []):
         if str(candidate.get("slug") or "") != slug:
@@ -353,7 +357,9 @@ def _build_ask_prompt(
         _schema_context(root, ("index.md", "citations.md", "conflicts.md", "writeback.md")),
         "",
         "## Active Protocol",
-        _protocol_context(root, ("index.md", "taxonomy.md", "decision.md", "judgment.md", "review.md", "nightly.md", "query.md")),
+        _protocol_context(
+            root, ("index.md", "taxonomy.md", "decision.md", "judgment.md", "review.md", "nightly.md", "query.md")
+        ),
         "",
         "## Current Artifact",
         current_artifact,
@@ -370,12 +376,14 @@ def _build_ask_prompt(
                 "",
             ]
         )
-    sections.extend([
-        "## Machine Memory Query Plan",
-        _render_machine_query(machine_memory_query),
-        "",
-        "## Index Pages",
-    ])
+    sections.extend(
+        [
+            "## Machine Memory Query Plan",
+            _render_machine_query(machine_memory_query),
+            "",
+            "## Index Pages",
+        ]
+    )
     included_chars = sum(len(section) for section in sections)
     selected_index_pages = _select_ask_index_pages(index_pages, machine_memory_query, output_format)
     if not selected_index_pages:
@@ -411,7 +419,9 @@ def _build_ask_prompt(
             if index >= profile["max_protocol_pages"]:
                 omitted = len(selected_protocol_pages) - index
                 break
-            block = "\n".join([f"### {relative}", _fit_prompt_section(content, max_chars=profile["protocol_page_chars"]), ""])
+            block = "\n".join(
+                [f"### {relative}", _fit_prompt_section(content, max_chars=profile["protocol_page_chars"]), ""]
+            )
             if included_chars + len(block) > profile["max_total_chars"]:
                 omitted = len(selected_protocol_pages) - index
                 break
@@ -512,7 +522,9 @@ def _build_ask_prompt(
     )
     included_chars += len(sections[-1])
     if not source_pages:
-        sections.append("- No ranked source pages were available. Keep the artifact cautious and explicit about missing evidence.")
+        sections.append(
+            "- No ranked source pages were available. Keep the artifact cautious and explicit about missing evidence."
+        )
     else:
         omitted = 0
         for index, (entry, content) in enumerate(source_pages):
@@ -640,10 +652,18 @@ def _render_machine_query(machine_memory_query: dict[str, Any]) -> str:
         if len(supporting_edges) > 12:
             lines.append(f"  - ... {len(supporting_edges) - 12} more edge(s)")
     subgraph = machine_memory_query.get("query_subgraph", {})
-    lines.append(f"- Query subgraph sources: `{', '.join(node['id'] for node in subgraph.get('sources', [])) or 'none'}`")
-    lines.append(f"- Query subgraph concepts: `{', '.join(node['slug'] for node in subgraph.get('concepts', [])) or 'none'}`")
-    lines.append(f"- Query subgraph judgments: `{', '.join(node.get('page_id', '') for node in subgraph.get('judgments', [])) or 'none'}`")
-    lines.append(f"- Query subgraph elixirs: `{', '.join(node.get('elixir_id', '') for node in subgraph.get('elixirs', [])) or 'none'}`")
+    lines.append(
+        f"- Query subgraph sources: `{', '.join(node['id'] for node in subgraph.get('sources', [])) or 'none'}`"
+    )
+    lines.append(
+        f"- Query subgraph concepts: `{', '.join(node['slug'] for node in subgraph.get('concepts', [])) or 'none'}`"
+    )
+    lines.append(
+        f"- Query subgraph judgments: `{', '.join(node.get('page_id', '') for node in subgraph.get('judgments', [])) or 'none'}`"
+    )
+    lines.append(
+        f"- Query subgraph elixirs: `{', '.join(node.get('elixir_id', '') for node in subgraph.get('elixirs', [])) or 'none'}`"
+    )
     lines.append(f"- Query subgraph edge count: `{len(subgraph.get('edges', []))}`")
     routes = machine_memory_query.get("query_routes", [])
     lines.append(f"- Query routes: `{len(routes)}`")
@@ -732,7 +752,9 @@ def _build_lint_prompt(root: Path, deterministic_report: str, prompt_profile: st
             sections.append(block)
             included_chars += len(block)
     if omitted_indexes:
-        sections.append(f"- Omitted `{omitted_indexes}` additional index page(s) for prompt profile `{prompt_profile}`.")
+        sections.append(
+            f"- Omitted `{omitted_indexes}` additional index page(s) for prompt profile `{prompt_profile}`."
+        )
 
     schema_context = _schema_context(
         root,

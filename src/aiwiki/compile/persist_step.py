@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..app_cache import sync_query_cache
-from ..app_state import (
+from ..app_state_paths import (
     active_corpora_state_path,
     archive_candidates_state_path,
     cache_status_path,
@@ -19,14 +19,15 @@ from ..app_state import (
     material_state_path,
     output_pack_build_state_path,
     ranking_build_state_path,
-    save_compile_state,
 )
-from ..app_utils import relative_path, write_if_changed_ignoring_timestamps
 from ..content.io import manifest_change_summary
 from ..render.compile_status import render_compile_status
 from ..render.paths import append_wiki_log
+from ..utils.io import write_if_changed_ignoring_timestamps
+from ..utils.path import relative_path
 from ..vault_obsidian_graph import sync_evidence_graph_workspace
 from .context import CompileContext
+from .state import save_compile_state
 
 
 def _build_compile_phase_summary(context: CompileContext) -> list[dict[str, Any]]:
@@ -122,7 +123,8 @@ def _build_compile_phase_summary(context: CompileContext) -> list[dict[str, Any]
             "mode": "incremental",
             "status": "completed",
             "details": {
-                "tracked_artifacts": len(context.dirty_maintenance_artifacts) + len(context.clean_maintenance_artifacts),
+                "tracked_artifacts": len(context.dirty_maintenance_artifacts)
+                + len(context.clean_maintenance_artifacts),
                 "dirty_artifacts": len(context.dirty_maintenance_artifacts),
                 "clean_artifacts": len(context.clean_maintenance_artifacts),
                 "updated_artifacts": context.maintenance_changed_pages,
@@ -259,8 +261,7 @@ def _build_compile_drift_warnings(context: CompileContext) -> list[dict[str, Any
     citation_drift_judgments = [
         entry
         for entry in invalidated_judgments
-        if "citation-drift" in entry.get("invalidation_signals", [])
-        or bool(entry.get("citation_drift"))
+        if "citation-drift" in entry.get("invalidation_signals", []) or bool(entry.get("citation_drift"))
     ]
     for entry in citation_drift_judgments[:4]:
         warnings.append(
@@ -288,9 +289,7 @@ def _build_compile_drift_warnings(context: CompileContext) -> list[dict[str, Any
                     f"{str(entry.get('title') or entry.get('path') or 'judgment')} requires invalidation review."
                 ),
                 "invalidation_signals": [
-                    str(signal)
-                    for signal in entry.get("invalidation_signals", [])
-                    if str(signal)
+                    str(signal) for signal in entry.get("invalidation_signals", []) if str(signal)
                 ][:4],
             }
         )
@@ -351,9 +350,7 @@ def _build_compile_result_payload(
     drift_warnings = _build_compile_drift_warnings(context)
     concept_rewrite = context.memory.get("health", {}).get("concept_rewrite", {})
     concept_rewrite_proposals = [
-        proposal
-        for proposal in concept_rewrite.get("proposals", [])
-        if isinstance(proposal, dict)
+        proposal for proposal in concept_rewrite.get("proposals", []) if isinstance(proposal, dict)
     ]
     return {
         "compiled_at": context.compiled_at,
@@ -421,7 +418,9 @@ def _build_compile_result_payload(
             knowledge_lifecycle_override_state_path(context.root),
         ),
         "concept_rewrite": {
-            "counts": dict(concept_rewrite.get("counts", {})) if isinstance(concept_rewrite.get("counts"), dict) else {},
+            "counts": dict(concept_rewrite.get("counts", {}))
+            if isinstance(concept_rewrite.get("counts"), dict)
+            else {},
             "state_path": str(concept_rewrite.get("state_path") or ""),
             "proposal_paths": [
                 str(proposal.get("proposal_path") or "")
@@ -461,9 +460,7 @@ def finalize_compile_phase(context: CompileContext, *, force_cache_rebuild: bool
     compile_status_changed = int(wrote_compile_status)
     context.changed_pages += compile_status_changed
     should_log_compile = (
-        context.changed_pages > 0
-        or context.removed_pages > 0
-        or bool(context.transition.get("changed", False))
+        context.changed_pages > 0 or context.removed_pages > 0 or bool(context.transition.get("changed", False))
     )
     if should_log_compile:
         append_wiki_log(

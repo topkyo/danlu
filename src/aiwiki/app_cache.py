@@ -13,19 +13,17 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from .app_state import (
-    cache_db_path,
-    cache_status_path,
-    load_archive_candidates_state,
-    load_cache_status,
-    load_compile_state,
-    load_knowledge_lifecycle_state,
-    load_machine_memory,
-    load_material_routing_state,
-    load_material_state,
-    save_cache_status,
-)
-from .app_utils import relative_path, runtime_write_lock, sha256_bytes, utc_now
+from .app_state_paths import cache_db_path, cache_status_path
+from .compile.state import load_compile_state
+from .content.archive import load_archive_candidates_state, load_material_routing_state
+from .content.material import load_material_state
+from .lifecycle.knowledge import load_knowledge_lifecycle_state
+from .memory.state import load_machine_memory
+from .state.cache import load_cache_status, save_cache_status
+from .utils.hash import sha256_bytes
+from .utils.io import runtime_write_lock
+from .utils.path import relative_path
+from .utils.time import utc_now
 
 CACHE_SCHEMA_VERSION = 1
 
@@ -257,11 +255,7 @@ def query_cache_memory_hash(memory: dict[str, Any]) -> str:
         "judgment_nodes": memory.get("judgment_nodes", []),
         "elixir_nodes": memory.get("elixir_nodes", []),
         "edges": edges if isinstance(edges, dict) else {},
-        "elixir_derived_from": (
-            edges.get("elixir_derived_from", [])
-            if isinstance(edges, dict)
-            else []
-        ),
+        "elixir_derived_from": (edges.get("elixir_derived_from", []) if isinstance(edges, dict) else []),
         "term_index": memory.get("term_index", {}),
         "health": memory.get("health", {}),
     }
@@ -563,7 +557,9 @@ def load_query_cache_snapshot(root: Path) -> dict[str, Any] | None:
             return None
 
         nodes = _load_rows(connection, "cache_nodes", "node_key")
-        edges_rows = connection.execute("SELECT edge_key, edge_kind, payload_json FROM cache_edges ORDER BY edge_key").fetchall()
+        edges_rows = connection.execute(
+            "SELECT edge_key, edge_kind, payload_json FROM cache_edges ORDER BY edge_key"
+        ).fetchall()
         edge_buckets: dict[str, list[dict[str, Any]]] = {
             "source_to_concept": [],
             "source_to_judgment": [],
@@ -674,7 +670,13 @@ def save_cached_query_result(root: Path, query_key: str, payload_hash: str, payl
                 connection.close()
 
 
-def _merge_cache_status(root: Path, *, stats_delta: dict[str, int] | None = None, last_query: dict[str, Any] | None = None, last_drop: dict[str, Any] | None = None) -> dict[str, Any]:
+def _merge_cache_status(
+    root: Path,
+    *,
+    stats_delta: dict[str, int] | None = None,
+    last_query: dict[str, Any] | None = None,
+    last_drop: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     with runtime_write_lock(root):
         try:
             status = load_cache_status(root)

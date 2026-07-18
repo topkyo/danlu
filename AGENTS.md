@@ -112,7 +112,7 @@
 3. 去掉 owner 为了 patch 又绕回 facade 的 `_facade` 回环（如 `content/*`、`memory/graph.py`）— `[已闭环 via commit 29ed655]` `memory/graph.py → app_memory` facade回环已拆。
 4. [已落地] 删除纯 facade 文件：`app_content.py`、`app_render.py`、`app_surfaces.py`、`app_memory_surfaces.py`；`app_memory.py`（Round 8 commit `10a6186`）；`app.py` 缩成极薄入口。
 5. compat oracle（如 `tests/test_execution_compat.py`）与仅断言 re-export 的单测：删除或改成 owner 契约测试；[Round 3 已删除 144 pytest 单元测试 / 退休 `tests/unit/`]。
-6. 本轮明确不动：有真实逻辑的 legacy hub（`app_utils` / `app_state` / `app_protocol` / `app_lifecycle` 等）——那是另一条搬迁线，不与纯 facade 清除混做。CLI 顶层双注册已取消：只保留 `drop/today/metrics/advanced`；旧顶层名靠 argv rewrite compat（见 `cli/legacy_argv.py`）。
+6. 本轮明确不动：有真实逻辑的 legacy hub（`app_utils` / `app_state` / `app_protocol` / `app_lifecycle` 等）——那是另一条搬迁线，不与纯 facade 清除混做。CLI 顶层双注册已取消：只保留 `drop/today/advanced`；`metrics` 经 argv rewrite compat 作为 `advanced` 子命令（见 `cli/legacy_argv.py`）。
 
 ### 禁止
 

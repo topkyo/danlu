@@ -12,32 +12,20 @@ from typing import Any
 
 from ..app_execution import append_execution_receipt_history
 from ..app_protocol import ensure_layout
-from ..app_state import (
-    CorruptStateError,
-    append_runtime_history,
-    execution_receipt_history_path,
-    l3_proposal_state_path,
-    load_json_document_strict,
-    runtime_history_path,
-    save_json_document,
-)
-from ..app_utils import (
-    _durable_truncate,
-    atomic_write_bytes,
-    atomic_write_text,
-    next_available_stem,
-    relative_path,
-    render_frontmatter,
-    runtime_write_operation,
-    sha256_file,
-    slugify,
-    utc_now,
-)
+from ..app_state_paths import execution_receipt_history_path, l3_proposal_state_path, runtime_history_path
 from ..autonomy_domains import classify_l3_proposal
 from ..autonomy_policy import load_policy
 from ..render.paths import append_wiki_log, execution_receipt_path, resolve_execution_receipt_path
+from ..state.io import CorruptStateError, load_json_document_strict, save_json_document
+from ..utils.hash import sha256_file
+from ..utils.io import _durable_truncate, atomic_write_bytes, atomic_write_text, runtime_write_operation
+from ..utils.markdown import render_frontmatter
+from ..utils.path import next_available_stem, relative_path
+from ..utils.text import slugify
+from ..utils.time import utc_now
 from .alchemy import _restore_file_bytes, _snapshot_file_bytes
 from .audit_preview import AUDIT_STREAM_PATH
+from .history import append_runtime_history
 
 STAGING_PROPOSALS_DIR = ".aiwiki/staging/proposals"
 STAGING_PROMPT_PROPOSAL_DIR = f"{STAGING_PROPOSALS_DIR}/prompt"
@@ -274,7 +262,9 @@ def list_l3_proposals(
         proposals = [item for item in proposals if str(item.get("kind") or "") == kind]
     if state:
         proposals = [item for item in proposals if str(item.get("state") or "") == state]
-    proposals.sort(key=lambda item: (str(item.get("created_at") or ""), str(item.get("proposal_id") or "")), reverse=True)
+    proposals.sort(
+        key=lambda item: (str(item.get("created_at") or ""), str(item.get("proposal_id") or "")), reverse=True
+    )
     return proposals
 
 
@@ -812,9 +802,7 @@ def create_l3_proposal(
                 f"l3 proposal create rollback failed for {normalized_id}: tx_error={tx_exc}; "
                 f"rollback_error={rollback_exc}"
             ) from rollback_exc
-        raise L3ProposalCreateError(
-            f"l3 proposal create failed for {normalized_id}; mutation rolled back"
-        ) from tx_exc
+        raise L3ProposalCreateError(f"l3 proposal create failed for {normalized_id}; mutation rolled back") from tx_exc
     return {
         "proposal_id": normalized_id,
         "kind": kind,
@@ -840,9 +828,7 @@ def apply_l3_proposal(root: Path, proposal_id: str, *, note: str | None = None) 
     patch = proposal.get("patch") if isinstance(proposal.get("patch"), dict) else {}
     patch_kind_value = str(patch.get("kind") or "full_replace")
     if patch_kind_value not in {"full_replace", "metadata_only"}:
-        raise RuntimeError(
-            "Only full_replace or metadata_only L3 proposals are supported in the manual baseline."
-        )
+        raise RuntimeError("Only full_replace or metadata_only L3 proposals are supported in the manual baseline.")
     is_metadata_only = patch_kind_value == "metadata_only"
     if _requires_human_accept_for_apply(proposal) and _proposal_review_state(proposal) != "human_accepted":
         raise RuntimeError("L3 proposal apply requires explicit human accept before core prompt/policy target write.")
@@ -878,7 +864,9 @@ def apply_l3_proposal(root: Path, proposal_id: str, *, note: str | None = None) 
     after_content = before_content if is_metadata_only else str(patch.get("content") or "")
     before_hash_for_audit = hashlib.sha256(snapshot or b"").hexdigest()
     after_hash_for_audit = hashlib.sha256(after_content.encode("utf-8")).hexdigest()
-    classification = classify_l3_proposal(proposal, autonomy_profile=policy.autonomy_profile, revert_supported=True, root=root)
+    classification = classify_l3_proposal(
+        proposal, autonomy_profile=policy.autonomy_profile, revert_supported=True, root=root
+    )
     proposal_evidence = proposal.get("evidence_refs") if isinstance(proposal.get("evidence_refs"), list) else []
     proposal_counter_evidence = (
         proposal.get("counter_evidence_refs") if isinstance(proposal.get("counter_evidence_refs"), list) else []
@@ -898,9 +886,7 @@ def apply_l3_proposal(root: Path, proposal_id: str, *, note: str | None = None) 
             **classification.as_receipt_fields(
                 decision_confidence=str(proposal.get("decision_confidence") or ""),
                 evidence_refs=[str(item) for item in proposal_evidence if isinstance(item, str)],
-                counter_evidence_refs=[
-                    str(item) for item in proposal_counter_evidence if isinstance(item, str)
-                ],
+                counter_evidence_refs=[str(item) for item in proposal_counter_evidence if isinstance(item, str)],
                 validator_status="passed",
                 revert_supported=True,
             ),
@@ -974,8 +960,7 @@ def apply_l3_proposal(root: Path, proposal_id: str, *, note: str | None = None) 
                     _durable_truncate(history_jsonl_path, history_size_before)
         except Exception as revert_exc:
             raise L3RevertError(
-                f"audit step '{failed_step}' failed and rollback also failed: "
-                f"audit={exc!r}; revert={revert_exc!r}"
+                f"audit step '{failed_step}' failed and rollback also failed: audit={exc!r}; revert={revert_exc!r}"
             ) from exc
         raise L3PostApplyAuditError(
             action_id,
@@ -991,7 +976,9 @@ def apply_l3_proposal(root: Path, proposal_id: str, *, note: str | None = None) 
     try:
         proposal["state"] = "accepted"
         proposal["accepted_at"] = applied_at
-        proposal.setdefault("review_state", "human_accepted" if not is_metadata_only else _proposal_review_state(proposal))
+        proposal.setdefault(
+            "review_state", "human_accepted" if not is_metadata_only else _proposal_review_state(proposal)
+        )
         proposal["last_receipt_path"] = relative_path(root, receipt_path)
         proposal["after_hash"] = after_hash
         save_l3_proposal_state(root, proposals)
@@ -1188,7 +1175,9 @@ def revert_l3_proposal(root: Path, receipt_id: str, *, note: str | None = None) 
             **_receipt_audit_metadata(root),
         }
         revert_receipt_path.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write_text(revert_receipt_path, json.dumps(revert_receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+        atomic_write_text(
+            revert_receipt_path, json.dumps(revert_receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+        )
         wrote_receipt = True
         proposal["state"] = "reverted"
         proposal["reverted_at"] = reverted_at

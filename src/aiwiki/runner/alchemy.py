@@ -6,7 +6,7 @@ actual filesystem mutations (write/replace/unlink).
 
 Boundary: orchestration only. Mutations live in ``execution/alchemy.py``.
 Transactional helpers (``_snapshot_file_bytes`` / ``_restore_file_bytes``) live
-in ``aiwiki.app_utils`` and are imported by both layers.
+in ``aiwiki.utils.io`` and are imported by both layers.
 
 Follow-up (SC-003b, not in this milestone): some apply/revert paths still
 perform filesystem mutations directly from the runner; future work should
@@ -23,25 +23,11 @@ from typing import Any
 from aiwiki.app_execution import append_execution_receipt_history, compute_file_sha256
 from aiwiki.app_linting.core import lint_wiki
 from aiwiki.app_protocol import ensure_layout
-from aiwiki.app_state import append_runtime_history, execution_receipt_history_path
-from aiwiki.app_utils import (
-    _durable_truncate,
-    _restore_file_bytes,
-    _snapshot_file_bytes,
-    atomic_write_text,
-    parse_frontmatter,
-    relative_path,
-    render_frontmatter,
-    runtime_write_lock,
-    runtime_write_operation,
-    sha256_bytes,
-    slugify,
-    strip_frontmatter,
-    utc_now,
-)
+from aiwiki.app_state_paths import execution_receipt_history_path
 from aiwiki.compile.pipeline import compile_wiki
 from aiwiki.execution import machine_memory_batch as _machine_memory_batch
 from aiwiki.execution.audit_preview import AUDIT_STREAM_PATH
+from aiwiki.execution.history import append_runtime_history
 from aiwiki.execution.runtime_surfaces import nightly_health
 from aiwiki.render.paths import execution_receipt_path
 from aiwiki.runner import alchemy_distill as _alchemy_distill
@@ -63,6 +49,19 @@ from aiwiki.runner.alchemy_errors import (
     AlchemyReviewApplyError,
     AlchemyReviewApplyHalfWriteError,
 )
+from aiwiki.utils.hash import sha256_bytes
+from aiwiki.utils.io import (
+    _durable_truncate,
+    _restore_file_bytes,
+    _snapshot_file_bytes,
+    atomic_write_text,
+    runtime_write_lock,
+    runtime_write_operation,
+)
+from aiwiki.utils.markdown import parse_frontmatter, render_frontmatter, strip_frontmatter
+from aiwiki.utils.path import relative_path
+from aiwiki.utils.text import slugify
+from aiwiki.utils.time import utc_now
 
 _ALCHEMY_JUDGE_REFRESH_START = _alchemy_support.ALCHEMY_JUDGE_REFRESH_START
 _ALCHEMY_JUDGE_REFRESH_END = _alchemy_support.ALCHEMY_JUDGE_REFRESH_END
@@ -182,7 +181,9 @@ def run_alchemy_start(
 
 
 @runtime_write_operation
-def run_alchemy_distill(root: Path, elixir_id: str, question: str, include_elixir_ids: list[str] | None = None) -> dict[str, Any]:
+def run_alchemy_distill(
+    root: Path, elixir_id: str, question: str, include_elixir_ids: list[str] | None = None
+) -> dict[str, Any]:
     from aiwiki.execution.alchemy import distill_elixir
 
     return distill_elixir(root, elixir_id, question=question, include_elixir_ids=include_elixir_ids)
@@ -712,7 +713,6 @@ def run_alchemy_propose_apply(
             "half_write_error_cls": AlchemyProposeApplyReceiptHalfWriteError,
         },
     )
-
 
 
 def run_alchemy_lane_dry_run(

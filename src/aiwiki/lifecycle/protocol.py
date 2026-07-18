@@ -4,9 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..app_state import default_knowledge_lifecycle_state, default_material_routing_state
+from ..content.archive import default_material_routing_state
 from ..content.io import routing_snapshot_for_protocol
-from .knowledge import select_knowledge_lifecycle_entries, sort_knowledge_lifecycle_entries
+from .knowledge import (
+    default_knowledge_lifecycle_state,
+    select_knowledge_lifecycle_entries,
+    sort_knowledge_lifecycle_entries,
+)
 
 
 def concept_protocol_relevance_for_source(
@@ -166,9 +170,7 @@ def protocol_related_concept_lifecycle_summary(
     ]
     review_concepts = [entry for entry in concept_backlog if str(entry.get("lifecycle_state") or "") == "review"]
     revisit_concepts = [entry for entry in concept_backlog if str(entry.get("lifecycle_state") or "") == "revisit"]
-    retired_concepts = [
-        entry for entry in related_concepts if str(entry.get("lifecycle_state") or "") == "retired"
-    ]
+    retired_concepts = [entry for entry in related_concepts if str(entry.get("lifecycle_state") or "") == "retired"]
     ambiguity_watchlist = [
         entry
         for entry in related_concepts

@@ -46,7 +46,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 
-from .app_utils import runtime_write_operation
+from .utils.io import runtime_write_operation
 
 POLICY_RELATIVE = Path(".aiwiki") / "state" / "autonomy-policy.json"
 POLICY_SCHEMA_VERSION = 3
@@ -129,7 +129,9 @@ def load_policy(root: Path, *, env: Mapping[str, str] | None = None) -> Autonomy
         auto_adopt_l2=bool(raw.get("auto_adopt_l2", profile_defaults["auto_adopt_l2"])),
         auto_adopt_l3=bool(raw.get("auto_adopt_l3", profile_defaults["auto_adopt_l3"])),
         auto_adopt_judgments=bool(raw.get("auto_adopt_judgments", profile_defaults["auto_adopt_judgments"])),
-        auto_apply_heavy_semantic=bool(raw.get("auto_apply_heavy_semantic", profile_defaults["auto_apply_heavy_semantic"])),
+        auto_apply_heavy_semantic=bool(
+            raw.get("auto_apply_heavy_semantic", profile_defaults["auto_apply_heavy_semantic"])
+        ),
         auto_adopt_core_l3=bool(raw.get("auto_adopt_core_l3", profile_defaults["auto_adopt_core_l3"])),
         max_l3_apply_per_run=_positive_int(raw.get("max_l3_apply_per_run"), 1),
         judgment_review_limit=_positive_int(raw.get("judgment_review_limit"), 5),

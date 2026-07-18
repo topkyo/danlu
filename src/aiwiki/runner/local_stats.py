@@ -8,8 +8,9 @@ from typing import Any
 from urllib.parse import unquote
 
 from aiwiki.app_queries import human_query_title
-from aiwiki.app_utils import parse_frontmatter, relative_path, render_frontmatter, strip_frontmatter
 from aiwiki.execution.alchemy import CANDIDATE_ELIXIR_DIR
+from aiwiki.utils.markdown import parse_frontmatter, render_frontmatter, strip_frontmatter
+from aiwiki.utils.path import relative_path
 
 OUTPUT_OBSIDIAN_CSSCLASS = "aiwiki-output"
 OUTPUT_REPORT_LEAF_CSSCLASS = "aiwiki-report-leaf"
@@ -201,7 +202,9 @@ def collect_elixir_counts(root: Path) -> dict[str, Any]:
             }
         )
     candidate_dir = root / CANDIDATE_ELIXIR_DIR
-    candidates = [relative_path(root, path) for path in sorted(candidate_dir.glob("*.md"))] if candidate_dir.exists() else []
+    candidates = (
+        [relative_path(root, path) for path in sorted(candidate_dir.glob("*.md"))] if candidate_dir.exists() else []
+    )
     return {"settled": settled, "candidates": candidates}
 
 

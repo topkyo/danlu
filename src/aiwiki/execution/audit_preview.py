@@ -8,7 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ..app_utils import atomic_append_jsonl, sha256_bytes
+from ..utils.hash import sha256_bytes
+from ..utils.io import atomic_append_jsonl
 
 PROTOCOL_LEARNINGS_AGE_AUDIT_PATH = ".aiwiki/state/protocol_learnings_age.json"
 
@@ -110,7 +111,9 @@ def append_audit(
     return AuditAppendResult(written=True, reason="appended", record=record)
 
 
-def append_universal_audit_record(root: Path, *, source_stream: str, source_ref: str, document: dict[str, Any]) -> dict[str, Any]:
+def append_universal_audit_record(
+    root: Path, *, source_stream: str, source_ref: str, document: dict[str, Any]
+) -> dict[str, Any]:
     record = _audit_record(source_stream, source_ref, document)
     result = append_audit(source_stream, record, event_id=str(record["audit_event_id"]), root=root)
     if not result.written:
@@ -254,4 +257,3 @@ def _first_string(document: dict[str, Any], keys: tuple[str, ...]) -> str:
         if isinstance(value, str) and value.strip():
             return value.strip()
     return ""
-

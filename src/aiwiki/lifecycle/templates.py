@@ -157,7 +157,9 @@ def _replace_section_if_placeholder(markdown: str, heading: str, lines: list[str
     return markdown.rstrip() + "\n\n" + replacement.rstrip() + "\n"
 
 
-def curated_asset_section_overrides(*, supporting_body: str, revisit_after: str, escalate_after: str) -> dict[str, list[str]]:
+def curated_asset_section_overrides(
+    *, supporting_body: str, revisit_after: str, escalate_after: str
+) -> dict[str, list[str]]:
     risks = _section_lines(
         supporting_body,
         "risks",
@@ -214,7 +216,9 @@ def repair_curated_page_body(
         "evidence",
         fallback=[f"- Evidence is preserved in the supporting artifact `{artifact_ref}`."],
     )
-    risks = _section_lines(supporting, "risks", fallback=["- No explicit counter evidence was found in the filed artifact."])
+    risks = _section_lines(
+        supporting, "risks", fallback=["- No explicit counter evidence was found in the filed artifact."]
+    )
     signals = _section_lines(
         supporting,
         "signals",

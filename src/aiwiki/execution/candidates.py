@@ -4,7 +4,81 @@ from pathlib import Path
 from typing import Any
 
 from ..app_protocol import ensure_layout
-from ..app_state import load_output_candidates_state, remove_output_candidate
+from ..app_state_paths import output_candidates_state_path
+from ..state.collections import normalize_versioned_record_list_state
+from ..state.io import load_json_document, save_json_document
+
+
+def default_output_candidates_state() -> dict[str, Any]:
+    return {"version": 1, "candidates": []}
+
+
+def load_output_candidates_state(root: Path) -> dict[str, Any]:
+    document = load_json_document(output_candidates_state_path(root))
+    return normalize_versioned_record_list_state(
+        document,
+        default_state=default_output_candidates_state,
+        list_key="candidates",
+    )
+
+
+def save_output_candidates_state(root: Path, state: dict[str, Any]) -> None:
+    save_json_document(output_candidates_state_path(root), state)
+
+
+def upsert_output_candidate(
+    root: Path,
+    *,
+    artifact_ref: str,
+    candidate_state: str,
+    created_at: str,
+    updated_at: str,
+    format: str,
+    protocol: str,
+    corpus_id: str,
+    question: str,
+    promoted_to: str = "",
+    promoted_at: str = "",
+    demoted_at: str = "",
+    promotion_origin: str = "manual",
+) -> dict[str, Any]:
+    state = load_output_candidates_state(root)
+    candidates = list(state.get("candidates", []))
+    target = None
+    for candidate in candidates:
+        if str(candidate.get("artifact_ref") or "") == artifact_ref:
+            target = candidate
+            break
+    if target is None:
+        target = {"artifact_ref": artifact_ref, "created_at": created_at}
+        candidates.append(target)
+    target.update(
+        {
+            "artifact_ref": artifact_ref,
+            "candidate_state": candidate_state,
+            "created_at": created_at,
+            "updated_at": updated_at,
+            "format": format,
+            "protocol": protocol,
+            "corpus_id": corpus_id,
+            "question": question,
+            "promoted_to": promoted_to,
+            "promoted_at": promoted_at,
+            "demoted_at": demoted_at,
+            "promotion_origin": promotion_origin or "manual",
+        }
+    )
+    state = {"version": 1, "candidates": candidates}
+    save_output_candidates_state(root, state)
+    return target
+
+
+def remove_output_candidate(root: Path, artifact_ref: str) -> bool:
+    state = load_output_candidates_state(root)
+    candidates = [c for c in state.get("candidates", []) if str(c.get("artifact_ref") or "") != artifact_ref]
+    removed = len(candidates) != len(state.get("candidates", []))
+    save_output_candidates_state(root, {"version": 1, "candidates": candidates})
+    return removed
 
 
 def _find_candidate(root: Path, artifact_ref: str) -> dict[str, Any]:
@@ -57,8 +131,7 @@ def write_candidate_frontmatter(
     filtered = lines[:1] + [
         line
         for line in lines[1:close_idx]
-        if not line.startswith("candidate_state:")
-        and not (corpus_id and line.startswith("corpus_id:"))
+        if not line.startswith("candidate_state:") and not (corpus_id and line.startswith("corpus_id:"))
     ]
     new_close_idx = len(filtered)
     filtered.append(lines[close_idx])

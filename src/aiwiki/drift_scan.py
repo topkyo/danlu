@@ -39,16 +39,8 @@ from pathlib import Path
 from typing import Any
 
 from . import clock
-from .app_state import _next_jsonl_line_number, append_runtime_history, runtime_history_path
-from .app_utils import (
-    analyze_citation_snapshots,
-    atomic_append_line,
-    parse_frontmatter,
-    parse_iso_datetime,
-    relative_path,
-    runtime_write_lock,
-    utc_now,
-)
+from .app_state_paths import runtime_history_path
+from .execution.history import append_runtime_history
 from .signals.collector import SIGNALS_REL_PATH
 from .signals.schema import (
     PROTOCOLS,
@@ -57,6 +49,11 @@ from .signals.schema import (
     compute_dedupe_key,
     validate,
 )
+from .state.io import _next_jsonl_line_number
+from .utils.io import atomic_append_line, runtime_write_lock
+from .utils.markdown import analyze_citation_snapshots, parse_frontmatter
+from .utils.path import relative_path
+from .utils.time import parse_iso_datetime, utc_now
 
 DEFAULT_PROTOCOL = "general"
 STALE_JUDGMENT_DAYS_DEFAULT = 180
@@ -91,9 +88,7 @@ def drift_scan(root: Path, *, now: str | None = None) -> dict[str, Any]:
     errors: list[dict[str, Any]] = []
 
     with runtime_write_lock(root):
-        stale = _scan_stale_judgments(
-            root, now_dt=now_dt, threshold_days=stale_threshold_days, errors=errors
-        )
+        stale = _scan_stale_judgments(root, now_dt=now_dt, threshold_days=stale_threshold_days, errors=errors)
         changed = _scan_changed_evidence(root, errors=errors)
         breaks = _scan_dependency_breaks(root, errors=errors)
 
@@ -176,6 +171,7 @@ def _scan_stale_judgments(
         if last_dt is None:
             try:
                 from datetime import datetime as _dt
+
                 last_dt = _dt.fromtimestamp(path.stat().st_mtime, tz=now_dt.tzinfo)
             except OSError:
                 last_dt = None
@@ -318,9 +314,7 @@ def _emit_signals(
         try:
             dedupe_key = compute_dedupe_key(seed, source_identity)
         except Exception as exc:
-            errors.append(
-                {"phase": label, "reason": f"dedupe_key_failed: {exc}", "source_identity": source_identity}
-            )
+            errors.append({"phase": label, "reason": f"dedupe_key_failed: {exc}", "source_identity": source_identity})
             return
         if dedupe_key in existing_keys:
             return
@@ -413,10 +407,7 @@ def _emit_signals(
             "source_kind": "runtime_history",
             "source_event_ref": history_ref,
         }
-        identity = (
-            f"drift::dependency_break::{finding['elixir_id']}"
-            f"::{','.join(finding['missing_dependencies'])}"
-        )
+        identity = f"drift::dependency_break::{finding['elixir_id']}::{','.join(finding['missing_dependencies'])}"
         _try_emit(seed, identity, "dependency_break")
 
     if not new_records:
@@ -434,9 +425,7 @@ def _safe_frontmatter(path: Path, errors: list[dict[str, Any]]) -> dict[str, Any
     try:
         text = path.read_text(encoding="utf-8")
     except OSError as exc:
-        errors.append(
-            {"phase": "read", "path": str(path), "reason": str(exc), "error_type": type(exc).__name__}
-        )
+        errors.append({"phase": "read", "path": str(path), "reason": str(exc), "error_type": type(exc).__name__})
         return None
     try:
         return parse_frontmatter(text)
@@ -488,8 +477,7 @@ def _build_warnings(
                 "kind": "evidence-changed",
                 "path": f["path"],
                 "message": (
-                    f"{f['asset_kind'].capitalize()} `{f['asset_id']}` evidence drift "
-                    f"({'; '.join(detail_parts)})."
+                    f"{f['asset_kind'].capitalize()} `{f['asset_id']}` evidence drift ({'; '.join(detail_parts)})."
                 ),
             }
         )
