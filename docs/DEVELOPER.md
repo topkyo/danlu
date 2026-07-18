@@ -90,15 +90,17 @@ LLM enrichment 仍然是炼丹炉主路径，但放在受控 worker 入口：`ru
 
 图谱分两种视图，不要混用。**证据关系图**（Obsidian 侧边栏 Graph）是用户默认视图：只展示报告、来源、原料笔记与可选判断（`output/reports` → `wiki/sources` → `raw/inbox`），打开 Graph 即可，**不需要手动筛选**；默认隐藏未解析链接与孤儿节点，且不含 `raw/assets` / 概念 / 金丹 / derived / indexes。`compile` / 打开 vault 会自动恢复 `.obsidian/graph.json`。**机器记忆图谱**（`output/graph/machine-memory.html`）供维护与深挖：含 `source / concept / judgment / elixir(金丹)` 等完整关系。说明见 [wiki/indexes/README.md](../wiki/indexes/README.md)（indexes 由 compile 生成）。
 
-治理债的目标是自动消化，符合炼丹炉"人只看异常"的设计哲学。分层按**影响范围 × 可逆性**定义（**W8 产品路径**：nightly / drop-auto / watch 只跑 deterministic compile+lint；下列 auto-adopt 层为历史 operator 契约，**不**再由产品 nightly 驱动）：
+治理债的目标是自动消化，符合炼丹炉"人只看异常"的设计哲学。分层按**影响范围 × 可逆性**定义（**W8 产品路径**：nightly / drop-auto / watch 只跑 deterministic compile+lint）。
 
-- **维护层**：compile / lint / nightly / 陈旧状态清理 / 派生索引 refresh — 只读或可逆的操作；产品 nightly 固定跑此层。
-- **债务自消化层**：source summary backlog / weak concepts / rewrite candidates / judgment metadata debt / machine-memory actions — 内部模块与 acceptance helper 仍可 inventory/preview；**产品 nightly 不再调用** debt_autopilot LLM 消化或 agent-loop。
-- **治理层**：concept backlog / revisit / source-concept links / concept splits — 结构性变更，可逆且有 receipt；通过 `AIWIKI_NIGHTLY_AUTO_ADOPT_L1=1` + `AIWIKI_NIGHTLY_AUTO_ADOPT_L2=1` 显式开启无人值守采纳。
-- **判断层**：counter-evidence / judgment review — LLM 驱动的语义复核，自动分析反证、写出审阅结论；judgment page、标准 execution receipt、execution history、audit stream 必须可互证，写失败回滚。通过 `AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS=1` 显式开启。
-- **策略层**：L3 proposal / prompt 变更 / schema 变更 — 非核心/metadata-only 学习默认由 agentic nightly 登记和消化；写回核心 prompt/policy/schema 前必须 `review proposal <id> --status accepted` 人工确认，再手动 `apply <proposal-id>` hash-gated 写 receipt。`AIWIKI_NIGHTLY_AUTO_ADOPT_CORE_L3=0` 是核心自改红线，不允许无人值守改核心 prompt/policy/schema。
+> **Legacy / unused（2026-07-18）**：`src/aiwiki/runner/auto_adopt.py` 已删除；产品 `nightly` / `run-nightly` / timer 仅 deterministic `compile` + `lint` + health write，**不再**读取或执行 L1–L3 / judgment auto-adopt。下列 `AIWIKI_NIGHTLY_AUTO_ADOPT_*` / `AIWIKI_NIGHTLY_AUTO_APPLY_*` env 与 `.aiwiki/state/autonomy-policy.json` 中对应字段名**仅为旧 state / installer 兼容保留**，设为 `1` **不会**触发无人值守采纳；operator 需通过 `advanced` CLI（review / apply / alchemy 等）显式执行写回。
 
-runtime policy 缺省采用 `autonomy_profile=agentic`：未写 `.aiwiki/state/autonomy-policy.json` 时，runtime 内部 profile 允许维护、治理、judgment review、metadata-only L3 和 heavy semantic 非核心自动化，但 `auto_adopt_core_l3` 默认关闭。新安装的 systemd nightly env 仍写入 `AIWIKI_AUTONOMY_PROFILE=agentic` 以保持 receipt 记账口径一致，但写入型 auto flags 默认写 `0`，必须由 operator 显式 opt-in；watcher 仍 deterministic-only，不再配置跨 backend unattended fallback。
+- **维护层（现行）**：compile / lint / nightly / 陈旧状态清理 / 派生索引 refresh — 只读或可逆的操作；产品 nightly 固定跑此层。
+- **债务自消化层（legacy）**：source summary backlog / weak concepts / rewrite candidates / judgment metadata debt / machine-memory actions — 内部模块与 acceptance helper 仍可 inventory/preview；**产品 nightly 不再调用** debt_autopilot LLM 消化或 agent-loop。
+- **治理层（legacy）**：concept backlog / revisit / source-concept links / concept splits — 结构性变更，可逆且有 receipt；历史曾由 `AIWIKI_NIGHTLY_AUTO_ADOPT_L1=1` + `AIWIKI_NIGHTLY_AUTO_ADOPT_L2=1` 驱动，**现已 no-op**。
+- **判断层（legacy）**：counter-evidence / judgment review — LLM 驱动的语义复核；历史曾由 `AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS=1` 驱动，**现已 no-op**。
+- **策略层（legacy）**：L3 proposal / prompt 变更 / schema 变更 — 写回核心 prompt/policy/schema 前必须 `review proposal <id> --status accepted` 人工确认，再手动 `apply <proposal-id>` hash-gated 写 receipt；`AIWIKI_NIGHTLY_AUTO_ADOPT_CORE_L3` 等 flag **不再**驱动 nightly。
+
+`autonomy_policy` 仍解析 `autonomy_profile=agentic` 与上述 flag 字段以保持旧 state / receipt 口径可读；新安装 systemd nightly env 可能仍写入 `AIWIKI_AUTONOMY_PROFILE=agentic` 与 `AIWIKI_NIGHTLY_AUTO_ADOPT_*=0`，但均为 **legacy no-op**。watcher 仍 deterministic-only，不再配置跨 backend unattended fallback。
 
 > 2026-07-15 scripts 清理：本节早先引用的 `scripts/dogfood_maturity_gate.py summarize --days 3` 等 heuristic 已删除。当前以 **manual 仅异常审计** 为成熟度观察口径：人盯 `.aiwiki/state/execution-receipts/` 与 `output/control/llm-receipts.jsonl` 中的异常事件；不依赖自动 3-day verdict 给出"成熟"宣称。
 

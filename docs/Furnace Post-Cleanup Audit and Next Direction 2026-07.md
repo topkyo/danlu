@@ -13,7 +13,7 @@ supersedes: []
 
 # 炼丹炉 Post-Cleanup 全量审计与下一步方向（2026-07-15）
 
-> **结论先行**：Commercial Grade Cleanup 已收口；AgentOS 本地 release gate ~9.0 仍成立，但**商业可售约 7.6**，主缺口在 go-live 触点与分发，不在再开一轮 cleanup。下一独立计划应是 **Commercial Go-Live**，辅以小范围 SoT/可靠性修补。
+> **结论先行**：Commercial Grade Cleanup 已收口；**Local Engineering Gate ~9.05** 可诚实宣称（见 `docs/AGOS-9-Scorecard.md` 两套门禁）；**Live Dogfood Gate not-yet**；**商业可售约 7.8**，主缺口在 go-live 触点与分发，不在再开一轮 cleanup。下一独立计划应是 **Commercial Go-Live**，辅以小范围 SoT/可靠性修补。
 
 本文件同时是**审计报告**与**下一波执行计划 SoT**。完成后归档到 `docs/archive/`。
 
@@ -23,13 +23,12 @@ supersedes: []
 
 | 指标 | 当前值 | 来源 |
 |---|---|---|
-| Runtime | `src/aiwiki` **162** `.py` / **~72k LOC** | `find` + `wc` |
-| Tests | **~59k LOC** | `tests/` |
-| 纯 facade | **0 残留**（`app_content/render/surfaces/memory_surfaces/app.py` 已删） | 文件系统 |
-| Top hubs | `memory/graph.py` 1758 / `drop.py` 1747 / `execution/alchemy.py` 1680 / `auto_adopt` ~1347 / `app_state` 1221 | `wc -l` |
-| `except Exception` | **172** 处；裸 `except Exception: pass` **0** | ripgrep |
-| AgentOS Scorecard | 加权 **~9.05**（2026-05-24 local release） | `docs/AGOS-9-Scorecard.md` |
-| 商业审计综合 | **~7.6**（cleanup 后再评） | archive Cleanup Plan §1.6 |
+| Runtime | `src/aiwiki` **155** `.py` / **~62k LOC** | `find` + `wc`（2026-07-18） |
+| Tests | acceptance **24** + Jest **168** | `pytest` + `npm test` |
+| Top hubs | `memory/graph.py` 1758 / `drop.py` 1747 / `execution/alchemy.py` 1680 / `auto_adopt` **DELETED** / `app_state` 1221 | `wc -l` |
+| `except Exception` | **~116**（↓ from 172）；裸 `except Exception: pass` **0** | ripgrep |
+| AgentOS Scorecard | **Local Engineering Gate 9.05**；Live Dogfood **not-yet** | `docs/AGOS-9-Scorecard.md` |
+| 商业审计综合 | **~7.8**（cleanup 后再评） | archive Cleanup Plan §1.6 |
 | 当前执行计划（本文件前） | **无**；cleanup 已归档 | `PROGRESS.md` / `AGENTS.md` |
 | 现场 verify（本审计） | `docs_consistency` / `scripts` / `python-static` / `smoke` **PASS** | 2026-07-15 cloud |
 
@@ -37,8 +36,8 @@ supersedes: []
 
 | 尺子 | 测什么 | 分 | 可否对外说「可售」 |
 |---|---|---:|---|
-| AGOS-9 Scorecard | runtime / dogfood / governance / Shell | ~9.05 | **否** — 不含邮箱/EULA/价格/pip |
-| 商业审计 | 包装、分发、运维门槛、购买路径 | ~7.6 | **否** — 过 cleanup gate，差 go-live |
+| AGOS-9 Scorecard | runtime / fixture / governance / Shell | **9.05**（Local Eng） | **否** — 不含 live dogfood / 邮箱/EULA/价格/pip |
+| 商业审计 | 包装、分发、运维门槛、购买路径 | ~7.8 | **否** — 过 cleanup gate，差 go-live |
 
 对外口径必须拆开：**产品/runtime 成熟** ≠ **商业可购**。
 
@@ -70,7 +69,7 @@ supersedes: []
 | ID | 缺陷 | 证据 | 影响 | 本 PR |
 |---|---|---|---|---|
 | D4 | `PROGRESS.md`「改进方向」段曾缺失 | 曾仅有 L15 指针 | 任务 SoT 断链 | **fixed**：已恢复底部「改进方向」段 |
-| D5 | Product Shell Jest 默认可 soft-skip | `scripts/run_product_shell_tests.sh`（本轮清理删除） | `verify` 可绿但 UI 回归未跑 | **fixed 2026-07-15**：`package.json` 入库 + `verify_product_shell_static` Jest hard-gate（180 tests） |
+| D5 | Product Shell Jest 默认可 soft-skip | `scripts/run_product_shell_tests.sh`（本轮清理删除） | `verify` 可绿但 UI 回归未跑 | **fixed 2026-07-15**：`package.json` 入库 + `verify_product_shell_static` Jest hard-gate（168 tests） |
 | D6 | Alchemy materialize 等路径裸 `Path.write_text` | `runner/alchemy_materialize.py` L53/127/156 | 有锁仍可能崩溃半写 | **fixed 2026-07-15**：改 `atomic_write_text` |
 | D7 | Env-coupled 单测可假失败/挂起 | workspace / Chrome drop 用例 | CI/cloud 噪音 | **moot**：unit 网已退；acceptance 不跑这些用例 |
 | D8 | Active 架构文档曾指向不存在的 `.codex/plans/active.md` | Architecture / Evolution Mechanics | 执行入口误导 | **fixed**：改为本计划 + PROGRESS |
@@ -84,7 +83,7 @@ supersedes: []
 | D11 | Demo Pack / RuntimeClient 曾挂 Active Plans | `docs/README.md` | 假活跃 | **fixed**：降为 Delivered specs |
 | D12 | coverage `fail_under=89` + omit `legacy_argv` | `.coveragerc` | 门禁偏松 | **closed**：Round 2 (commit `5a1c20c`) 删 `.coveragerc` + `pyproject.toml` dev-dep `coverage>=7.6,<8` + `verify.sh all` coverage block；coverage hard gate 不再触发 |
 | D13 | PROGRESS「活跃 3 轮」名实不符 | 仅 Round 92.8 | 结构债 | **closed**：Round 9 (`b4e160f`) + Round 10 (`e69bc4a`) archive 树统一进 `docs/archive/`，顶级 `archive/` 清空；PROGRESS head 重写 + SoT 索句 explicit |
-| D14 | JS 行为测试偏弱（grep token） | Round 92.8 Residual | plugin 大改回归弱 | **improved 2026-07-15**：Jest 180 tests hard-gate；行为覆盖仍可加深 |
+| D14 | JS 行为测试偏弱（grep token） | Round 92.8 Residual | plugin 大改回归弱 | **improved 2026-07-15**：Jest 168 tests hard-gate；行为覆盖仍可加深 |
 | D15 | 14/30-day natural dogfood proof | Scorecard `not-yet` | 长期证据不足 | 诚实 defer → WS6 |
 
 ### P3 — 低优先 / 刻意不做
@@ -227,7 +226,7 @@ bash scripts/verify.sh scripts
 bash scripts/verify.sh python-static
 bash scripts/verify.sh smoke
 bash scripts/verify.sh cli-smoke
-# Product Shell：`product-shell-static` = node --check + Jest hard-gate（180 tests）
+# Product Shell：`product-shell-static` = node --check + Jest hard-gate（168 tests）
 # 紧急旁路：AIWIKI_SKIP_PRODUCT_SHELL_JS_TESTS=1
 # go-live 文档门禁：
 ! git grep -E 'commercial@example\.com|support@example\.com' -- LICENSE docs/commercial/
@@ -246,7 +245,7 @@ Review gate：编码 PR 独立 read-only reviewer（correctness / scope / missin
 - [x] 商业 EULA 或等价书面许可流程可指向真实材料（`docs/commercial/EULA.md`；待正式法律审阅）
 - [x] INSTALL 存在一条非开发者可完成的安装路径（`pip install -e .` 预览；PyPI `pip install aiwiki` 仍待发布）
 - [x] Demo 对外 checklist 可跑通且合规（fixture + README checklist；截图/录屏媒体可选待补）
-- [x] Jest 在 release CI 为 hard-gate（`verify.sh product-shell-static`；180 passed）
+- [x] Jest 在 release CI 为 hard-gate（`verify.sh product-shell-static`；168 passed）
 - [x] PROGRESS / docs Active Plans / Architecture 无断链 SoT 指针
 - [ ] 商业审计综合可诚实宣称 ≥ **8.0（可售门槛）**；AgentOS 分数不混标 — 触点/EULA/询价/安装预览已齐后复评；正式法律签收与 PyPI 发布可再抬一档
 
