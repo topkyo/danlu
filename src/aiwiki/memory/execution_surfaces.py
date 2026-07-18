@@ -1,11 +1,10 @@
-"""Execution center / audit + concept quality / rewrite proposal renderers.
+"""Execution audit + concept quality / rewrite proposal renderers.
 
-EP-017B step 4: extracted from ``aiwiki.app_memory_surfaces``. Contains 12
-public renderers that emit the execution-center Markdown/HTML pages, the
-execution-audit pages, the concept-quality index, and the concept-rewrite
-reconciliation + page/index renderers. Imports are scoped to the minimal
-set actually used by these 12 functions; no sibling ``aiwiki.memory.*``
-imports are required.
+EP-017B step 4: extracted from ``aiwiki.app_memory_surfaces``. Contains 10
+public renderers that emit the execution-audit pages, the concept-quality
+index, and the concept-rewrite reconciliation + page/index renderers. Imports
+are scoped to the minimal set actually used by these functions; no sibling
+``aiwiki.memory.*`` imports are required.
 """
 
 from __future__ import annotations
@@ -20,7 +19,7 @@ from ..app_lifecycle import (
     rewrite_proposal_needs_review,
     rewrite_proposal_status_rank,
 )
-from ..app_memory_query import concept_page_snapshot, recent_execution_dry_runs
+from ..app_memory_query import concept_page_snapshot
 from ..app_protocol import (
     LOW_RISK_APPLYABLE_ACTION_KINDS,
     PENDING_ACTION_STATUSES,
@@ -46,7 +45,6 @@ from ..app_utils import (
 )
 from ..content.memory import (
     action_priority_rank,
-    action_supports_low_risk_apply,
     execution_band_label,
     execution_policy_profile,
     load_execution_policy_decision_history_strict,
@@ -55,7 +53,6 @@ from ..content.memory import (
     safe_apply_preview,
 )
 from ..render.html_theme import html_meta_theme, html_theme_css
-from ..render.paths import execution_bundle_path
 from .execution_surface_helpers import concept_quality_summary_lines
 
 
@@ -152,7 +149,6 @@ def render_execution_proposal_page(proposal: dict[str, Any], *, compiled_at: str
         [
             "",
             "## Related Links",
-            "- [执行中心](../indexes/execution-center.md)",
             "- [机器记忆修复计划](../indexes/machine-memory-repair-plan.md)",
             "- [机器记忆动作队列](../indexes/machine-memory-actions.md)",
             "- [炉心面板](../indexes/furnace-center.md)",
@@ -160,216 +156,6 @@ def render_execution_proposal_page(proposal: dict[str, Any], *, compiled_at: str
         ]
     )
     return f"{frontmatter}\n\n" + "\n".join(lines).strip() + "\n"
-
-
-def render_execution_center(root: Path, memory: dict[str, Any], *, compiled_at: str, active_protocol: str) -> str:
-    plan = memory.get("health", {}).get("repair_plan", {})
-    proposals = plan.get("execution_proposals", [])
-    ready_actions = plan.get("ready_actions", [])
-    all_actions = [*memory.get("health", {}).get("actions", []), *memory.get("health", {}).get("inactive_actions", [])]
-    recent_receipts = sorted(
-        [
-            action
-            for action in all_actions
-            if action.get("last_receipt_path")
-        ],
-        key=lambda item: str(item.get("status_updated_at") or item.get("reviewed_at") or ""),
-        reverse=True,
-    )
-    recent_dry_runs = recent_execution_dry_runs(root, limit=8)
-    revert_ready_actions = [
-        action for action in recent_receipts if str(action.get("status") or "") == "resolved"
-    ]
-    apply_ready_actions = [action for action in ready_actions if action_supports_low_risk_apply(action)]
-    patch_steps = sum(len(proposal.get("page_patch_plan", [])) for proposal in proposals)
-    lines = [
-        "# 执行中心",
-        "",
-        f"- 最近编译时间：`{compiled_at}`",
-        f"- 当前协议：`{active_protocol}` ({protocol_title(active_protocol)})",
-        f"- Ready actions：`{plan.get('counts', {}).get('ready', 0)}`",
-        f"- 可安全执行动作：`{len(apply_ready_actions)}`",
-        f"- Execution proposals：`{plan.get('counts', {}).get('proposals', 0)}`",
-        f"- Page-level patch steps：`{patch_steps}`",
-        "- 本地执行面板：`output/control/execution-center.html`",
-        "",
-        "## Safe Apply Now",
-    ]
-    if not apply_ready_actions:
-        lines.append("- 当前没有可直接处理的低风险 machine-memory 动作。")
-    else:
-        for action in apply_ready_actions[:10]:
-            bundle_path = relative_path(root, execution_bundle_path(root, str(action.get("id") or "")))
-            lines.append(
-                f"- `{action['title']}` | band `{action.get('execution_band', 'bundle-safe-apply')}` | bundle `{bundle_path}` | primary `{action.get('primary_path', '')}`"
-            )
-    lines.extend(["", "## Revert Safe Apply"])
-    if not revert_ready_actions:
-        lines.append("- 当前没有可回滚的 safe apply。")
-    else:
-        for action in revert_ready_actions[:10]:
-            lines.append(
-                f"- `{action['title']}` | receipt `{action.get('last_receipt_path', '')}` | primary `{action.get('primary_path', '')}`"
-            )
-    lines.extend(["", "## Execution Proposals"])
-    if not proposals:
-        lines.append("- 当前没有 execution proposal。")
-    else:
-        for proposal in proposals[:12]:
-            lines.append(
-                f"- [{proposal['title']}](../execution-proposals/{slugify(str(proposal.get('action_id') or ''))}.md)"
-                f" | risk `{proposal.get('risk', 'medium')}`"
-                f" | patch `{len(proposal.get('page_patch_plan', []))}`"
-                f" | targets `{', '.join(proposal.get('target_paths', [])) or 'none'}`"
-                f" | bundle `{proposal.get('bundle_path', '') or 'none'}`"
-            )
-    lines.extend(["", "## Recent Receipts"])
-    if not recent_receipts:
-        lines.append("- 当前还没有 safe execution receipt。")
-    else:
-        for action in recent_receipts[:8]:
-            lines.append(
-                f"- `{action['title']}`"
-                f" | receipt `{action.get('last_receipt_path', '')}`"
-                f" | updated `{action.get('status_updated_at', '') or action.get('reviewed_at', '') or 'none'}`"
-            )
-    lines.extend(["", "## Recent Dry Runs"])
-    if not recent_dry_runs:
-        lines.append("- 当前还没有 dry-run 历史。")
-    else:
-        for dry_run in recent_dry_runs:
-            lines.append(
-                f"- `{dry_run['title']}`"
-                f" | mode `{dry_run.get('apply_mode', '') or dry_run.get('event_type', 'dry-run')}`"
-                f" | preview `{dry_run.get('preview_path', '') or 'none'}`"
-                f" | bundle `{dry_run.get('bundle_path', '') or 'none'}`"
-                f" | updated `{dry_run.get('occurred_at', '') or 'none'}`"
-            )
-            if dry_run.get("affected_paths"):
-                lines.append(
-                    "  - affected: `"
-                    + ", ".join(str(path) for path in dry_run.get("affected_paths", [])[:3])
-                    + "`"
-                )
-    lines.extend(
-        [
-            "",
-            "## Quick Links",
-            "- [机器记忆修复计划](./machine-memory-repair-plan.md)",
-            "- [机器记忆动作队列](./machine-memory-actions.md)",
-            "- [执行审计](./execution-audit.md)",
-            "- [认知历史](./cognitive-history.md)",
-            "- [审阅中心](./review-center.md)",
-            "- [炉心面板](./furnace-center.md)",
-            "- `output/control/execution-center.html`：本地执行面板（浏览器 / 系统 HTML 入口）",
-            "- `output/control/execution-audit.html`：本地执行审计面板（浏览器 / 系统 HTML 入口）",
-        ]
-    )
-    return "\n".join(lines) + "\n"
-
-
-def render_execution_center_html(root: Path, memory: dict[str, Any], *, compiled_at: str, active_protocol: str) -> str:
-    plan = memory.get("health", {}).get("repair_plan", {})
-    proposals = plan.get("execution_proposals", [])
-    ready_actions = plan.get("ready_actions", [])
-    all_actions = [*memory.get("health", {}).get("actions", []), *memory.get("health", {}).get("inactive_actions", [])]
-    recent_receipts = sorted(
-        [
-            action
-            for action in all_actions
-            if action.get("last_receipt_path")
-        ],
-        key=lambda item: str(item.get("status_updated_at") or item.get("reviewed_at") or ""),
-        reverse=True,
-    )
-    recent_dry_runs = recent_execution_dry_runs(root, limit=8)
-    revert_ready_actions = [
-        action for action in recent_receipts if str(action.get("status") or "") == "resolved"
-    ]
-    apply_ready_actions = [action for action in ready_actions if action_supports_low_risk_apply(action)]
-    patch_steps = sum(len(proposal.get("page_patch_plan", [])) for proposal in proposals)
-    summary_cards = [
-        ("Ready Actions", str(plan.get("counts", {}).get("ready", 0))),
-        ("Safe Apply", str(len(apply_ready_actions))),
-        ("Proposals", str(plan.get("counts", {}).get("proposals", 0))),
-        ("Patch Steps", str(patch_steps)),
-    ]
-    safe_apply_markup = "".join(
-        f"<li><strong>{html.escape(str(action.get('title') or 'unnamed action'))}</strong>"
-        f"<div><code>{html.escape(str(action.get('command_hint') or ''))}</code></div>"
-        f"<div class=\"item-meta\">{html.escape(str(action.get('primary_path') or ''))}</div></li>"
-        for action in apply_ready_actions[:8]
-    ) or "<li>当前没有可直接 safe apply 的动作。</li>"
-    revert_markup = "".join(
-        f"<li><strong>{html.escape(str(action.get('title') or 'unnamed action'))}</strong>"
-        f"<div><code>PYTHONPATH=src python3 -m aiwiki.cli --root . revert-action {html.escape(str(action.get('id') or ''))}</code></div>"
-        f"<div class=\"item-meta\">{html.escape(str(action.get('last_receipt_path') or ''))}</div></li>"
-        for action in revert_ready_actions[:8]
-    ) or "<li>当前没有可回滚的 safe apply。</li>"
-    proposal_markup = "".join(
-        f"<li><strong><a href=\"../../wiki/execution-proposals/{html.escape(slugify(str(proposal.get('action_id') or '')))}.md\">{html.escape(str(proposal.get('title') or 'proposal'))}</a></strong>"
-        f" <span class=\"item-meta\">risk {html.escape(str(proposal.get('risk') or 'medium'))} / patch {len(proposal.get('page_patch_plan', []))}</span>"
-        f"<div>{html.escape(str(proposal.get('summary') or ''))}</div>"
-        f"<div class=\"item-meta\"><a href=\"../../{html.escape(str(proposal.get('bundle_path') or ''))}\">Execution Bundle</a></div></li>"
-        for proposal in proposals[:10]
-    ) or "<li>当前没有 execution proposal。</li>"
-    receipt_markup = "".join(
-        f"<li><strong>{html.escape(str(action.get('title') or 'unnamed action'))}</strong>"
-        f"<div class=\"item-meta\"><a href=\"../../{html.escape(str(action.get('last_receipt_path') or ''))}\">Execution Receipt</a></div></li>"
-        for action in recent_receipts[:8]
-    ) or "<li>当前还没有 safe execution receipt。</li>"
-    dry_run_markup = "".join(
-        f"<li><strong>{html.escape(str(item.get('title') or 'dry run'))}</strong>"
-        f"<div class=\"item-meta\">mode {html.escape(str(item.get('apply_mode') or item.get('event_type') or 'dry-run'))}</div>"
-        f"<div class=\"item-meta\"><a href=\"../../{html.escape(str(item.get('preview_path') or ''))}\">Dry Run Preview</a></div>"
-        f"<div class=\"item-meta\"><a href=\"../../{html.escape(str(item.get('bundle_path') or ''))}\">Execution Bundle</a></div></li>"
-        for item in recent_dry_runs[:8]
-    ) or "<li>当前还没有 dry-run 历史。</li>"
-    return "\n".join(
-        [
-            "<!doctype html>",
-            '<html lang="zh-CN">',
-            "<head>",
-            html_meta_theme(),
-            "  <title>Execution Center</title>",
-            "  <style>",
-            html_theme_css(),
-            "  </style>",
-            "</head>",
-            "<body>",
-            "<main>",
-            '  <section class="panel">',
-            "    <h1>Execution Center</h1>",
-            f"    <p>编译时间：<code>{html.escape(compiled_at)}</code>。当前协议：<code>{html.escape(active_protocol)}</code>。这里把 safe apply、execution proposal 和 patch-step 执行工作区收敛到一个地方。</p>",
-            '    <div class="meta">',
-            *[
-                f'      <div class="card"><div class="metric">{html.escape(value)}</div><div class="metric-label">{html.escape(label)}</div></div>'
-                for label, value in summary_cards
-            ],
-            "    </div>",
-            "  </section>",
-            '  <section class="grid">',
-            f'    <div class="panel"><h2>Safe Apply Actions</h2><ul>{safe_apply_markup}</ul></div>',
-            f'    <div class="panel"><h2>Revert Safe Apply</h2><ul>{revert_markup}</ul></div>',
-            f'    <div class="panel"><h2>Execution Proposals</h2><ul>{proposal_markup}</ul></div>',
-            f'    <div class="panel"><h2>Recent Receipts</h2><ul>{receipt_markup}</ul></div>',
-            f'    <div class="panel"><h2>Recent Dry Runs</h2><ul>{dry_run_markup}</ul></div>',
-            '    <div class="panel"><h2>相关入口</h2><ul>'
-            '      <li><a href="../../wiki/indexes/execution-center.md">Markdown 执行中心</a></li>'
-            '      <li><a href="../../wiki/indexes/execution-audit.md">执行审计</a></li>'
-            '      <li><a href="../../wiki/indexes/machine-memory-repair-plan.md">修复计划</a></li>'
-            '      <li><a href="../../wiki/indexes/machine-memory-actions.md">动作队列</a></li>'
-            '      <li><a href="../../wiki/indexes/review-center.md">审阅中心</a></li>'
-            '      <li><a href="../../wiki/indexes/furnace-center.md">炉心面板</a></li>'
-            '      <li><a href="../../output/control/execution-audit.html">审计 HTML</a></li>'
-            "    </ul></div>",
-            "  </section>",
-            "</main>",
-            "</body>",
-            "</html>",
-            "",
-        ]
-    )
 
 
 def collect_execution_consistency_signals(
@@ -731,7 +517,6 @@ def render_execution_audit(audit: dict[str, Any]) -> str:
         [
             "",
             "## 相关链接",
-            "- [执行中心](./execution-center.md)",
             "- [机器记忆修复计划](./machine-memory-repair-plan.md)",
             "- [机器记忆动作队列](./machine-memory-actions.md)",
             "- [认知历史](./cognitive-history.md)",
@@ -803,7 +588,7 @@ def render_execution_audit_html(audit: dict[str, Any]) -> str:
             "    <section class=\"panel\">",
             "      <h1>Execution Audit</h1>",
             f"      <p>当前协议 <strong>{html.escape(str(audit.get('active_protocol') or DEFAULT_PROTOCOL))}</strong> · 最近编译 {html.escape(str(audit.get('compiled_at') or ''))}</p>",
-            "      <p><a href=\"../../wiki/indexes/execution-audit.md\">Markdown 审计页</a> · <a href=\"../../wiki/indexes/execution-center.md\">执行中心</a> · <a href=\"../../wiki/indexes/furnace-center.md\">炉心面板</a></p>",
+            "      <p><a href=\"../../wiki/indexes/execution-audit.md\">Markdown 审计页</a> · <a href=\"../../wiki/indexes/furnace-center.md\">炉心面板</a></p>",
             "      <div class=\"meta\">",
             *[
                 "\n".join(

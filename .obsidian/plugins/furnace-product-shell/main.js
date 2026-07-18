@@ -242,7 +242,6 @@ const ZH_TEXT = {
   "Show advanced commands": "显示高级命令",
   "Register the Refresh Furnace Shell command in the command palette. Reload Obsidian after changing this toggle.": "是否把「刷新炼丹炉 Shell」命令注册到命令面板中。修改后需要重载 Obsidian。",
   "Advanced command visibility refreshes after reloading Obsidian.": "高级命令可见性会在重载 Obsidian 后刷新。",
-  "Today snooze was removed in W4; handle the item directly from Today.": "Today 延后已在 W4 移除；请直接在 Today 里处理该项。",
   "Recent plugin-triggered runs are listed here when available.": "此处列出插件触发的最近运行记录（如有）。",
   "Full runtime is Desktop-only. iPad/iOS Obsidian can only be a future companion; it cannot run the local launcher, Python CLI, or full ingest/review flow.": "全功能 runtime 仅支持 Desktop。iPad/iOS Obsidian 未来只能作为 companion，不能运行本地 launcher、Python CLI 或完整投料/复审流程。",
   "LLM backend": "LLM 后端",
@@ -483,9 +482,6 @@ const ZH_TEXT = {
   "Open Furnace Center": "打开炉心面板",
   "Open Furnace": "打开炼丹炉",
   "Refresh Furnace Shell": "刷新炼丹炉 Shell",
-  "Open Review Center": "打开审阅中心",
-  "Open Execution Center": "打开执行中心",
-  "Open Recent Runs": "打开最近运行",
   Compile: "编译",
   Ask: "提问",
   "Drop URL": "投网址",
@@ -497,7 +493,6 @@ const ZH_TEXT = {
   "File Back": "回流归档",
   "Review Page": "审阅页面",
   "Review Next Page": "审阅下一页",
-  "Batch Review Pages": "批量审阅页面",
   "Review Rewrite": "审阅改写",
   "rewrite proposals: {count}": "改写提案：{count}",
   "Apply Rewrite": "应用改写",
@@ -631,7 +626,6 @@ const ZH_TEXT = {
   "Choose a recent report.": "选择最近报告。",
   "Open decision": "打开决策",
   "Open judgment": "打开判断",
-  "Open Review": "打开审阅",
   "Copy target": "复制目标",
   Report: "报告",
   "Decision page": "决策页",
@@ -652,9 +646,7 @@ const ZH_TEXT = {
   "Plugin-triggered Commands": "插件触发命令",
   "Runtime Events from shell-summary": "运行事件",
   "Recent Receipts": "最近回执",
-  "Review Center": "审阅中心",
   "Review Next": "下一项审阅",
-  "Batch Review": "批量审阅",
   "Pending Decisions": "待审决策",
   "Pending Judgments": "待审判断",
   "Overdue Reviews": "逾期审阅",
@@ -683,7 +675,6 @@ const ZH_TEXT = {
   Review: "审阅",
   "Recent Review Events": "最近审阅事件",
   "Governance Links": "治理链接",
-  "Execution Center": "执行中心",
   "Apply All Low-Risk": "应用全部低风险项",
   "Revert Last Batch": "回滚上一批",
   "Execution Events": "执行事件",
@@ -789,7 +780,6 @@ const ZH_TEXT = {
   "tracking / needs-revisit / approved ...": "tracking / needs-revisit / approved ...",
   "Run batch": "运行批量操作",
   "Pick Review Page": "选择审阅页面",
-  "Pick Batch Review": "选择批量审阅",
   "Pick Rewrite Context": "选择改写上下文",
   "Pick Review Action": "选择审阅动作",
   "Pick Archive Target": "选择归档目标",
@@ -809,7 +799,7 @@ const ZH_TEXT = {
   "Advance a machine-memory repair action through the explicit action workflow.": "通过显式动作流程推进 machine-memory 修复动作。",
   "Apply an accepted low-risk machine-memory repair action.": "应用一个已接受的低风险 machine-memory 修复动作。",
   "Revert the latest low-risk safe apply for a machine-memory action.": "回滚 machine-memory 动作最近一次低风险安全应用。",
-  "File an output artifact back into wiki/derived, wiki/decisions, or wiki/judgments.": "将一个输出产物回填到 wiki/derived、wiki/decisions 或 wiki/judgments。",
+  "File an output artifact back into wiki/judgments for thin review.": "将输出报告回填到 wiki/judgments，进入薄审阅流程。",
   "Prefer an explicit review control object before falling back to manual page entry.": "优先使用显式 review control object，再回退到手动输入页面。",
   "Advance multiple review pages that share a safe common transition.": "批量推进共享安全公共迁移的多个审阅页面。",
   "Batch review is only offered when multiple pages share the same preferred or default transition.": "只有多个页面共享相同的推荐或默认迁移时才提供批量审阅。",
@@ -867,10 +857,6 @@ const ZH_TEXT = {
   "archive-revert": "归档回滚",
   "knowledge-lifecycle-override": "生命周期覆盖",
   general: "通用",
-  investing: "投资",
-  research: "研究",
-  product: "产品",
-  ops: "运维",
   source: "来源",
   concept: "概念",
   markdown: "Markdown",
@@ -2320,9 +2306,8 @@ function buildTodayFeed(summary) {
   // drift, proposals, and operator maintenance stay in Advanced / operator feed.
 
   const prioritized = entries.map((entry) => ({ ...entry, priority: priorityForKind(entry.kind) }));
-  const filtered = applySnoozeFilter(prioritized, summary, todayDate);
-  filtered.sort(compareEntries);
-  return filtered;
+  prioritized.sort(compareEntries);
+  return prioritized;
 }
 
 function buildDecisionEntries(summary) {
@@ -2647,7 +2632,7 @@ function isMaintenanceCommandAction(target, reason) {
   if (reasonText.startsWith("batch-hint:")) return true;
   const maintenanceTokens = [
     " review-page ",
-    " batch-review ",
+    " review-queue ",
     " --batch ",
     " --next ",
   ];
@@ -2658,20 +2643,6 @@ function isMaintenanceCommandAction(target, reason) {
 
 function todayDateOf(summary) {
   return datePart(String(summary.generated_at || ""));
-}
-
-function applySnoozeFilter(entries, summary, todayDate) {
-  const state = summary && typeof summary === "object" ? summary.today_snooze : null;
-  if (!state || typeof state !== "object" || !Array.isArray(state.items)) return entries;
-  const activeTargets = new Set();
-  for (const item of state.items) {
-    if (!item || typeof item !== "object") continue;
-    const target = String(item.target || "").trim();
-    const until = datePart(String(item.snoozed_until || ""));
-    if (target && until && until >= todayDate) activeTargets.add(target);
-  }
-  if (!activeTargets.size) return entries;
-  return entries.filter((entry) => !activeTargets.has(String(entry.target || "")));
 }
 
 function datePart(value) {
@@ -2726,7 +2697,6 @@ function compareEntries(a, b) {
 
 module.exports = {
   buildTodayFeed,
-  applySnoozeFilter,
   compareEntries,
   todayDateOf,
   reviewBucketCopy,
@@ -4388,17 +4358,6 @@ function renderStatusPanel(plugin, container) {
   ]);
 }
 
-function resolveBatchHintInvocation(_plugin, action) {
-  if (!action || typeof action !== "object") {
-    return null;
-  }
-  const kind = String(action.kind || "");
-  if (kind === "batch-review" || kind === "batch-apply") {
-    return null;
-  }
-  return null;
-}
-
 function renderSuggestedNextActionsBlock(plugin, container, options = {}) {
   const maxItems = Number.isFinite(Number(options.maxItems)) ? Math.max(1, Number(options.maxItems)) : 2;
   const summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : null;
@@ -4425,13 +4384,7 @@ function renderSuggestedNextActionsBlock(plugin, container, options = {}) {
       copy.createDiv({ cls: "furnace-shell-meta", text: metaParts.join(" | ") });
     }
     const buttons = item.createDiv({ cls: "furnace-shell-inline-actions furnace-shell-inline-actions-compact" });
-    const batchInvocation = resolveBatchHintInvocation(plugin, action);
-    if (batchInvocation) {
-      const runButton = buttons.createEl("button", { text: batchInvocation.label, cls: "mod-cta" });
-      runButton.addEventListener("click", () => {
-        plugin.runUiAction(batchInvocation.run, `Run batch hint: ${action.title || action.command}`);
-      });
-    } else if (action.kind === "compound-suggest") {
+    if (action.kind === "compound-suggest") {
       const compoundAction = String(action.action || "").trim();
       if (compoundAction === "file-back-judgment") {
         const fileBackBtn = buttons.createEl("button", { text: plugin.t("沉淀"), cls: "mod-cta" });
@@ -5045,7 +4998,6 @@ function renderFurnaceActivityTimeline(plugin, parentEl) {
     if (!Number.isFinite(count) || count <= 0) continue;
     if (!isPrimaryReviewBacklogBucket(bucketKey)) continue;
     const target = `review:${bucketKey}`;
-    if (isTodaySnoozedTarget(target, summary)) continue;
     const { title: bucketTitle, hint: bucketHint } = reviewBucketLabel(bucketKey);
     addItem({
       kind: "review-backlog",
@@ -5090,21 +5042,6 @@ function isPrimaryReviewBacklogBucket(bucketKey) {
     "pending_decisions",
     "pending_judgments",
   ].includes(key);
-}
-
-function isTodaySnoozedTarget(target, summary) {
-  const text = String(target || "").trim();
-  if (!text || !summary || typeof summary !== "object") return false;
-  const todayDate = activityTimelineTodayDateOf(summary);
-  const state = summary.today_snooze && typeof summary.today_snooze === "object" ? summary.today_snooze : null;
-  const items = state && Array.isArray(state.items) ? state.items : [];
-  for (const item of items) {
-    if (!item || typeof item !== "object") continue;
-    const snoozedTarget = String(item.target || "").trim();
-    const until = activityTimelineDatePart(String(item.snoozed_until || ""));
-    if (snoozedTarget === text && until && until >= todayDate) return true;
-  }
-  return false;
 }
 
 function activityTimelineTodayDateOf(summary) {
@@ -6710,8 +6647,7 @@ function commonReviewTransitionOptions(plugin, pages) {
     });
 }
 
-function reviewBatchSuggestions(plugin) {
-  // Batch review UX was removed in W4; keep helper for Advanced diagnostics only.
+function reviewBatchSuggestions(_plugin) {
   return [];
 }
 

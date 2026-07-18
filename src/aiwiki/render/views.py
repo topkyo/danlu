@@ -408,7 +408,6 @@ def render_domain_pilots_index(domain_pilots: dict[str, Any], compiled_at: str, 
             "- [输出 Pack 总览](./output-packs.md)",
             "- [炉心面板](./furnace-center.md)",
             "- [审阅中心](./review-center.md)",
-            "- [执行中心](./execution-center.md)",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -550,7 +549,6 @@ def render_agent_workbench(
             "## 相关入口",
             "- [炉心面板](./furnace-center.md)",
             "- [审阅中心](./review-center.md)",
-            "- [执行中心](./execution-center.md)",
             "- [执行审计](./execution-audit.md)",
             "- [认知历史](./cognitive-history.md)",
             "- [图谱视图](./graph-view.md)",
@@ -937,7 +935,6 @@ def render_master_index(
         "- [认知历史](./cognitive-history.md)",
         "- [协议总览](./protocols.md)",
         "- [炉心面板](./furnace-center.md)",
-        "- [执行中心](./execution-center.md)",
         "- [输出 Pack 总览](./output-packs.md)",
         "- [领域 Pilot 总览](./domain-pilots.md)",
         "- [审阅队列](./review-queue.md)",

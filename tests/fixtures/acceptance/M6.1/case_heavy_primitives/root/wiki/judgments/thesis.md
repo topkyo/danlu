@@ -3,7 +3,7 @@ id: thesis
 kind: judgment
 status: tentative
 title: Thesis
-protocol: research
+protocol: general
 confidence: medium
 ---
 

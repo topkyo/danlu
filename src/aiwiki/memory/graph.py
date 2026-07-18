@@ -441,10 +441,6 @@ def render_machine_memory_graph_html(
     def protocol_label(protocol: str) -> str:
         labels = {
             "general": "通用",
-            "research": "研究",
-            "investing": "投资",
-            "product": "产品",
-            "ops": "运营",
             "mixed": "混合",
             "unassigned": "未分配",
         }
@@ -673,10 +669,6 @@ def render_machine_memory_graph_html(
     }
     protocol_colors = {
         "general": "#38bdf8",
-        "research": "#a78bfa",
-        "investing": "#f59e0b",
-        "product": "#f472b6",
-        "ops": "#34d399",
         "mixed": "#94a3b8",
         "unassigned": "#64748b",
     }

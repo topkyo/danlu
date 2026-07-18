@@ -174,7 +174,6 @@ function renderFurnaceActivityTimeline(plugin, parentEl) {
     if (!Number.isFinite(count) || count <= 0) continue;
     if (!isPrimaryReviewBacklogBucket(bucketKey)) continue;
     const target = `review:${bucketKey}`;
-    if (isTodaySnoozedTarget(target, summary)) continue;
     const { title: bucketTitle, hint: bucketHint } = reviewBucketLabel(bucketKey);
     addItem({
       kind: "review-backlog",
@@ -219,21 +218,6 @@ function isPrimaryReviewBacklogBucket(bucketKey) {
     "pending_decisions",
     "pending_judgments",
   ].includes(key);
-}
-
-function isTodaySnoozedTarget(target, summary) {
-  const text = String(target || "").trim();
-  if (!text || !summary || typeof summary !== "object") return false;
-  const todayDate = activityTimelineTodayDateOf(summary);
-  const state = summary.today_snooze && typeof summary.today_snooze === "object" ? summary.today_snooze : null;
-  const items = state && Array.isArray(state.items) ? state.items : [];
-  for (const item of items) {
-    if (!item || typeof item !== "object") continue;
-    const snoozedTarget = String(item.target || "").trim();
-    const until = activityTimelineDatePart(String(item.snoozed_until || ""));
-    if (snoozedTarget === text && until && until >= todayDate) return true;
-  }
-  return false;
 }
 
 function activityTimelineTodayDateOf(summary) {

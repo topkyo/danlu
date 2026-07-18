@@ -75,7 +75,7 @@
 - 维护炼丹炉五层主线：`raw / wiki / machine memory / schema / outputs`。
 - 维持 deterministic baseline + 显式 LLM 执行层；Shell/CLI 默认主路由是 `opencode-api/deepseek-v4-pro`，不自动跨 backend fallback，也不写占位式 deterministic fallback 成功内容。
 - 维持直接投喂入口：`drop-url` / `drop-pdf` / `drop-image` / `drop-repo`。
-- 维持协议 runtime：`general / investing / research / product / ops`。
+- 维持单协议 runtime：`general` only。
 - 维持治理与执行层：`review / aging / escalation / repair / nightly / apply / revert / audit`。
 - 保持 `raw/ -> wiki/ -> output/` 分层，不引入 hosted service、multi-user sync、heavy RAG infra 或 fine-tuning。
 - Product Shell 正式支持 Desktop Obsidian only；iPad/iOS 不做全功能直移植。

@@ -2,7 +2,6 @@
 
 const {
   buildTodayFeed,
-  applySnoozeFilter,
   compareEntries,
   todayDateOf,
   reviewBucketCopy,
@@ -27,7 +26,6 @@ function makeSummary(overrides = {}) {
     recent_receipts: [],
     suggested_next_actions: [],
     metrics_history_delta: { available: false },
-    today_snooze: { items: [] },
     ...overrides,
   };
 }
@@ -128,42 +126,6 @@ test("isMaintenanceCommandAction detects maintenance tokens", () => {
 test("isMaintenanceCommandAction returns false for user commands", () => {
   expect(isMaintenanceCommandAction(" PYTHONPATH=src python3 -m aiwiki.cli --root . run-ask ", "")).toBe(false);
   expect(isMaintenanceCommandAction(" compile ", "")).toBe(false);
-});
-
-// ── applySnoozeFilter ─────────────────────────────────────────────────
-
-test("applySnoozeFilter removes snoozed entries", () => {
-  const entries = [
-    { kind: "decision", title: "A", target: "review:foo" },
-    { kind: "decision", title: "B", target: "review:bar" },
-  ];
-  const summary = {
-    today_snooze: {
-      items: [{ target: "review:foo", snoozed_until: "2026-05-04T00:00:00Z" }],
-    },
-  };
-  const filtered = applySnoozeFilter(entries, summary, "2026-05-03");
-  expect(filtered).toHaveLength(1);
-  expect(filtered[0].title).toBe("B");
-});
-
-test("applySnoozeFilter keeps entries with expired snooze", () => {
-  const entries = [
-    { kind: "decision", title: "A", target: "review:foo" },
-  ];
-  const summary = {
-    today_snooze: {
-      items: [{ target: "review:foo", snoozed_until: "2026-05-01T00:00:00Z" }],
-    },
-  };
-  const filtered = applySnoozeFilter(entries, summary, "2026-05-03");
-  expect(filtered).toHaveLength(1);
-});
-
-test("applySnoozeFilter returns all entries when no snooze state", () => {
-  const entries = [{ kind: "report", title: "A", target: "output/reports/A.md" }];
-  const filtered = applySnoozeFilter(entries, {}, "2026-05-03");
-  expect(filtered).toHaveLength(1);
 });
 
 // ── buildTodayFeed ────────────────────────────────────────────────────
@@ -339,18 +301,11 @@ test("buildTodayFeed attaches compound suggest to today report entries", () => {
   });
 });
 
-test("buildTodayFeed keeps agent loop automation out of primary Today", () => {
+test("buildTodayFeed keeps nightly automation out of primary Today", () => {
   const summary = makeSummary({
     nightly: {
       generated_at: "2026-05-03T12:00:00Z",
-      agent_loop: {
-        generated_at: "2026-05-03T12:00:00Z",
-        status: "ok",
-        signals: { new_count: 3 },
-        planner: { execute: { new_count: 2 } },
-        auto_preview: { ready_count: 0 },
-        auto_apply: { applied_count: 2 },
-      },
+      lint_counts: { errors: 1 },
     },
   });
   const feed = buildTodayFeed(summary);

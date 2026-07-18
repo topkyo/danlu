@@ -235,7 +235,6 @@ def _default_workspace_document() -> dict[str, Any]:
             "wiki/indexes/Outputs.md",
             "wiki/indexes/judgment-assets.md",
             "wiki/indexes/review-center.md",
-            "wiki/indexes/execution-center.md",
             "output/control/shell-summary.json",
         ],
         "left": {

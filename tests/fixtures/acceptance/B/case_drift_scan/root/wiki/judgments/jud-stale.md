@@ -1,6 +1,6 @@
 ---
 id: jud-stale
-protocol: research
+protocol: general
 last_reviewed: "2025-10-01T00:00:00Z"
 ---
 

@@ -237,7 +237,6 @@ def render_compile_status(
         "- 协议规则位于 `schema/protocols/`。",
         "- 协议总览位于 `protocols.md`。",
         "- 炉心面板位于 `furnace-center.md`。",
-        "- 执行中心位于 `execution-center.md`。",
         "- 输出 Pack 总览位于 `output-packs.md`。",
         "- 领域 Pilot 总览位于 `domain-pilots.md`。",
         "- 操作日志位于 `log.md`。",

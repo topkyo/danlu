@@ -7,7 +7,7 @@
         "raw/evidence.md"
       ],
       "path": "wiki/elixirs/elixir-changed.md",
-      "protocol": "research",
+      "protocol": "general",
       "stale_paths": [
         "raw/missing.md"
       ]
@@ -20,7 +20,7 @@
         "wiki/judgments/does-not-exist.md"
       ],
       "path": "wiki/elixirs/elixir-broken.md",
-      "protocol": "research"
+      "protocol": "general"
     }
   ],
   "errors": [],
@@ -33,7 +33,7 @@
       "judgment_id": "jud-stale",
       "last_reviewed": "2025-10-01T00:00:00Z",
       "path": "wiki/judgments/jud-stale.md",
-      "protocol": "research",
+      "protocol": "general",
       "threshold_days": 180
     }
   ],

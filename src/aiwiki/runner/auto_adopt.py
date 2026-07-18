@@ -36,6 +36,8 @@ from ..app_state import (
     append_runtime_history,
     execution_receipt_history_path,
     load_jsonl_documents_strict,
+    load_knowledge_lifecycle_state,
+    load_machine_memory_action_state,
 )
 from ..app_utils import (
     _restore_file_bytes,
@@ -54,6 +56,7 @@ from ..autonomy_domains import (
 )
 from ..autonomy_policy import load_policy
 from ..config import l3_auto_adopt_min_evidence_from_env
+from ..content.memory import action_supports_low_risk_apply
 from ..execution.lifecycle import review_concepts_batch
 from ..execution.machine_memory_actions import review_machine_memory_actions_batch
 from ..execution.machine_memory_batch import apply_machine_memory_actions_batch
@@ -62,14 +65,90 @@ from .receipts import record_llm_attempt
 from .workflow_shared import _raw_response_path, _receipt_error_class
 
 
+def _entry_slug(entry: dict[str, Any]) -> str:
+    slug = str(entry.get("slug") or "").strip()
+    if slug:
+        return slug
+    path = str(entry.get("path") or "").strip()
+    return Path(path).stem if path else ""
+
+
+def _action_status(action: dict[str, Any]) -> str:
+    return str(action.get("status") or "proposed")
+
+
+def _action_control(root: Path, action: dict[str, Any]) -> dict[str, Any]:
+    status = _action_status(action)
+    policy = load_policy(root)
+    classification = classify_machine_memory_action(
+        action,
+        autonomy_profile=policy.autonomy_profile,
+        revert_supported=action_supports_low_risk_apply(action),
+        root=root,
+    )
+    return {
+        "action_id": str(action.get("id") or ""),
+        "kind": str(action.get("kind") or ""),
+        "status": status,
+        "title": str(action.get("title") or action.get("id") or ""),
+        "can_review": status in {"proposed", "deferred"},
+        "can_apply": status == "accepted" and action_supports_low_risk_apply(action),
+        "autonomy_domain": classification.autonomy_domain,
+        "autonomy_boundary": "llm_owned_non_core"
+        if classification.autonomy_domain == "non_core_semantic"
+        else classification.autonomy_domain,
+        "execution_strategy": classification.execution_strategy,
+    }
+
+
+def _active_actions(root: Path) -> list[dict[str, Any]]:
+    state = load_machine_memory_action_state(root)
+    return [
+        dict(action)
+        for action in state.get("actions", [])
+        if isinstance(action, dict) and bool(action.get("active", True))
+    ]
+
+
+def collect_auto_adopt_work(root: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Return review/execution controls from owner state, not UI surfaces."""
+
+    lifecycle = load_knowledge_lifecycle_state(root)
+    entries = [entry for entry in lifecycle.get("entries", []) if isinstance(entry, dict)]
+    concept_backlog = [
+        {"slug": _entry_slug(entry), "path": str(entry.get("path") or "")}
+        for entry in entries
+        if str(entry.get("kind") or "") == "concept"
+        and str(entry.get("lifecycle_state") or "") == "review"
+        and _entry_slug(entry)
+    ]
+    revisit_concepts = [
+        {"slug": _entry_slug(entry), "path": str(entry.get("path") or "")}
+        for entry in entries
+        if str(entry.get("kind") or "") == "concept"
+        and str(entry.get("lifecycle_state") or "") == "revisit"
+        and _entry_slug(entry)
+    ]
+    actions = [_action_control(root, action) for action in _active_actions(root)]
+    return (
+        {
+            "source": "auto-adopt-owner-state",
+            "concept_backlog": concept_backlog,
+            "revisit_concepts": revisit_concepts,
+        },
+        {
+            "source": "auto-adopt-owner-state",
+            "actions": actions,
+        },
+    )
+
+
 def _build_controls(root: Path):
     """Load owner-state controls for unattended adoption.
 
     Product Shell renders these same concepts, but Shell controls are not the
     authority for unattended apply decisions.
     """
-
-    from ..debt_autopilot import collect_auto_adopt_work
 
     return collect_auto_adopt_work(root)
 

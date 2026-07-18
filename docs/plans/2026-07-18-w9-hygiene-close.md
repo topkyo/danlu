@@ -30,9 +30,9 @@
 
 **Files:** delete `src/aiwiki/agent_loop.py`, `src/aiwiki/debt_autopilot.py`; gut `runner/workflows.py` `run_compile`/`run_lint` + helpers; `runner/__init__.py`; `tests/acceptance/case_runner.py`
 
-- [ ] No production or acceptance import of agent_loop / debt_autopilot
-- [ ] Rewrite `_run_observe_setup` (or equivalent) without agent_loop preview — use only still-live deterministic helpers needed by fixtures
-- [ ] Remove `run_compile` / `run_lint` definitions and re-exports
+- [x] No production or acceptance import of agent_loop / debt_autopilot
+- [x] Rewrite `_run_observe_setup` (or equivalent) without agent_loop preview — use only still-live deterministic helpers needed by fixtures
+- [x] Remove `run_compile` / `run_lint` definitions and re-exports
 - [ ] **Verify:** `bash scripts/verify.sh python-static acceptance`
 
 **Commit:** `chore: delete agent_loop debt_autopilot and orphan run_compile`
@@ -45,9 +45,9 @@
 
 **Files:** `content/memory.py`, `memory/graph.py`, `memory/execution_surfaces.py`, `render/furnace_center.py`, `render/views.py`, `render/packs.py`, `app_shell/meta.py`, `app_compile_ops.py` as needed
 
-- [ ] Strip investing/research/product/ops patch hints, label maps, graph colors — general only (or generic fallback)
-- [ ] Delete or stop exporting unused `render_execution_center*` if no writers call them; remove furnace/wiki links to execution-center
-- [ ] `shell_capabilities.views` must not advertise execution-center as product surface
+- [x] Strip investing/research/product/ops patch hints, label maps, graph colors — general only (or generic fallback)
+- [x] Delete or stop exporting unused `render_execution_center*` if no writers call them; remove furnace/wiki links to execution-center
+- [x] `shell_capabilities.views` must not advertise execution-center as product surface
 - [ ] **Verify:** `bash scripts/verify.sh python-static`
 
 **Commit:** `fix: P9 general-only; purge execution-center product surfaces`
@@ -60,11 +60,11 @@
 
 **Files:** `app_shell/summary.py`, `today_feed.py`, `dispatch_helpers.py`, Product Shell `constants.js` + tests + `main.js`; Active docs; `PROGRESS.md`; this plan
 
-- [ ] Remove `today_snooze` from build/persist summary and today_feed filters
-- [ ] Rename `batch-review-ready-actions` helper id away from batch-review naming
-- [ ] Purge zombie i18n (Review/Execution Center open commands, three-kind file-back, unused multi-protocol product labels if only for deleted UI)
-- [ ] Docs/AGENTS.md/USER_GUIDE: no multi-protocol product matrix; no AgentOS product nightly narrative
-- [ ] `bash scripts/verify.sh all` PASS
+- [x] Remove `today_snooze` from build/persist summary and today_feed filters
+- [x] Rename `batch-review-ready-actions` helper id away from batch-review naming
+- [x] Purge zombie i18n (Review/Execution Center open commands, three-kind file-back, unused multi-protocol product labels if only for deleted UI)
+- [x] Docs/AGENTS.md/USER_GUIDE: no multi-protocol product matrix; no AgentOS product nightly narrative
+- [x] `bash scripts/verify.sh all` PASS
 - [ ] Gates:
   ```bash
   rg -n "agent_loop|debt_autopilot" src/aiwiki --glob '!**/archive/**'   # only acceptable if comments about deletion

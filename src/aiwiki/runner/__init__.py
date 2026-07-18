@@ -5,7 +5,7 @@ Submodules:
 - clients: LLM client lifecycle and fallback helpers
 - receipts: LLM audit, receipt, and run-log helpers
 - prompts: prompt profiles, builders, context, and validators
-- workflows: run_compile / run_ask / run_lint / run_nightly
+- workflows: run_ask / run_nightly
 - alchemy: alchemy lifecycle, scoped primitives, lane, and auto orchestration
 - automation: auto_process_once / watch_inbox / inbox_snapshot
 """
@@ -119,7 +119,5 @@ from aiwiki.runner.receipts import (  # noqa: F401
 from aiwiki.runner.workflows import (  # noqa: F401
     _reinject_candidate_frontmatter,
     run_ask,
-    run_compile,
-    run_lint,
     run_nightly,
 )

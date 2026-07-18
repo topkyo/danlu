@@ -358,7 +358,6 @@ def build_domain_pilot_scorecard(
             "- [协议总览](../../../wiki/indexes/protocols.md)",
             "- [输出 Pack 总览](../../../wiki/indexes/output-packs.md)",
             "- [审阅中心](../../../wiki/indexes/review-center.md)",
-            "- [执行中心](../../../wiki/indexes/execution-center.md)",
         ]
     )
     return {

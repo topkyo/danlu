@@ -384,18 +384,6 @@ PATCH_PLAN_AUXILIARY_PATHS: dict[str, tuple[str, ...]] = {
 
 PROTOCOL_PATCH_HINTS: dict[str, tuple[str, ...]] = {
     "general": (),
-    "investing": (
-        "同步检查 thesis、risk、catalyst 和 invalidation 页面是否要一起更新。",
-    ),
-    "research": (
-        "同步检查 benchmark、experiment、tradeoff 和 regression risk 是否要一起更新。",
-    ),
-    "product": (
-        "同步检查 user problem、metric、launch risk 和 validation gap 是否要一起更新。",
-    ),
-    "ops": (
-        "同步检查 incident timeline、blast radius、mitigation 和 follow-up 是否要一起更新。",
-    ),
 }
 
 
@@ -1280,34 +1268,6 @@ def repair_execution_proposals(
         "general": {
             "summary_suffix": "",
             "edits": [],
-        },
-        "investing": {
-            "summary_suffix": " 同时检查 thesis、risk、catalyst 和 invalidation 是否需要同步更新。",
-            "edits": [
-                "如果涉及公司/赛道概念，明确 bull / bear evidence、catalyst、risk 和 invalidation。",
-                "优先保持 company / thesis / valuation / risk factor 的边界清晰。",
-            ],
-        },
-        "research": {
-            "summary_suffix": " 同时检查 benchmark、experiment、tradeoff 和 regression risk 是否需要同步更新。",
-            "edits": [
-                "如果涉及研发概念，明确 benchmark、experiment、architecture tradeoff 和 regression risk。",
-                "优先把 next experiment 或 validation path 写清楚。",
-            ],
-        },
-        "product": {
-            "summary_suffix": " 同时检查 user problem、metric、launch readiness 和 validation gap 是否需要同步更新。",
-            "edits": [
-                "如果涉及产品概念，明确 user problem、bet、metric impact 和 launch risk。",
-                "优先把 next validation 或 rollout checkpoint 写清楚。",
-            ],
-        },
-        "ops": {
-            "summary_suffix": " 同时检查 incident timeline、blast radius、mitigation 和 follow-up 是否需要同步更新。",
-            "edits": [
-                "如果涉及运维概念，明确 incident 状态、根因判断、残余风险和 follow-up。",
-                "优先把 owner、rollback path 或 next review window 写清楚。",
-            ],
         },
     }
     proposals: list[dict[str, Any]] = []

@@ -175,10 +175,9 @@ def curated_asset_section_overrides(*, supporting_body: str, revisit_after: str,
 
 
 def curated_frontmatter_hints(*, kind: str, protocol: str, supporting_body: str) -> dict[str, Any]:
+    _ = protocol
     risks = _section_lines(supporting_body, "risks", fallback=[])
     signals = _section_lines(supporting_body, "signals", fallback=[])
-    conclusion = _section_lines(supporting_body, "conclusion", fallback=[])
-    evidence = _section_lines(supporting_body, "evidence", fallback=[])
     hints: dict[str, Any] = {}
     if kind in {"decision", "judgment"}:
         if risks:
@@ -186,20 +185,6 @@ def curated_frontmatter_hints(*, kind: str, protocol: str, supporting_body: str)
             hints["invalidation_rule"] = _first_plain_line(risks)
         if signals:
             hints["next_signals"] = [re.sub(r"^-+\s*", "", item).strip() for item in signals if item.strip()]
-    if protocol == "investing":
-        if conclusion:
-            hints["thesis"] = _first_plain_line(conclusion)
-        if evidence:
-            hints["catalyst"] = [re.sub(r"^-+\s*", "", item).strip() for item in evidence if item.strip()]
-        if risks:
-            hints["risk"] = [re.sub(r"^-+\s*", "", item).strip() for item in risks if item.strip()]
-            hints["invalidation_threshold"] = _first_plain_line(risks)
-    if protocol == "research" and conclusion:
-        hints["hypothesis"] = _first_plain_line(conclusion)
-    if protocol == "product" and conclusion:
-        hints["user_value_claim"] = _first_plain_line(conclusion)
-    if protocol == "ops" and risks:
-        hints["blast_radius"] = _first_plain_line(risks)
     return {key: value for key, value in hints.items() if value}
 
 
@@ -212,6 +197,7 @@ def repair_curated_page_body(
     revisit_after: str,
     escalate_after: str,
 ) -> str:
+    _ = protocol
     if "## Supporting Artifact" in body:
         supporting = body.split("## Supporting Artifact", 1)[1].strip()
     elif "## Filed Content" in body:
@@ -237,30 +223,14 @@ def repair_curated_page_body(
 
     repaired = body
     if kind == "judgment":
-        if protocol == "investing":
-            replacements = {
-                "Investment Judgment": conclusion,
-                "Drivers And Catalysts": evidence,
-                "Risks And Invalidation": risks,
-                "Confidence And Watchlist": signals,
-            }
-        elif protocol == "research":
-            replacements = {"Research Judgment": conclusion, "Supporting Evidence": evidence, "Counter Evidence": risks, "Open Questions": signals}
-        elif protocol == "product":
-            replacements = {"Product Judgment": conclusion, "User Signal And Evidence": evidence, "Counter Signals": risks, "Confidence And Next Validation": signals}
-        elif protocol == "ops":
-            replacements = {"Ops Judgment": conclusion, "Incident Evidence": evidence, "Counter Evidence": risks, "Confidence And Follow-up": signals}
-        else:
-            replacements = {"Judgment": conclusion, "Signals": evidence, "Counterevidence": risks, "Confidence And Follow-up": signals}
+        replacements = {
+            "Judgment": conclusion,
+            "Signals": evidence,
+            "Counterevidence": risks,
+            "Confidence And Follow-up": signals,
+        }
     elif kind == "decision":
         replacements = {"Decision": conclusion, "Evidence": evidence, "Risks And Revisit": risks + signals}
-        if protocol == "investing":
-            replacements = {
-                "Position Decision": conclusion,
-                "Thesis": evidence,
-                "Bear Case And Invalidation": risks,
-                "Catalysts And Revisit": signals,
-            }
     else:
         replacements = {}
     for heading, lines in replacements.items():
@@ -301,179 +271,6 @@ def curated_page_template(
             supporting_body,
         ]
     if kind == "decision":
-        if protocol == "investing":
-            asset_overrides = curated_asset_section_overrides(
-                supporting_body=supporting_body,
-                revisit_after=revisit_after,
-                escalate_after=escalate_after,
-            )
-            decision_lines = _section_lines(
-                supporting_body,
-                "conclusion",
-                fallback=[f"- Filed from `{artifact_ref}`; review before approving any action."],
-            )
-            evidence_lines = _section_lines(
-                supporting_body,
-                "evidence",
-                fallback=[f"- Evidence is preserved in the supporting artifact `{artifact_ref}`."],
-            )
-            risk_lines = _section_lines(
-                supporting_body,
-                "risks",
-                fallback=["- No explicit counter-thesis was found in the filed artifact."],
-            )
-            signal_lines = _section_lines(
-                supporting_body,
-                "signals",
-                fallback=[f"- Revisit after `{revisit_after or 'none'}` or when cited evidence changes."],
-            )
-            return [
-                f"# {title}",
-                "",
-                *origin_block,
-                "## Position Decision",
-                *decision_lines,
-                "",
-                "## Scope And Sizing",
-                f"- Scope is the filed artifact `{artifact_ref}` until a reviewer narrows or expands it.",
-                "",
-                "## Thesis",
-                *evidence_lines,
-                "",
-                "## Evidence",
-                *evidence_lines,
-                "",
-                "## Bear Case And Invalidation",
-                *risk_lines,
-                "",
-                "## Catalysts And Revisit",
-                *signal_lines,
-                f"- Default revisit window: `{revisit_after or 'none'}`",
-                f"- Default escalation window: `{escalate_after or 'none'}`",
-                *render_curated_asset_sections(
-                    revisit_after=revisit_after,
-                    escalate_after=escalate_after,
-                    section_overrides=asset_overrides,
-                ),
-                "",
-                "## Review Status",
-                "- Current status: `proposed`",
-                "- Review this page when the action is approved, resized, exited, or invalidated.",
-                "",
-                "## Review Notes",
-                "- No review has been recorded yet.",
-                *render_review_history_section(),
-                "",
-                "## Supporting Artifact",
-                supporting_body,
-            ]
-        if protocol == "research":
-            return [
-                f"# {title}",
-                "",
-                *origin_block,
-                "## Architecture Decision",
-                "- State the action: adopt, reject, defer, migrate, or rollback.",
-                "",
-                "## Affected Surface",
-                "- Record the systems, components, teams, or experiments affected.",
-                "",
-                "## Evidence",
-                f"- Review `{artifact_ref}` and cite `wiki/sources/*.md` or `raw/` evidence explicitly.",
-                "",
-                "## Validation Plan",
-                "- Define the benchmark, test, or rollout signal that would validate this decision.",
-                "",
-                "## Rollback And Risks",
-                "- Record regression risks, rollback path, and explicit failure conditions.",
-                f"- Default revisit window: `{revisit_after or 'none'}`",
-                f"- Default escalation window: `{escalate_after or 'none'}`",
-                *render_curated_asset_sections(
-                    revisit_after=revisit_after,
-                    escalate_after=escalate_after,
-                ),
-                "",
-                "## Review Status",
-                "- Current status: `proposed`",
-                "- Review this page when the rollout result, benchmark, or regression signal changes.",
-                "",
-                "## Review Notes",
-                "- No review has been recorded yet.",
-                *render_review_history_section(),
-                "",
-                "## Supporting Artifact",
-                supporting_body,
-            ]
-        if protocol == "product":
-            return [
-                f"# {title}",
-                "",
-                *origin_block,
-                "## Product Decision",
-                "- State the action: prioritize, launch, roll out, deprecate, or pause.",
-                "",
-                "## User Problem And Bet",
-                "- Record the target user problem, the product bet, and the expected behavior change.",
-                "",
-                "## Metric And Validation",
-                f"- Review `{artifact_ref}` and cite `wiki/sources/*.md` or `raw/` evidence explicitly.",
-                "- Name the primary metric, rollout checkpoint, or validation signal.",
-                "",
-                "## Launch Risks And Rollback",
-                "- Record launch blockers, segment risk, and rollback/containment conditions.",
-                f"- Default revisit window: `{revisit_after or 'none'}`",
-                f"- Default escalation window: `{escalate_after or 'none'}`",
-                *render_curated_asset_sections(
-                    revisit_after=revisit_after,
-                    escalate_after=escalate_after,
-                ),
-                "",
-                "## Review Status",
-                "- Current status: `proposed`",
-                "- Review this page when launch readiness, metric movement, or the product bet changes.",
-                "",
-                "## Review Notes",
-                "- No review has been recorded yet.",
-                *render_review_history_section(),
-                "",
-                "## Supporting Artifact",
-                supporting_body,
-            ]
-        if protocol == "ops":
-            return [
-                f"# {title}",
-                "",
-                *origin_block,
-                "## Incident Decision",
-                "- State the action: mitigate, roll back, fail over, isolate, escalate, or follow up.",
-                "",
-                "## Incident Scope",
-                "- Record the impacted service, blast radius, owner, and current operational state.",
-                "",
-                "## Mitigation Evidence",
-                f"- Review `{artifact_ref}` and cite `wiki/sources/*.md` or `raw/` evidence explicitly.",
-                "- Name the signal that shows mitigation is working.",
-                "",
-                "## Residual Risk And Follow-up",
-                "- Record rollback/failover paths, residual risk, and follow-up owner.",
-                f"- Default revisit window: `{revisit_after or 'none'}`",
-                f"- Default escalation window: `{escalate_after or 'none'}`",
-                *render_curated_asset_sections(
-                    revisit_after=revisit_after,
-                    escalate_after=escalate_after,
-                ),
-                "",
-                "## Review Status",
-                "- Current status: `proposed`",
-                "- Review this page when the incident state, blast radius, or owner changes.",
-                "",
-                "## Review Notes",
-                "- No review has been recorded yet.",
-                *render_review_history_section(),
-                "",
-                "## Supporting Artifact",
-                supporting_body,
-            ]
         return [
             f"# {title}",
             "",
@@ -499,171 +296,6 @@ def curated_page_template(
             "## Review Status",
             "- Current status: `proposed`",
             "- Review this page when the decision is approved, superseded, or needs revisit.",
-            "",
-            "## Review Notes",
-            "- No review has been recorded yet.",
-            *render_review_history_section(),
-            "",
-            "## Supporting Artifact",
-            supporting_body,
-        ]
-    if protocol == "investing":
-        asset_overrides = curated_asset_section_overrides(
-            supporting_body=supporting_body,
-            revisit_after=revisit_after,
-            escalate_after=escalate_after,
-        )
-        judgment_lines = _section_lines(
-            supporting_body,
-            "conclusion",
-            fallback=[f"- Filed from `{artifact_ref}`; review before confirming this judgment."],
-        )
-        evidence_lines = _section_lines(
-            supporting_body,
-            "evidence",
-            fallback=[f"- Evidence is preserved in the supporting artifact `{artifact_ref}`."],
-        )
-        risk_lines = _section_lines(
-            supporting_body,
-            "risks",
-            fallback=["- No explicit counter evidence was found in the filed artifact."],
-        )
-        signal_lines = _section_lines(
-            supporting_body,
-            "signals",
-            fallback=[f"- Revisit after `{revisit_after or 'none'}` or when cited evidence changes."],
-        )
-        return [
-            f"# {title}",
-            "",
-            *origin_block,
-            "## Investment Judgment",
-            *judgment_lines,
-            "",
-            "## Drivers And Catalysts",
-            *evidence_lines,
-            "",
-            "## Risks And Invalidation",
-            *risk_lines,
-            "",
-            "## Confidence And Watchlist",
-            *signal_lines,
-            f"- Default revisit window: `{revisit_after or 'none'}`",
-            f"- Default escalation window: `{escalate_after or 'none'}`",
-            *render_curated_asset_sections(
-                revisit_after=revisit_after,
-                escalate_after=escalate_after,
-                section_overrides=asset_overrides,
-            ),
-            "",
-            "## Review Status",
-            "- Current status: `tentative`",
-            "- Review this page when the thesis strengthens, weakens, or is invalidated.",
-            "",
-            "## Review Notes",
-            "- No review has been recorded yet.",
-            *render_review_history_section(),
-            "",
-            "## Supporting Artifact",
-            supporting_body,
-        ]
-    if protocol == "research":
-        return [
-            f"# {title}",
-            "",
-            *origin_block,
-            "## Research Judgment",
-            "- State the hypothesis, expected gain, or architecture judgment here.",
-            "",
-            "## Supporting Evidence",
-            f"- Summarize benchmark, experiment, or source evidence from `{artifact_ref}` and `wiki/sources/*.md`.",
-            "",
-            "## Counter Evidence",
-            "- Record the regression risks, weak signals, or conflicting results.",
-            "",
-            "## Open Questions",
-            "- List what remains uncertain and what experiment should resolve it.",
-            "",
-            "## Confidence And Next Experiment",
-            "- Keep confidence explicit and name the next benchmark or follow-up check.",
-            f"- Default revisit window: `{revisit_after or 'none'}`",
-            f"- Default escalation window: `{escalate_after or 'none'}`",
-            *render_curated_asset_sections(
-                revisit_after=revisit_after,
-                escalate_after=escalate_after,
-            ),
-            "",
-            "## Review Status",
-            "- Current status: `tentative`",
-            "- Review this page when new benchmark, regression, or experiment evidence arrives.",
-            "",
-            "## Review Notes",
-            "- No review has been recorded yet.",
-            *render_review_history_section(),
-            "",
-            "## Supporting Artifact",
-            supporting_body,
-        ]
-    if protocol == "product":
-        return [
-            f"# {title}",
-            "",
-            *origin_block,
-            "## Product Judgment",
-            "- State the insight, product bet, or launch-readiness judgment here.",
-            "",
-            "## User Signal And Evidence",
-            f"- Summarize user signal, metric evidence, or rollout data from `{artifact_ref}` and supporting sources.",
-            "",
-            "## Counter Signals",
-            "- Record what user, metric, or launch evidence could invalidate this judgment.",
-            "",
-            "## Confidence And Next Validation",
-            "- Keep confidence explicit and name the next validation checkpoint, release, or metric review.",
-            f"- Default revisit window: `{revisit_after or 'none'}`",
-            f"- Default escalation window: `{escalate_after or 'none'}`",
-            *render_curated_asset_sections(
-                revisit_after=revisit_after,
-                escalate_after=escalate_after,
-            ),
-            "",
-            "## Review Status",
-            "- Current status: `tentative`",
-            "- Review this page when the signal strengthens, weakens, or the launch plan changes.",
-            "",
-            "## Review Notes",
-            "- No review has been recorded yet.",
-            *render_review_history_section(),
-            "",
-            "## Supporting Artifact",
-            supporting_body,
-        ]
-    if protocol == "ops":
-        return [
-            f"# {title}",
-            "",
-            *origin_block,
-            "## Ops Judgment",
-            "- State the root-cause, blast-radius, or operational-risk judgment here.",
-            "",
-            "## Incident Evidence",
-            f"- Summarize incident timeline, logs, or runbook evidence from `{artifact_ref}` and supporting sources.",
-            "",
-            "## Counter Evidence",
-            "- Record what would falsify this root-cause or operational-risk judgment.",
-            "",
-            "## Confidence And Follow-up",
-            "- Keep confidence explicit and name the next incident review, runbook update, or mitigation check.",
-            f"- Default revisit window: `{revisit_after or 'none'}`",
-            f"- Default escalation window: `{escalate_after or 'none'}`",
-            *render_curated_asset_sections(
-                revisit_after=revisit_after,
-                escalate_after=escalate_after,
-            ),
-            "",
-            "## Review Status",
-            "- Current status: `tentative`",
-            "- Review this page when new incident evidence, residual risk, or follow-up status arrives.",
             "",
             "## Review Notes",
             "- No review has been recorded yet.",

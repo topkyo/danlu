@@ -723,7 +723,6 @@ def build_output_pack_sop_drafts(
                 "## Related Links",
                 f"- {pack_workspace_link(str(proposal.get('proposal_path') or ''), 'Execution Proposal')}" if proposal.get("proposal_path") else "- Execution Proposal: none",
                 f"- {pack_workspace_link(bundle_path, 'Execution Bundle')}" if bundle_path else "- Execution Bundle: none",
-                "- [执行中心](../../../wiki/indexes/execution-center.md)",
                 "- [执行审计](../../../wiki/indexes/execution-audit.md)",
                 "- [机器记忆修复计划](../../../wiki/indexes/machine-memory-repair-plan.md)",
             ]
@@ -817,7 +816,6 @@ def build_output_pack_sop_drafts(
                 ),
                 "",
                 "## Related Links",
-                "- [执行中心](../../../wiki/indexes/execution-center.md)",
                 "- [执行审计](../../../wiki/indexes/execution-audit.md)",
                 "- [机器记忆动作队列](../../../wiki/indexes/machine-memory-actions.md)",
                 bundle_link,
@@ -1131,7 +1129,6 @@ def render_output_packs_index(output_packs: dict[str, Any], compiled_at: str, ac
             "## 相关入口",
             "- [炉心面板](./furnace-center.md)",
             "- [审阅中心](./review-center.md)",
-            "- [执行中心](./execution-center.md)",
             "- [执行审计](./execution-audit.md)",
             "- [判断资产](./judgment-assets.md)",
         ]

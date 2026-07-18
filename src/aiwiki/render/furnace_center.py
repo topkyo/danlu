@@ -341,7 +341,6 @@ def render_furnace_center(
             "",
             "## 快速跳转",
             "- [审阅中心](./review-center.md)",
-            "- [执行中心](./execution-center.md)",
             "- [执行审计](./execution-audit.md)",
             "- [Agent Workbench](./agent-workbench.md)",
             "- [认知历史](./cognitive-history.md)",
@@ -355,7 +354,6 @@ def render_furnace_center(
             "- `output/review/review-center.html`：本地审阅面板（浏览器 / 系统 HTML 入口）",
             "- `output/graph/machine-memory.html`：本地图谱视图（若点开变成 Mihomo/Clash，说明系统接管了 `text/html`）",
             "- `output/control/furnace-center.html`：本地炉心面板（浏览器 / 系统 HTML 入口）",
-            "- `output/control/execution-center.html`：本地执行面板（浏览器 / 系统 HTML 入口）",
             "- `output/control/execution-audit.html`：本地执行审计面板（浏览器 / 系统 HTML 入口）",
         ]
     )
@@ -520,7 +518,6 @@ def render_furnace_center_html(
             '    <div class="quick-links">',
             '      <a href="../../wiki/indexes/furnace-center.md">Markdown 面板</a>',
             '      <a href="../../wiki/indexes/review-center.md">审阅中心</a>',
-            '      <a href="../../wiki/indexes/execution-center.md">执行中心</a>',
             '      <a href="../../wiki/indexes/execution-audit.md">执行审计</a>',
             '      <a href="../../wiki/indexes/agent-workbench.md">Agent Workbench</a>',
             '      <a href="../../wiki/indexes/cognitive-history.md">认知历史</a>',
@@ -532,7 +529,6 @@ def render_furnace_center_html(
             '      <a href="../../wiki/indexes/protocols.md">协议总览</a>',
             '      <a href="../../output/review/review-center.html">审阅 HTML</a>',
             '      <a href="../../output/graph/machine-memory.html">图谱 HTML</a>',
-            '      <a href="../../output/control/execution-center.html">执行 HTML</a>',
             '      <a href="../../output/control/execution-audit.html">审计 HTML</a>',
             "    </div>",
             '    <div class="meta">',

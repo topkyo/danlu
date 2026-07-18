@@ -41,7 +41,7 @@ SOURCE_KINDS: frozenset[str] = frozenset(
 
 EMITTED_BY: frozenset[str] = frozenset({"nightly", "user", "compile", "external"})
 
-PROTOCOLS: frozenset[str] = frozenset({"general", "investing", "research", "product", "ops"})
+PROTOCOLS: frozenset[str] = frozenset({"general"})
 
 SEVERITIES: frozenset[str] = frozenset({"low", "medium", "high", "critical"})
 

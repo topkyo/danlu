@@ -285,17 +285,9 @@ const SHELL_SUMMARY_FIXTURE = {
   },
   suggested_next_actions: [],
   metrics_history_delta: { available: false },
-  today_snooze: { items: [] },
   nightly: {
     generated_at: "2026-05-13T09:50:00Z",
-    agent_loop: {
-      generated_at: "2026-05-13T09:50:00Z",
-      status: "ok",
-      signals: { new_count: 2 },
-      planner: { execute: { new_count: 1 } },
-      auto_preview: { ready_count: 0 },
-      auto_apply: { applied_count: 1 },
-    },
+    lint_counts: { errors: 0 },
   },
 };
 
@@ -675,7 +667,6 @@ test("renderTodayFeed covers no-summary empty-feed and pending branches", () => 
     recent_receipts: [],
     suggested_next_actions: [],
     metrics_history_delta: { available: false },
-    today_snooze: { items: [] },
   };
   const emptyContainer = document.createElement("div");
   context.renderTodayFeed(makePlugin({ shellSummary: emptySummary }), emptyContainer);
@@ -706,7 +697,6 @@ test("chat-style pending stream covers artifact cards failed and escalated bubbl
       recent_receipts: [],
       suggested_next_actions: [],
       metrics_history_delta: { available: false },
-      today_snooze: { items: [] },
     },
     pendingSubmissions: [
       { id: "done-output", status: "done", displayText: "生成报告", reconcileTarget: "outputs", reconcilePath: "output/reports/r.md", runNotesPath: "output/control/runs/ask-r/thinking.md", runId: "ask-r" },
@@ -754,7 +744,6 @@ test("degraded output card hides quote action and keeps recovery semantics", asy
       recent_receipts: [],
       suggested_next_actions: [],
       metrics_history_delta: { available: false },
-      today_snooze: { items: [] },
     },
     pendingSubmissions: [
       {
@@ -795,7 +784,6 @@ test("degraded output retry clears stale run id and records new background job",
       recent_receipts: [],
       suggested_next_actions: [],
       metrics_history_delta: { available: false },
-      today_snooze: { items: [] },
     },
     pendingSubmissions: [
       {
@@ -1010,7 +998,6 @@ test("llm-check unconfigured summary renders operable UI degradation", () => {
     recent_raw_inputs: [],
     suggested_next_actions: [],
     metrics_history_delta: { available: false },
-    today_snooze: { items: [] },
   };
   const container = document.createElement("div");
 

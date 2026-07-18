@@ -114,8 +114,6 @@ from ..app_state import (
     ensure_knowledge_lifecycle_override_state,
     execution_audit_html_path,
     execution_audit_path,
-    execution_center_html_path,
-    execution_center_path,
     execution_policy_log_path,
     furnace_center_html_path,
     graph_health_report_path,
@@ -262,8 +260,6 @@ from ..memory.execution_surfaces import (
     render_concept_rewrite_proposal_page,
     render_execution_audit,
     render_execution_audit_html,
-    render_execution_center,
-    render_execution_center_html,
     render_execution_proposal_page,
 )
 from ..memory.graph import (
