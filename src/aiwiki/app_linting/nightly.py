@@ -305,6 +305,7 @@ from ..state.paths import (
 )
 from ..utils.hash import compiled_source_sha, question_signature, sha256_bytes
 from ..utils.io import (
+    atomic_write_text,
     runtime_write_operation,
     write_if_changed,
     write_if_changed_ignoring_timestamps,
@@ -653,8 +654,11 @@ def write_nightly_health(
         semantic_report,
         generated_at,
     )
-    repair_backlog_path(root).write_text(repair_backlog, encoding="utf-8")
-    nightly_health_state_path(root).write_text(json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    atomic_write_text(repair_backlog_path(root), repair_backlog)
+    atomic_write_text(
+        nightly_health_state_path(root),
+        json.dumps(state, indent=2, sort_keys=True) + "\n",
+    )
     append_wiki_log(
         root,
         "nightly",

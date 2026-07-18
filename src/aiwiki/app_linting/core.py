@@ -306,6 +306,7 @@ from ..state.paths import (
 )
 from ..utils.hash import compiled_source_sha, question_signature, sha256_bytes
 from ..utils.io import (
+    atomic_write_text,
     runtime_write_operation,
     write_if_changed,
     write_if_changed_ignoring_timestamps,
@@ -414,7 +415,7 @@ def _write_lint_report(context: _LintContext) -> dict[str, Any]:
     else:
         for finding in context.findings:
             lines.append(f"- `{finding.severity}` {finding.path}: {finding.message}")
-    report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    atomic_write_text(report_path, "\n".join(lines) + "\n")
     _rotate_lint_reports(lint_dir)
     append_wiki_log(
         context.root,

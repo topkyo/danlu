@@ -37,7 +37,7 @@ def ensure_runtime_schema(root: Path) -> None:
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         if not path.exists():
-            path.write_text(content, encoding="utf-8")
+            atomic_write_text(path, content)
 
 
 def ensure_runtime_dashboards(root: Path, *, overwrite: bool = False) -> None:
@@ -45,7 +45,7 @@ def ensure_runtime_dashboards(root: Path, *, overwrite: bool = False) -> None:
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         if overwrite or not path.exists():
-            path.write_text(content, encoding="utf-8")
+            atomic_write_text(path, content)
 
 
 def ensure_protocol_scaffold(root: Path) -> None:
@@ -53,7 +53,7 @@ def ensure_protocol_scaffold(root: Path) -> None:
     base.mkdir(parents=True, exist_ok=True)
     index_path = base / "index.md"
     if not index_path.exists():
-        index_path.write_text(render_protocol_library_index(), encoding="utf-8")
+        atomic_write_text(index_path, render_protocol_library_index())
     slug = DEFAULT_PROTOCOL
     runtime_schema = protocol_runtime_schema_path(root, slug)
     runtime_schema.parent.mkdir(parents=True, exist_ok=True)
@@ -65,11 +65,11 @@ def ensure_protocol_scaffold(root: Path) -> None:
     overview = base / slug / "index.md"
     overview.parent.mkdir(parents=True, exist_ok=True)
     if not overview.exists():
-        overview.write_text(render_protocol_overview(slug), encoding="utf-8")
+        atomic_write_text(overview, render_protocol_overview(slug))
     for section in PROTOCOL_SECTION_FILES:
         path = base / slug / f"{section}.md"
         if not path.exists():
-            path.write_text(render_protocol_section(slug, section), encoding="utf-8")
+            atomic_write_text(path, render_protocol_section(slug, section))
     from .state import default_protocol_state, protocol_state_path
 
     state = protocol_state_path(root)

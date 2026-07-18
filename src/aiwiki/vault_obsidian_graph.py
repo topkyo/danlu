@@ -341,7 +341,7 @@ def apply_native_graph_anchor_section(destination: Path, *, anchors: list[str], 
         lines.append(f"- [[{OBSIDIAN_EVIDENCE_GRAPH_HUB[:-3]}|证据关系总览]]")
     body = destination.read_text(encoding="utf-8", errors="replace")
     body = upsert_markdown_section(body, "关系图谱锚点", "\n".join(lines + [""]))
-    destination.write_text(body.rstrip() + "\n", encoding="utf-8")
+    write_if_changed(destination, body.rstrip() + "\n")
 
 
 def materialize_obsidian_native_graph_links(root: Path, memory: dict[str, Any] | None = None) -> dict[str, int]:

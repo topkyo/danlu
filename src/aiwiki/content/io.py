@@ -655,7 +655,7 @@ def annotate_recurring_promotion(
     for artifact in artifacts[-5:]:
         auto_lines.append(f"- Supporting artifact: `{artifact['path']}`")
     section = upsert_markdown_section(body, "Auto Promotion", "\n".join(auto_lines)).strip()
-    page_path.write_text(f"{render_frontmatter(frontmatter)}\n\n{section}\n", encoding="utf-8")
+    atomic_write_text(page_path, f"{render_frontmatter(frontmatter)}\n\n{section}\n")
 
 
 def manifest_change_summary(
