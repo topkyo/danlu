@@ -109,8 +109,6 @@ def render_product_shell_html(summary: ShellSummary) -> str:
             "Recent Runs": "最近运行",
             "Recent Receipts": "最近回执",
             "Furnace Center": "炉心面板",
-            "Review Center": "审阅中心",
-            "Execution Center": "执行中心",
             "Execution Audit": "执行审计",
             "Graph View": "图谱视图",
             "Shell Summary": "Shell 摘要",
@@ -204,8 +202,6 @@ def render_product_shell_html(summary: ShellSummary) -> str:
     ]
     quick_links = [
         ("Furnace Center", str(links.get("furnace_center_html") or "")),
-        ("Review Center", str(links.get("review_center_html") or "")),
-        ("Execution Center", str(links.get("execution_center_html") or "")),
         ("Execution Audit", str(links.get("execution_audit_html") or "")),
         ("Graph View", str(links.get("graph_html") or "")),
         ("Shell Summary", str(links.get("summary_path") or "")),

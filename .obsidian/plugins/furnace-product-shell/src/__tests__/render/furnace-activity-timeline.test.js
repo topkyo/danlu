@@ -196,25 +196,6 @@ test("hides unknown review backlog buckets from primary timeline", () => {
   expect(item).toBeFalsy();
 });
 
-test("keeps snoozed exception review backlog out of timeline", () => {
-  const renderFurnaceActivityTimeline = loadRenderer(() => []);
-  const container = document.createElement("div");
-
-  renderFurnaceActivityTimeline(makePlugin({
-    summary: {
-      generated_at: "2026-05-11T12:00:00Z",
-      review_backlog_counts: { counter_evidence_candidates: 3, pending_decisions: 1 },
-      today_snooze: {
-        items: [{ target: "review:counter_evidence_candidates", snoozed_until: "2026-05-12" }],
-      },
-    },
-  }), container);
-
-  const titles = Array.from(container.querySelectorAll("li.furnace-activity-item-review-backlog .furnace-activity-title"))
-    .map((el) => el.textContent);
-  expect(titles).toEqual(["处理待定决策"]);
-});
-
 test("deduplicates feed elixir and raw receipt with the same target", () => {
   const renderFurnaceActivityTimeline = loadRenderer(() => [{
     kind: "elixir",

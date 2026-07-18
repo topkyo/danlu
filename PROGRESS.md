@@ -14,6 +14,8 @@
 
 ## 当前动态
 
+- 2026-07-18 (**W9 hygiene close**)：Task 1 删除 `agent_loop`/`debt_autopilot` 与 orphan `run_compile`/`run_lint`；Task 2 P9 general-only + execution-center 产品面清理；Task 3 去掉 `today_snooze`/summary `agent_loop`、重命名 review-queue helper id、Shell i18n 僵尸键清理、Active docs/AGENTS 收尾。验证：`bash scripts/verify.sh all` PASS。
+
 - 2026-07-18 (**W8 final AgentOS residual close**)：Task 1 `run-nightly` 仅 deterministic compile+lint；Task 2 live-only `shell_capabilities` + 生成面 dead CLI 清理；Task 3 drop 默认 auto-process、judgment-only file-back、删除 review-page batch；Task 4 Today-only Shell 视图 + 最小 shell-summary persist；Task 5 Active docs / acceptance / orphan `render_review.js`+`render_execution.js` 删除 + rg gate。验证：`bash scripts/verify.sh all` PASS。
 
 - 2026-07-18 (**W7 residual AgentOS close**)：Task 1 nightly debt_autopilot 不再调 LLM `run_compile`；Task 2 shell-summary / suggested_next_actions 去掉 deleted governance CLI hint；Task 3 Active docs C53/P9 收尾（Evolution/Elixir/DEVELOPER/Product Shell/USER_GUIDE/Runtime Ops 与 W6/W7 对齐）。验证：`bash scripts/verify.sh all` PASS。

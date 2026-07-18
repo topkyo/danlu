@@ -50,9 +50,8 @@ function buildTodayFeed(summary) {
   // drift, proposals, and operator maintenance stay in Advanced / operator feed.
 
   const prioritized = entries.map((entry) => ({ ...entry, priority: priorityForKind(entry.kind) }));
-  const filtered = applySnoozeFilter(prioritized, summary, todayDate);
-  filtered.sort(compareEntries);
-  return filtered;
+  prioritized.sort(compareEntries);
+  return prioritized;
 }
 
 function buildDecisionEntries(summary) {
@@ -377,7 +376,7 @@ function isMaintenanceCommandAction(target, reason) {
   if (reasonText.startsWith("batch-hint:")) return true;
   const maintenanceTokens = [
     " review-page ",
-    " batch-review ",
+    " review-queue ",
     " --batch ",
     " --next ",
   ];
@@ -388,20 +387,6 @@ function isMaintenanceCommandAction(target, reason) {
 
 function todayDateOf(summary) {
   return datePart(String(summary.generated_at || ""));
-}
-
-function applySnoozeFilter(entries, summary, todayDate) {
-  const state = summary && typeof summary === "object" ? summary.today_snooze : null;
-  if (!state || typeof state !== "object" || !Array.isArray(state.items)) return entries;
-  const activeTargets = new Set();
-  for (const item of state.items) {
-    if (!item || typeof item !== "object") continue;
-    const target = String(item.target || "").trim();
-    const until = datePart(String(item.snoozed_until || ""));
-    if (target && until && until >= todayDate) activeTargets.add(target);
-  }
-  if (!activeTargets.size) return entries;
-  return entries.filter((entry) => !activeTargets.has(String(entry.target || "")));
 }
 
 function datePart(value) {
@@ -456,7 +441,6 @@ function compareEntries(a, b) {
 
 module.exports = {
   buildTodayFeed,
-  applySnoozeFilter,
   compareEntries,
   todayDateOf,
   reviewBucketCopy,

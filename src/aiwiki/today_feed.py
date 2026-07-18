@@ -110,8 +110,6 @@ def build_today_feed(summary: dict[str, Any], *, audience: FeedAudience = "prima
         entries.extend(_build_action_entries(summary, audience=audience))
         entries.extend(_build_raw_input_entries(summary, today_date))
 
-    if audience == "primary":
-        entries = _apply_snooze_filter(entries, summary, today_date)
     entries.sort(key=_sort_key)
     return entries
 
@@ -476,7 +474,7 @@ def _is_maintenance_command_action(*, target: str, reason: str) -> bool:
         return True
     maintenance_tokens = (
         " review-page ",
-        " batch-review ",
+        " review-queue ",
         " --batch ",
         " --next ",
     )
@@ -485,23 +483,6 @@ def _is_maintenance_command_action(*, target: str, reason: str) -> bool:
 
 def _today_date(summary: dict[str, Any]) -> str:
     return _date_part(str(summary.get("generated_at") or ""))
-
-
-def _apply_snooze_filter(entries: list[FeedEntry], summary: dict[str, Any], today_date: str) -> list[FeedEntry]:
-    state = summary.get("today_snooze")
-    if not isinstance(state, dict):
-        return entries
-    active_targets: set[str] = set()
-    for item in state.get("items", []):
-        if not isinstance(item, dict):
-            continue
-        target = str(item.get("target") or "").strip()
-        until = _date_part(str(item.get("snoozed_until") or ""))
-        if target and until and until >= today_date:
-            active_targets.add(target)
-    if not active_targets:
-        return entries
-    return [entry for entry in entries if entry.target not in active_targets]
 
 
 def _date_part(value: str) -> str:

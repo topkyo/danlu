@@ -41,7 +41,6 @@ from ..app_state import (
     load_planner_state,
     load_query_route_telemetry,
     load_runtime_history,
-    load_today_snooze_state,
     machine_memory_graph_html_path,
     nightly_health_state_path,
     output_packs_index_path,
@@ -262,9 +261,6 @@ def _build_nightly_summary(root: Path, nightly_state: dict[str, Any]) -> dict[st
         "state_path": relative_path(root, nightly_health_state_path(root)),
         "llm_used": bool(nightly_state.get("llm_used", False)),
         "lint_counts": dict(nightly_state.get("lint", {}).get("counts", {})),
-        "agent_loop": dict(nightly_state.get("agent_loop") or {})
-        if isinstance(nightly_state.get("agent_loop"), dict)
-        else {},
         "llm_receipt": {
             "available": bool(llm_receipt),
             "status": llm_status,
@@ -464,7 +460,6 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
         "planner_log_preview": planner_log_preview,
         "compound_suggest": compound_suggest,
         "suggested_next_actions": suggested_next_actions,
-        "today_snooze": load_today_snooze_state(root),
         "nightly": _build_nightly_summary(root, nightly_state),
         "knowledge_stats": _build_knowledge_stats(memory, compile_state, decisions, judgments),
         "metrics": _build_metrics_summary(root),
@@ -659,9 +654,6 @@ def thin_shell_summary_for_persist(summary: ShellSummary) -> ShellSummary:
         "recent_raw_inputs": list(summary.get("recent_raw_inputs", []))
         if isinstance(summary.get("recent_raw_inputs"), list)
         else [],
-        "today_snooze": dict(summary.get("today_snooze", {}))
-        if isinstance(summary.get("today_snooze"), dict)
-        else {},
         "metrics_history_delta": dict(summary.get("metrics_history_delta", {}))
         if isinstance(summary.get("metrics_history_delta"), dict)
         else {},

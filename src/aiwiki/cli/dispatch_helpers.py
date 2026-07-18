@@ -179,7 +179,7 @@ def _ready_actions_batch_helper(items: list[dict[str, object]]) -> dict[str, obj
     if apply_count <= 1:
         return None
     return {
-        "id": "batch-review-ready-actions",
+        "id": "review-queue-ready-actions",
         "title": f"查看 {apply_count} 条 accepted low-risk actions",
         "summary": "batch-helper · review-queue",
         "target": "review:ready_actions",

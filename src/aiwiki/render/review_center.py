@@ -255,7 +255,6 @@ def render_review_center_html(
             '      <li><a href="../../wiki/indexes/machine-memory-actions.md">机器记忆动作队列</a></li>',
             '      <li><a href="../../wiki/indexes/machine-memory-repair-plan.md">机器记忆修复计划</a></li>',
             '      <li><a href="../../wiki/indexes/judgment-assets.md">判断资产</a></li>',
-            '      <li><a href="../../wiki/indexes/execution-center.md">执行中心</a></li>',
             '      <li><a href="../../wiki/indexes/concept-quality.md">概念质量</a></li>',
             '      <li><a href="../../wiki/indexes/rewrite-proposals.md">Rewrite Proposals</a></li>',
             "    </ul></div>",
