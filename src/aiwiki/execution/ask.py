@@ -759,8 +759,10 @@ def file_back(
     ensure_layout(root)
     root_resolved = root.resolve(strict=False)
     candidate = Path(artifact)
-    artifact_path = candidate if candidate.is_absolute() else (root / candidate)
-    artifact_path = artifact_path.resolve(strict=False)
+    artifact_path = _app_utils.safe_resolve_within(
+        candidate if candidate.is_absolute() else (root / candidate),
+        root,
+    )
     if not artifact_path.is_file():
         raise FileNotFoundError(f"Artifact not found: {artifact}")
     if artifact_path.suffix.lower() not in {".md", ".markdown", ".txt"}:

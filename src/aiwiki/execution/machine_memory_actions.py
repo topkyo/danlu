@@ -858,8 +858,13 @@ def apply_machine_memory_action(
     previewed_at = _app_utils.utc_now()
     bundle = build_execution_bundle(root, proposal, compiled_at=previewed_at)
     if dry_run:
-        selected_bundle_path = root / str(
-            proposal.get("bundle_path") or relative_path(root, execution_bundle_path(root, resolved_action_id))
+        selected_bundle_path = safe_resolve_within(
+            root
+            / str(
+                proposal.get("bundle_path")
+                or relative_path(root, execution_bundle_path(root, resolved_action_id))
+            ),
+            root,
         )
         write_execution_bundle_document(selected_bundle_path, bundle)
         dry_run_path = execution_dry_run_path(root, resolved_action_id)
@@ -913,10 +918,11 @@ def apply_machine_memory_action(
             "bundle": bundle,
         }
 
-    selected_bundle_path = (
+    selected_bundle_path = safe_resolve_within(
         root / bundle_path.strip()
         if bundle_path and bundle_path.strip()
-        else root / str(proposal.get("bundle_path") or "")
+        else root / str(proposal.get("bundle_path") or ""),
+        root,
     )
     if not selected_bundle_path.exists():
         raise FileNotFoundError(
