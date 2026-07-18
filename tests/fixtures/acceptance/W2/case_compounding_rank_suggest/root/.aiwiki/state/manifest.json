@@ -1,0 +1,17 @@
+{
+  "entries": [
+    {
+      "id": "compounding-source",
+      "imported_at": "2026-04-27T00:00:00+00:00",
+      "kind": "note",
+      "note_kind": "",
+      "original_path": "raw/inbox/compounding-source.md",
+      "sha256": "729a02a375c6f48a2e9781428c0f23b6b750ed58eb2fc0c1e33940ca463fa6fb",
+      "source_type": "note",
+      "stored_path": "raw/inbox/compounding-source.md",
+      "title": "Compounding Source",
+      "updated_at": "2026-04-27T00:00:00+00:00"
+    }
+  ],
+  "version": 1
+}

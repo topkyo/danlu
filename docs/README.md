@@ -34,6 +34,7 @@ updated_at: 2026-07-15
 | 文档 | 角色 |
 |---|---|
 | [Furnace Post-Cleanup Audit and Next Direction 2026-07](<./Furnace Post-Cleanup Audit and Next Direction 2026-07.md>) | **当前执行计划**：cleanup 后再审计报告 + Commercial Go-Live WS1–WS6 |
+| [W2 Compounding Rank + Suggest plan](<./plans/2026-07-18-w2-compounding-rank-suggest.md>) | **已完成**：ranking / `used_refs` / 稀缺 `compound_suggest` + Today CTA（2026-07-18） |
 
 > Commercial Grade Cleanup Plan 2026-07 已归档（`executed-reviewed-pass`），见下方 Archived。
 > Investing Demo Pack（`delivered-fixture`）与 RuntimeClient Mobile Companion（`implemented-slice`）已交付规格，见下方 Delivered specs；残留 go-to-market 工作并入上表 Go-Live 计划。

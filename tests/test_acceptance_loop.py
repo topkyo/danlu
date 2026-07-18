@@ -223,6 +223,73 @@ def test_happy_run_ask_replay(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
         pytest.fail("Goldens refreshed; rerun without AIWIKI_ACCEPTANCE_REFRESH to verify.")
 
 
+def test_w2_compounding_rank_and_suggest_acceptance(  # pragma: no cover - explicit pytest acceptance gate
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """W2: seeded confirmed judgment + settled elixir rank into ask; used_refs written; compound_suggest stays scarce until multi-turn."""
+    case, vault = _copy_case_and_fix_clock_from("W2", "case_compounding_rank_suggest", tmp_path, monkeypatch)
+    inject_replay_client(monkeypatch, case)
+    stdout_dir = case / "expected" / "stdout"
+
+    _run_cli(vault, ["compile"])
+    out1 = _run_cli(
+        vault,
+        ["run-ask", "compounding rank acceptance", "--format", "report", "--no-cache"],
+    )
+    payload1 = json.loads(out1)
+    _write_or_compare(stdout_dir / "01-run-ask.json", out1)
+
+    machine_query = payload1.get("machine_memory_query", {})
+    ranked_judgments = list(machine_query.get("ranked_judgment_ids") or [])
+    ranked_elixirs = list(machine_query.get("ranked_elixir_ids") or [])
+    used_refs = list(payload1.get("used_refs") or [])
+
+    assert "compounding-thesis" in ranked_judgments
+    assert "compounding-elixir" in ranked_elixirs
+    assert "wiki/judgments/compounding-thesis.md" in used_refs
+    assert "wiki/elixirs/compounding-elixir.md" in used_refs
+
+    report_path = vault / str(payload1["path"])
+    assert report_path.is_file()
+    report_text = report_path.read_text(encoding="utf-8")
+    assert "used_refs:" in report_text
+    assert "wiki/judgments/compounding-thesis.md" in report_text
+    assert "wiki/elixirs/compounding-elixir.md" in report_text
+
+    summary1 = json.loads((vault / "output" / "control" / "shell-summary.json").read_text(encoding="utf-8"))
+    compound1 = summary1.get("compound_suggest") or {}
+    assert compound1.get("available") is False
+    assert int(compound1.get("count") or 0) == 0
+
+    out2 = _run_cli(
+        vault,
+        ["run-ask", "compounding rank acceptance", "--format", "report", "--no-cache"],
+    )
+    _write_or_compare(stdout_dir / "02-run-ask-follow-up.json", out2)
+
+    summary2 = json.loads((vault / "output" / "control" / "shell-summary.json").read_text(encoding="utf-8"))
+    compound2 = summary2.get("compound_suggest") or {}
+    assert compound2.get("available") is True
+    suggest_count = int(compound2.get("count") or 0)
+    assert 1 <= suggest_count <= int(compound2.get("max_items") or 3)
+    for item in compound2.get("items") or []:
+        assert str(item.get("action") or "") in {"file-back-judgment", "alchemy-start"}
+
+    _assert_files_byte_equal(
+        vault,
+        case / "expected",
+        [
+            ".aiwiki/logs/llm-receipts.jsonl",
+            ".aiwiki/logs/runs.jsonl",
+            ".aiwiki/state/audit.jsonl",
+            ".aiwiki/state/execution-receipts.jsonl",
+        ],
+    )
+
+    if REFRESH:
+        pytest.fail("Goldens refreshed; rerun without AIWIKI_ACCEPTANCE_REFRESH to verify.")
+
+
 def _assert_lane_receipt_fields(receipts: list[dict[str, object]], primitives: list[str]) -> None:
     assert [record["primitive"] for record in receipts] == primitives
     for record in receipts:

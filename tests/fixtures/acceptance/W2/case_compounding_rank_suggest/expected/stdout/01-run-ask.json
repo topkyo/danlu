@@ -1,0 +1,366 @@
+{
+  "active_corpus_id": "general-compounding-rank-acceptance-b68eb602",
+  "backend_effective": "opencode-api",
+  "backend_requested": "opencode-api",
+  "contract_validated": true,
+  "delivery_mode": "llm-success",
+  "fallback_used": false,
+  "format": "report",
+  "graph_anchor_node_ids": [
+    "source:compounding-source",
+    "concept:compounding",
+    "judgment:compounding-thesis"
+  ],
+  "index_pages": [
+    "wiki/indexes/index.md",
+    "wiki/indexes/sources.md",
+    "wiki/indexes/concepts.md",
+    "wiki/indexes/decisions.md",
+    "wiki/indexes/judgments.md",
+    "wiki/indexes/judgment-assets.md",
+    "wiki/indexes/agent-workbench.md",
+    "wiki/indexes/cognitive-history.md",
+    "wiki/indexes/output-packs.md",
+    "wiki/indexes/domain-pilots.md",
+    "wiki/indexes/protocols.md",
+    "wiki/indexes/review-queue.md",
+    "wiki/indexes/review-center.md",
+    "wiki/indexes/aging-report.md",
+    "wiki/indexes/compile-status.md",
+    "wiki/indexes/concept-quality.md",
+    "wiki/indexes/machine-memory.md",
+    "wiki/indexes/graph-view.md",
+    "wiki/indexes/machine-memory-topology.md",
+    "wiki/indexes/machine-memory-actions.md",
+    "wiki/indexes/machine-memory-repair-plan.md",
+    "wiki/indexes/graph-health.md",
+    "wiki/indexes/drift-report.md",
+    "wiki/indexes/repair-backlog.md",
+    "schema/index.md",
+    "schema/protocols/index.md"
+  ],
+  "machine_memory_query": {
+    "archive_recall_hints": [],
+    "bridge_concept_slugs": [],
+    "direct_concept_slugs": [
+      "compounding"
+    ],
+    "direct_elixir_ids": [
+      "compounding-elixir"
+    ],
+    "direct_judgment_ids": [
+      "compounding-thesis"
+    ],
+    "direct_source_ids": [
+      "compounding-source"
+    ],
+    "matched_graph_markers": [],
+    "matched_source_markers": [],
+    "matched_terms": [
+      "compounding",
+      "rank",
+      "acceptance"
+    ],
+    "planner_next_action": {
+      "action_id": "singleton-concept-compounding",
+      "blocked": false,
+      "depends_on": [],
+      "impact_score": 37,
+      "priority": "medium",
+      "priority_score": 45,
+      "status": "proposed",
+      "title": "\u6269\u5c55\u5355\u8282\u70b9\u6982\u5ff5 Compounding"
+    },
+    "planner_priority_queue": [
+      {
+        "action_id": "singleton-concept-compounding",
+        "blocked": false,
+        "depends_on": [],
+        "impact_score": 37,
+        "priority": "medium",
+        "priority_score": 45,
+        "status": "proposed",
+        "title": "\u6269\u5c55\u5355\u8282\u70b9\u6982\u5ff5 Compounding"
+      },
+      {
+        "action_id": "refresh-citation-snapshots-compounding-thesis",
+        "blocked": true,
+        "depends_on": [
+          "singleton-concept-compounding"
+        ],
+        "impact_score": 37,
+        "priority": "medium",
+        "priority_score": 41,
+        "status": "proposed",
+        "title": "\u5237\u65b0\u5f15\u7528\u5feb\u7167 Compounding Thesis"
+      }
+    ],
+    "protocol_shard_source_ids": [
+      "compounding-source"
+    ],
+    "query_routes": [
+      {
+        "edges": [
+          {
+            "left": "compounding-source",
+            "right": "compounding",
+            "type": "HAS_CONCEPT"
+          }
+        ],
+        "goal": {
+          "id": "compounding-source",
+          "kind": "source",
+          "path": "wiki/sources/compounding-source.md",
+          "title": "Compounding Source"
+        },
+        "length": 1,
+        "nodes": [
+          {
+            "kind": "concept",
+            "path": "wiki/concepts/compounding.md",
+            "slug": "compounding",
+            "title": "Compounding"
+          },
+          {
+            "id": "compounding-source",
+            "kind": "source",
+            "path": "wiki/sources/compounding-source.md",
+            "title": "Compounding Source"
+          }
+        ],
+        "start": {
+          "kind": "concept",
+          "path": "wiki/concepts/compounding.md",
+          "slug": "compounding",
+          "title": "Compounding"
+        },
+        "strategy": "concept-first"
+      }
+    ],
+    "query_subgraph": {
+      "concepts": [
+        {
+          "path": "wiki/concepts/compounding.md",
+          "slug": "compounding",
+          "title": "Compounding"
+        }
+      ],
+      "edges": [
+        {
+          "left": "compounding-source",
+          "right": "compounding",
+          "type": "HAS_CONCEPT"
+        }
+      ],
+      "elixirs": [
+        {
+          "elixir_id": "compounding-elixir",
+          "path": "wiki/elixirs/compounding-elixir.md",
+          "title": "Compounding Elixir"
+        }
+      ],
+      "judgments": [
+        {
+          "page_id": "compounding-thesis",
+          "path": "wiki/judgments/compounding-thesis.md",
+          "title": "Compounding Thesis"
+        }
+      ],
+      "sources": [
+        {
+          "id": "compounding-source",
+          "path": "wiki/sources/compounding-source.md",
+          "title": "Compounding Source"
+        }
+      ]
+    },
+    "ranked_concept_slugs": [
+      "compounding"
+    ],
+    "ranked_elixir_ids": [
+      "compounding-elixir"
+    ],
+    "ranked_judgment_ids": [
+      "compounding-thesis"
+    ],
+    "ranked_source_ids": [
+      "compounding-source"
+    ],
+    "relevant_actions": [
+      {
+        "apply_ready": "false",
+        "command_hint": "PYTHONPATH=src python3 -m aiwiki.cli --root . review-action refresh-citation-snapshots-compounding-thesis --status accepted --note \"Accepted for manual repair.\"",
+        "execution_policy": "triage",
+        "focus_score": 0,
+        "id": "refresh-citation-snapshots-compounding-thesis",
+        "kind": "refresh-citation-snapshots",
+        "next_step": "\u5237\u65b0 citation snapshot metadata\uff0c\u8ba9 drift / review surface \u6536\u655b\u3002",
+        "primary_path": "wiki/judgments/compounding-thesis.md",
+        "priority": "medium",
+        "proposal_kind": "refresh-snapshots",
+        "proposal_summary": "\u5237\u65b0 judgment citation snapshot metadata\uff0c\u8ba9 drift / review surface \u6536\u655b\u3002",
+        "proposal_targets": [
+          "wiki/judgments/compounding-thesis.md"
+        ],
+        "reason": "snapshot gap `1`",
+        "secondary_path": "",
+        "status": "proposed",
+        "title": "\u5237\u65b0\u5f15\u7528\u5feb\u7167 Compounding Thesis"
+      },
+      {
+        "apply_ready": "false",
+        "command_hint": "PYTHONPATH=src python3 -m aiwiki.cli --root . review-action singleton-concept-compounding --status accepted --note \"Accepted for manual repair.\"",
+        "execution_policy": "triage",
+        "focus_score": 0,
+        "id": "singleton-concept-compounding",
+        "kind": "expand-singleton-concept",
+        "next_step": "\u6269\u5c55\u5355\u8282\u70b9\u6982\u5ff5\u7684\u76f8\u5173\u6765\u6e90\u6216\u76f8\u5173\u6982\u5ff5\u3002",
+        "primary_path": "wiki/concepts/compounding.md",
+        "priority": "medium",
+        "proposal_kind": "expand-concept",
+        "proposal_summary": "\u6269\u5c55\u5355\u8282\u70b9\u6982\u5ff5\u7684\u6765\u6e90\u8986\u76d6\u6216\u76f8\u5173\u6982\u5ff5\u8fb9\u754c\u3002",
+        "proposal_targets": [
+          "wiki/concepts/compounding.md"
+        ],
+        "reason": "\u5f53\u524d\u53ea\u5173\u8054 `1` \u4e2a\u6765\u6e90\uff0c\u4e14\u6ca1\u6709\u6982\u5ff5\u95f4\u8fde\u63a5\u3002",
+        "secondary_path": "",
+        "status": "proposed",
+        "title": "\u6269\u5c55\u5355\u8282\u70b9\u6982\u5ff5 Compounding"
+      }
+    ],
+    "route_config": {
+      "default_strategy": "concept-first",
+      "graph_markers": [
+        "why",
+        "how",
+        "impact",
+        "dependency",
+        "relationship",
+        "root cause",
+        "\u4e3a\u4ec0\u4e48",
+        "\u56e0\u679c",
+        "\u5173\u7cfb",
+        "\u6839\u56e0"
+      ],
+      "source_markers": [
+        "source",
+        "citation",
+        "quote",
+        "file",
+        "raw",
+        "\u8bc1\u636e",
+        "\u5f15\u7528",
+        "\u6765\u6e90",
+        "\u539f\u6587"
+      ],
+      "strategy_order": [
+        "concept-first",
+        "graph-walk",
+        "source-first"
+      ]
+    },
+    "route_telemetry": {
+      "matched_graph_markers": [],
+      "matched_source_markers": [],
+      "matched_terms": [
+        "compounding",
+        "rank",
+        "acceptance"
+      ],
+      "planner_next_action_id": "singleton-concept-compounding",
+      "protocol": "general",
+      "query_signature": "sha256:b68eb602da42e1d5e59df6be5850ce6ad7823c40687ead156f7d56ac7a175f21",
+      "ranked_concept_slugs": [
+        "compounding"
+      ],
+      "ranked_elixir_ids": [
+        "compounding-elixir"
+      ],
+      "ranked_judgment_ids": [
+        "compounding-thesis"
+      ],
+      "ranked_source_ids": [
+        "compounding-source"
+      ],
+      "route_count": 1,
+      "selected_strategy": "concept-first",
+      "selection_reason": "default-strategy",
+      "touched_component_ids": [
+        "component-1"
+      ]
+    },
+    "selected_strategy": "concept-first",
+    "selection_reason": "default-strategy",
+    "supporting_edges": [
+      {
+        "left": "compounding-thesis",
+        "right": "compounding-elixir",
+        "type": "ELIXIR_DERIVED_FROM"
+      },
+      {
+        "left": "compounding-source",
+        "right": "compounding",
+        "type": "HAS_CONCEPT"
+      },
+      {
+        "left": "compounding-source",
+        "right": "compounding-thesis",
+        "type": "SUPPORTS_JUDGMENT"
+      }
+    ],
+    "time_focus": "",
+    "time_focus_markers": [],
+    "time_shard_source_ids": [],
+    "touched_component_ids": [
+      "component-1"
+    ],
+    "touched_components": [
+      {
+        "concept_slugs": [
+          "compounding"
+        ],
+        "id": "component-1",
+        "judgment_ids": [
+          "compounding-thesis"
+        ],
+        "size": 4,
+        "source_ids": [
+          "compounding-source"
+        ]
+      }
+    ]
+  },
+  "model_final": "stub-model",
+  "model_selected": "stub-model",
+  "no_cache": true,
+  "path": "output/reports/compounding-rank-acceptance.md",
+  "primary_attempt_status": "",
+  "primary_error": "",
+  "prompt_profile": "balanced",
+  "protocol": "general",
+  "protocol_pages": [
+    "schema/protocols/general/index.md",
+    "schema/protocols/general/taxonomy.md",
+    "schema/protocols/general/decision.md",
+    "schema/protocols/general/judgment.md",
+    "schema/protocols/general/review.md",
+    "schema/protocols/general/nightly.md",
+    "schema/protocols/general/query.md"
+  ],
+  "ranked_concepts": [
+    "compounding"
+  ],
+  "ranked_sources": [
+    "compounding-source"
+  ],
+  "retry_prompt_profile": "",
+  "run_id": "ask-output-reports-compounding-rank-acceptance",
+  "run_notes_path": "",
+  "timeout_seconds": 120,
+  "used_refs": [
+    "wiki/sources/compounding-source.md",
+    "wiki/concepts/compounding.md",
+    "wiki/judgments/compounding-thesis.md",
+    "wiki/elixirs/compounding-elixir.md"
+  ]
+}
