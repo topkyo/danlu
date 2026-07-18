@@ -65,10 +65,7 @@ function renderTodayFeed(plugin, container) {
   
   const groupSpecs = [
     ["report", plugin.t("新报告"), groups.report],
-    ["automation", plugin.t("系统动态"), groups.automation],
-    ["confirmation", plugin.t("需要你确认"), [...groups.decision, ...groups.proposal]],
-    ["elixir", plugin.t("已完成"), groups.elixir],
-    ["action", plugin.t("下一步建议"), groups.action],
+    ["compound", plugin.t("复利建议"), groups.action.filter((entry) => entry.compound_suggest || entry.compoundSuggest)],
   ];
   
   for (const [kind, heading, items] of groupSpecs) {
@@ -408,7 +405,7 @@ function renderPendingSubmissionsGroup(plugin, section) {
       });
       const actions = aiBubble.createDiv({ cls: "furnace-bubble-actions" });
       const openBtn = actions.createEl("button", { cls: "mod-cta furnace-pending-exception-btn", text: plugin.t("打开异常队列") });
-      openBtn.addEventListener("click", async () => plugin.openReviewNextTransitionPicker());
+      openBtn.addEventListener("click", async () => plugin.openReviewPageContextPicker());
       const dismissBtn = actions.createEl("button", { text: plugin.t("Dismiss") });
       dismissBtn.addEventListener("click", () => plugin.removePendingSubmission(entry.id));
     } else if (entry.status === "received" || entry.status === "running") {
@@ -640,7 +637,7 @@ function todayFeedActions(plugin, entry) {
       {
         label: "Review",
         description: `Review next item for: ${target}`,
-        onClick: async () => plugin.openReviewNextTransitionPicker(),
+        onClick: async () => plugin.openReviewPageContextPicker(),
       },
     ];
   }

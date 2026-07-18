@@ -1179,46 +1179,45 @@ def run_lint(root: Path, client: SupportsComplete | None = None) -> dict[str, An
 
 def run_nightly(
     root: Path,
-    client: SupportsComplete | None = None,
     compile_limit: int = 5,
-    semantic_lint: bool = True,
 ) -> dict[str, Any]:
+    """Deterministic compile + lint plus nightly maintenance (agent loop, signals)."""
     ensure_layout(root)
-    effective_client = client or create_client(root)
     started = time.monotonic()
     compile_result: dict[str, Any] | None = None
     lint_result: dict[str, Any] | None = None
-    model_selected = _client_model_name(effective_client)
     try:
-        compile_result = run_compile(root, client=effective_client, limit=compile_limit)
+        compile_wiki_result = compile_wiki(root)
         promotion_result = promote_recurring_outputs(root)
-        if semantic_lint:
-            lint_result = run_lint(root, client=effective_client)
-        else:
-            lint_result = {
-                "deterministic": lint_wiki(root),
-                "semantic_report": "",
-                **_empty_llm_audit(),
-                "prompt_profile": "",
-                "retry_prompt_profile": "",
-            }
+        if promotion_result["count"]:
+            compile_wiki_result = compile_wiki(root)
+        lint_wiki_result = lint_wiki(root)
+        compile_result = {
+            "compile": compile_wiki_result,
+            "updated_pages": [],
+            **_empty_llm_audit(),
+        }
+        lint_result = {
+            "deterministic": lint_wiki_result,
+            "semantic_report": "",
+            **_empty_llm_audit(),
+            "prompt_profile": "",
+            "retry_prompt_profile": "",
+        }
         # contract EP-029 Step 3 §5: nightly auto-applies active -> stale, never demote/archive.
-        llm_audit = _merge_llm_audits(
-            _llm_audit_from_result(compile_result),
-            _llm_audit_from_result(lint_result),
-        )
-        llm_used = bool(compile_result.get("contract_validated") or lint_result.get("contract_validated"))
+        llm_audit = _empty_llm_audit()
+        llm_used = False
         state = write_nightly_health(
             root,
-            compile_result["compile"],
-            lint_result["deterministic"],
+            compile_wiki_result,
+            lint_wiki_result,
             promotion_result=promotion_result,
-            semantic_report=lint_result["semantic_report"],
-            llm_used=llm_used,
+            semantic_report="",
+            llm_used=False,
             runtime_history_extra={
                 "compile_limit": compile_limit,
-                "semantic_lint": semantic_lint,
-                "llm_used": llm_used,
+                "semantic_lint": False,
+                "llm_used": False,
             },
         )
         from aiwiki.agent_loop import attach_agent_loop_to_nightly_state, run_nightly_agent_loop
@@ -1270,10 +1269,7 @@ def run_nightly(
                 json.dumps(state, indent=2, sort_keys=True) + "\n",
             )
     except Exception as exc:
-        failed_audit = _merge_llm_audits(
-            _build_llm_audit(effective_client, model_selected=model_selected, contract_validated=False),
-            _merge_llm_audits(_llm_audit_from_result(compile_result or {}), _llm_audit_from_result(lint_result or {})),
-        )
+        failed_audit = _empty_llm_audit()
         failed_audit["fallback_reason"] = str(exc)
         failed_audit["contract_validated"] = False
         with runtime_write_lock(root):
@@ -1282,7 +1278,7 @@ def run_nightly(
                 {
                     "event": "run-nightly",
                     "compile_limit": compile_limit,
-                    "semantic_lint": semantic_lint,
+                    "semantic_lint": False,
                     "duration_ms": int((time.monotonic() - started) * 1000),
                 },
                 failed_audit,
@@ -1298,11 +1294,7 @@ def run_nightly(
             {
                 "event": "run-nightly",
                 "compile_limit": compile_limit,
-                "semantic_lint": semantic_lint,
-                "compile_prompt_profile": str(compile_result.get("prompt_profile") or ""),
-                "compile_retry_prompt_profile": str(compile_result.get("retry_prompt_profile") or ""),
-                "lint_prompt_profile": str(lint_result.get("prompt_profile") or ""),
-                "lint_retry_prompt_profile": str(lint_result.get("retry_prompt_profile") or ""),
+                "semantic_lint": False,
                 "llm_used": llm_used,
                 "repair_backlog": state["repair_backlog"]["path"],
                 "state_path": relative_path(root, root / ".aiwiki" / "state" / "nightly-health.json"),
@@ -1332,7 +1324,7 @@ def run_nightly(
             protocol=str(state.get("protocol", {}).get("active_protocol") or ""),
             extra={
                 "compile_limit": compile_limit,
-                "semantic_lint": semantic_lint,
+                "semantic_lint": False,
                 "llm_receipt_path": ".aiwiki/logs/llm-receipts.jsonl",
                 "llm_used": llm_used,
                 "delivery_mode": llm_audit.get("delivery_mode", ""),

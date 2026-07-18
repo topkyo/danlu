@@ -44,17 +44,10 @@ function buildTodayFeed(summary) {
   const todayDate = todayDateOf(summary);
   const entries = [];
 
-  entries.push(...buildDecisionEntries(summary));
-  entries.push(...buildCounterEvidenceEntries(summary));
-  entries.push(...buildDriftEntries(summary));
-  entries.push(...buildProposalEntries(summary));
   entries.push(...buildReportEntries(summary, todayDate));
   entries.push(...buildCompoundSuggestEntries(summary));
-  entries.push(...buildElixirEntries(summary, todayDate));
-  // Routine metrics and automation status stay in Advanced/operator surfaces;
-  // primary Today only keeps reports, decision exceptions, and necessary actions.
-  entries.push(...buildActionEntries(summary, "primary"));
-  entries.push(...buildRawInputEntries(summary, todayDate));
+  // Primary Today: today's reports + compound_suggest only. Governance backlog,
+  // drift, proposals, and operator maintenance stay in Advanced / operator feed.
 
   const prioritized = entries.map((entry) => ({ ...entry, priority: priorityForKind(entry.kind) }));
   const filtered = applySnoozeFilter(prioritized, summary, todayDate);
@@ -384,6 +377,9 @@ function isMaintenanceCommandAction(target, reason) {
   if (reasonText.startsWith("batch-hint:")) return true;
   const maintenanceTokens = [
     " review-page ",
+    " batch-review ",
+    " --batch ",
+    " --next ",
   ];
   return maintenanceTokens.some((token) => targetText.includes(token));
 }

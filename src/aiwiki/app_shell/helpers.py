@@ -156,8 +156,6 @@ def _build_llm_rerun_command(event: dict[str, Any]) -> str:
     if event_name == "run-nightly":
         limit = int(event.get("compile_limit", 5) or 5)
         command_parts.extend(["run-nightly", "--compile-limit", str(limit)])
-        if not bool(event.get("semantic_lint", True)):
-            command_parts.append("--no-semantic-lint")
         return " ".join(command_parts)
     if target:
         return f"./scripts/aiwiki-launcher.sh {event_name}"

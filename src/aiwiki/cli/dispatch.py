@@ -215,7 +215,7 @@ def _handle_runtime_workflows(args: argparse.Namespace, root: Path) -> tuple[obj
     elif args.handler_command == "nightly":
         result = nightly_health(root)
     elif args.handler_command == "run-nightly":
-        result = run_nightly(root, compile_limit=args.compile_limit, semantic_lint=not args.no_semantic_lint)
+        result = run_nightly(root, compile_limit=args.compile_limit)
     else:
         raise ValueError(f"Unsupported command: {args.handler_command}")
     return _out(result)
@@ -230,8 +230,13 @@ def _handle_ops(args: argparse.Namespace, root: Path) -> tuple[object, str | Non
 
             text_output = render_llm_check_human(result)
     elif args.handler_command == "watch":
-        deterministic_only = not bool(getattr(args, "with_llm", False)) or bool(args.deterministic_only)
-        result = watch_inbox(root, interval_seconds=args.interval, compile_limit=args.compile_limit, deterministic_only=deterministic_only, semantic_lint=not args.no_semantic_lint, process_initial=not args.skip_initial, max_cycles=args.max_cycles)
+        result = watch_inbox(
+            root,
+            interval_seconds=args.interval,
+            compile_limit=args.compile_limit,
+            process_initial=not args.skip_initial,
+            max_cycles=args.max_cycles,
+        )
     else:
         raise ValueError(f"Unsupported command: {args.handler_command}")
     return _out(result, text_output)

@@ -38,8 +38,10 @@ function loadModalSpecContext() {
 
 function makePlugin(overrides = {}) {
   const calls = [];
+  const notices = [];
   return {
     calls,
+    notices,
     t: (text, variables = {}) => String(text || "").replace(/\{(\w+)\}/g, (_, key) => String(variables[key] ?? "")),
     getActiveOutputPath: () => overrides.activeOutputPath || "output/reports/current.md",
     getActiveCuratedPagePath: () => overrides.activeCuratedPagePath || "wiki/decisions/current.md",
@@ -49,12 +51,20 @@ function makePlugin(overrides = {}) {
       calls.push({ label, command, args });
     },
     runReviewPageBatchTransition: async (paths, status, note, confidence) => {
-      calls.push({ label: "batch", command: "review-page", paths, status, note, confidence });
+      calls.push({ label: "batch", command: "notice", paths, status, note, confidence });
     },
     runApplyAllAcceptedLowRiskCommand: async () => {
       calls.push({ label: "apply-all-low-risk", command: "notice" });
     },
   };
+}
+
+function loadModalSpecContextWithNotice() {
+  const context = loadModalSpecContext();
+  context.Notice = (message) => {
+    context.__lastNotice = message;
+  };
+  return context;
 }
 
 test("review page modal spec keeps fields and submit args stable", async () => {
@@ -97,8 +107,11 @@ test("apply action modal spec routes through removed-command notice hook", async
   });
 });
 
-test("batch review modal spec parses page lines and rejects empty batches", async () => {
-  const context = loadModalSpecContext();
+test("batch review modal spec rejects empty batches and routes through notice hook", async () => {
+  const context = loadModalSpecContextWithNotice();
+  context.Notice = (message) => {
+    context.__lastNotice = message;
+  };
   const plugin = makePlugin();
   const spec = context.buildReviewPageBatchModalSpec(plugin, {
     pagePaths: ["wiki/a.md", "wiki/b.md"],
@@ -115,7 +128,7 @@ test("batch review modal spec parses page lines and rejects empty batches", asyn
   });
   expect(plugin.calls[0]).toEqual({
     label: "batch",
-    command: "review-page",
+    command: "notice",
     paths: ["wiki/a.md", "wiki/b.md"],
     status: "accepted",
     note: "shared",

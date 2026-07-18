@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,119 +19,59 @@ from aiwiki.app_utils import (
     sha256_bytes,
 )
 from aiwiki.compile.pipeline import compile_wiki
-from aiwiki.runner.clients import llm_status
-from aiwiki.runner.interfaces import SupportsComplete
 from aiwiki.runner.receipts import _append_log
 from aiwiki.runner.signal_pipeline import run_signal_pipeline
-from aiwiki.runner.workflows import run_compile, run_lint
 
 
 def auto_process_once(
     root: Path,
-    client: SupportsComplete | None = None,
     compile_limit: int = 5,
-    deterministic_only: bool = False,
-    semantic_lint: bool = True,
 ) -> dict[str, Any]:
     ensure_layout(root)
-    llm_enabled = bool(client) or (not deterministic_only and llm_status()["configured"])
-
-    use_llm = llm_enabled and not deterministic_only
-
-    if use_llm:
-        try:
-            compile_result = run_compile(root, client=client, limit=compile_limit)
-        except Exception as exc:
-            logging.getLogger("aiwiki").error("LLM compile failed during automation: %s", exc)
-            raise RuntimeError("LLM compile failed during automation; deterministic fallback is disabled.") from exc
-
-        if semantic_lint:
-            try:
-                lint_result = run_lint(root, client=client)
-            except Exception as exc:
-                logging.getLogger("aiwiki").error("LLM lint failed during automation: %s", exc)
-                raise RuntimeError("LLM lint failed during automation; deterministic fallback is disabled.") from exc
-        else:
-            lint_result = {
-                "deterministic": lint_wiki(root),
-                "semantic_report": "",
-            }
-
+    with runtime_write_lock(root):
+        compile_result = {
+            "compile": compile_wiki(root),
+            "updated_pages": [],
+            "pending_pages": _pending_summary_count(root),
+            "skipped_pages": 0,
+        }
+        lint_result = {
+            "deterministic": lint_wiki(root),
+            "semantic_report": "",
+        }
         snapshot = inbox_snapshot(root)
         signal_pipeline = run_signal_pipeline(root)
         result = {
             "processed_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
-            "mode": "deterministic-only" if deterministic_only else "llm-enabled",
-            "deterministic_only": deterministic_only,
-            "semantic_lint": semantic_lint,
+            "mode": "deterministic-only",
+            "deterministic_only": True,
+            "semantic_lint": False,
             "compile_limit": compile_limit,
-            "llm_used": True,
+            "llm_used": False,
             "llm_fallback": False,
             "compile": compile_result,
             "lint": lint_result,
             "signal_pipeline": signal_pipeline,
             "inbox_snapshot": snapshot,
         }
-        with runtime_write_lock(root):
-            _write_automation_state(root, result)
-            _append_log(
-                root,
-                {
-                    "event": "auto-process",
-                    "llm_used": True,
-                    "llm_fallback": False,
-                    "compile_limit": compile_limit,
-                    "inbox_digest": snapshot["digest"],
-                },
-            )
-    else:
-        with runtime_write_lock(root):
-            compile_result = {
-                "compile": compile_wiki(root),
-                "updated_pages": [],
-                "pending_pages": _pending_summary_count(root),
-                "skipped_pages": 0,
-            }
-            lint_result = {
-                "deterministic": lint_wiki(root),
-                "semantic_report": "",
-            }
-            snapshot = inbox_snapshot(root)
-            signal_pipeline = run_signal_pipeline(root)
-            result = {
-                "processed_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
-                "mode": "deterministic-only" if deterministic_only else "llm-enabled",
-                "deterministic_only": deterministic_only,
-                "semantic_lint": semantic_lint,
-                "compile_limit": compile_limit,
+        _write_automation_state(root, result)
+        _append_log(
+            root,
+            {
+                "event": "auto-process",
                 "llm_used": False,
                 "llm_fallback": False,
-                "compile": compile_result,
-                "lint": lint_result,
-                "signal_pipeline": signal_pipeline,
-                "inbox_snapshot": snapshot,
-            }
-            _write_automation_state(root, result)
-            _append_log(
-                root,
-                {
-                    "event": "auto-process",
-                    "llm_used": False,
-                    "llm_fallback": False,
-                    "compile_limit": compile_limit,
-                    "inbox_digest": snapshot["digest"],
-                },
-            )
+                "compile_limit": compile_limit,
+                "inbox_digest": snapshot["digest"],
+            },
+        )
     return result
 
 
 def watch_inbox(
     root: Path,
     interval_seconds: float = 5.0,
-    client: SupportsComplete | None = None,
     compile_limit: int = 5,
-    deterministic_only: bool = False,
-    semantic_lint: bool = True,
     process_initial: bool = True,
     max_cycles: int | None = None,
 ) -> dict[str, Any]:
@@ -145,10 +84,7 @@ def watch_inbox(
         processed_runs.append(
             auto_process_once(
                 root,
-                client=client,
                 compile_limit=compile_limit,
-                deterministic_only=deterministic_only,
-                semantic_lint=semantic_lint,
             )
         )
         last_snapshot = inbox_snapshot(root)
@@ -162,10 +98,7 @@ def watch_inbox(
         processed_runs.append(
             auto_process_once(
                 root,
-                client=client,
                 compile_limit=compile_limit,
-                deterministic_only=deterministic_only,
-                semantic_lint=semantic_lint,
             )
         )
         last_snapshot = inbox_snapshot(root)

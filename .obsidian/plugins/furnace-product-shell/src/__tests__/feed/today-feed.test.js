@@ -120,6 +120,8 @@ test("isMaintenanceCommandAction detects batch-hint prefix", () => {
 
 test("isMaintenanceCommandAction detects maintenance tokens", () => {
   expect(isMaintenanceCommandAction(" review-page foo.md ", "")).toBe(true);
+  expect(isMaintenanceCommandAction(" review-page --batch wiki/a.md ", "")).toBe(true);
+  expect(isMaintenanceCommandAction(" review-page --next ", "")).toBe(true);
   expect(isMaintenanceCommandAction(" wiki/indexes/repair-backlog.md ", "")).toBe(false);
 });
 
@@ -177,7 +179,7 @@ test("buildTodayFeed returns empty for empty summary", () => {
   expect(feed).toEqual([]);
 });
 
-test("buildTodayFeed surfaces decision entries from review_backlog_counts", () => {
+test("buildTodayFeed keeps governance backlog out of primary feed", () => {
   const summary = makeSummary({
     review_backlog_counts: {
       counter_evidence_candidates: 3,
@@ -186,7 +188,6 @@ test("buildTodayFeed surfaces decision entries from review_backlog_counts", () =
       judgment_review_actions: 1,
       pending_decisions: 1,
       pending_judgments: 1,
-      // Routine/low-level buckets should be filtered out
       overdue_actions: 2,
       overdue_reviews: 2,
       ready_actions: 2,
@@ -194,41 +195,27 @@ test("buildTodayFeed surfaces decision entries from review_backlog_counts", () =
     },
   });
   const feed = buildTodayFeed(summary);
-  const decisions = feed.filter((e) => e.kind === "decision");
-  expect(decisions).toHaveLength(6);
-  expect(decisions.every((entry) => entry.priority === PRIORITY.decision)).toBe(true);
-  expect(decisions.map((entry) => entry.target)).toEqual([
-    "review:counter_evidence_candidates",
-    "review:escalated_actions",
-    "review:escalation_candidates",
-    "review:judgment_review_actions",
-    "review:pending_decisions",
-    "review:pending_judgments",
-  ]);
+  expect(feed.filter((e) => e.kind === "decision")).toHaveLength(0);
 });
 
-test("buildTodayFeed surfaces counter evidence entries", () => {
+test("buildTodayFeed keeps counter evidence out of primary feed", () => {
   const summary = makeSummary({
     counter_evidence_pages: [
       { path: "wiki/judgments/nvda.md", subject: "NVDA Thesis", summary: "3 new sources found", Detected_at: "2026-05-03T08:00:00Z", protocol: "investing" },
     ],
   });
   const feed = buildTodayFeed(summary);
-  const entries = feed.filter((e) => e.title.includes("反证"));
-  expect(entries).toHaveLength(1);
-  expect(entries[0].kind).toBe("decision");
-  expect(entries[0].target).toBe("wiki/judgments/nvda.md");
+  expect(feed.filter((e) => e.title.includes("反证"))).toHaveLength(0);
 });
 
-test("buildTodayFeed surfaces drift warnings", () => {
+test("buildTodayFeed keeps drift warnings out of primary feed", () => {
   const summary = makeSummary({
     drift_warnings: [
       { kind: "judgment-stale", path: "wiki/judgments/old.md", message: "证据已过时", Detected_at: "2026-05-03T08:00:00Z" },
     ],
   });
   const feed = buildTodayFeed(summary);
-  const drifts = feed.filter((e) => e.title.includes("漂移"));
-  expect(drifts).toHaveLength(1);
+  expect(feed.filter((e) => e.title.includes("漂移"))).toHaveLength(0);
 });
 
 test("buildTodayFeed surfaces today reports only", () => {
@@ -244,7 +231,7 @@ test("buildTodayFeed surfaces today reports only", () => {
   expect(reports[0].title).toBe("Today Report");
 });
 
-test("buildTodayFeed renders user-facing raw input source labels", () => {
+test("buildTodayFeed keeps raw input drops out of primary feed", () => {
   const summary = makeSummary({
     recent_raw_inputs: [
       {
@@ -257,11 +244,7 @@ test("buildTodayFeed renders user-facing raw input source labels", () => {
   });
 
   const feed = buildTodayFeed(summary);
-  const rawInputs = feed.filter((e) => e.target === "raw/inbox/readme.md");
-
-  expect(rawInputs).toHaveLength(1);
-  expect(rawInputs[0].summary).toBe("已接收 文本材料，等待编译/刷新");
-  expect(rawInputs[0].summary).not.toContain("note-drop");
+  expect(feed.filter((e) => e.target === "raw/inbox/readme.md")).toHaveLength(0);
 });
 
 test("buildTodayFeed hides degraded and placeholder reports", () => {
@@ -279,7 +262,7 @@ test("buildTodayFeed hides degraded and placeholder reports", () => {
   expect(reports.map((entry) => entry.target)).toEqual(["output/reports/final.md"]);
 });
 
-test("buildTodayFeed surfaces elixir entries for today", () => {
+test("buildTodayFeed keeps elixir receipts out of primary feed", () => {
   const summary = makeSummary({
     recent_receipts: [
       { title: "Elixir NVDA settled", operation: "promote-elixir", subject_kind: "elixir", subject_id: "nvda", receipt_path: ".aiwiki/state/execution-receipts/X.json", applied_at: "2026-05-03T08:00:00Z" },
@@ -287,9 +270,7 @@ test("buildTodayFeed surfaces elixir entries for today", () => {
     ],
   });
   const feed = buildTodayFeed(summary);
-  const elixirs = feed.filter((e) => e.kind === "elixir");
-  expect(elixirs).toHaveLength(1);
-  expect(elixirs[0].title).toBe("Elixir NVDA settled");
+  expect(feed.filter((e) => e.kind === "elixir")).toHaveLength(0);
 });
 
 test("buildTodayFeed surfaces compound suggest action entries", () => {
@@ -392,7 +373,7 @@ test("buildTodayFeed keeps degraded LLM health out of primary Today", () => {
   expect(feed).toHaveLength(0);
 });
 
-test("buildTodayFeed surfaces proposal entries needing attention", () => {
+test("buildTodayFeed keeps L3 proposals out of primary feed", () => {
   const summary = makeSummary({
     review_controls: {
       l3_proposals: [
@@ -402,12 +383,10 @@ test("buildTodayFeed surfaces proposal entries needing attention", () => {
     },
   });
   const feed = buildTodayFeed(summary);
-  const proposals = feed.filter((e) => e.kind === "proposal");
-  expect(proposals).toHaveLength(1);
-  expect(proposals[0].title).toBe("Improve prompt X");
+  expect(feed.filter((e) => e.kind === "proposal")).toHaveLength(0);
 });
 
-test("buildTodayFeed filters out maintenance commands from primary feed", () => {
+test("buildTodayFeed keeps generic suggested actions out of primary feed", () => {
   const summary = makeSummary({
     suggested_next_actions: [
       { title: "Run compile", command: " review-page wiki/judgments/X.md ", reason: "batch-hint:judgment", protocol: "research" },
@@ -415,28 +394,30 @@ test("buildTodayFeed filters out maintenance commands from primary feed", () => 
     ],
   });
   const feed = buildTodayFeed(summary);
-  const actions = feed.filter((e) => e.kind === "action");
-  expect(actions).toHaveLength(1);
-  expect(actions[0].title).toBe("Ask anything");
+  expect(feed.filter((e) => e.kind === "action")).toHaveLength(0);
 });
 
-test("buildTodayFeed sorts entries correctly: report > decision > proposal > elixir > action", () => {
+test("buildTodayFeed sorts reports before compound suggest actions", () => {
   const summary = makeSummary({
-    review_backlog_counts: { counter_evidence_candidates: 1 },
+    compound_suggest: {
+      available: true,
+      count: 1,
+      items: [
+        {
+          report_path: "output/reports/R.md",
+          title: "沉淀：R",
+          action: "file-back-judgment",
+          reason: "extend",
+        },
+      ],
+    },
     recent_outputs: [
       { path: "output/reports/R.md", title: "R", generated_at: "2026-05-03T08:00:00Z", format: "report" },
-    ],
-    suggested_next_actions: [
-      { title: "Act", command: " PYTHONPATH=src python3 -m aiwiki.cli --root . run-ask --ask ", reason: "query", protocol: "research" },
     ],
   });
   const feed = buildTodayFeed(summary);
   const kinds = feed.map((e) => e.kind);
-  const reportIdx = kinds.indexOf("report");
-  const decisionIdx = kinds.indexOf("decision");
-  const actionIdx = kinds.indexOf("action");
-  expect(reportIdx).toBeLessThan(decisionIdx);
-  expect(decisionIdx).toBeLessThan(actionIdx);
+  expect(kinds.indexOf("report")).toBeLessThan(kinds.indexOf("action"));
 });
 
 test("buildTodayFeed keeps metric trend alerts out of primary Today", () => {

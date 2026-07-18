@@ -249,12 +249,19 @@ def _delete_missing_rows(connection: sqlite3.Connection, table: str, key_column:
 
 
 def query_cache_memory_hash(memory: dict[str, Any]) -> str:
+    edges = memory.get("edges", {})
     payload = {
         "compiled_at": str(memory.get("compiled_at") or ""),
         "source_nodes": memory.get("source_nodes", []),
         "concept_nodes": memory.get("concept_nodes", []),
         "judgment_nodes": memory.get("judgment_nodes", []),
-        "edges": memory.get("edges", {}),
+        "elixir_nodes": memory.get("elixir_nodes", []),
+        "edges": edges if isinstance(edges, dict) else {},
+        "elixir_derived_from": (
+            edges.get("elixir_derived_from", [])
+            if isinstance(edges, dict)
+            else []
+        ),
         "term_index": memory.get("term_index", {}),
         "health": memory.get("health", {}),
     }
@@ -310,6 +317,13 @@ def sync_query_cache(
                 if page_id:
                     payload_json = _json_dumps(node)
                     node_rows.append((f"judgment:{page_id}", "judgment", _payload_hash(node), payload_json))
+            for node in memory.get("elixir_nodes", []):
+                if not isinstance(node, dict):
+                    continue
+                elixir_id = str(node.get("elixir_id") or "")
+                if elixir_id:
+                    payload_json = _json_dumps(node)
+                    node_rows.append((f"elixir:{elixir_id}", "elixir", _payload_hash(node), payload_json))
             _upsert_json_rows(
                 connection,
                 "cache_nodes",
@@ -328,6 +342,7 @@ def sync_query_cache(
                 ("judgment_to_judgment", "JUDGMENT_RELATION"),
                 ("judgment_to_decision", "DECISION_RELATION"),
                 ("concept_causal", "CAUSAL_RELATION"),
+                ("elixir_derived_from", "ELIXIR_DERIVED_FROM"),
             )
             for edge_bucket, edge_kind in edge_specs:
                 for index, edge in enumerate(edges.get(edge_bucket, [])):
@@ -556,6 +571,7 @@ def load_query_cache_snapshot(root: Path) -> dict[str, Any] | None:
             "judgment_to_judgment": [],
             "judgment_to_decision": [],
             "concept_causal": [],
+            "elixir_derived_from": [],
         }
         for row in edges_rows:
             edge_key = str(row["edge_key"] or "")
@@ -592,6 +608,7 @@ def load_query_cache_snapshot(root: Path) -> dict[str, Any] | None:
                 "concept_nodes": [payload for key, payload in nodes.items() if key.startswith("concept:")],
                 "judgment_nodes": judgment_summary_entries
                 or [payload for key, payload in nodes.items() if key.startswith("judgment:")],
+                "elixir_nodes": [payload for key, payload in nodes.items() if key.startswith("elixir:")],
                 "edges": edge_buckets,
                 "term_index": term_index,
                 "health": health,

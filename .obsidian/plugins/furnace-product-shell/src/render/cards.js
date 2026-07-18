@@ -77,8 +77,8 @@ function renderConfirmationCard(plugin, cardEl, entry) {
       text: plugin.t("Review"),
     });
     reviewBtn.addEventListener("click", () => {
-      if (typeof plugin.openReviewNextTransitionPicker === "function") {
-        plugin.openReviewNextTransitionPicker();
+      if (typeof plugin.openReviewPageContextPicker === "function") {
+        plugin.openReviewPageContextPicker();
       }
     });
 

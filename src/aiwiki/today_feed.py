@@ -98,18 +98,18 @@ def build_today_feed(summary: dict[str, Any], *, audience: FeedAudience = "prima
     entries: list[FeedEntry] = []
     today_date = _today_date(summary)
 
-    entries.extend(_build_decision_entries(summary, audience=audience))
-    entries.extend(_build_counter_evidence_entries(summary))
-    entries.extend(_build_drift_entries(summary))
-    entries.extend(_build_proposal_entries(summary))
     entries.extend(_build_report_entries(summary, today_date))
     entries.extend(_build_compound_suggest_entries(summary))
-    entries.extend(_build_elixir_entries(summary, today_date))
     if audience == "operator":
+        entries.extend(_build_decision_entries(summary, audience=audience))
+        entries.extend(_build_counter_evidence_entries(summary))
+        entries.extend(_build_drift_entries(summary))
+        entries.extend(_build_proposal_entries(summary))
+        entries.extend(_build_elixir_entries(summary, today_date))
         entries.extend(_build_metric_alert_entries(summary))
         entries.extend(_build_agent_loop_entries(summary, today_date))
-    entries.extend(_build_action_entries(summary, audience=audience))
-    entries.extend(_build_raw_input_entries(summary, today_date))
+        entries.extend(_build_action_entries(summary, audience=audience))
+        entries.extend(_build_raw_input_entries(summary, today_date))
 
     if audience == "primary":
         entries = _apply_snooze_filter(entries, summary, today_date)
@@ -550,6 +550,8 @@ def _is_maintenance_command_action(*, target: str, reason: str) -> bool:
     maintenance_tokens = (
         " review-page ",
         " batch-review ",
+        " --batch ",
+        " --next ",
     )
     return any(token in target_text for token in maintenance_tokens)
 

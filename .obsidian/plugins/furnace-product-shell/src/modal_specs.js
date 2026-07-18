@@ -1,5 +1,9 @@
 // Structured command modal specs for Product Shell operator actions.
 
+function noticeRemovedCommand(plugin, message) {
+  new Notice(plugin.t(message));
+}
+
 function buildFileBackModalSpec(plugin, prefill = {}) {
   return {
     title: plugin.t("File Back"),
@@ -126,13 +130,10 @@ function buildReviewRewriteModalSpec(plugin, prefill = {}) {
       { key: "note", label: plugin.t("Note"), kind: "textarea", rows: 4, placeholder: plugin.t("Optional review note"), initialValue: prefill.note || "" },
     ],
     onSubmit: async (values) => {
-      const args = [values.slug, "--status", values.status];
-      appendOptionalArg(args, "--note", values.note);
-      if (typeof plugin.runReviewRewriteTransition === "function") {
-        await plugin.runReviewRewriteTransition(values.slug, values.status);
-        return;
-      }
-      await plugin.runCliAction(`Review Rewrite: ${values.slug}`, "review-rewrite", args);
+      noticeRemovedCommand(
+        plugin,
+        "Concept rewrite commands were removed in W3; use review-page on the concept page instead."
+      );
     },
   };
 }
@@ -145,10 +146,11 @@ function buildApplyRewriteModalSpec(plugin, prefill = {}) {
       { key: "slug", label: plugin.t("Concept slug"), required: true, initialValue: () => prefill.slug || plugin.getActiveConceptSlug() },
       { key: "note", label: plugin.t("Note"), kind: "textarea", rows: 4, placeholder: plugin.t("Optional apply note"), initialValue: prefill.note || "" },
     ],
-    onSubmit: async (values) => {
-      const args = [values.slug];
-      appendOptionalArg(args, "--note", values.note);
-      await plugin.runCliAction(`Apply Rewrite: ${values.slug}`, "apply-rewrite", args);
+    onSubmit: async () => {
+      noticeRemovedCommand(
+        plugin,
+        "Concept rewrite commands were removed in W3; use review-page on the concept page instead."
+      );
     },
   };
 }
@@ -161,10 +163,11 @@ function buildRetireConceptModalSpec(plugin, prefill = {}) {
       { key: "slug", label: plugin.t("Concept slug"), required: true, initialValue: () => prefill.slug || plugin.getActiveConceptSlug() },
       { key: "note", label: plugin.t("Note"), kind: "textarea", rows: 4, placeholder: plugin.t("Why retire this concept?"), initialValue: prefill.note || "" },
     ],
-    onSubmit: async (values) => {
-      const args = [values.slug];
-      appendOptionalArg(args, "--note", values.note);
-      await plugin.runCliAction(`Retire Concept: ${values.slug}`, "retire-concept", args);
+    onSubmit: async () => {
+      noticeRemovedCommand(
+        plugin,
+        "Concept retire/reactivate commands were removed in W3; use review-page instead."
+      );
     },
   };
 }
@@ -177,10 +180,11 @@ function buildReactivateConceptModalSpec(plugin, prefill = {}) {
       { key: "slug", label: plugin.t("Concept slug"), required: true, initialValue: () => prefill.slug || plugin.getActiveConceptSlug() },
       { key: "note", label: plugin.t("Note"), kind: "textarea", rows: 4, placeholder: plugin.t("Optional reactivate note"), initialValue: prefill.note || "" },
     ],
-    onSubmit: async (values) => {
-      const args = [values.slug];
-      appendOptionalArg(args, "--note", values.note);
-      await plugin.runCliAction(`Reactivate Concept: ${values.slug}`, "reactivate-concept", args);
+    onSubmit: async () => {
+      noticeRemovedCommand(
+        plugin,
+        "Concept retire/reactivate commands were removed in W3; use review-page instead."
+      );
     },
   };
 }
@@ -193,10 +197,11 @@ function buildApplyArchiveModalSpec(plugin, prefill = {}) {
       { key: "entry_id", label: plugin.t("Entry id"), required: true, placeholder: plugin.t("manifest/material entry id"), initialValue: prefill.entryId || "" },
       { key: "note", label: plugin.t("Note"), kind: "textarea", rows: 4, placeholder: plugin.t("Optional apply note"), initialValue: prefill.note || "" },
     ],
-    onSubmit: async (values) => {
-      const args = [values.entry_id];
-      appendOptionalArg(args, "--note", values.note);
-      await plugin.runCliAction(`Apply Archive: ${values.entry_id}`, "apply-archive", args);
+    onSubmit: async () => {
+      noticeRemovedCommand(
+        plugin,
+        "Archive commands were removed in W3; inspect manifest pages manually."
+      );
     },
   };
 }
@@ -209,10 +214,11 @@ function buildRevertArchiveModalSpec(plugin, prefill = {}) {
       { key: "entry_id", label: plugin.t("Entry id"), required: true, placeholder: plugin.t("manifest/material entry id"), initialValue: prefill.entryId || "" },
       { key: "note", label: plugin.t("Note"), kind: "textarea", rows: 4, placeholder: plugin.t("Optional revert note"), initialValue: prefill.note || "" },
     ],
-    onSubmit: async (values) => {
-      const args = [values.entry_id];
-      appendOptionalArg(args, "--note", values.note);
-      await plugin.runCliAction(`Revert Archive: ${values.entry_id}`, "revert-archive", args);
+    onSubmit: async () => {
+      noticeRemovedCommand(
+        plugin,
+        "Archive commands were removed in W3; inspect manifest pages manually."
+      );
     },
   };
 }
@@ -231,9 +237,10 @@ function buildReviewActionModalSpec(plugin, prefill = {}) {
         await plugin.runReviewActionTransition(values.action_id, values.status);
         return;
       }
-      const args = [values.action_id, "--status", values.status];
-      appendOptionalArg(args, "--note", values.note);
-      await plugin.runCliAction(`Review Action: ${values.action_id}`, "review-action", args);
+      noticeRemovedCommand(
+        plugin,
+        "Machine-memory action commands were removed in W3; use review-page instead."
+      );
     },
   };
 }
@@ -267,13 +274,12 @@ function buildRevertActionModalSpec(plugin, prefill = {}) {
       { key: "note", label: plugin.t("Note"), kind: "textarea", rows: 4, placeholder: plugin.t("Optional revert note"), initialValue: prefill.note || "" },
     ],
     onSubmit: async (values) => {
-      if (typeof plugin.runRevertLastBatchCommand === "function") {
-        await plugin.runRevertLastBatchCommand();
-        return;
-      }
       const args = [values.action_id];
       appendOptionalArg(args, "--note", values.note);
-      await plugin.runCliAction(`Revert Action: ${values.action_id}`, "revert-action", args);
+      noticeRemovedCommand(
+        plugin,
+        "Machine-memory action commands were removed in W3; use review-page instead."
+      );
     },
   };
 }
@@ -336,7 +342,14 @@ function buildReviewPageBatchModalSpec(plugin, prefill = {}) {
       if (!paths.length) {
         throw new Error(plugin.t("Batch review requires at least one page path."));
       }
-      await plugin.runReviewPageBatchTransition(paths, values.status, values.note, values.confidence);
+      if (typeof plugin.runReviewPageBatchTransition === "function") {
+        await plugin.runReviewPageBatchTransition(paths, values.status, values.note, values.confidence);
+        return;
+      }
+      noticeRemovedCommand(
+        plugin,
+        "Batch review was removed in W4; use review-page for explicit page transitions."
+      );
     },
   };
 }

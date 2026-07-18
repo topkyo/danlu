@@ -14,6 +14,8 @@
 
 ## 当前动态
 
+- 2026-07-18 (**W6 compounding gap close**)：Task 1 query cache 持久化 elixir nodes + hash 失效；Task 2 锁死 watch/nightly/drop-auto 的 LLM `run-compile`/`run-lint` 侧门（保留确定性 `compile`/`lint`）；Task 3 Shell 去掉 deleted governance CLI hooks、Today 主 feed 收窄为 reports + 稀缺 `compound_suggest`；Task 4 Active docs C53/P9 收尾（单 runtime 协议、去掉 `run-compile` 产品教学、commercial 矩阵同步）。验证：`bash scripts/verify.sh all` PASS。
+
 - 2026-07-18 (**W2–W5 compounding 波完成**)：W1 单协议 runtime；W2 Ask 复利 rank + `used_refs` + `compound_suggest`；W3 governance CLI 侧切；W4 非核心 CLI/Shell/HTML 控制台噪声；W5 review 三态 / file-back 默认 judgment / Shell Today-first / shell-summary 瘦身 / graph-index 遥测页停写 / LLM 产品默认 `opencode-api/deepseek-v4-pro` 文档锁定（B44，代码保留其它 backend escape hatch）。验证：`bash scripts/verify.sh all` PASS。
 
 - 2026-07-18 (W5 thinning Task 3)：compile 停写 machine-memory 拓扑/动作/修复计划、execution-center/audit、认知历史、aging、drift、graph-health、concept-quality、rewrite 索引等批量遥测页（A36）；保留 graph JSON/HTML、machine-memory 最小索引与 review-queue；Active docs B44 product lock（INSTALL / DEVELOPER / Runtime Ops）。验证：`bash scripts/verify.sh all` PASS。

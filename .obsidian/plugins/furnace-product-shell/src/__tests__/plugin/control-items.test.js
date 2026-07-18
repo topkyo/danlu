@@ -118,11 +118,7 @@ test("control item builders normalize and dedupe review and execution controls",
     "wiki/decisions/a.md",
     "wiki/judgments/b.md",
   ]);
-  expect(context.reviewBatchSuggestions(plugin)[0]).toMatchObject({
-    key: "decision::accepted",
-    status: "accepted",
-    pagePaths: ["wiki/decisions/a.md", "wiki/judgments/b.md"],
-  });
+  expect(context.reviewBatchSuggestions(plugin)).toEqual([]);
   expect(context.rewriteControlItems(plugin, "review").map((item) => item.slug)).toEqual(["rewrite-a"]);
   expect(context.rewriteControlItems(plugin, "apply").map((item) => item.slug)).toEqual(["rewrite-b"]);
   expect(context.actionControlItems(plugin, "apply").map((item) => item.actionId)).toEqual(["act-1"]);

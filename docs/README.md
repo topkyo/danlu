@@ -14,7 +14,7 @@ updated_at: 2026-07-15
 | [Furnace Agent Architecture](<./Furnace Agent Architecture.md>) | **终局架构 SoT**：loop-first agent 模型、persistent planes、L1/L2/L3 自主权红线 |
 | [Furnace Evolution Mechanics](<./Furnace Evolution Mechanics.md>) | **实现契约 SoT**：heavy/light alchemy、active corpus、金丹生命周期、L3 proposal |
 | [Furnace Product Shell](<./Furnace Product Shell.md>) | **Obsidian Product Shell SoT**：一个输入端 + 一个输出端 + Advanced 抽屉；**Desktop-only** |
-| [Furnace Runtime Operations](<./Furnace Runtime Operations.md>) | **运行手册 SoT**：watcher、nightly、LLM worker、四 API 后端与 fail-closed 策略 |
+| [Furnace Runtime Operations](<./Furnace Runtime Operations.md>) | **运行手册 SoT**：watcher、确定性 nightly、显式 LLM ask、四 API 后端与 fail-closed 策略 |
 | [AGOS-9-Scorecard](<./AGOS-9-Scorecard.md>) | **AgentOS 评分与 release gate SoT**：证据分层、blocking gate、本地 release 口径 |
 | [Furnace Elixir](<./Furnace Elixir.md>) | 金丹机制产品思路 thesis（accepted） |
 | [INSTALL](<./INSTALL.md>) | **安装指南**：源码安装 + `pip install -e .` 预览路径；PyPI 正式发布待定 |
@@ -36,6 +36,7 @@ updated_at: 2026-07-15
 | [Furnace Post-Cleanup Audit and Next Direction 2026-07](<./Furnace Post-Cleanup Audit and Next Direction 2026-07.md>) | **当前执行计划**：cleanup 后再审计报告 + Commercial Go-Live WS1–WS6 |
 | [W2 Compounding Rank + Suggest plan](<./plans/2026-07-18-w2-compounding-rank-suggest.md>) | **已完成**：ranking / `used_refs` / 稀缺 `compound_suggest` + Today CTA（2026-07-18） |
 | [W3 Governance Side-Cuts plan](<./plans/2026-07-18-w3-governance-side-cuts.md>) | **已完成**：删除 AgentOS governance CLI；保留 alchemy min-chain / compile / lint / ask / review-page（2026-07-18） |
+| [W6 Compounding Gap Close plan](<./plans/2026-07-18-w6-compounding-gap-close.md>) | **已完成**：query cache elixir、锁 LLM compile/lint 侧门、Shell dead hooks + Today 收窄、Active docs 收尾（2026-07-18） |
 
 > Commercial Grade Cleanup Plan 2026-07 已归档（`executed-reviewed-pass`），见下方 Archived。
 > Investing Demo Pack（`delivered-fixture`）与 RuntimeClient Mobile Companion（`implemented-slice`）已交付规格，见下方 Delivered specs；残留 go-to-market 工作并入上表 Go-Live 计划。

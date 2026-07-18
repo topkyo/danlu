@@ -294,18 +294,13 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
     subparsers.add_parser("nightly", help="Run deterministic compile + lint and write nightly repair artifacts.")
     run_nightly_parser = subparsers.add_parser(
         "run-nightly",
-        help="Run compile + semantic lint and write nightly repair artifacts.",
+        help="Run deterministic compile + lint and write nightly repair artifacts.",
     )
     run_nightly_parser.add_argument(
         "--compile-limit",
         type=int,
         default=5,
-        help="Maximum number of pending source pages to summarize in one run.",
-    )
-    run_nightly_parser.add_argument(
-        "--no-semantic-lint",
-        action="store_true",
-        help="Skip the semantic lint pass and write deterministic nightly artifacts only.",
+        help="Compatibility metadata for nightly receipts (deterministic compile is not LLM-batched).",
     )
     llm_check_parser = subparsers.add_parser("llm-check", help="Show whether the LLM runner is configured.")
     llm_check_parser.add_argument(
@@ -345,22 +340,7 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
         "--compile-limit",
         type=int,
         default=5,
-        help="Maximum number of pending source pages to summarize per run.",
-    )
-    watch_parser.add_argument(
-        "--deterministic-only",
-        action="store_true",
-        help="Compatibility no-op: watch is deterministic-only unless --with-llm is provided.",
-    )
-    watch_parser.add_argument(
-        "--with-llm",
-        action="store_true",
-        help="Opt in to LLM compile + semantic lint in the watcher loop.",
-    )
-    watch_parser.add_argument(
-        "--no-semantic-lint",
-        action="store_true",
-        help="Skip the LLM semantic lint pass.",
+        help="Recorded in automation state for each watcher pass.",
     )
     watch_parser.add_argument(
         "--skip-initial",
@@ -507,20 +487,5 @@ def _add_auto_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--auto",
         action="store_true",
-        help="Run one automatic processing pass after the material is dropped.",
-    )
-    parser.add_argument(
-        "--deterministic-only",
-        action="store_true",
-        help="Compatibility no-op: drop --auto is deterministic-only unless --with-llm is provided.",
-    )
-    parser.add_argument(
-        "--with-llm",
-        action="store_true",
-        help="When used with --auto, opt in to LLM compile + semantic lint after the material is dropped.",
-    )
-    parser.add_argument(
-        "--no-semantic-lint",
-        action="store_true",
-        help="When used with --auto, skip the LLM semantic lint pass.",
+        help="Run one deterministic processing pass after the material is dropped.",
     )
