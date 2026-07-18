@@ -918,6 +918,13 @@ def file_back(
         candidate_state = load_output_candidates_state(root)
         for candidate in candidate_state.get("candidates", []):
             if candidate.get("artifact_ref") == artifact_ref:
+                # Keep wiki/derived/ as the alchemy provenance anchor. Judgment/decision
+                # file-backs are parallel review sinks and must not overwrite promoted_to.
+                promoted_to = relative_path(root, destination)
+                if kind in {"judgment", "decision"}:
+                    existing = str(candidate.get("promoted_to") or "").strip()
+                    if existing.startswith("wiki/derived/"):
+                        promoted_to = existing
                 upsert_output_candidate(
                     root,
                     artifact_ref=artifact_ref,
@@ -928,7 +935,7 @@ def file_back(
                     protocol=str(candidate.get("protocol") or resolved_protocol),
                     corpus_id=str(candidate.get("corpus_id") or ""),
                     question=str(candidate.get("question") or ""),
-                    promoted_to=relative_path(root, destination),
+                    promoted_to=promoted_to,
                     promoted_at=filed_at,
                     promotion_origin=str(candidate.get("promotion_origin") or "manual"),
                 )

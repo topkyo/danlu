@@ -921,6 +921,72 @@ def test_elixir_stage3_compounding(  # pragma: no cover - explicit pytest accept
         pytest.fail("Goldens refreshed; rerun without AIWIKI_ACCEPTANCE_REFRESH=1 to verify byte-stable.")
 
 
+def test_file_back_judgment_preserves_derived_promoted_to(  # pragma: no cover - explicit pytest acceptance gate
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression: judgment/decision file-back must not overwrite a wiki/derived/ promoted_to anchor."""
+    _case, vault = _copy_case_and_fix_clock_from("D3", "case_elixir_stage3_compounding", tmp_path, monkeypatch)
+
+    report_ref = "output/reports/d3-old.md"
+    expected_derived = "wiki/derived/derived-d3-old.md"
+    report_path = vault / report_ref
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(
+        "---\nprotocol: research\n---\n\n# D3 old report\n\nSeed report for file-back regression.\n",
+        encoding="utf-8",
+    )
+
+    _run_cli(vault, ["file-back", report_ref, "--kind", "judgment", "--title", "D3 old review"])
+
+    candidates_state = json.loads(
+        (vault / ".aiwiki" / "state" / "output-candidates.json").read_text(encoding="utf-8")
+    )
+    matched = [
+        candidate
+        for candidate in candidates_state.get("candidates", [])
+        if candidate.get("artifact_ref") == report_ref
+    ]
+    assert len(matched) == 1, candidates_state
+    promoted_to = str(matched[0].get("promoted_to") or "")
+    assert promoted_to.startswith("wiki/derived/"), promoted_to
+    assert promoted_to == expected_derived, promoted_to
+
+    judgment_dir = vault / "wiki" / "judgments"
+    assert judgment_dir.is_dir(), "file-back should create wiki/judgments/"
+    assert any(judgment_dir.glob("*.md")), "file-back should write a judgment page"
+
+    out_start = _run_cli(
+        vault,
+        [
+            "alchemy-start",
+            "corpus-d3-old",
+            "--topic",
+            "D3 file-back anchor check",
+            "--protocol",
+            "research",
+        ],
+    )
+    start_payload = json.loads(out_start)
+    assert start_payload.get("elixir_state") == "draft"
+    derived_from = list(start_payload.get("derived_from") or [])
+    assert expected_derived in derived_from, derived_from
+
+    elixir_id = str(start_payload["elixir_id"])
+    _run_cli(
+        vault,
+        [
+            "alchemy-distill",
+            elixir_id,
+            "--question",
+            "Does the derived anchor still hold after file-back?",
+        ],
+    )
+    _run_cli(vault, ["alchemy-finalize", "--elixir-id", elixir_id])
+    out_promote = _run_cli(vault, ["alchemy-promote", "--elixir-id", elixir_id])
+    promote_payload = json.loads(out_promote)
+    assert promote_payload.get("elixir_state") == "settled"
+
+
 # M9-P1.2: corrupt-state acceptance coverage.
 #
 # Unit tests already cover receipt-failure rollback end-to-end:

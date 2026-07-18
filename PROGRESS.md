@@ -14,6 +14,8 @@
 
 ## 当前动态
 
+- 2026-07-18 (self-reach 续炼收口)：file-back 保留 derived `promoted_to`（`ask.py`）；dogfood settled 金丹 2、judgments 6 confirmed；acceptance +1 `test_file_back_judgment_preserves_derived_promoted_to`（18 passed）。成色 B+。
+
 - 2026-07-17 (Obsidian dump P3 derived)：`output/agents|packs|pilots` → `.aiwiki/derived/`；`wiki/rewrite-proposals` 对 state 外孤儿页 unlink；indexes 遥测页保持 KEEP+ignore（已在 userIgnoreFilters，非白屏级）。
 - 2026-07-17 (Obsidian dump P2 staging)：`output/_candidates/elixirs/` → `.aiwiki/staging/elixirs/`；`output/_proposals/{prompt,policy,judge}/` → `.aiwiki/staging/proposals/{prompt,policy,judge}/`；`CANDIDATE_ELIXIR_DIR`、L3/judge writers、`LAYOUT_DIRS`、`app_vault` 列表与 dry-run `write_surfaces`、acceptance golden 同步。P1 未动 `execution-bundles`/`lint`/`wiki/indexes`/`agents/packs`。
 - 2026-07-17 (run notes 退役)：确认用户不需要「打开进度笔记」入口（气泡已有进度，报告/receipt 才是交付与审计）。`write_run_notes` no-op，Shell UI 去掉进度笔记入口，dogfood 清 `output/control/runs/`。
