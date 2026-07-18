@@ -117,8 +117,6 @@ from .app_state import (
     ensure_knowledge_lifecycle_override_state,
     execution_audit_html_path,
     execution_audit_path,
-    execution_center_html_path,
-    execution_center_path,
     execution_policy_log_path,
     furnace_center_html_path,
     graph_health_report_path,
@@ -265,8 +263,6 @@ from .memory.execution_surfaces import (
     render_concept_rewrite_proposal_page,
     render_execution_audit,
     render_execution_audit_html,
-    render_execution_center,
-    render_execution_center_html,
     render_execution_proposal_page,
 )
 from .memory.graph import (
@@ -678,7 +674,6 @@ def build_agent_packs(
             if not actions:
                 actions = ["当前没有可执行动作，继续监控 execution audit 和 consistency signals。"]
             links = [
-                "[执行中心](../../wiki/indexes/execution-center.md)",
                 "[执行审计](../../wiki/indexes/execution-audit.md)",
                 "[机器记忆修复计划](../../wiki/indexes/machine-memory-repair-plan.md)",
             ]
