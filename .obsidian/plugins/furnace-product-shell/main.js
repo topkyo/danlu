@@ -861,6 +861,7 @@ const ZH_TEXT = {
   apply: "应用",
   revert: "回滚",
   "file-back": "回流归档",
+  "alchemy-start": "凝丹启动",
   "archive-apply": "归档应用",
   "archive-revert": "归档回滚",
   "knowledge-lifecycle-override": "生命周期覆盖",
@@ -1538,6 +1539,20 @@ function splitReportsByLocalDate(reports, options = {}) {
       .sort((left, right) => right.date.getTime() - left.date.getTime())
       .slice(0, limitPreviousDays),
   };
+}
+
+function elixirIdFromLinkedRefs(linkedRefs) {
+  const refs = Array.isArray(linkedRefs) ? linkedRefs : [];
+  for (const ref of refs) {
+    const text = String(ref || "").trim();
+    if (!text) continue;
+    const normalized = text.replace(/\\/g, "/");
+    if (normalized.startsWith("wiki/elixirs/") && normalized.endsWith(".md")) {
+      const base = normalized.slice("wiki/elixirs/".length, -".md".length);
+      if (base) return base;
+    }
+  }
+  return "";
 }
 
 // --- src/command_specs.js ---
@@ -2286,6 +2301,7 @@ function buildTodayFeed(summary) {
   entries.push(...buildDriftEntries(summary));
   entries.push(...buildProposalEntries(summary));
   entries.push(...buildReportEntries(summary, todayDate));
+  entries.push(...buildCompoundSuggestEntries(summary));
   entries.push(...buildElixirEntries(summary, todayDate));
   // Routine metrics and automation status stay in Advanced/operator surfaces;
   // primary Today only keeps reports, decision exceptions, and necessary actions.
@@ -2406,8 +2422,47 @@ function buildProposalEntries(summary) {
   return entries;
 }
 
+function compoundSuggestItems(summary) {
+  const compound = summary.compound_suggest;
+  if (!compound || typeof compound !== "object" || !compound.available) return [];
+  const items = compound.items;
+  if (!Array.isArray(items)) return [];
+  return items.filter((item) => item && typeof item === "object");
+}
+
+function compoundSuggestIndex(summary) {
+  const index = {};
+  for (const item of compoundSuggestItems(summary)) {
+    const reportPath = firstText(item, "report_path");
+    if (reportPath) index[reportPath] = item;
+  }
+  return index;
+}
+
+function buildCompoundSuggestEntries(summary) {
+  const timestamp = String(summary.generated_at || "");
+  const entries = [];
+  for (const item of compoundSuggestItems(summary)) {
+    const title = firstText(item, "title", "report_title");
+    const reportPath = firstText(item, "report_path");
+    const reason = firstText(item, "reason", "signal") || "compound-suggest";
+    if (!title) continue;
+    entries.push({
+      kind: "action",
+      title,
+      summary: `复利建议：${reason}`,
+      target: reportPath || firstText(item, "command"),
+      timestamp,
+      protocol: firstText(item, "protocol"),
+      compound_suggest: item,
+    });
+  }
+  return entries;
+}
+
 function buildReportEntries(summary, todayDate) {
   const entries = [];
+  const suggestIndex = compoundSuggestIndex(summary);
   for (const item of dictItems(summary.recent_outputs)) {
     if (!isDeliverableReportOutput(item)) continue;
     const timestamp = firstText(item, "generated_at", "created_at");
@@ -2430,6 +2485,7 @@ function buildReportEntries(summary, todayDate) {
       target: path,
       timestamp,
       protocol: firstText(item, "protocol"),
+      compound_suggest: suggestIndex[path] || null,
     });
   }
   return entries;
@@ -2517,6 +2573,7 @@ function buildActionEntries(summary, audience = "primary") {
   const entries = [];
   const generatedAt = String(summary.generated_at || "");
   for (const item of dictItems(summary.suggested_next_actions)) {
+    if (firstText(item, "kind") === "compound-suggest") continue;
     const title = firstText(item, "title", "label", "name");
     const target = firstText(item, "command", "cli", "action", "path");
     if (!title || !target) continue;
@@ -2734,6 +2791,9 @@ module.exports = {
   reviewBucketCopy,
   priorityForKind,
   isMaintenanceCommandAction,
+  compoundSuggestItems,
+  compoundSuggestIndex,
+  buildCompoundSuggestEntries,
   PRIORITY,
   PRIMARY_REVIEW_BUCKETS,
 };
@@ -3879,8 +3939,12 @@ function renderReportCard(plugin, cardEl, entry) {
   }
 
   const actions = cardEl.createDiv({ cls: "furnace-feed-card-actions" });
+  const suggest = entry.compound_suggest || entry.compoundSuggest;
+  if (suggest && typeof suggest === "object") {
+    renderCompoundSuggestActions(plugin, actions, suggest);
+  }
   const openBtn = actions.createEl("button", {
-    cls: "mod-cta",
+    cls: suggest ? "" : "mod-cta",
     text: plugin.t("Open report"),
   });
   openBtn.addEventListener("click", () => {
@@ -3894,6 +3958,36 @@ function renderReportCard(plugin, cardEl, entry) {
     });
     graphBtn.addEventListener("click", async () => {
       await plugin.runReportSubgraphCommand({ reportPath: entry.target });
+    });
+  }
+}
+
+function renderCompoundSuggestActionCard(plugin, cardEl, entry) {
+  const suggest = entry.compound_suggest || entry.compoundSuggest;
+  if (!suggest || typeof suggest !== "object") return;
+  const actions = cardEl.createDiv({ cls: "furnace-feed-card-actions" });
+  renderCompoundSuggestActions(plugin, actions, suggest);
+}
+
+function renderCompoundSuggestActions(plugin, actionsEl, suggest) {
+  const action = String(suggest.action || "").trim();
+  if (action === "file-back-judgment") {
+    const fileBackBtn = actionsEl.createEl("button", {
+      cls: "mod-cta furnace-compound-file-back",
+      text: plugin.t("沉淀"),
+    });
+    fileBackBtn.addEventListener("click", () => {
+      plugin.runCompoundFileBack(suggest);
+    });
+    return;
+  }
+  if (action === "alchemy-start") {
+    const alchemyBtn = actionsEl.createEl("button", {
+      cls: "mod-cta furnace-compound-alchemy-start",
+      text: plugin.t("凝丹"),
+    });
+    alchemyBtn.addEventListener("click", () => {
+      plugin.openCompoundAlchemyStart(suggest);
     });
   }
 }
@@ -3953,6 +4047,8 @@ module.exports = {
   renderReportCard,
   renderConfirmationCard,
   renderAutomationCard,
+  renderCompoundSuggestActionCard,
+  renderCompoundSuggestActions,
   isReportUnread,
 };
 
@@ -4584,6 +4680,19 @@ function renderSuggestedNextActionsBlock(plugin, container, options = {}) {
       runButton.addEventListener("click", () => {
         plugin.runUiAction(batchInvocation.run, `Run batch hint: ${action.title || action.command}`);
       });
+    } else if (action.kind === "compound-suggest") {
+      const compoundAction = String(action.action || "").trim();
+      if (compoundAction === "file-back-judgment") {
+        const fileBackBtn = buttons.createEl("button", { text: plugin.t("沉淀"), cls: "mod-cta" });
+        fileBackBtn.addEventListener("click", () => {
+          plugin.runUiAction(() => plugin.runCompoundFileBack(action), `Compound file-back: ${action.title || action.path}`);
+        });
+      } else if (compoundAction === "alchemy-start") {
+        const alchemyBtn = buttons.createEl("button", { text: plugin.t("凝丹"), cls: "mod-cta" });
+        alchemyBtn.addEventListener("click", () => {
+          plugin.runUiAction(() => plugin.openCompoundAlchemyStart(action), `Compound alchemy-start: ${action.title || action.path}`);
+        });
+      }
     }
     if (action.path) {
       const openButton = buttons.createEl("button", { text: plugin.t("Open") });
@@ -5617,6 +5726,8 @@ function renderTodayFeedItem(plugin, listEl, entry) {
 
   if (entry.kind === "report") {
     renderReportCard(plugin, card, entry);
+  } else if (entry.kind === "action" && (entry.compound_suggest || entry.compoundSuggest)) {
+    renderCompoundSuggestActionCard(plugin, card, entry);
   } else if (entry.kind === "decision" || entry.kind === "proposal") {
     renderConfirmationCard(plugin, card, entry);
   } else if (entry.kind === "automation") {
@@ -5624,7 +5735,13 @@ function renderTodayFeedItem(plugin, listEl, entry) {
   }
 
   // Fallback action buttons (for entries not handled by card renderers)
-  if (entry.kind !== "report" && entry.kind !== "decision" && entry.kind !== "proposal" && entry.kind !== "automation") {
+  if (
+    entry.kind !== "report"
+    && entry.kind !== "action"
+    && entry.kind !== "decision"
+    && entry.kind !== "proposal"
+    && entry.kind !== "automation"
+  ) {
     const targetLabel = todayFeedTargetLabel(plugin, entry);
     if (targetLabel && card.querySelector) {
       const meta = card.createDiv({ cls: "furnace-today-feed-target" });
@@ -7456,7 +7573,7 @@ function buildFileBackModalSpec(plugin, prefill = {}) {
         key: "kind",
         label: plugin.t("Kind"),
         kind: "select",
-        initialValue: prefill.kind || "derived",
+        initialValue: prefill.kind || "judgment",
         options: [
           ["derived", plugin.t("derived")],
           ["decision", plugin.t("decision")],
@@ -7469,6 +7586,40 @@ function buildFileBackModalSpec(plugin, prefill = {}) {
       appendOptionalArg(args, "--title", values.title);
       appendOptionalArg(args, "--kind", values.kind);
       await plugin.runCliAction(`File Back: ${values.kind}`, "file-back", args);
+    },
+  };
+}
+
+function buildAlchemyStartModalSpec(plugin, prefill = {}) {
+  return {
+    title: plugin.t("Alchemy Start"),
+    description: plugin.t("Start a new elixir draft from a promoted corpus."),
+    fields: [
+      {
+        key: "corpus_id",
+        label: plugin.t("Corpus id"),
+        required: true,
+        placeholder: plugin.t("corpus-id"),
+        initialValue: prefill.corpusId || prefill.corpus_id || "",
+      },
+      {
+        key: "topic",
+        label: plugin.t("Topic"),
+        required: true,
+        placeholder: plugin.t("Elixir topic"),
+        initialValue: prefill.topic || "",
+      },
+      {
+        key: "include_elixir",
+        label: plugin.t("Include elixir"),
+        placeholder: plugin.t("Optional settled elixir id"),
+        initialValue: prefill.includeElixir || prefill.include_elixir || "",
+      },
+    ],
+    onSubmit: async (values) => {
+      const args = [values.corpus_id, "--topic", values.topic];
+      appendOptionalArg(args, "--include-elixir", values.include_elixir);
+      await plugin.runCliAction(`Alchemy Start: ${values.corpus_id}`, "alchemy-start", args);
     },
   };
 }
@@ -10071,6 +10222,31 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   openFileBackModal(prefill = {}) {
     this.openStructuredCommandModal(buildFileBackModalSpec(this, prefill));
+  }
+
+  openAlchemyStartModal(prefill = {}) {
+    this.openStructuredCommandModal(buildAlchemyStartModalSpec(this, prefill));
+  }
+
+  async runCompoundFileBack(suggest) {
+    const item = suggest && typeof suggest === "object" ? suggest : {};
+    const reportPath = String(item.report_path || item.reportPath || "").trim();
+    if (!reportPath) {
+      new Notice(this.t("缺少报告路径"));
+      return;
+    }
+    const label = String(item.title || this.t("沉淀")).trim() || this.t("沉淀");
+    await this.runCliAction(label, "file-back", [reportPath, "--kind", "judgment"]);
+  }
+
+  openCompoundAlchemyStart(suggest) {
+    const item = suggest && typeof suggest === "object" ? suggest : {};
+    const linkedRefs = Array.isArray(item.linked_refs) ? item.linked_refs : Array.isArray(item.linkedRefs) ? item.linkedRefs : [];
+    this.openAlchemyStartModal({
+      corpusId: String(item.corpus_id || item.corpusId || "").trim(),
+      topic: String(item.topic || "").trim(),
+      includeElixir: elixirIdFromLinkedRefs(linkedRefs),
+    });
   }
 
   openReviewPageModal(prefill = {}) {

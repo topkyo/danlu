@@ -47,7 +47,7 @@ function buildFileBackModalSpec(plugin, prefill = {}) {
         key: "kind",
         label: plugin.t("Kind"),
         kind: "select",
-        initialValue: prefill.kind || "derived",
+        initialValue: prefill.kind || "judgment",
         options: [
           ["derived", plugin.t("derived")],
           ["decision", plugin.t("decision")],
@@ -60,6 +60,40 @@ function buildFileBackModalSpec(plugin, prefill = {}) {
       appendOptionalArg(args, "--title", values.title);
       appendOptionalArg(args, "--kind", values.kind);
       await plugin.runCliAction(`File Back: ${values.kind}`, "file-back", args);
+    },
+  };
+}
+
+function buildAlchemyStartModalSpec(plugin, prefill = {}) {
+  return {
+    title: plugin.t("Alchemy Start"),
+    description: plugin.t("Start a new elixir draft from a promoted corpus."),
+    fields: [
+      {
+        key: "corpus_id",
+        label: plugin.t("Corpus id"),
+        required: true,
+        placeholder: plugin.t("corpus-id"),
+        initialValue: prefill.corpusId || prefill.corpus_id || "",
+      },
+      {
+        key: "topic",
+        label: plugin.t("Topic"),
+        required: true,
+        placeholder: plugin.t("Elixir topic"),
+        initialValue: prefill.topic || "",
+      },
+      {
+        key: "include_elixir",
+        label: plugin.t("Include elixir"),
+        placeholder: plugin.t("Optional settled elixir id"),
+        initialValue: prefill.includeElixir || prefill.include_elixir || "",
+      },
+    ],
+    onSubmit: async (values) => {
+      const args = [values.corpus_id, "--topic", values.topic];
+      appendOptionalArg(args, "--include-elixir", values.include_elixir);
+      await plugin.runCliAction(`Alchemy Start: ${values.corpus_id}`, "alchemy-start", args);
     },
   };
 }

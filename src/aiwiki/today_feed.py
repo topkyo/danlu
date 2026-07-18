@@ -88,6 +88,7 @@ class FeedEntry:
     target: str
     timestamp: str
     protocol: str
+    compound_suggest: dict[str, Any] | None = None
 
 
 def build_today_feed(summary: dict[str, Any], *, audience: FeedAudience = "primary") -> list[FeedEntry]:
@@ -102,6 +103,7 @@ def build_today_feed(summary: dict[str, Any], *, audience: FeedAudience = "prima
     entries.extend(_build_drift_entries(summary))
     entries.extend(_build_proposal_entries(summary))
     entries.extend(_build_report_entries(summary, today_date))
+    entries.extend(_build_compound_suggest_entries(summary))
     entries.extend(_build_elixir_entries(summary, today_date))
     if audience == "operator":
         entries.extend(_build_metric_alert_entries(summary))
@@ -359,8 +361,51 @@ def _build_proposal_entries(summary: dict[str, Any]) -> list[FeedEntry]:
     return entries
 
 
+def _compound_suggest_items(summary: dict[str, Any]) -> list[dict[str, Any]]:
+    compound = summary.get("compound_suggest")
+    if not isinstance(compound, dict) or not compound.get("available"):
+        return []
+    raw_items = compound.get("items")
+    if not isinstance(raw_items, list):
+        return []
+    return [item for item in raw_items if isinstance(item, dict)]
+
+
+def _compound_suggest_index(summary: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    index: dict[str, dict[str, Any]] = {}
+    for item in _compound_suggest_items(summary):
+        report_path = _first_text(item, "report_path")
+        if report_path:
+            index[report_path] = item
+    return index
+
+
+def _build_compound_suggest_entries(summary: dict[str, Any]) -> list[FeedEntry]:
+    timestamp = str(summary.get("generated_at") or "")
+    entries: list[FeedEntry] = []
+    for item in _compound_suggest_items(summary):
+        title = _first_text(item, "title", "report_title")
+        report_path = _first_text(item, "report_path")
+        reason = _first_text(item, "reason", "signal") or "compound-suggest"
+        if not title:
+            continue
+        entries.append(
+            FeedEntry(
+                kind="action",
+                title=title,
+                summary=f"复利建议：{reason}",
+                target=report_path or _first_text(item, "command"),
+                timestamp=timestamp,
+                protocol=_first_text(item, "protocol"),
+                compound_suggest=item,
+            )
+        )
+    return entries
+
+
 def _build_report_entries(summary: dict[str, Any], today_date: str) -> list[FeedEntry]:
     entries: list[FeedEntry] = []
+    suggest_index = _compound_suggest_index(summary)
     for item in _dict_items(summary.get("recent_outputs")):
         if not _is_deliverable_report_output(item):
             continue
@@ -380,6 +425,7 @@ def _build_report_entries(summary: dict[str, Any], today_date: str) -> list[Feed
                 target=path,
                 timestamp=timestamp,
                 protocol=_first_text(item, "protocol"),
+                compound_suggest=suggest_index.get(path),
             )
         )
     return entries
@@ -443,6 +489,8 @@ def _build_action_entries(summary: dict[str, Any], *, audience: FeedAudience) ->
     entries: list[FeedEntry] = []
     generated_at = str(summary.get("generated_at") or "")
     for item in _dict_items(summary.get("suggested_next_actions")):
+        if _first_text(item, "kind") == "compound-suggest":
+            continue
         title = _first_text(item, "title", "label", "name")
         target = _first_text(item, "command", "cli", "action", "path")
         if not title or not target:

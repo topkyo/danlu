@@ -606,6 +606,8 @@ function renderTodayFeedItem(plugin, listEl, entry) {
 
   if (entry.kind === "report") {
     renderReportCard(plugin, card, entry);
+  } else if (entry.kind === "action" && (entry.compound_suggest || entry.compoundSuggest)) {
+    renderCompoundSuggestActionCard(plugin, card, entry);
   } else if (entry.kind === "decision" || entry.kind === "proposal") {
     renderConfirmationCard(plugin, card, entry);
   } else if (entry.kind === "automation") {
@@ -613,7 +615,13 @@ function renderTodayFeedItem(plugin, listEl, entry) {
   }
 
   // Fallback action buttons (for entries not handled by card renderers)
-  if (entry.kind !== "report" && entry.kind !== "decision" && entry.kind !== "proposal" && entry.kind !== "automation") {
+  if (
+    entry.kind !== "report"
+    && entry.kind !== "action"
+    && entry.kind !== "decision"
+    && entry.kind !== "proposal"
+    && entry.kind !== "automation"
+  ) {
     const targetLabel = todayFeedTargetLabel(plugin, entry);
     if (targetLabel && card.querySelector) {
       const meta = card.createDiv({ cls: "furnace-today-feed-target" });

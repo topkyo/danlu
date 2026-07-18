@@ -464,3 +464,17 @@ function splitReportsByLocalDate(reports, options = {}) {
       .slice(0, limitPreviousDays),
   };
 }
+
+function elixirIdFromLinkedRefs(linkedRefs) {
+  const refs = Array.isArray(linkedRefs) ? linkedRefs : [];
+  for (const ref of refs) {
+    const text = String(ref || "").trim();
+    if (!text) continue;
+    const normalized = text.replace(/\\/g, "/");
+    if (normalized.startsWith("wiki/elixirs/") && normalized.endsWith(".md")) {
+      const base = normalized.slice("wiki/elixirs/".length, -".md".length);
+      if (base) return base;
+    }
+  }
+  return "";
+}

@@ -24,8 +24,12 @@ function renderReportCard(plugin, cardEl, entry) {
   }
 
   const actions = cardEl.createDiv({ cls: "furnace-feed-card-actions" });
+  const suggest = entry.compound_suggest || entry.compoundSuggest;
+  if (suggest && typeof suggest === "object") {
+    renderCompoundSuggestActions(plugin, actions, suggest);
+  }
   const openBtn = actions.createEl("button", {
-    cls: "mod-cta",
+    cls: suggest ? "" : "mod-cta",
     text: plugin.t("Open report"),
   });
   openBtn.addEventListener("click", () => {
@@ -39,6 +43,36 @@ function renderReportCard(plugin, cardEl, entry) {
     });
     graphBtn.addEventListener("click", async () => {
       await plugin.runReportSubgraphCommand({ reportPath: entry.target });
+    });
+  }
+}
+
+function renderCompoundSuggestActionCard(plugin, cardEl, entry) {
+  const suggest = entry.compound_suggest || entry.compoundSuggest;
+  if (!suggest || typeof suggest !== "object") return;
+  const actions = cardEl.createDiv({ cls: "furnace-feed-card-actions" });
+  renderCompoundSuggestActions(plugin, actions, suggest);
+}
+
+function renderCompoundSuggestActions(plugin, actionsEl, suggest) {
+  const action = String(suggest.action || "").trim();
+  if (action === "file-back-judgment") {
+    const fileBackBtn = actionsEl.createEl("button", {
+      cls: "mod-cta furnace-compound-file-back",
+      text: plugin.t("沉淀"),
+    });
+    fileBackBtn.addEventListener("click", () => {
+      plugin.runCompoundFileBack(suggest);
+    });
+    return;
+  }
+  if (action === "alchemy-start") {
+    const alchemyBtn = actionsEl.createEl("button", {
+      cls: "mod-cta furnace-compound-alchemy-start",
+      text: plugin.t("凝丹"),
+    });
+    alchemyBtn.addEventListener("click", () => {
+      plugin.openCompoundAlchemyStart(suggest);
     });
   }
 }
@@ -98,5 +132,7 @@ module.exports = {
   renderReportCard,
   renderConfirmationCard,
   renderAutomationCard,
+  renderCompoundSuggestActionCard,
+  renderCompoundSuggestActions,
   isReportUnread,
 };

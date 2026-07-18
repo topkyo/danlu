@@ -381,6 +381,19 @@ function renderSuggestedNextActionsBlock(plugin, container, options = {}) {
       runButton.addEventListener("click", () => {
         plugin.runUiAction(batchInvocation.run, `Run batch hint: ${action.title || action.command}`);
       });
+    } else if (action.kind === "compound-suggest") {
+      const compoundAction = String(action.action || "").trim();
+      if (compoundAction === "file-back-judgment") {
+        const fileBackBtn = buttons.createEl("button", { text: plugin.t("沉淀"), cls: "mod-cta" });
+        fileBackBtn.addEventListener("click", () => {
+          plugin.runUiAction(() => plugin.runCompoundFileBack(action), `Compound file-back: ${action.title || action.path}`);
+        });
+      } else if (compoundAction === "alchemy-start") {
+        const alchemyBtn = buttons.createEl("button", { text: plugin.t("凝丹"), cls: "mod-cta" });
+        alchemyBtn.addEventListener("click", () => {
+          plugin.runUiAction(() => plugin.openCompoundAlchemyStart(action), `Compound alchemy-start: ${action.title || action.path}`);
+        });
+      }
     }
     if (action.path) {
       const openButton = buttons.createEl("button", { text: plugin.t("Open") });

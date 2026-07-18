@@ -669,6 +669,7 @@ const ZH_TEXT = {
   apply: "应用",
   revert: "回滚",
   "file-back": "回流归档",
+  "alchemy-start": "凝丹启动",
   "archive-apply": "归档应用",
   "archive-revert": "归档回滚",
   "knowledge-lifecycle-override": "生命周期覆盖",

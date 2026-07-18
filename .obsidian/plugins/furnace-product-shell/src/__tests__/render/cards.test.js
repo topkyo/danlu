@@ -35,7 +35,7 @@ if (!HTMLElement.prototype.addClass) {
   };
 }
 
-const { renderFeedCard, renderReportCard, renderConfirmationCard, isReportUnread } = require("../../render/cards");
+const { renderFeedCard, renderReportCard, renderConfirmationCard, renderCompoundSuggestActions, isReportUnread } = require("../../render/cards");
 
 function makeMockPlugin() {
   return {
@@ -45,6 +45,8 @@ function makeMockPlugin() {
     runReportSubgraphCommand: jest.fn().mockResolvedValue(),
     openReviewCenterView: jest.fn().mockResolvedValue(),
     runTodaySnoozeCommand: jest.fn().mockResolvedValue(),
+    runCompoundFileBack: jest.fn().mockResolvedValue(),
+    openCompoundAlchemyStart: jest.fn(),
   };
 }
 
@@ -146,6 +148,40 @@ describe("renderReportCard", () => {
     openBtn.click();
 
     expect(plugin.openWorkspacePath).toHaveBeenCalledWith("output/reports/foo.md");
+  });
+
+  test("renders compound suggest file-back CTA on report card", () => {
+    const plugin = makeMockPlugin();
+    const cardEl = document.createElement("div");
+    const suggest = {
+      action: "file-back-judgment",
+      report_path: "output/reports/foo.md",
+      title: "沉淀：Question",
+    };
+
+    renderReportCard(plugin, cardEl, { target: "output/reports/foo.md", compound_suggest: suggest });
+
+    const fileBackBtn = Array.from(cardEl.querySelectorAll("button")).find((btn) => btn.textContent === "沉淀");
+    expect(fileBackBtn).toBeTruthy();
+    fileBackBtn.click();
+    expect(plugin.runCompoundFileBack).toHaveBeenCalledWith(suggest);
+  });
+
+  test("renders compound suggest alchemy-start CTA on report card", () => {
+    const plugin = makeMockPlugin();
+    const cardEl = document.createElement("div");
+    const suggest = {
+      action: "alchemy-start",
+      corpus_id: "corpus-a",
+      topic: "Follow-up",
+    };
+
+    renderReportCard(plugin, cardEl, { target: "output/reports/foo.md", compound_suggest: suggest });
+
+    const alchemyBtn = Array.from(cardEl.querySelectorAll("button")).find((btn) => btn.textContent === "凝丹");
+    expect(alchemyBtn).toBeTruthy();
+    alchemyBtn.click();
+    expect(plugin.openCompoundAlchemyStart).toHaveBeenCalledWith(suggest);
   });
 });
 

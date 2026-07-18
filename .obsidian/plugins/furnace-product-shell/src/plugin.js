@@ -663,6 +663,31 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     this.openStructuredCommandModal(buildFileBackModalSpec(this, prefill));
   }
 
+  openAlchemyStartModal(prefill = {}) {
+    this.openStructuredCommandModal(buildAlchemyStartModalSpec(this, prefill));
+  }
+
+  async runCompoundFileBack(suggest) {
+    const item = suggest && typeof suggest === "object" ? suggest : {};
+    const reportPath = String(item.report_path || item.reportPath || "").trim();
+    if (!reportPath) {
+      new Notice(this.t("缺少报告路径"));
+      return;
+    }
+    const label = String(item.title || this.t("沉淀")).trim() || this.t("沉淀");
+    await this.runCliAction(label, "file-back", [reportPath, "--kind", "judgment"]);
+  }
+
+  openCompoundAlchemyStart(suggest) {
+    const item = suggest && typeof suggest === "object" ? suggest : {};
+    const linkedRefs = Array.isArray(item.linked_refs) ? item.linked_refs : Array.isArray(item.linkedRefs) ? item.linkedRefs : [];
+    this.openAlchemyStartModal({
+      corpusId: String(item.corpus_id || item.corpusId || "").trim(),
+      topic: String(item.topic || "").trim(),
+      includeElixir: elixirIdFromLinkedRefs(linkedRefs),
+    });
+  }
+
   openReviewPageModal(prefill = {}) {
     this.openStructuredCommandModal(buildReviewPageModalSpec(this, prefill));
   }

@@ -126,6 +126,36 @@ test("batch review modal spec parses page lines and rejects empty batches", asyn
   await expect(spec.onSubmit({ pages: "", status: "accepted" })).rejects.toThrow("Batch review requires at least one page path.");
 });
 
+test("file back modal defaults kind to judgment", async () => {
+  const context = loadModalSpecContext();
+  const plugin = makePlugin();
+  const spec = context.buildFileBackModalSpec(plugin, {});
+
+  expect(spec.fields.find((field) => field.key === "kind").initialValue).toBe("judgment");
+});
+
+test("alchemy start modal spec submits corpus and topic args", async () => {
+  const context = loadModalSpecContext();
+  const plugin = makePlugin();
+  const spec = context.buildAlchemyStartModalSpec(plugin, {
+    corpusId: "corpus-a",
+    topic: "Follow-up thesis",
+    includeElixir: "elixir-old",
+  });
+
+  expect(spec.fields.map((field) => field.key)).toEqual(["corpus_id", "topic", "include_elixir"]);
+  await spec.onSubmit({
+    corpus_id: "corpus-a",
+    topic: "Follow-up thesis",
+    include_elixir: "elixir-old",
+  });
+  expect(plugin.calls[0]).toEqual({
+    label: "Alchemy Start: corpus-a",
+    command: "alchemy-start",
+    args: ["corpus-a", "--topic", "Follow-up thesis", "--include-elixir", "elixir-old"],
+  });
+});
+
 test("report subgraph modal spec switches between select and manual field", async () => {
   const context = loadModalSpecContext();
   const plugin = makePlugin();
