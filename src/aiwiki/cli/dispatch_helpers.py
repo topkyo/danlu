@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from ..today_feed import FeedEntry, priority_for_kind
@@ -25,16 +24,6 @@ class _DispatchProxy:
 
 build_shell_summary = _DispatchProxy("build_shell_summary")
 build_today_feed = _DispatchProxy("build_today_feed")
-load_today_snooze_state = _DispatchProxy("load_today_snooze_state")
-save_today_snooze_state = _DispatchProxy("save_today_snooze_state")
-review_pages_batch = _DispatchProxy("review_pages_batch")
-review_page = _DispatchProxy("review_page")
-review_machine_memory_actions_batch = _DispatchProxy("review_machine_memory_actions_batch")
-apply_machine_memory_actions_batch = _DispatchProxy("apply_machine_memory_actions_batch")
-load_machine_memory_action_state = _DispatchProxy("load_machine_memory_action_state")
-load_machine_memory_action_state_strict = _DispatchProxy("load_machine_memory_action_state_strict")
-resolve_machine_memory_action_query = _DispatchProxy("resolve_machine_memory_action_query")
-action_supports_low_risk_apply = _DispatchProxy("action_supports_low_risk_apply")
 auto_process_once = _DispatchProxy("auto_process_once")
 build_parser = _DispatchProxy("build_parser")
 
@@ -99,32 +88,6 @@ def today_command(root: Path, *, as_json: bool = False) -> int:
         return 0
     print(_render_today_text(feed, summary))
     return 0
-
-
-def today_snooze_command(root: Path, *, target: str, days: int = 1, note: str = "") -> dict[str, object]:
-    target_text = str(target or "").strip()
-    if not target_text:
-        raise ValueError("today-snooze requires a non-empty target.")
-    if days <= 0:
-        raise ValueError("--days must be greater than 0.")
-    state = load_today_snooze_state(root)
-    now = datetime.now(timezone.utc)
-    # Inclusive date filter in today_feed means days=1 should hide only today.
-    snoozed_until = (now + timedelta(days=days - 1)).date().isoformat()
-    items = [
-        dict(item)
-        for item in state.get("items", [])
-        if isinstance(item, dict) and str(item.get("target") or "").strip() != target_text
-    ]
-    item = {
-        "target": target_text,
-        "snoozed_at": now.isoformat(),
-        "snoozed_until": snoozed_until,
-        "note": str(note or ""),
-    }
-    items.append(item)
-    save_today_snooze_state(root, {"version": 1, "items": items})
-    return {"operation": "today-snooze", "status": "snoozed", **item}
 
 
 def _classify_review_bucket(entry: FeedEntry) -> str:
@@ -524,44 +487,6 @@ def metrics_command(root: Path, *, as_json: bool = False, delta: str | None = No
     return 0
 
 
-def autonomy_status_command(root: Path, *, as_json: bool = False) -> int:
-    from aiwiki import autonomy_policy
-
-    status = autonomy_policy.policy_status(root)
-    if as_json:
-        print(json.dumps(status, indent=2, sort_keys=True))
-        return 0
-    lines = [
-        f"policy file : {status['policy_path']}",
-        f"file exists : {status['policy_file_exists']}",
-        f"global env  : {status['global_override_env']} = {'1 (active)' if status['global_override_active'] else 'unset'}",
-        "flags:",
-    ]
-    for name, info in status["flags"].items():
-        marker = "DISABLED" if info["effective"] else "enabled "
-        reason = f"  ({info['reason']})" if info["reason"] else ""
-        lines.append(f"  [{marker}] {name}  file_value={info['file_value']}{reason}")
-    print("\n".join(lines))
-    return 0
-
-
-def autonomy_set_command(root: Path, *, flag: str, value: bool) -> int:
-    import sys
-
-    from aiwiki import autonomy_policy
-
-    if flag not in autonomy_policy.KNOWN_FLAGS:
-        print(
-            f"Unknown autonomy flag: {flag}. Known flags: {', '.join(autonomy_policy.KNOWN_FLAGS)}",
-            file=sys.stderr,
-        )
-        return 2
-    autonomy_policy.set_flag(root, flag, value)
-    action = "disabled" if value else "enabled"
-    print(f"autonomy flag {flag} → {action} (file: {autonomy_policy.policy_path(root)})")
-    return 0
-
-
 def _utc_now_iso() -> str:
     from datetime import datetime, timezone
 
@@ -754,141 +679,6 @@ def _pending_review_pages(root: Path) -> list[str]:
     return pending
 
 
-def _handle_batch_review_alias(root: Path, args: argparse.Namespace) -> dict[str, object]:
-    note = (getattr(args, "note", None) or "").strip()
-    if not note:
-        raise ValueError("batch-review --note is required (audit trail).")
-    target = getattr(args, "target", "") or ""
-    annotated_note = f"[batch-alias] {note}"
-    if target == "pages":
-        pages = _dispatch_module()._resolve_review_pages(root, None, use_next=False, batch=None, all_pending=True)
-        if not pages:
-            raise RuntimeError("No pending review pages.")
-        status = (getattr(args, "status", None) or "tracking").strip() or "tracking"
-        result = review_pages_batch(root, pages, status, note=annotated_note, confidence=None)
-    elif target == "action":
-        kind = (getattr(args, "kind", None) or "").strip()
-        if not kind:
-            raise ValueError("batch-review action requires --kind.")
-        execution_band = (getattr(args, "execution_band", None) or "review-first").strip() or "review-first"
-        action_ids = _dispatch_module()._resolve_review_action_ids(
-            root,
-            [],
-            all_pending=True,
-            kind=kind,
-            execution_band=execution_band,
-        )
-        if not action_ids:
-            raise RuntimeError(f"No pending {kind} actions in execution_band={execution_band}.")
-        status = (getattr(args, "status", None) or "accepted").strip() or "accepted"
-        result = review_machine_memory_actions_batch(root, action_ids, status, note=annotated_note)
-    elif target == "apply-low-risk":
-        action_ids = _dispatch_module()._resolve_action_ids(
-            root,
-            None,
-            batch=None,
-            all_accepted_low_risk=True,
-        )
-        if not action_ids:
-            raise RuntimeError("No accepted low-risk actions ready for batch apply.")
-        result = apply_machine_memory_actions_batch(
-            root,
-            action_ids,
-            note=annotated_note,
-            dry_run=bool(getattr(args, "dry_run", False)),
-        )
-    else:
-        raise ValueError(f"Unknown batch-review target: {target!r}.")
-    if isinstance(result, dict):
-        result.setdefault("triggered_by", "batch-alias")
-        result.setdefault("alias_target", target)
-    return result
-
-
-def _format_review_next_surface(page: dict[str, object]) -> str:
-    title = str(page.get("title") or page.get("path") or "review-page")
-    path = str(page.get("path") or "")
-    page_kind = str(page.get("kind") or "page")
-    default_transition = str(page.get("default_transition") or "")
-    allowed = page.get("allowed_transitions") or []
-    if not isinstance(allowed, list):
-        allowed = []
-    reasons = page.get("reasons") or []
-    if not isinstance(reasons, list):
-        reasons = []
-    lines = [
-        f"=== {title}",
-        f"  path     : {path}",
-        f"  kind     : {page_kind}",
-        f"  reasons  : {', '.join(str(r) for r in reasons[:5]) or '-'}",
-        f"  default  : {default_transition or '-'}",
-        f"  allowed  : {', '.join(str(a) for a in allowed[:6]) or '-'}",
-    ]
-    return "\n".join(lines)
-
-
-_REVIEW_NEXT_CHOICES: dict[str, str] = {
-    "a": "accepted",
-    "r": "rejected",
-    "t": "tracking",
-}
-
-
-def _handle_review_next(root: Path, args: argparse.Namespace) -> dict[str, object]:
-    limit = max(1, int(getattr(args, "limit", 1) or 1))
-    non_interactive = bool(getattr(args, "non_interactive", False))
-    note = getattr(args, "note", None)
-    annotated_note = f"[review-next] {note.strip()}" if isinstance(note, str) and note.strip() else "[review-next]"
-
-    summary = build_shell_summary(root)
-    review_controls = summary.get("review_controls", {}) if isinstance(summary, dict) else {}
-    pages_raw = review_controls.get("pages", []) if isinstance(review_controls, dict) else []
-    pending = [p for p in pages_raw if isinstance(p, dict) and p.get("can_review") and p.get("path")]
-    pending = pending[:limit]
-
-    surfaces: list[dict[str, object]] = []
-    decisions: list[dict[str, object]] = []
-    for page in pending:
-        block = _format_review_next_surface(page)
-        surfaces.append({"path": str(page.get("path") or ""), "surface": block, "default_transition": str(page.get("default_transition") or "")})
-        if non_interactive:
-            print(block, file=sys.stderr)
-            print("  prompt    : [a]ccept / [r]eject / [t]rack / [s]kip / [q]uit", file=sys.stderr)
-            continue
-
-        print(block, file=sys.stderr)
-        choice = input("  [a]ccept / [r]eject / [t]rack / [s]kip / [q]uit > ").strip().lower()
-        if choice in {"q", "quit"}:
-            break
-        if choice in {"s", "skip", ""}:
-            decisions.append({"path": page.get("path"), "skipped": True})
-            continue
-        target_status = _REVIEW_NEXT_CHOICES.get(choice[:1])
-        if not target_status:
-            allowed = page.get("allowed_transitions") or []
-            target_status = str(page.get("default_transition") or (allowed[0] if isinstance(allowed, list) and allowed else "tracking"))
-        receipt = review_page(
-            root,
-            str(page.get("path") or ""),
-            target_status,
-            note=annotated_note,
-            confidence=None,
-        )
-        if isinstance(receipt, dict):
-            receipt.setdefault("triggered_by", "review-next")
-        decisions.append({"path": page.get("path"), "status": target_status, "receipt": receipt})
-
-    return {
-        "operation": "review-next",
-        "non_interactive": non_interactive,
-        "limit": limit,
-        "surfaced_count": len(surfaces),
-        "surfaces": surfaces,
-        "decisions": decisions,
-        "triggered_by": "review-next",
-    }
-
-
 def _resolve_review_pages(
     root: Path,
     page: str | None,
@@ -917,130 +707,3 @@ def _resolve_review_pages(
     if page:
         return [page]
     raise ValueError("Provide a review page path or use --next/--batch/--all-pending.")
-
-
-def _resolve_review_concept_slugs(
-    root: Path,
-    slugs: list[str],
-    *,
-    all_pending: bool,
-) -> list[str]:
-    """Resolve concept slugs for ``review-concept``.
-
-    - Mutually exclusive: explicit slugs vs ``--all-pending``.
-    - ``--all-pending`` enumerates concepts whose heuristic
-      ``lifecycle_state`` is currently ``revisit`` or ``review`` (the two
-      buckets that this command is built to drain).
-    - Override-active concepts are skipped (no point re-acking).
-    """
-    cleaned = [s.strip() for s in slugs if isinstance(s, str) and s.strip()]
-    if all_pending and cleaned:
-        raise ValueError("Pass slugs OR --all-pending, not both.")
-    if cleaned:
-        return cleaned
-    if not all_pending:
-        raise ValueError("Provide at least one slug or pass --all-pending.")
-    # Lazy import to avoid heavy app_compile import at module load time.
-    from ..execution.lifecycle import refresh_knowledge_lifecycle_runtime as _refresh
-
-    lifecycle = _refresh(root)
-    pending: list[str] = []
-    for entry in lifecycle.get("entries", []) or []:
-        if not isinstance(entry, dict):
-            continue
-        if str(entry.get("kind") or "") != "concept":
-            continue
-        if bool(entry.get("override_active")):
-            continue
-        if str(entry.get("lifecycle_state") or "") not in {"revisit", "review"}:
-            continue
-        slug = str(entry.get("slug") or "").strip()
-        if not slug:
-            # Lifecycle concept entries currently expose only ``path`` (e.g.
-            # ``wiki/concepts/foo.md``); derive slug from the file stem.
-            path = str(entry.get("path") or "")
-            if path:
-                slug = Path(path).stem
-        if slug:
-            pending.append(slug)
-    if not pending:
-        raise RuntimeError("No concepts are currently in the revisit/review buckets.")
-    # Stable order: by lifecycle_state then slug.
-    pending.sort()
-    return pending
-
-
-def _resolve_action_id(root: Path, action_query: str) -> str:
-    normalized_query = action_query.strip()
-    if not normalized_query:
-        raise ValueError("Action id cannot be empty.")
-    state = load_machine_memory_action_state_strict(root)
-    actions = [action for action in state.get("actions", []) if isinstance(action, dict)]
-    if not actions:
-        return normalized_query
-    return str(resolve_machine_memory_action_query(actions, normalized_query).get("id") or normalized_query)
-
-
-def _resolve_review_action_ids(
-    root: Path,
-    action_queries: list[str],
-    *,
-    all_pending: bool,
-    kind: str | None,
-    execution_band: str | None,
-) -> list[str]:
-    cleaned = [item.strip() for item in action_queries if isinstance(item, str) and item.strip()]
-    if all_pending and cleaned:
-        raise ValueError("Pass action ids OR --all-pending, not both.")
-    if cleaned:
-        return [_resolve_action_id(root, item) for item in cleaned]
-    if not all_pending:
-        raise ValueError("Provide at least one action id or pass --all-pending with --kind.")
-    normalized_kind = (kind or "").strip()
-    if not normalized_kind:
-        raise ValueError("review-action --all-pending requires --kind to avoid broad action triage.")
-    normalized_band = (execution_band or "review-first").strip() or "review-first"
-    state = load_machine_memory_action_state_strict(root)
-    action_ids = [
-        str(action.get("id") or "")
-        for action in state.get("actions", [])
-        if isinstance(action, dict)
-        and str(action.get("id") or "")
-        and bool(action.get("active", True))
-        and str(action.get("status") or "") == "proposed"
-        and str(action.get("policy_decision") or "") == "review"
-        and str(action.get("kind") or "") == normalized_kind
-        and str(action.get("execution_band") or "") == normalized_band
-    ]
-    if not action_ids:
-        raise RuntimeError(
-            "No proposed machine-memory actions match "
-            f"kind={normalized_kind!r} execution_band={normalized_band!r}."
-        )
-    return action_ids
-
-
-def _resolve_action_ids(
-    root: Path,
-    action_id: str | None,
-    *,
-    batch: list[str] | None,
-    all_accepted_low_risk: bool,
-) -> list[str]:
-    selected_modes = int(bool(action_id)) + int(bool(batch)) + int(bool(all_accepted_low_risk))
-    if selected_modes != 1:
-        raise ValueError("Provide one action id, or use exactly one of --batch/--all-accepted-low-risk.")
-    if action_id:
-        return [_resolve_action_id(root, action_id)]
-    if batch:
-        return [_resolve_action_id(root, item) for item in batch if item.strip()]
-    state = load_machine_memory_action_state_strict(root)
-    action_ids = [
-        str(action.get("id") or "")
-        for action in state.get("actions", [])
-        if isinstance(action, dict)
-        and action_supports_low_risk_apply(action)
-    ]
-    if not action_ids:
-        raise RuntimeError("No accepted low-risk actions are ready for batch apply.")
-    return action_ids

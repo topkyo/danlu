@@ -1,6 +1,6 @@
 """Rewrite deprecated top-level operator argv into `advanced ...`.
 
-Primary surface stays: drop / today / metrics / advanced.
+Primary surface stays: drop / today / advanced.
 Operator commands are registered only under `advanced`. Old top-level
 invocations are rewritten with a stderr deprecation warning so dogfood
 scripts keep working without dual argparse registration.
@@ -10,11 +10,10 @@ from __future__ import annotations
 
 import sys
 
-PRIMARY_SURFACE_COMMANDS = frozenset({"drop", "today", "metrics", "advanced"})
+PRIMARY_SURFACE_COMMANDS = frozenset({"drop", "today", "advanced"})
 
-# Keep in sync with top-level names registered by
-# `_register_legacy_top_level_parsers` plus former top-level-only operator
-# entries (today-snooze).
+# Keep in sync with operator commands registered under `advanced` that still
+# accept legacy top-level argv rewrite (not W4-cut surfaces).
 LEGACY_TOP_LEVEL_COMMANDS = frozenset({
     "alchemy-demote",
     "alchemy-distill",
@@ -23,43 +22,28 @@ LEGACY_TOP_LEVEL_COMMANDS = frozenset({
     "alchemy-revert",
     "alchemy-start",
     "ask",
-    "auto-once",
-    "autonomy-disable",
-    "autonomy-enable",
-    "autonomy-status",
-    "backend-telemetry",
-    "batch-review",
-    "cache",
     "compile",
-    "dashboard",
     "drop-image",
     "drop-note",
     "drop-pdf",
     "drop-repo",
     "drop-url",
     "file-back",
-    "ingest",
     "layout",
     "lint",
     "llm-check",
-    "llm-telemetry",
+    "metrics",
     "new-vault",
     "nightly",
-    "report-subgraph",
-    "review-next",
     "review-page",
     "review-queue",
     "run-ask",
     "run-ask-resume",
     "run-ask-submit",
     "run-nightly",
-    "search",
     "shell-status",
-    "sync-evidence-graph",
     "sync-product-shell",
-    "today-snooze",
     "trace",
-    "vault-queue-drain",
     "watch",
 })
 

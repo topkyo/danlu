@@ -6,36 +6,19 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from ..app_cache import cache_status_summary, drop_query_cache, force_rebuild_query_cache
 from ..app_linting.core import lint_wiki
 from ..app_protocol import ensure_layout
-from ..app_shell import build_shell_summary, rewrite_followup_payload_for_paths, shell_search, shell_status_dashboard
-from ..app_state import (
-    load_machine_memory_action_state,
-    load_machine_memory_action_state_strict,
-    load_today_snooze_state,
-    save_today_snooze_state,
-)
+from ..app_shell import build_shell_summary, rewrite_followup_payload_for_paths
 from ..app_vault import bootstrap_new_vault, sync_product_shell_plugin
 from ..compile.pipeline import compile_wiki
-from ..content.io import ingest_source
-from ..content.memory import action_supports_low_risk_apply
 from ..drop import drop_image, drop_note, drop_pdf, drop_repo, drop_url
 from ..execution.ask import (
     ask_question,
     file_back,
 )
-from ..execution.machine_memory_actions import (
-    resolve_machine_memory_action_query,
-    review_machine_memory_actions_batch,
-)
-from ..execution.machine_memory_batch import (
-    apply_machine_memory_actions_batch,
-    review_pages_batch,
-)
+from ..execution.machine_memory_batch import review_pages_batch
 from ..execution.review import review_page
 from ..execution.runtime_surfaces import (
     nightly_health,
@@ -49,57 +32,22 @@ from ..runner.alchemy import (
     run_alchemy_revert,
     run_alchemy_start,
 )
-from ..runner.automation import auto_process_once, watch_inbox
+from ..runner.automation import watch_inbox
 from ..runner.clients import llm_probe, llm_status
 from ..runner.workflows import run_ask, run_ask_resume, run_ask_submit, run_nightly
-from ..today_feed import FeedEntry, build_today_feed
-from ..vault_queue import drain_vault_queue
 from .dispatch_helpers import (
-    _action_command,
-    _action_review_item,
-    _build_parser,
-    _classify_review_bucket,
     _emit_legacy_drop_deprecation_warning,
-    _feed_entry_to_review_item,
-    _first_string,
-    _flatten_model_fallback_args,
     _flatten_model_retry_args,
-    _format_feed_entry_line,
-    _format_review_next_surface,
-    _handle_batch_review_alias,
-    _handle_review_next,
     _maybe_auto_process,
-    _metric_to_dict,
-    _page_review_item,
-    _pending_review_pages,
-    _ready_actions_batch_helper,
-    _render_metrics_text,
-    _render_today_text,
-    _resolve_action_id,
-    _resolve_action_ids,
-    _resolve_review_action_ids,
     _resolve_review_pages,
-    _review_action_item,
-    _review_page_command,
-    _review_queue_detail_buckets,
-    _today_feed_to_json,
-    _utc_now_iso,
-    autonomy_set_command,
-    autonomy_status_command,
     metrics_command,
     review_queue_command,
     today_command,
-    today_snooze_command,
     trace_command,
 )
 from .legacy_argv import rewrite_legacy_top_level_argv
 from .parsers import build_parser
-from .universal_input import (
-    _DROP_TYPED_SUBCOMMANDS,
-    _looks_like_local_path,
-    _rewrite_universal_drop_argv,
-    _top_level_drop_index,
-)
+from .universal_input import _rewrite_universal_drop_argv
 
 
 def _resolve_vault_root(args: argparse.Namespace) -> Path:
@@ -135,12 +83,6 @@ def _handle_vault_admin(args: argparse.Namespace, root: Path) -> tuple[object, s
         return _out(bootstrap_new_vault(root, Path(args.target).resolve(), force=args.force))
     if args.handler_command == "sync-product-shell":
         return _out(sync_product_shell_plugin(root, Path(args.target).resolve()))
-    if args.handler_command == "ingest":
-        return _out(ingest_source(root, args.source, title=args.title))
-    if args.handler_command == "sync-evidence-graph":
-        from ..vault_obsidian_graph import sync_evidence_graph_workspace
-
-        return _out(sync_evidence_graph_workspace(root))
     raise ValueError(f"Unsupported command: {args.handler_command}")
 
 
@@ -186,8 +128,6 @@ def _handle_compile_family(args: argparse.Namespace, root: Path) -> tuple[object
 def _handle_live_surface(args: argparse.Namespace, root: Path) -> tuple[object, str | None] | int:
     if args.handler_command == "today":
         return today_command(root, as_json=getattr(args, "json", False))
-    if args.handler_command == "today-snooze":
-        return _out(today_snooze_command(root, target=args.target, days=args.days, note=args.note))
     if args.handler_command == "review-queue":
         return review_queue_command(
             root,
@@ -199,20 +139,8 @@ def _handle_live_surface(args: argparse.Namespace, root: Path) -> tuple[object, 
         return trace_command(root, args.asset_id, direction=args.direction, depth=args.depth, as_json=args.json)
     if args.handler_command == "metrics":
         return metrics_command(root, as_json=args.json, delta=args.delta)
-    if args.handler_command == "autonomy-status":
-        return autonomy_status_command(root, as_json=args.json)
-    if args.handler_command == "autonomy-disable":
-        return autonomy_set_command(root, flag=args.flag, value=True)
-    if args.handler_command == "autonomy-enable":
-        return autonomy_set_command(root, flag=args.flag, value=False)
     if args.handler_command == "shell-status":
         return _out(shell_status(root))
-    if args.handler_command == "dashboard":
-        return _out(shell_status_dashboard(root))
-    if args.handler_command == "search":
-        return _out(shell_search(root, args.query, limit=args.limit))
-    if args.handler_command == "vault-queue-drain":
-        return _out(drain_vault_queue(root, limit=args.limit, execute=args.execute))
     raise ValueError(f"Unsupported command: {args.handler_command}")
 
 
@@ -243,49 +171,7 @@ def _handle_ask_family(args: argparse.Namespace, root: Path) -> tuple[object, st
         return _out(run_ask_submit(root, args.question, args.format, **ask_kwargs))
     if args.handler_command == "run-ask-resume":
         return _out(run_ask_resume(root, args.job_id))
-    if args.handler_command == "report-subgraph":
-        return _handle_report_subgraph(args, root)
     raise ValueError(f"Unsupported command: {args.handler_command}")
-
-
-def _handle_report_subgraph(args: argparse.Namespace, root: Path) -> tuple[object, str | None]:
-    from ..memory.graph import (
-        ReportSubgraphError,
-        build_report_subgraph,
-        render_report_subgraph_markdown,
-    )
-
-    try:
-        subgraph = build_report_subgraph(root, args.report)
-    except ReportSubgraphError as exc:
-        print(f"aiwiki report-subgraph: {exc}", file=sys.stderr)
-        sys.exit(2)
-    markdown = render_report_subgraph_markdown(subgraph)
-    report_path = Path(args.report)
-    default_stem = report_path.stem
-    if args.output:
-        output_path = Path(args.output)
-        if not output_path.is_absolute():
-            output_path = root / output_path
-    else:
-        output_path = root / "output" / "reports" / f"{default_stem}.subgraph.md"
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(markdown, encoding="utf-8")
-    try:
-        relative_out = output_path.relative_to(root)
-        output_rel = str(relative_out).replace("\\", "/")
-    except ValueError:
-        output_rel = str(output_path)
-    return _out(
-        {
-            "kind": "report-subgraph",
-            "report": subgraph["report"],
-            "anchor_node_ids": subgraph["anchor_node_ids"],
-            "output_path": output_rel,
-            "node_count": len(subgraph["nodes"]),
-            "edge_count": len(subgraph["edges"]),
-        }
-    )
 
 
 def _handle_alchemy(args: argparse.Namespace, root: Path) -> tuple[object, str | None]:
@@ -322,10 +208,6 @@ def _handle_review_lifecycle(args: argparse.Namespace, root: Path) -> tuple[obje
     if args.handler_command == "review-page":
         review_pages = _resolve_review_pages(root, args.page, use_next=args.next, batch=args.batch, all_pending=args.all_pending)
         result = review_pages_batch(root, review_pages, args.status, note=args.note, confidence=args.confidence) if len(review_pages) > 1 or args.batch or args.all_pending else review_page(root, review_pages[0], args.status, note=args.note, confidence=args.confidence)
-    elif args.handler_command == "batch-review":
-        result = _handle_batch_review_alias(root, args)
-    elif args.handler_command == "review-next":
-        result = _handle_review_next(root, args)
     else:
         raise ValueError(f"Unsupported command: {args.handler_command}")
     return _out(result)
@@ -351,22 +233,6 @@ def _handle_ops(args: argparse.Namespace, root: Path) -> tuple[object, str | Non
             from aiwiki.cli.llm_check_render import render_llm_check_human
 
             text_output = render_llm_check_human(result)
-    elif args.handler_command == "llm-telemetry":
-        from aiwiki.llm_telemetry import aggregate_llm_telemetry
-
-        result = aggregate_llm_telemetry(root, limit=max(1, int(args.limit)))
-    elif args.handler_command == "backend-telemetry":
-        from aiwiki.llm_telemetry import aggregate_backend_telemetry
-
-        result = aggregate_backend_telemetry(root, limit=max(1, int(args.limit)))
-    elif args.handler_command == "cache":
-        selected_actions = int(bool(args.status)) + int(bool(args.rebuild)) + int(bool(args.drop))
-        if selected_actions != 1:
-            raise ValueError("Provide exactly one of --status, --rebuild, or --drop.")
-        result = cache_status_summary(root) if args.status else force_rebuild_query_cache(root) if args.rebuild else drop_query_cache(root)
-    elif args.handler_command == "auto-once":
-        deterministic_only = not bool(getattr(args, "with_llm", False)) or bool(args.deterministic_only)
-        result = auto_process_once(root, compile_limit=args.compile_limit, deterministic_only=deterministic_only, semantic_lint=not args.no_semantic_lint)
     elif args.handler_command == "watch":
         deterministic_only = not bool(getattr(args, "with_llm", False)) or bool(args.deterministic_only)
         result = watch_inbox(root, interval_seconds=args.interval, compile_limit=args.compile_limit, deterministic_only=deterministic_only, semantic_lint=not args.no_semantic_lint, process_initial=not args.skip_initial, max_cycles=args.max_cycles)
@@ -379,8 +245,6 @@ _VAULT_ADMIN_HANDLERS = {
     "layout": _handle_vault_admin,
     "new-vault": _handle_vault_admin,
     "sync-product-shell": _handle_vault_admin,
-    "ingest": _handle_vault_admin,
-    "sync-evidence-graph": _handle_vault_admin,
 }
 
 _DROP_HANDLERS = {
@@ -398,17 +262,10 @@ _COMPILE_PROTOCOL_HANDLERS = {
 
 _LIVE_SURFACE_HANDLERS = {
     "today": _handle_live_surface,
-    "today-snooze": _handle_live_surface,
     "review-queue": _handle_live_surface,
     "trace": _handle_live_surface,
     "metrics": _handle_live_surface,
-    "autonomy-status": _handle_live_surface,
-    "autonomy-disable": _handle_live_surface,
-    "autonomy-enable": _handle_live_surface,
     "shell-status": _handle_live_surface,
-    "dashboard": _handle_live_surface,
-    "search": _handle_live_surface,
-    "vault-queue-drain": _handle_live_surface,
 }
 
 _ASK_HANDLERS = {
@@ -416,7 +273,6 @@ _ASK_HANDLERS = {
     "run-ask": _handle_ask_family,
     "run-ask-submit": _handle_ask_family,
     "run-ask-resume": _handle_ask_family,
-    "report-subgraph": _handle_ask_family,
 }
 
 _ALCHEMY_HANDLERS = {
@@ -430,8 +286,6 @@ _ALCHEMY_HANDLERS = {
 
 _REVIEW_LIFECYCLE_HANDLERS = {
     "review-page": _handle_review_lifecycle,
-    "batch-review": _handle_review_lifecycle,
-    "review-next": _handle_review_lifecycle,
 }
 
 _RUNTIME_WORKFLOW_HANDLERS = {
@@ -442,10 +296,6 @@ _RUNTIME_WORKFLOW_HANDLERS = {
 
 _OPS_HANDLERS = {
     "llm-check": _handle_ops,
-    "llm-telemetry": _handle_ops,
-    "backend-telemetry": _handle_ops,
-    "cache": _handle_ops,
-    "auto-once": _handle_ops,
     "watch": _handle_ops,
 }
 
@@ -504,8 +354,6 @@ def main(argv: list[str] | None = None) -> int:
 
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
-
-
 
 
 if __name__ == "__main__":

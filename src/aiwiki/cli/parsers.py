@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-PRIMARY_SURFACE_COMMANDS: tuple[str, ...] = ("drop", "today", "metrics", "advanced")
+PRIMARY_SURFACE_COMMANDS: tuple[str, ...] = ("drop", "today", "advanced")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -39,15 +39,6 @@ def build_parser() -> argparse.ArgumentParser:
     today_parser = subparsers.add_parser("today", help="炼丹炉今日产出 / 待办 / 建议")
     today_parser.add_argument("--json", action="store_true", help="JSON 输出（按 section 桶化）")
     today_parser.set_defaults(handler_command="today")
-    metrics_parser = subparsers.add_parser("metrics", help="炼丹炉知识复利指标")
-    metrics_parser.add_argument("--json", action="store_true", help="JSON 输出")
-    metrics_parser.add_argument(
-        "--delta",
-        choices=["7d", "30d"],
-        default=None,
-        help="对比 7 天前 / 30 天前 baseline（基于 .aiwiki/state/metrics-history.jsonl）",
-    )
-    metrics_parser.set_defaults(handler_command="metrics")
     drop_parser = subparsers.add_parser("drop", help="炼丹炉输入端：投喂 URL / PDF / 图片 / 仓库 / Markdown / 问题")
     drop_subparsers = drop_parser.add_subparsers(dest="drop_command", required=True)
     _register_drop_subcommand_parsers(drop_subparsers)
@@ -84,35 +75,15 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
 
     subparsers.add_parser("layout", help="Create the expected directory layout.")
 
-    today_snooze_parser = subparsers.add_parser("today-snooze", help="把 Today 中的确认项暂时隐藏。")
-    today_snooze_parser.add_argument("target", help="要隐藏的 Today entry target（通常是 review:<bucket> 或 wiki/... 路径）")
-    today_snooze_parser.add_argument("--days", type=int, default=1, help="隐藏天数，默认 1 天。")
-    today_snooze_parser.add_argument("--note", default="", help="可选备注。")
-    today_snooze_parser.set_defaults(handler_command="today-snooze")
-
-    autonomy_status_parser = subparsers.add_parser(
-        "autonomy-status",
-        help="炼丹炉自动化 kill switch 状态：policy 文件 + 全局 override + 4 flag effective 状态。",
+    metrics_parser = subparsers.add_parser("metrics", help="炼丹炉知识复利指标")
+    metrics_parser.add_argument("--json", action="store_true", help="JSON 输出")
+    metrics_parser.add_argument(
+        "--delta",
+        choices=["7d", "30d"],
+        default=None,
+        help="对比 7 天前 / 30 天前 baseline（基于 .aiwiki/state/metrics-history.jsonl）",
     )
-    autonomy_status_parser.add_argument("--json", action="store_true", help="JSON 输出")
-    autonomy_status_parser.set_defaults(handler_command="autonomy-status")
-
-    autonomy_disable_parser = subparsers.add_parser(
-        "autonomy-disable",
-        help="开启某个 autonomy flag（写入 .aiwiki/state/autonomy-policy.json）。",
-    )
-    autonomy_disable_parser.add_argument(
-        "flag",
-        help="flag 名（disable_lane_apply / disable_alchemy_auto / disable_l3_generate / disable_external_llm）",
-    )
-    autonomy_disable_parser.set_defaults(handler_command="autonomy-disable")
-
-    autonomy_enable_parser = subparsers.add_parser(
-        "autonomy-enable",
-        help="关闭某个 autonomy flag。",
-    )
-    autonomy_enable_parser.add_argument("flag", help="flag 名（同 autonomy-disable）")
-    autonomy_enable_parser.set_defaults(handler_command="autonomy-enable")
+    metrics_parser.set_defaults(handler_command="metrics")
 
     trace_parser = subparsers.add_parser(
         "trace",
@@ -154,45 +125,12 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
     )
     sync_product_shell_parser.add_argument("target", help="Target vault directory to update.")
 
-    ingest_parser = subparsers.add_parser("ingest", help="Ingest a local file or URL stub.")
-    ingest_parser.add_argument("source", help="Local file path or URL.")
-    ingest_parser.add_argument("--title", help="Optional display title.")
-
-    _configure_drop_url_parser(subparsers.add_parser("drop-url", help="Fetch a web page into raw/inbox as source material."))
-    _configure_drop_pdf_parser(subparsers.add_parser("drop-pdf", help="Import a PDF asset into raw/assets without rewriting it."))
-    _configure_drop_image_parser(
-        subparsers.add_parser("drop-image", help="Import an image asset into raw/assets without converting it to markdown.")
-    )
-    _configure_drop_repo_parser(subparsers.add_parser("drop-repo", help="Snapshot a local or remote repo into raw/inbox."))
-    _configure_drop_note_parser(
-        subparsers.add_parser(
-            "drop-note",
-            help="Legacy alias for capturing markdown/text into raw/inbox; prefer `drop markdown`.",
-        )
-    )
-
     subparsers.add_parser("compile", help="Compile manifest entries into wiki source pages and indexes.")
-    subparsers.add_parser(
-        "sync-evidence-graph",
-        help="Restore Obsidian Graph to the evidence-only view (reports, sources, raw; no concepts).",
-    )
 
     subparsers.add_parser(
         "shell-status",
         help="Write and return the Product Shell summary contract for front-end workbench integrations.",
     )
-    subparsers.add_parser("dashboard", help="Return the Product Shell dashboard contract.")
-
-    vault_queue_drain_parser = subparsers.add_parser(
-        "vault-queue-drain",
-        help="Drain mobile companion requests from .aiwiki/queue. Defaults to dry-run.",
-    )
-    vault_queue_drain_parser.add_argument("--execute", action="store_true", help="Execute supported pending queue items.")
-    vault_queue_drain_parser.add_argument("--limit", type=int, default=5, help="Maximum queue items to inspect or drain.")
-
-    search_parser = subparsers.add_parser("search", help="Search compiled wiki pages from the Product Shell.")
-    search_parser.add_argument("query", help="Search query.")
-    search_parser.add_argument("--limit", type=int, default=12, help="Maximum number of results to return.")
 
     ask_parser = subparsers.add_parser("ask", help="Generate a query artifact grounded in the wiki.")
     _configure_ask_parser(ask_parser)
@@ -263,22 +201,6 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
         help="Resume a previously submitted background report job.",
     )
     run_ask_resume_parser.add_argument("--job-id", required=True, help="Background job id returned by run-ask-submit.")
-
-    report_subgraph_parser = subparsers.add_parser(
-        "report-subgraph",
-        help="Generate a 1-hop subgraph markdown anchored at a single report's graph_anchor_node_ids.",
-    )
-    report_subgraph_parser.add_argument(
-        "--report",
-        required=True,
-        help="Path to the report markdown (relative to root or absolute).",
-    )
-    report_subgraph_parser.add_argument(
-        "--output",
-        default=None,
-        help="Optional output path. Defaults to output/reports/<stem>.subgraph.md next to the report.",
-    )
-    report_subgraph_parser.set_defaults(handler_command="report-subgraph")
 
     file_back_parser = subparsers.add_parser(
         "file-back",
@@ -370,72 +292,6 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
     review_queue_parser.add_argument("--json", action="store_true", help="Structured JSON output.")
     review_queue_parser.set_defaults(handler_command="review-queue")
 
-    batch_review_parser = subparsers.add_parser(
-        "batch-review",
-        help=(
-            "One-shot alias that routes a batch decision through existing review primitives "
-            "(review-page --all-pending). User must still pick the batch and supply --note; "
-            "runtime never auto-adopts."
-        ),
-    )
-    batch_review_parser.add_argument(
-        "target",
-        choices=("pages", "action", "apply-low-risk"),
-        help=(
-            "Batch target: pages = pending decision/judgment review pages; "
-            "action = machine-memory action review (requires --kind); "
-            "apply-low-risk = batch apply currently accepted low-risk actions."
-        ),
-    )
-    batch_review_parser.add_argument(
-        "--note",
-        required=True,
-        help="Required note explaining the batch decision (stored in batch receipt for audit).",
-    )
-    batch_review_parser.add_argument(
-        "--kind",
-        help="Action kind filter (required when target=action).",
-    )
-    batch_review_parser.add_argument(
-        "--status",
-        help="Optional status override (default: tracking for pages, accepted for action).",
-    )
-    batch_review_parser.add_argument(
-        "--execution-band",
-        default="review-first",
-        help="Execution band filter for target=action (default: review-first).",
-    )
-    batch_review_parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Preview only (target=apply-low-risk).",
-    )
-    batch_review_parser.set_defaults(handler_command="batch-review")
-
-    review_next_parser = subparsers.add_parser(
-        "review-next",
-        help=(
-            "Interactive review workflow: surface the highest-priority review page, prompt for a/r/t/s/q, "
-            "write the explicit review receipt, and continue. Each step is still a user-driven decision."
-        ),
-    )
-    review_next_parser.add_argument(
-        "--limit",
-        type=int,
-        default=1,
-        help="Maximum number of items to surface in this run (default: 1).",
-    )
-    review_next_parser.add_argument(
-        "--non-interactive",
-        action="store_true",
-        help="Print the surface block without reading stdin or writing receipts (CI / preview mode).",
-    )
-    review_next_parser.add_argument(
-        "--note",
-        help="Optional review note applied to every accepted decision in this run.",
-    )
-    review_next_parser.set_defaults(handler_command="review-next")
-
     subparsers.add_parser("lint", help="Run deterministic lint checks against the wiki.")
     subparsers.add_parser("nightly", help="Run deterministic compile + lint and write nightly repair artifacts.")
     run_nightly_parser = subparsers.add_parser(
@@ -475,71 +331,6 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
         choices=["json", "human"],
         default="json",
         help="Output format. 'human' renders a backend compatibility table; 'json' (default) preserves machine-readable schema.",
-    )
-
-    llm_telemetry_parser = subparsers.add_parser(
-        "llm-telemetry",
-        help="Aggregate recent LLM run receipts (backend/model success rate, latency, errors).",
-    )
-    llm_telemetry_parser.add_argument(
-        "--limit",
-        type=int,
-        default=50,
-        help="Number of recent receipts to aggregate (default: 50).",
-    )
-
-    backend_telemetry_parser = subparsers.add_parser(
-        "backend-telemetry",
-        help="Aggregate recent execution receipts (operations, status, LLM backend when present).",
-    )
-    backend_telemetry_parser.add_argument(
-        "--limit",
-        type=int,
-        default=100,
-        help="Number of recent execution receipts to aggregate (default: 100).",
-    )
-
-    cache_parser = subparsers.add_parser("cache", help="Inspect, rebuild, or drop the volatile SQLite query cache.")
-    cache_parser.add_argument(
-        "--status",
-        action="store_true",
-        help="Show the current cache status summary.",
-    )
-    cache_parser.add_argument(
-        "--rebuild",
-        action="store_true",
-        help="Force a rebuild of the volatile cache from the latest snapshot.",
-    )
-    cache_parser.add_argument(
-        "--drop",
-        action="store_true",
-        help="Delete `.aiwiki/cache.db` unconditionally.",
-    )
-
-    auto_once_parser = subparsers.add_parser(
-        "auto-once",
-        help="Automatically process the inbox once: compile, summarize, and lint.",
-    )
-    auto_once_parser.add_argument(
-        "--compile-limit",
-        type=int,
-        default=5,
-        help="Maximum number of pending source pages to summarize in one run.",
-    )
-    auto_once_parser.add_argument(
-        "--deterministic-only",
-        action="store_true",
-        help="Compatibility no-op: auto-once is deterministic-only unless --with-llm is provided.",
-    )
-    auto_once_parser.add_argument(
-        "--with-llm",
-        action="store_true",
-        help="Opt in to LLM compile + semantic lint for this auto-once run.",
-    )
-    auto_once_parser.add_argument(
-        "--no-semantic-lint",
-        action="store_true",
-        help="Skip the LLM semantic lint pass.",
     )
 
     watch_parser = subparsers.add_parser(
