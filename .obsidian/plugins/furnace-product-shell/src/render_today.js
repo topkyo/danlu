@@ -642,11 +642,6 @@ function todayFeedActions(plugin, entry) {
         description: `Open review surface: ${target}`,
         onClick: async () => plugin.openReviewCenterView(),
       },
-      {
-        label: "Snooze",
-        description: `Snooze today item: ${target}`,
-        onClick: async () => plugin.runTodaySnoozeCommand(target),
-      },
     ];
   }
   if (isWorkspaceTarget(target)) {

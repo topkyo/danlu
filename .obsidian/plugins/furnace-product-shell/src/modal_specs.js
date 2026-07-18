@@ -1,30 +1,5 @@
 // Structured command modal specs for Product Shell operator actions.
 
-function buildReportSubgraphModalSpec(plugin, candidates) {
-  const reportCandidates = Array.isArray(candidates) ? candidates : [];
-  const fieldSpec = {
-    key: "reportPath",
-    label: plugin.t("Report path"),
-    placeholder: "output/reports/...md",
-    required: true,
-  };
-  if (reportCandidates.length) {
-    fieldSpec.kind = "select";
-    fieldSpec.options = reportCandidates;
-    fieldSpec.initialValue = reportCandidates[0].value;
-  }
-  return {
-    title: plugin.t("View report graph"),
-    description: reportCandidates.length
-      ? plugin.t("Choose a recent report.")
-      : plugin.t("No recent reports available; enter a path manually."),
-    fields: [fieldSpec],
-    onSubmit: async (values) => {
-      await plugin.runReportSubgraphCommand({ reportPath: values.reportPath });
-    },
-  };
-}
-
 function buildFileBackModalSpec(plugin, prefill = {}) {
   return {
     title: plugin.t("File Back"),
@@ -274,11 +249,11 @@ function buildApplyActionModalSpec(plugin, prefill = {}) {
       { key: "dry_run", label: plugin.t("Dry run"), kind: "toggle", initialValue: Boolean(prefill.dryRun) },
     ],
     onSubmit: async (values) => {
-      const args = ["apply-low-risk", "--note", values.note || "Apply accepted low-risk repair"];
-      if (values.dry_run) {
-        args.push("--dry-run");
+      if (typeof plugin.runApplyAllAcceptedLowRiskCommand === "function") {
+        await plugin.runApplyAllAcceptedLowRiskCommand();
+        return;
       }
-      await plugin.runCliAction(`Apply All Low-Risk`, "batch-review", args);
+      new Notice(plugin.t("Batch review was removed in W4; use review-page for explicit page transitions."));
     },
   };
 }

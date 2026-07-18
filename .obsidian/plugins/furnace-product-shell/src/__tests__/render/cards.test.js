@@ -44,7 +44,6 @@ function makeMockPlugin() {
     openWorkspacePath: jest.fn().mockResolvedValue(true),
     runReportSubgraphCommand: jest.fn().mockResolvedValue(),
     openReviewCenterView: jest.fn().mockResolvedValue(),
-    runTodaySnoozeCommand: jest.fn().mockResolvedValue(),
     runCompoundFileBack: jest.fn().mockResolvedValue(),
     openCompoundAlchemyStart: jest.fn(),
   };
@@ -111,25 +110,9 @@ test("isReportUnread returns false when report is older", () => {
 });
 
 describe("renderReportCard", () => {
-  test("renders View graph button in advanced mode", async () => {
+  test("does not render View graph button after W4 report-subgraph removal", () => {
     const plugin = makeMockPlugin();
     plugin.settings.showAdvancedCommands = true;
-    const cardEl = document.createElement("div");
-
-    renderReportCard(plugin, cardEl, { target: "output/reports/foo.md" });
-
-    const graphBtn = Array.from(cardEl.querySelectorAll("button")).find((btn) => btn.textContent === "View graph");
-    expect(graphBtn).toBeTruthy();
-
-    graphBtn.click();
-    await Promise.resolve();
-
-    expect(plugin.runReportSubgraphCommand).toHaveBeenCalledWith({ reportPath: "output/reports/foo.md" });
-  });
-
-  test("does not render View graph button when advanced mode is disabled", () => {
-    const plugin = makeMockPlugin();
-    plugin.settings.showAdvancedCommands = false;
     const cardEl = document.createElement("div");
 
     renderReportCard(plugin, cardEl, { target: "output/reports/foo.md" });
@@ -186,7 +169,7 @@ describe("renderReportCard", () => {
 });
 
 describe("renderConfirmationCard", () => {
-  test("review and snooze buttons call existing plugin APIs", async () => {
+  test("review button opens Review Center without snooze after W4", async () => {
     const plugin = makeMockPlugin();
     const cardEl = document.createElement("div");
 
@@ -195,11 +178,12 @@ describe("renderConfirmationCard", () => {
     const reviewBtn = Array.from(cardEl.querySelectorAll("button")).find((btn) => btn.textContent === "Review");
     const snoozeBtn = Array.from(cardEl.querySelectorAll("button")).find((btn) => btn.textContent === "Snooze");
 
+    expect(reviewBtn).toBeTruthy();
+    expect(snoozeBtn).toBeUndefined();
+
     reviewBtn.click();
-    snoozeBtn.click();
     await Promise.resolve();
 
     expect(plugin.openReviewCenterView).toHaveBeenCalled();
-    expect(plugin.runTodaySnoozeCommand).toHaveBeenCalledWith("review:pending-item");
   });
 });

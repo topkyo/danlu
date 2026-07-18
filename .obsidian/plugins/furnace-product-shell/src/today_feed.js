@@ -384,7 +384,6 @@ function isMaintenanceCommandAction(target, reason) {
   if (reasonText.startsWith("batch-hint:")) return true;
   const maintenanceTokens = [
     " review-page ",
-    " batch-review ",
   ];
   return maintenanceTokens.some((token) => targetText.includes(token));
 }

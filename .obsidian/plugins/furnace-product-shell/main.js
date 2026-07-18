@@ -1599,17 +1599,6 @@ function buildAskCommandSpec({ question, format, mode }) {
   };
 }
 
-function buildReportSubgraphCommandSpec(reportPath) {
-  const normalized = String(reportPath || "").trim();
-  return {
-    normalized,
-    args: ["report-subgraph", "--report", normalized],
-    labelKey: "View report graph",
-    labelSubject: normalized,
-    options: { refreshAfter: true },
-  };
-}
-
 function buildDropUrlCommandSpec({ url, title }) {
   const args = ["drop", "url", url];
   if (title) {
@@ -2636,7 +2625,6 @@ function isMaintenanceCommandAction(target, reason) {
   if (reasonText.startsWith("batch-hint:")) return true;
   const maintenanceTokens = [
     " review-page ",
-    " batch-review ",
   ];
   return maintenanceTokens.some((token) => targetText.includes(token));
 }
@@ -2926,63 +2914,6 @@ class CaptureNoteModal extends Modal {
     }, function () { self.close(); });
 
     textInput.focus();
-  }
-}
-
-class SearchCommandModal extends Modal {
-  constructor(app, plugin) {
-    super(app);
-    this.plugin = plugin;
-  }
-
-  onOpen() {
-    const { contentEl } = this;
-    const t = this.plugin.t.bind(this.plugin);
-    contentEl.empty();
-    contentEl.addClass("furnace-shell-view");
-    contentEl.createEl("h2", { text: t("搜索知识库") });
-    contentEl.createDiv({ cls: "furnace-modal-help", text: t("搜索 wiki、概念、判断、决策和派生页面。") });
-
-    const querySetting = new Setting(contentEl).setName(t("关键词"));
-    querySetting.nameEl.addClass("furnace-modal-field-required");
-    const queryInput = querySetting.controlEl.createEl("textarea");
-    queryInput.rows = 3;
-    queryInput.placeholder = t("输入关键词搜索……");
-    queryInput.addClass("furnace-shell-code");
-    const queryError = querySetting.controlEl.createDiv({ cls: "furnace-modal-error" });
-
-    var tagsRow = contentEl.createDiv({ cls: "furnace-modal-tags" });
-    ["来源", "概念", "判断", "决策", "报告"].forEach(function (tag) {
-      var tagEl = tagsRow.createDiv({ cls: "furnace-modal-tag", text: tag });
-      tagEl.addEventListener("click", function () {
-        var current = String(queryInput.value || "").trim();
-        queryInput.value = current ? current + " " + tag : tag;
-        queryInput.focus();
-      });
-    });
-
-    const limitSetting = new Setting(contentEl).setName(t("结果数量"));
-    const limitInput = limitSetting.controlEl.createEl("input", { type: "text" });
-    limitInput.value = "8";
-    limitInput.addClass("furnace-shell-code");
-
-    const self = this;
-    modalSubmitRow(contentEl, t("搜索"), t("取消"), function (btn) {
-      const query = String(queryInput.value || "").trim();
-      if (!query) {
-        showInlineError(queryError, t("搜索关键词不能为空。"));
-        return;
-      }
-      clearInlineError(queryError);
-      setSubmitLoading(btn, t("搜索中…"));
-      const parsedLimit = Number.parseInt(String(limitInput.value || "8"), 10);
-      self.close();
-      self.plugin.runUiAction(function () {
-        return self.plugin.runShellSearchCommand(query, Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 8);
-      }, t("搜索"));
-    }, function () { self.close(); });
-
-    queryInput.focus();
   }
 }
 
@@ -3940,15 +3871,6 @@ function renderReportCard(plugin, cardEl, entry) {
     plugin.openWorkspacePath(entry.target);
   });
 
-  // 仅 advanced mode 显示 View graph 按钮 (EP-004 SC#2)
-  if (plugin.settings && plugin.settings.showAdvancedCommands) {
-    const graphBtn = actions.createEl("button", {
-      text: plugin.t("View graph"),
-    });
-    graphBtn.addEventListener("click", async () => {
-      await plugin.runReportSubgraphCommand({ reportPath: entry.target });
-    });
-  }
 }
 
 function renderCompoundSuggestActionCard(plugin, cardEl, entry) {
@@ -3993,12 +3915,6 @@ function renderConfirmationCard(plugin, cardEl, entry) {
       plugin.openReviewCenterView();
     });
 
-    const snoozeBtn = actions.createEl("button", {
-      text: plugin.t("Snooze"),
-    });
-    snoozeBtn.addEventListener("click", () => {
-      plugin.runTodaySnoozeCommand(entry.target);
-    });
   }
 }
 
@@ -4603,36 +4519,13 @@ function renderStatusPanel(plugin, container) {
   ]);
 }
 
-function resolveBatchHintInvocation(plugin, action) {
-  // Round 43 / Stage C: batch hint commands -> existing pickers / runners.
-  // Returns { label, run } or null when the action is not a recognised batch hint.
+function resolveBatchHintInvocation(_plugin, action) {
   if (!action || typeof action !== "object") {
     return null;
   }
   const kind = String(action.kind || "");
-  if (kind !== "batch-review" && kind !== "batch-apply") {
+  if (kind === "batch-review" || kind === "batch-apply") {
     return null;
-  }
-  const command = String(action.command || "");
-  if (kind === "batch-apply" && command.includes("batch-review apply-low-risk")) {
-    return {
-      label: plugin.t("Run batch"),
-      run: () => plugin.runApplyAllAcceptedLowRiskCommand(),
-    };
-  }
-  if (kind === "batch-review" && command.includes("review-page --all-pending")) {
-    return {
-      label: plugin.t("Run batch"),
-      run: () => plugin.openReviewBatchSuggestionPicker(),
-    };
-  }
-  if (kind === "batch-review" && command.includes("batch-review action")) {
-    // Action-kind batch review still routes through the batch suggestion picker;
-    // the picker filters to the active suggestion bundle, so the same entry point works.
-    return {
-      label: plugin.t("Run batch"),
-      run: () => plugin.openReviewBatchSuggestionPicker(),
-    };
   }
   return null;
 }
@@ -5751,11 +5644,6 @@ function todayFeedActions(plugin, entry) {
         description: `Open review surface: ${target}`,
         onClick: async () => plugin.openReviewCenterView(),
       },
-      {
-        label: "Snooze",
-        description: `Snooze today item: ${target}`,
-        onClick: async () => plugin.runTodaySnoozeCommand(target),
-      },
     ];
   }
   if (isWorkspaceTarget(target)) {
@@ -6072,9 +5960,7 @@ function renderAdvancedDrawer(plugin, container) {
     title: plugin.t("系统状态"),
     summaryText: buildStatusSectionSummary(plugin),
     render: (el) => {
-      plugin.renderMainHeader(el);
       plugin.renderStatusPanel(el);
-      renderAdvancedMetricsPanel(plugin, el);
     },
   });
 
@@ -6179,15 +6065,6 @@ function renderHistorySectionBody(plugin, container) {
         } catch (error) {}
       },
     },
-    {
-      key: "open-execution-center",
-      label: plugin.t("Open Execution Center"),
-      onClick: () => {
-        try {
-          plugin.openExecutionCenterView();
-        } catch (error) {}
-      },
-    },
   ];
   if (typeof plugin.renderInlineButtons === "function") {
     plugin.renderInlineButtons(container, buttons, "furnace-advanced-section-actions");
@@ -6235,80 +6112,6 @@ function advancedDrawerCounts(plugin) {
   return { review, execution: actionCount + archiveCount, runs };
 }
 
-function renderAdvancedMetricsPanel(plugin, container) {
-  const summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : null;
-  if (!summary) return;
-  
-  const metrics = Array.isArray(summary.metrics) ? summary.metrics : [];
-  
-  const section = container.createDiv({ cls: "furnace-advanced-metrics" });
-  section.createEl("h3", { text: plugin.t("Knowledge Compounding Metrics") });
-  
-  if (!metrics.length) {
-    section.createEl("div", {
-      cls: "furnace-advanced-metrics-empty",
-      text: plugin.t("(metrics unavailable; run aiwiki metrics for details)"),
-    });
-    return;
-  }
-  
-  const list = section.createEl("ul", { cls: "furnace-advanced-metrics-list" });
-  
-  const labels = {
-    provenance_completeness: plugin.t("Provenance Completeness"),
-    stale_ratio: plugin.t("Stale Page Ratio"),
-    review_closure_rate: plugin.t("Review Closure Rate (7d)"),
-    proposal_acceptance_rate: plugin.t("Proposal Acceptance Rate"),
-    judgment_revisit_rate: plugin.t("Judgment Revisit Rate"),
-    output_file_back_rate: plugin.t("Output File-back Rate"),
-    elixir_reuse_count: plugin.t("Elixir Reuse Count"),
-  };
-  
-  for (const m of metrics) {
-    if (!m || typeof m !== "object") continue;
-    const li = list.createEl("li", { cls: "furnace-advanced-metrics-item" });
-    const labelText = labels[m.key] || m.key;
-    li.createEl("span", { cls: "furnace-advanced-metrics-label", text: labelText });
-    
-    if (m.value === null || m.value === undefined) {
-      li.createEl("span", {
-        cls: "furnace-advanced-metrics-value furnace-advanced-metrics-unavailable",
-        text: plugin.t("unavailable"),
-      });
-      if (m.reason) {
-        li.createEl("span", {
-          cls: "furnace-advanced-metrics-reason",
-          text: ` — ${m.reason}`,
-        });
-      }
-    } else {
-      const formatted = formatMetricValue(m.value, m.unit);
-      li.createEl("span", {
-        cls: "furnace-advanced-metrics-value",
-        text: formatted,
-      });
-      if (typeof m.sample_size === "number" && m.sample_size > 0) {
-        li.createEl("span", {
-          cls: "furnace-advanced-metrics-sample",
-          text: ` (n=${m.sample_size})`,
-        });
-      }
-    }
-  }
-  
-  section.createEl("div", {
-    cls: "furnace-advanced-metrics-hint",
-    text: plugin.t("Run `aiwiki metrics --json` for full data."),
-  });
-}
-
-function formatMetricValue(value, unit) {
-  if (typeof value !== "number") return String(value);
-  if (unit === "ratio") return (value * 100).toFixed(1) + "%";
-  if (unit === "percent") return value.toFixed(1) + "%";
-  if (unit === "count") return String(value);
-  return String(value);
-}
 
 // --- src/render_runs.js ---
 
@@ -7515,31 +7318,6 @@ function openContextAwareActionForSpec(plugin, spec) {
 
 // Structured command modal specs for Product Shell operator actions.
 
-function buildReportSubgraphModalSpec(plugin, candidates) {
-  const reportCandidates = Array.isArray(candidates) ? candidates : [];
-  const fieldSpec = {
-    key: "reportPath",
-    label: plugin.t("Report path"),
-    placeholder: "output/reports/...md",
-    required: true,
-  };
-  if (reportCandidates.length) {
-    fieldSpec.kind = "select";
-    fieldSpec.options = reportCandidates;
-    fieldSpec.initialValue = reportCandidates[0].value;
-  }
-  return {
-    title: plugin.t("View report graph"),
-    description: reportCandidates.length
-      ? plugin.t("Choose a recent report.")
-      : plugin.t("No recent reports available; enter a path manually."),
-    fields: [fieldSpec],
-    onSubmit: async (values) => {
-      await plugin.runReportSubgraphCommand({ reportPath: values.reportPath });
-    },
-  };
-}
-
 function buildFileBackModalSpec(plugin, prefill = {}) {
   return {
     title: plugin.t("File Back"),
@@ -7789,11 +7567,11 @@ function buildApplyActionModalSpec(plugin, prefill = {}) {
       { key: "dry_run", label: plugin.t("Dry run"), kind: "toggle", initialValue: Boolean(prefill.dryRun) },
     ],
     onSubmit: async (values) => {
-      const args = ["apply-low-risk", "--note", values.note || "Apply accepted low-risk repair"];
-      if (values.dry_run) {
-        args.push("--dry-run");
+      if (typeof plugin.runApplyAllAcceptedLowRiskCommand === "function") {
+        await plugin.runApplyAllAcceptedLowRiskCommand();
+        return;
       }
-      await plugin.runCliAction(`Apply All Low-Risk`, "batch-review", args);
+      new Notice(plugin.t("Batch review was removed in W4; use review-page for explicit page transitions."));
     },
   };
 }
@@ -8871,55 +8649,6 @@ async function runProductShellDroppedFilesWithAutoAsk(plugin, { files, question 
   });
 }
 
-async function runProductShellReportSubgraphCommand(plugin, { reportPath }) {
-  const spec = buildReportSubgraphCommandSpec(reportPath);
-  if (!spec.normalized) {
-    new Notice(plugin.t("Report path cannot be empty."));
-    return;
-  }
-  const payload = await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
-  const outputPath = payload && typeof payload.output_path === "string" ? payload.output_path.trim() : "";
-  if (outputPath) {
-    await plugin.openWorkspacePath(outputPath);
-  }
-  return payload;
-}
-
-function collectProductShellReportCandidates(plugin) {
-  const summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : null;
-  if (!summary) return [];
-  const outputs = Array.isArray(summary.recent_outputs) ? summary.recent_outputs : [];
-  const seen = new Set();
-  const candidates = [];
-  for (const item of outputs) {
-    if (!item || typeof item !== "object") continue;
-    const candidatePath = String(item.path || "").trim();
-    if (!candidatePath || !candidatePath.startsWith("output/reports/")) continue;
-    const deliveryMode = String(item.delivery_mode || "").trim();
-    const llmStatus = String(item.llm_status || "").trim();
-    const backgroundStatus = String(item.background_status || "").trim();
-    const artifactQuality = String(item.artifact_quality || "").trim();
-    const containsPlaceholder = String(item.contains_llm_placeholder || "").trim().toLowerCase();
-    const rawTitle = String(item.title || "").trim();
-    if (deliveryMode === "deterministic-fallback" || deliveryMode === "llm-failed") continue;
-    if (["timeout_or_unavailable", "validation_failed", "pending", "failed", "degraded"].includes(llmStatus)) continue;
-    if (["submitted", "running", "degraded"].includes(backgroundStatus)) continue;
-    if (["degraded", "placeholder"].includes(artifactQuality)) continue;
-    if (["1", "true", "yes"].includes(containsPlaceholder)) continue;
-    if (rawTitle.startsWith("LLM 未完成")) continue;
-    if (seen.has(candidatePath)) continue;
-    seen.add(candidatePath);
-    const title = rawTitle || candidatePath;
-    candidates.push({ value: candidatePath, label: `${title} — ${candidatePath}` });
-  }
-  return candidates;
-}
-
-function openProductShellReportSubgraphPicker(plugin) {
-  const candidates = plugin.collectReportCandidates();
-  plugin.openStructuredCommandModal(buildReportSubgraphModalSpec(plugin, candidates));
-}
-
 async function runProductShellDropUrlCommand(plugin, { url, title }) {
   const spec = buildDropUrlCommandSpec({ url, title });
   await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
@@ -9909,7 +9638,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async runReviewActionTransition(actionId, status) {
-    new Notice(this.t("Machine-memory action commands were removed in W3; use batch-review or review-page instead."));
+    new Notice(this.t("Machine-memory action commands were removed in W3; use review-page instead."));
   }
 
   visibleReviewPageCandidates() {
@@ -10048,39 +9777,15 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async runTodaySnoozeCommand(target, days = 1) {
-    const normalizedTarget = String(target || "").trim();
-    if (!normalizedTarget) {
-      return;
-    }
-    await this.runPluginCommand(
-      `${this.t("Snooze")}: ${truncateText(normalizedTarget, 48)}`,
-      ["today-snooze", normalizedTarget, "--days", String(days)],
-      { refreshAfter: true }
-    );
+    new Notice(this.t("Today snooze was removed in W4; open Review Center or handle the item directly."));
   }
 
   async runShellSearchCommand(query, limit = 8) {
-    const normalizedQuery = String(query || "").trim();
-    if (!normalizedQuery) {
-      new Notice(this.t("Search query cannot be empty."));
-      return;
-    }
-    const parsedLimit = Number.parseInt(String(limit || 8), 10);
-    await this.runPluginCommand(
-      `${this.t("Search")}: ${truncateText(normalizedQuery, 48)}`,
-      ["search", normalizedQuery, "--limit", String(Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 8)],
-      { refreshAfter: false, notice: false }
-    );
-    await this.loadShellSummaryFromDisk();
-    new Notice(this.t("Search completed: {query}", { query: truncateText(normalizedQuery, 60) }));
+    new Notice(this.t("Shell search was removed in W4; use Obsidian search and wiki pages instead."));
   }
 
   async runApplyAllAcceptedLowRiskCommand() {
-    await this.runCliAction(this.t("Apply All Low-Risk"), "batch-review", [
-      "apply-low-risk",
-      "--note",
-      "Product Shell batch apply low-risk repairs",
-    ]);
+    new Notice(this.t("Batch review was removed in W4; use review-page for explicit page transitions."));
   }
 
   async runRevertLastBatchCommand() {
@@ -10184,15 +9889,15 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async runReportSubgraphCommand({ reportPath }) {
-    return runProductShellReportSubgraphCommand(this, { reportPath });
+    new Notice(this.t("Report subgraph was removed in W4; open graph artifacts from output/ manually if needed."));
   }
 
   collectReportCandidates() {
-    return collectProductShellReportCandidates(this);
+    return [];
   }
 
   openReportSubgraphPicker() {
-    return openProductShellReportSubgraphPicker(this);
+    this.runReportSubgraphCommand({ reportPath: "" });
   }
 
   async runDropUrlCommand({ url, title }) {

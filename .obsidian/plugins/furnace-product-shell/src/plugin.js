@@ -349,7 +349,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async runReviewActionTransition(actionId, status) {
-    new Notice(this.t("Machine-memory action commands were removed in W3; use batch-review or review-page instead."));
+    new Notice(this.t("Machine-memory action commands were removed in W3; use review-page instead."));
   }
 
   visibleReviewPageCandidates() {
@@ -488,39 +488,15 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async runTodaySnoozeCommand(target, days = 1) {
-    const normalizedTarget = String(target || "").trim();
-    if (!normalizedTarget) {
-      return;
-    }
-    await this.runPluginCommand(
-      `${this.t("Snooze")}: ${truncateText(normalizedTarget, 48)}`,
-      ["today-snooze", normalizedTarget, "--days", String(days)],
-      { refreshAfter: true }
-    );
+    new Notice(this.t("Today snooze was removed in W4; open Review Center or handle the item directly."));
   }
 
   async runShellSearchCommand(query, limit = 8) {
-    const normalizedQuery = String(query || "").trim();
-    if (!normalizedQuery) {
-      new Notice(this.t("Search query cannot be empty."));
-      return;
-    }
-    const parsedLimit = Number.parseInt(String(limit || 8), 10);
-    await this.runPluginCommand(
-      `${this.t("Search")}: ${truncateText(normalizedQuery, 48)}`,
-      ["search", normalizedQuery, "--limit", String(Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 8)],
-      { refreshAfter: false, notice: false }
-    );
-    await this.loadShellSummaryFromDisk();
-    new Notice(this.t("Search completed: {query}", { query: truncateText(normalizedQuery, 60) }));
+    new Notice(this.t("Shell search was removed in W4; use Obsidian search and wiki pages instead."));
   }
 
   async runApplyAllAcceptedLowRiskCommand() {
-    await this.runCliAction(this.t("Apply All Low-Risk"), "batch-review", [
-      "apply-low-risk",
-      "--note",
-      "Product Shell batch apply low-risk repairs",
-    ]);
+    new Notice(this.t("Batch review was removed in W4; use review-page for explicit page transitions."));
   }
 
   async runRevertLastBatchCommand() {
@@ -624,15 +600,15 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async runReportSubgraphCommand({ reportPath }) {
-    return runProductShellReportSubgraphCommand(this, { reportPath });
+    new Notice(this.t("Report subgraph was removed in W4; open graph artifacts from output/ manually if needed."));
   }
 
   collectReportCandidates() {
-    return collectProductShellReportCandidates(this);
+    return [];
   }
 
   openReportSubgraphPicker() {
-    return openProductShellReportSubgraphPicker(this);
+    this.runReportSubgraphCommand({ reportPath: "" });
   }
 
   async runDropUrlCommand({ url, title }) {

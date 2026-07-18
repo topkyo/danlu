@@ -36,15 +36,6 @@ function renderReportCard(plugin, cardEl, entry) {
     plugin.openWorkspacePath(entry.target);
   });
 
-  // 仅 advanced mode 显示 View graph 按钮 (EP-004 SC#2)
-  if (plugin.settings && plugin.settings.showAdvancedCommands) {
-    const graphBtn = actions.createEl("button", {
-      text: plugin.t("View graph"),
-    });
-    graphBtn.addEventListener("click", async () => {
-      await plugin.runReportSubgraphCommand({ reportPath: entry.target });
-    });
-  }
 }
 
 function renderCompoundSuggestActionCard(plugin, cardEl, entry) {
@@ -89,12 +80,6 @@ function renderConfirmationCard(plugin, cardEl, entry) {
       plugin.openReviewCenterView();
     });
 
-    const snoozeBtn = actions.createEl("button", {
-      text: plugin.t("Snooze"),
-    });
-    snoozeBtn.addEventListener("click", () => {
-      plugin.runTodaySnoozeCommand(entry.target);
-    });
   }
 }
 

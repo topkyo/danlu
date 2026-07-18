@@ -315,36 +315,13 @@ function renderStatusPanel(plugin, container) {
   ]);
 }
 
-function resolveBatchHintInvocation(plugin, action) {
-  // Round 43 / Stage C: batch hint commands -> existing pickers / runners.
-  // Returns { label, run } or null when the action is not a recognised batch hint.
+function resolveBatchHintInvocation(_plugin, action) {
   if (!action || typeof action !== "object") {
     return null;
   }
   const kind = String(action.kind || "");
-  if (kind !== "batch-review" && kind !== "batch-apply") {
+  if (kind === "batch-review" || kind === "batch-apply") {
     return null;
-  }
-  const command = String(action.command || "");
-  if (kind === "batch-apply" && command.includes("batch-review apply-low-risk")) {
-    return {
-      label: plugin.t("Run batch"),
-      run: () => plugin.runApplyAllAcceptedLowRiskCommand(),
-    };
-  }
-  if (kind === "batch-review" && command.includes("review-page --all-pending")) {
-    return {
-      label: plugin.t("Run batch"),
-      run: () => plugin.openReviewBatchSuggestionPicker(),
-    };
-  }
-  if (kind === "batch-review" && command.includes("batch-review action")) {
-    // Action-kind batch review still routes through the batch suggestion picker;
-    // the picker filters to the active suggestion bundle, so the same entry point works.
-    return {
-      label: plugin.t("Run batch"),
-      run: () => plugin.openReviewBatchSuggestionPicker(),
-    };
   }
   return null;
 }

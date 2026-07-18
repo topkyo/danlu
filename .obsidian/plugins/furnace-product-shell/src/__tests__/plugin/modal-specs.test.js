@@ -51,8 +51,8 @@ function makePlugin(overrides = {}) {
     runReviewPageBatchTransition: async (paths, status, note, confidence) => {
       calls.push({ label: "batch", command: "review-page", paths, status, note, confidence });
     },
-    runReportSubgraphCommand: async (values) => {
-      calls.push({ label: "report-subgraph", command: "report-subgraph", values });
+    runApplyAllAcceptedLowRiskCommand: async () => {
+      calls.push({ label: "apply-all-low-risk", command: "notice" });
     },
   };
 }
@@ -79,7 +79,7 @@ test("review page modal spec keeps fields and submit args stable", async () => {
   });
 });
 
-test("apply action modal spec includes optional bundle and dry-run args", async () => {
+test("apply action modal spec routes through removed-command notice hook", async () => {
   const context = loadModalSpecContext();
   const plugin = makePlugin();
   const spec = context.buildApplyActionModalSpec(plugin, { actionId: "act-1", bundle: "output/actions/act-1.json", dryRun: true });
@@ -92,9 +92,8 @@ test("apply action modal spec includes optional bundle and dry-run args", async 
     dry_run: true,
   });
   expect(plugin.calls[0]).toEqual({
-    label: "Apply All Low-Risk",
-    command: "batch-review",
-    args: ["apply-low-risk", "--note", "safe", "--dry-run"],
+    label: "apply-all-low-risk",
+    command: "notice",
   });
 });
 
@@ -154,24 +153,4 @@ test("alchemy start modal spec submits corpus and topic args", async () => {
     command: "alchemy-start",
     args: ["corpus-a", "--topic", "Follow-up thesis", "--include-elixir", "elixir-old"],
   });
-});
-
-test("report subgraph modal spec switches between select and manual field", async () => {
-  const context = loadModalSpecContext();
-  const plugin = makePlugin();
-  const spec = context.buildReportSubgraphModalSpec(plugin, [
-    { value: "output/reports/a.md", label: "Report A" },
-  ]);
-
-  expect(spec.fields[0]).toMatchObject({ key: "reportPath", kind: "select", initialValue: "output/reports/a.md" });
-  await spec.onSubmit({ reportPath: "output/reports/a.md" });
-  expect(plugin.calls[0]).toEqual({
-    label: "report-subgraph",
-    command: "report-subgraph",
-    values: { reportPath: "output/reports/a.md" },
-  });
-
-  const manualSpec = context.buildReportSubgraphModalSpec(plugin, []);
-  expect(manualSpec.fields[0]).toMatchObject({ key: "reportPath", required: true });
-  expect(manualSpec.fields[0].kind).toBeUndefined();
 });
