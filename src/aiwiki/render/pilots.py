@@ -388,33 +388,23 @@ def build_domain_pilots(
     knowledge_lifecycle: dict[str, Any] | None = None,
     material_routing: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    active_protocol = protocol_state["active_protocol"]
-    knowledge_lifecycle = knowledge_lifecycle or load_knowledge_lifecycle_state(root)
-    material_routing = material_routing or load_material_routing_state(root)
-    scorecards = [
-        build_domain_pilot_scorecard(
-            root,
-            domain_pilot_protocol_inputs(
-                protocol,
-                decisions,
-                judgments,
-                recent_outputs,
-                all_outputs,
-                output_packs,
-                execution_audit,
-                memory,
-                knowledge_lifecycle=knowledge_lifecycle,
-                material_routing=material_routing,
-                active_protocol=active_protocol,
-            ),
-            compiled_at=compiled_at,
-        )
-        for protocol in sorted(PROTOCOL_LIBRARY)
-    ]
+    _ = (
+        root,
+        decisions,
+        judgments,
+        memory,
+        recent_outputs,
+        all_outputs,
+        output_packs,
+        execution_audit,
+        knowledge_lifecycle,
+        material_routing,
+    )
+    active_protocol = str(protocol_state.get("active_protocol") or DEFAULT_PROTOCOL)
     return {
         "compiled_at": compiled_at,
         "active_protocol": active_protocol,
-        "scorecards": scorecards,
+        "scorecards": [],
     }
 
 
@@ -433,76 +423,35 @@ def build_domain_pilots_incremental(
     knowledge_lifecycle: dict[str, Any] | None = None,
     material_routing: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    active_protocol = protocol_state["active_protocol"]
-    knowledge_lifecycle = knowledge_lifecycle or load_knowledge_lifecycle_state(root)
-    material_routing = material_routing or load_material_routing_state(root)
-    previous_state = load_domain_pilot_build_state(root)
-    previous_protocol_records = previous_state.get("protocol_records", {})
-    previous_scorecards_by_protocol = {
-        str(scorecard.get("protocol") or ""): scorecard
-        for scorecard in previous_state.get("scorecards", [])
-        if isinstance(scorecard, dict) and str(scorecard.get("protocol") or "")
-    }
-    scorecards: list[dict[str, Any]] = []
-    dirty_protocols: list[str] = []
-    clean_protocols: list[str] = []
-    protocol_records: dict[str, dict[str, str]] = {}
-    for protocol in sorted(PROTOCOL_LIBRARY):
-        protocol_inputs = domain_pilot_protocol_inputs(
-            protocol,
-            decisions,
-            judgments,
-            recent_outputs,
-            all_outputs,
-            output_packs,
-            execution_audit,
-            memory,
-            knowledge_lifecycle=knowledge_lifecycle,
-            material_routing=material_routing,
-            active_protocol=active_protocol,
-        )
-        signature = domain_pilot_protocol_input_signature(protocol_inputs)
-        protocol_records[protocol] = {"input_signature": signature}
-        previous_record = previous_protocol_records.get(protocol, {})
-        previous_scorecard = previous_scorecards_by_protocol.get(protocol, {})
-        reusable = (
-            isinstance(previous_record, dict)
-            and str(previous_record.get("input_signature") or "") == signature
-            and domain_pilot_scorecard_is_reusable(root, previous_scorecard)
-        )
-        if reusable:
-            reused_scorecard = dict(previous_scorecard)
-            scorecard_path = str(reused_scorecard.get("path") or "")
-            if scorecard_path:
-                reused_scorecard["content"] = (root / scorecard_path).read_text(encoding="utf-8", errors="replace")
-            scorecards.append(reused_scorecard)
-            clean_protocols.append(protocol)
-        else:
-            scorecards.append(
-                build_domain_pilot_scorecard(
-                    root,
-                    protocol_inputs,
-                    compiled_at=compiled_at,
-                )
-            )
-            dirty_protocols.append(protocol)
-    removed_protocols = sorted(set(previous_scorecards_by_protocol) - set(PROTOCOL_LIBRARY))
+    _ = (
+        root,
+        decisions,
+        judgments,
+        memory,
+        recent_outputs,
+        all_outputs,
+        output_packs,
+        execution_audit,
+        knowledge_lifecycle,
+        material_routing,
+    )
+    active_protocol = str(protocol_state.get("active_protocol") or DEFAULT_PROTOCOL)
     return {
         "domain_pilots": {
             "compiled_at": compiled_at,
             "active_protocol": active_protocol,
-            "scorecards": scorecards,
+            "scorecards": [],
         },
         "state_document": {
             "version": 1,
             "generated_at": compiled_at,
             "active_protocol": active_protocol,
-            "protocol_records": protocol_records,
-            "scorecards": [domain_pilot_state_scorecard(scorecard) for scorecard in scorecards],
+            "protocol_records": {},
+            "scorecards": [],
         },
-        "dirty_protocols": dirty_protocols,
-        "clean_protocols": clean_protocols,
-        "removed_protocols": removed_protocols,
+        "dirty_protocols": [],
+        "clean_protocols": [],
+        "removed_protocols": [],
     }
 
 

@@ -45,7 +45,6 @@ DEFAULT_OBSIDIAN_APP = {
         "output/control/",
         "output/graph/",
         ".aiwiki/derived/packs/",
-        ".aiwiki/derived/pilots/",
         "output/review/",
         "output/slides/",
         "output/figures/",
@@ -130,18 +129,13 @@ FOLDER_LABEL_OVERRIDES: tuple[tuple[str, str], ...] = (
     (".aiwiki/derived/packs/review", "审阅包 review"),
     (".aiwiki/derived/packs/decision-memos", "决策备忘 decision-memos"),
     (".aiwiki/derived/packs/sop-drafts", "SOP 草稿 sop-drafts"),
-    (".aiwiki/derived/pilots", "协议评分 pilots"),
     ("output/reports", "报告"),
     ("output/review", "审阅 review"),
     ("output/figures", "图表 figures"),
     ("output/slides", "幻灯片 slides"),
     ("schema/protocols", "协议 protocols"),
     ("schema/policies", "策略 policies"),
-    ("schema/protocols/research", "研发协议 research"),
     ("schema/protocols/general", "通用协议 general"),
-    ("schema/protocols/investing", "投资协议 investing"),
-    ("schema/protocols/product", "产品协议 product"),
-    ("schema/protocols/ops", "运维协议 ops"),
 )
 
 USER_HIDDEN_FOLDER_PATHS: tuple[str, ...] = (
@@ -156,7 +150,6 @@ USER_HIDDEN_FOLDER_PATHS: tuple[str, ...] = (
     "output/figures",
     "output/graph",
     ".aiwiki/derived/packs",
-    ".aiwiki/derived/pilots",
     "output/review",
     "output/slides",
 )

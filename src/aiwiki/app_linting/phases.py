@@ -330,14 +330,7 @@ _PENDING_REFINEMENT_RE = re.compile(r"(?im)^\s*-\s*pending\s+refinement\.?\s*$")
 
 
 def _required_judgment_sections(protocol: str) -> tuple[str, str]:
-    if protocol == "investing":
-        return ("## Investment Judgment", "## Drivers And Catalysts")
-    if protocol == "research":
-        return ("## Research Judgment", "## Supporting Evidence")
-    if protocol == "product":
-        return ("## Product Judgment", "## User Signal And Evidence")
-    if protocol == "ops":
-        return ("## Ops Judgment", "## Incident Evidence")
+    _ = protocol
     return ("## Judgment", "## Signals")
 
 
@@ -371,7 +364,6 @@ def _lint_layout_phase(context: _LintContext) -> None:
         "wiki/indexes/agent-workbench.md": "Missing agent workbench page.",
         "wiki/indexes/cognitive-history.md": "Missing cognitive history page.",
         "wiki/indexes/output-packs.md": "Missing output packs index page.",
-        "wiki/indexes/domain-pilots.md": "Missing domain pilots index page.",
         "wiki/indexes/rewrite-proposals.md": "Missing rewrite proposal index page.",
         "wiki/indexes/protocols.md": "Missing protocol dashboard page.",
         "wiki/indexes/furnace-center.md": "Missing furnace center page.",
@@ -442,23 +434,6 @@ def _lint_runtime_phase(context: _LintContext) -> None:
         collect_recent_output_artifacts(context.root),
         utc_now(),
     )
-    execution_audit_snapshot = build_execution_audit_snapshot(
-        context.root,
-        context.pack_memory,
-        active_protocol=context.protocol_state["active_protocol"],
-    ) if context.pack_memory else {"protocols": [], "counts": {}, "recent_apply": [], "recent_revert": []}
-    context.expected_domain_pilots = build_domain_pilots(
-        context.root,
-        context.decision_pages,
-        context.judgment_pages,
-        context.pack_memory,
-        context.protocol_state,
-        collect_recent_output_artifacts(context.root),
-        collect_output_density_artifacts(context.root),
-        context.expected_output_packs,
-        execution_audit_snapshot,
-        utc_now(),
-    )
 
     memory_state = machine_memory_state_path(context.root)
     graph_html = machine_memory_graph_html_path(context.root)
@@ -496,10 +471,6 @@ def _lint_runtime_phase(context: _LintContext) -> None:
             pack_path = context.root / str(pack.get("path") or "")
             if not pack_path.exists():
                 context.add("error", pack_path, f"Missing output pack `{pack_path.name}` for `{pack_group}`.")
-    for scorecard in context.expected_domain_pilots.get("scorecards", []):
-        scorecard_path = context.root / str(scorecard.get("path") or "")
-        if not scorecard_path.exists():
-            context.add("error", scorecard_path, f"Missing domain pilot scorecard `{scorecard_path.name}`.")
     if context.manifest["entries"]:
         for pack in AGENT_PACK_LIBRARY:
             pack_path = agent_pack_path(context.root, str(pack["role"]))
