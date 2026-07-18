@@ -202,7 +202,9 @@ def _validate_source_outputs(root: Path, refs: list[str], *, allowed: set[str]) 
                     f"引用金丹 {ref} 当前状态为 {frontmatter.get('elixir_state') or 'unknown'}，只能引用 settled 金丹"
                 )
             continue
-        raise ValueError(f"source output must be under wiki/derived/ or wiki/elixirs/: {ref}")
+        raise ValueError(
+            f"source output must be under wiki/derived/, wiki/judgments/, or wiki/elixirs/: {ref}"
+        )
 
 
 def _settled_path(root: Path, elixir_id: str) -> Path:

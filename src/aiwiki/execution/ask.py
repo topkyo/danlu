@@ -229,7 +229,7 @@ def _merge_frontmatter_string_list(path: Path, key: str, refs: list[str], *, mer
                 break
     if not has_frontmatter or close_idx is None:
         synthesized = ["---", *block, "---", *lines]
-        path.write_text("\n".join(synthesized).rstrip() + "\n", encoding="utf-8")
+        atomic_write_text(path, "\n".join(synthesized).rstrip() + "\n")
         return
 
     filtered: list[str] = lines[:1]
@@ -247,7 +247,7 @@ def _merge_frontmatter_string_list(path: Path, key: str, refs: list[str], *, mer
     filtered.extend(lines[close_idx + 1 :])
     for offset, line in enumerate(block):
         filtered.insert(new_close_idx + offset, line)
-    path.write_text("\n".join(filtered).rstrip() + "\n", encoding="utf-8")
+    atomic_write_text(path, "\n".join(filtered).rstrip() + "\n")
 
 
 def _build_graph_anchor_node_ids(

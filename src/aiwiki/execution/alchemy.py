@@ -115,7 +115,9 @@ def start_elixir(
     source_outputs = list(dict.fromkeys([*source_outputs, *include_paths]))
     _validate_source_outputs(root, source_outputs, allowed=allowed)
     if not any(ref.startswith(_ELIXIR_SOURCE_PREFIXES) for ref in source_outputs):
-        raise ValueError("金丹 derived_from 必须至少包含一个 wiki/derived/ 源条目（当前仅包含 elixir 引用）")
+        raise ValueError(
+            "金丹 derived_from 必须至少包含一个 wiki/derived/ 或 wiki/judgments/ 源条目（当前仅包含 elixir 引用）"
+        )
     candidate_dir = root / CANDIDATE_ELIXIR_DIR
     candidate_dir.mkdir(parents=True, exist_ok=True)
     seed = f"elixir-{slugify(topic)[:40]}-{sha256_bytes(topic.encode())[:8]}"
@@ -197,7 +199,9 @@ def distill_elixir(
     merged = list(dict.fromkeys([*existing, *allowed, *include_paths]))
     _validate_source_outputs(root, merged, allowed=allowed)
     if not any(ref.startswith(_ELIXIR_SOURCE_PREFIXES) for ref in merged):
-        raise ValueError("金丹 derived_from 必须至少包含一个 wiki/derived/ 源条目（当前仅包含 elixir 引用）")
+        raise ValueError(
+            "金丹 derived_from 必须至少包含一个 wiki/derived/ 或 wiki/judgments/ 源条目（当前仅包含 elixir 引用）"
+        )
     canonical = _settled_path(root, normalized_id)
     if any(str(Path(ref)) == str(canonical.relative_to(root)) for ref in merged if isinstance(ref, str)):
         raise ValueError(f"cannot reference self: {canonical.relative_to(root)}")
@@ -261,7 +265,9 @@ def finalize_elixir(root: Path, *, elixir_id: str) -> dict[str, Any]:
     source_outputs = [str(item) for item in frontmatter.get("derived_from", []) if isinstance(item, str)]
     _validate_source_outputs(root, source_outputs, allowed=allowed)
     if not any(ref.startswith(_ELIXIR_SOURCE_PREFIXES) for ref in source_outputs):
-        raise ValueError("金丹 derived_from 必须至少包含一个 wiki/derived/ 源条目（当前仅包含 elixir 引用）")
+        raise ValueError(
+            "金丹 derived_from 必须至少包含一个 wiki/derived/ 或 wiki/judgments/ 源条目（当前仅包含 elixir 引用）"
+        )
 
     canonical = _settled_path(root, normalized_id)
     if any(str(Path(ref)) == str(canonical.relative_to(root)) for ref in source_outputs if isinstance(ref, str)):
@@ -321,7 +327,9 @@ def promote_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> di
     source_outputs = [str(item) for item in frontmatter.get("derived_from", []) if isinstance(item, str)]
     _validate_source_outputs(root, source_outputs, allowed=allowed)
     if not any(ref.startswith(_ELIXIR_SOURCE_PREFIXES) for ref in source_outputs):
-        raise ValueError("金丹 derived_from 必须至少包含一个 wiki/derived/ 源条目（当前仅包含 elixir 引用）")
+        raise ValueError(
+            "金丹 derived_from 必须至少包含一个 wiki/derived/ 或 wiki/judgments/ 源条目（当前仅包含 elixir 引用）"
+        )
 
     canonical = _settled_path(root, normalized_id)
     if any(str(Path(ref)) == str(canonical.relative_to(root)) for ref in source_outputs if isinstance(ref, str)):
