@@ -65,7 +65,7 @@ related_docs:
 
 - 技术栈：Python 3.10+, stdlib-first, markdown + JSON manifest。
 - 运行模型：`single writer, many readers`。
-- `raw/` 是唯一事实输入层；`wiki/sources/` 与 `wiki/derived/` 严格分层。
+- `raw/` 是唯一事实输入层；`wiki/sources/` 与派生层（`wiki/judgments/` 等）严格分层。产品回流默认 judgment；`wiki/derived/` 无现行 runtime writer（legacy 只读锚点）。
 - 派生输出不能覆盖原始 source pages；所有结论都应保留 provenance。
 - `decision / judgment / execution` 层必须保持可审计、可回滚、可追溯。
 - 非目标：hosted service, multi-user sync, heavy RAG infra, fine-tuning。

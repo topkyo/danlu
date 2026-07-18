@@ -54,7 +54,7 @@ related_docs:
 
 ## 3. 炼丹炉独有价值
 
-1. **知识 compiler**：`raw → wiki/sources → wiki/derived → output` 的强分层，派生不可覆盖原始 source。
+1. **知识 compiler**：`raw → wiki/sources → wiki/judgments|concepts → output` 的强分层；派生不可覆盖原始 source。产品回流默认 `file-back` → `wiki/judgments/`；`wiki/derived/` 若存在多为 legacy 锚点，非现行写入目标。
 2. **Receipt + revert + universal audit stream**：所有写入可审计、可回滚。
 3. **Deterministic baseline**：不依赖 LLM 也能跑 `compile / lint / nightly`。
 4. **单协议 substrate**：一份 `general` 编译 substrate + schema 扩展覆盖多领域；不售卖多 protocol 切换面。
@@ -73,6 +73,7 @@ related_docs:
 
 ## 5. 变更记录
 
+- 2026-07-18：§3「知识 compiler」链路由 `wiki/derived` 改为 judgments/concepts + legacy derived 说明，与单协议 / judgment-only file-back 对齐。
 - 2026-07-18：§3 修正「Protocol multiplexing」→「单协议 substrate」，与 single-protocol general-only 对齐。
 - 2026-07-15：补充 vs LLM-Wiki 轻量实现列；明确 production runtime 定位。
 - 2026-07-14：初版，对外销售口径，只讲差异化。

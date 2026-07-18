@@ -230,7 +230,7 @@ app_vault.py               new-vault scaffold / Obsidian bootstrap
 约定：
 
 - `raw/` 是唯一事实输入层；不要把结论直接写回 source 层。
-- `wiki/sources/` 与 `wiki/derived|decisions|judgments/` 必须分层，派生产物保留 provenance。
+- `wiki/sources/` 与 `wiki/judgments|decisions|concepts/` 必须分层，派生产物保留 provenance；`wiki/derived/` 仅为 legacy 锚点（无现行 writer）。
 - 新 CLI 命令优先放 `cli/` + owner module，不要在 shim 或 shell surface 上偷接逻辑。
 - 协议规则只维护 `schema/protocols/general/` 单 runtime；不要重新引入多 slug 切换或 per-protocol scaffold。
 - 事实层 mutation 必须走 `execution/`，receipt 写失败必须 rollback（不允许半写）。
