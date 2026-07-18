@@ -149,7 +149,6 @@ def shell_capabilities(root: Path) -> dict[str, Any]:
                 "ask",
                 "run-ask",
                 "nightly",
-                "protocol-status",
                 "llm-check",
             ],
             "p1": [
