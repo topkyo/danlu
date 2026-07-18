@@ -43,7 +43,7 @@ function makeMockPlugin() {
     t: (key) => key,
     openWorkspacePath: jest.fn().mockResolvedValue(true),
     runReportSubgraphCommand: jest.fn().mockResolvedValue(),
-    openReviewNextTransitionPicker: jest.fn().mockResolvedValue(),
+    openReviewPageContextPicker: jest.fn().mockResolvedValue(),
     runCompoundFileBack: jest.fn().mockResolvedValue(),
     openCompoundAlchemyStart: jest.fn(),
   };
@@ -169,7 +169,7 @@ describe("renderReportCard", () => {
 });
 
 describe("renderConfirmationCard", () => {
-  test("review button opens next review picker without snooze after W5", async () => {
+  test("review button opens review-page picker without review-next", async () => {
     const plugin = makeMockPlugin();
     const cardEl = document.createElement("div");
 
@@ -184,6 +184,6 @@ describe("renderConfirmationCard", () => {
     reviewBtn.click();
     await Promise.resolve();
 
-    expect(plugin.openReviewNextTransitionPicker).toHaveBeenCalled();
+    expect(plugin.openReviewPageContextPicker).toHaveBeenCalled();
   });
 });

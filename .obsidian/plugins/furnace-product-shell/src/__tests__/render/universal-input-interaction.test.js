@@ -951,12 +951,14 @@ test("shell summary fixture builds today DOM headings and furnace center keeps o
   const feed = context.buildTodayFeed(SHELL_SUMMARY_FIXTURE);
   expect(feed.some((entry) => entry.kind === "report")).toBe(true);
   expect(feed.some((entry) => entry.kind === "automation")).toBe(false);
-  expect(feed.some((entry) => entry.kind === "decision")).toBe(true);
+  expect(feed.some((entry) => entry.kind === "decision")).toBe(false);
+  expect(feed.some((entry) => entry.kind === "proposal")).toBe(false);
+  expect(feed.some((entry) => entry.kind === "elixir")).toBe(false);
 
   const todayContainer = document.createElement("div");
   context.renderTodayFeed(makePlugin({ shellSummary: SHELL_SUMMARY_FIXTURE }), todayContainer);
   expect(todayContainer.textContent).toContain("新报告");
-  expect(todayContainer.textContent).toContain("需要你确认");
+  expect(todayContainer.textContent).not.toContain("需要你确认");
 
   const homeContainer = document.createElement("div");
   context.renderFurnaceCenter(makePlugin({ shellSummary: SHELL_SUMMARY_FIXTURE }), homeContainer);

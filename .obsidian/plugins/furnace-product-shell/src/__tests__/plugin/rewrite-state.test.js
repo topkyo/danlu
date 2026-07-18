@@ -86,52 +86,19 @@ test("rewrite summary prefers proposal object count over path count", () => {
   expect(context.rewriteProposalSummary(plugin, {})).toBe("");
 });
 
-test("open rewrite recovery helper routes to the narrowest available UI action", () => {
+test("open rewrite recovery helper routes to review-page picker", () => {
   const context = loadRewriteStateContext();
   const calls = [];
   const plugin = {
     locale: () => "en",
     t: (text) => text,
-    normalizeRewriteFollowupActions: context.normalizeRewriteFollowupActions,
-    normalizeRewriteProposalObjects: context.normalizeRewriteProposalObjects,
-    rewriteCandidatesForSlugs: (slugs) => context.normalizeRelativePathList(slugs).map((slug) => ({ slug, title: `Control ${slug}` })),
-    openApplyRewriteModal: (payload) => calls.push(["apply", payload]),
-    openReviewRewriteTransitionPicker: (payload) => calls.push(["transition", payload]),
-    openReviewRewriteContextPicker: (payload) => calls.push(["context", payload]),
-    openReviewRewriteModal: (payload) => calls.push(["modal", payload]),
-    openReviewNextTransitionPicker: () => calls.push(["review-next"]),
-    runUiAction: (action, label) => {
-      calls.push(["run-ui", label]);
-      action();
-    },
+    openReviewPageContextPicker: () => calls.push(["review-page-picker"]),
   };
 
   context.openRewriteFollowupForRecord(plugin, {
     rewriteFollowupActions: [{ slug: "concept-a", kind: "apply-rewrite", command: "apply concept-a" }],
   });
-  context.openRewriteFollowupForRecord(plugin, {
-    rewriteFollowupActions: [{ slug: "concept-b", status: "accepted", transition: "resolved", command: "review concept-b" }],
-    rewriteProposalObjects: [{ slug: "concept-b", title: "Concept B", currentStatus: "proposed" }],
-  });
-  context.openRewriteFollowupForRecord(plugin, {
-    rewriteProposalObjects: [
-      { slug: "concept-c", title: "Concept C", status: "proposed", proposalPath: "wiki/rewrite-proposals/c.md" },
-      { slug: "concept-d", title: "Concept D", status: "accepted", proposalPath: "wiki/rewrite-proposals/d.md" },
-    ],
-  });
-  context.openRewriteFollowupForRecord(plugin, {
-    rewriteProposalSlugs: ["concept-e"],
-  });
   context.openRewriteFollowupForRecord(plugin, {});
 
-  expect(calls[0]).toEqual(["apply", { slug: "concept-a" }]);
-  expect(calls[1][0]).toBe("transition");
-  expect(calls[1][1]).toMatchObject({ slug: "concept-b", status: "accepted", currentStatus: "accepted", defaultTransition: "resolved" });
-  expect(calls[2][0]).toBe("context");
-  expect(calls[2][1]).toHaveLength(2);
-  expect(calls[2][1][0]).toMatchObject({ value: "concept-c", label: "Concept C" });
-  expect(calls[2][1][0].description).toContain("wiki/rewrite-proposals/c.md");
-  expect(calls[3]).toEqual(["transition", { slug: "concept-e", title: "Control concept-e" }]);
-  expect(calls[4]).toEqual(["run-ui", "Review Next Page"]);
-  expect(calls[5]).toEqual(["review-next"]);
+  expect(calls).toEqual([["review-page-picker"], ["review-page-picker"]]);
 });

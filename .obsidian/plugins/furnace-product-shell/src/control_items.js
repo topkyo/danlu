@@ -163,48 +163,8 @@ function commonReviewTransitionOptions(plugin, pages) {
 }
 
 function reviewBatchSuggestions(plugin) {
-  const groups = new Map();
-  reviewPageControlItems(plugin).forEach((page) => {
-    const prioritized = preferredTransitionOptions(plugin, "page", page);
-    const selectedOptions = prioritized.length
-      ? prioritized
-      : transitionOptions(plugin, "page", page).filter((option) => option.isDefault).slice(0, 1);
-    selectedOptions.forEach((transition) => {
-      const kind = String(page.pageKind || "page").trim() || "page";
-      const key = `${kind}::${transition.value}`;
-      const current = groups.get(key) || {
-        key,
-        kind,
-        status: transition.value,
-        transitionLabel: transition.label,
-        pages: [],
-      };
-      current.pages.push(page);
-      groups.set(key, current);
-    });
-  });
-  return Array.from(groups.values())
-    .filter((group) => group.pages.length >= 2)
-    .map((group) => {
-      const count = group.pages.length;
-      const kindLabel = reviewKindLabel(plugin, group.kind, count);
-      return {
-        key: group.key,
-        kind: group.kind,
-        status: group.status,
-        label: `${group.transitionLabel} · ${count} ${kindLabel}`,
-        description: `${count} ${kindLabel} ${plugin.t("share the recommended transition")} ${String(group.transitionLabel || "").toLowerCase()}.`,
-        pagePaths: group.pages.map((page) => page.pagePath).filter(Boolean),
-        pages: group.pages,
-        statusOptions: commonReviewTransitionOptions(plugin, group.pages),
-      };
-    })
-    .sort((left, right) => {
-      if (right.pagePaths.length !== left.pagePaths.length) {
-        return right.pagePaths.length - left.pagePaths.length;
-      }
-      return String(left.label || "").localeCompare(String(right.label || ""));
-    });
+  // Batch review UX was removed in W4; keep helper for Advanced diagnostics only.
+  return [];
 }
 
 function rewriteControlItems(plugin, mode = "review") {

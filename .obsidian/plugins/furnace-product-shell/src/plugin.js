@@ -332,16 +332,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async runReviewPageBatchTransition(pagePaths, status, note = "", confidence = "") {
-    const normalizedPaths = Array.isArray(pagePaths)
-      ? Array.from(new Set(pagePaths.map((pagePath) => String(pagePath || "").trim()).filter(Boolean)))
-      : [];
-    if (!normalizedPaths.length) {
-      throw new Error(this.t("Batch review requires at least one page path."));
-    }
-    const args = ["--batch", ...normalizedPaths, "--status", status];
-    appendOptionalArg(args, "--note", note);
-    appendOptionalArg(args, "--confidence", confidence);
-    await this.runCliAction(`Batch Review: ${status}`, "review-page", args);
+    new Notice(this.t("Batch review was removed in W4; use review-page for explicit page transitions."));
   }
 
   async runReviewRewriteTransition(slug, status) {
@@ -672,28 +663,28 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     this.openStructuredCommandModal(buildReviewPageModalSpec(this, prefill));
   }
 
-  openReviewRewriteModal(prefill = {}) {
-    this.openStructuredCommandModal(buildReviewRewriteModalSpec(this, prefill));
+  openReviewRewriteModal(_prefill = {}) {
+    new Notice(this.t("Concept rewrite commands were removed in W3; use review-page on the concept page instead."));
   }
 
-  openApplyRewriteModal(prefill = {}) {
-    this.openStructuredCommandModal(buildApplyRewriteModalSpec(this, prefill));
+  openApplyRewriteModal(_prefill = {}) {
+    new Notice(this.t("Concept rewrite commands were removed in W3; use review-page on the concept page instead."));
   }
 
-  openRetireConceptModal(prefill = {}) {
-    this.openStructuredCommandModal(buildRetireConceptModalSpec(this, prefill));
+  openRetireConceptModal(_prefill = {}) {
+    new Notice(this.t("Concept retire/reactivate commands were removed in W3; use review-page instead."));
   }
 
-  openReactivateConceptModal(prefill = {}) {
-    this.openStructuredCommandModal(buildReactivateConceptModalSpec(this, prefill));
+  openReactivateConceptModal(_prefill = {}) {
+    new Notice(this.t("Concept retire/reactivate commands were removed in W3; use review-page instead."));
   }
 
-  openApplyArchiveModal(prefill = {}) {
-    this.openStructuredCommandModal(buildApplyArchiveModalSpec(this, prefill));
+  openApplyArchiveModal(_prefill = {}) {
+    new Notice(this.t("Archive commands were removed in W3; inspect manifest pages manually."));
   }
 
-  openRevertArchiveModal(prefill = {}) {
-    this.openStructuredCommandModal(buildRevertArchiveModalSpec(this, prefill));
+  openRevertArchiveModal(_prefill = {}) {
+    new Notice(this.t("Archive commands were removed in W3; inspect manifest pages manually."));
   }
 
   openReviewActionModal(prefill = {}) {
@@ -721,88 +712,31 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   openReviewNextTransitionPicker() {
-    const nextReview = this.nextReviewCandidate();
-    if (!nextReview) {
-      new Notice(this.t("No reviewable page is available."));
-      return;
-    }
-    this.openReviewPageTransitionPicker(nextReview);
+    this.openReviewPageContextPicker();
   }
 
-  openReviewPageBatchModal(prefill = {}) {
-    this.openStructuredCommandModal(buildReviewPageBatchModalSpec(this, prefill));
+  openReviewPageBatchModal(_prefill = {}) {
+    new Notice(this.t("Batch review was removed in W4; use review-page for explicit page transitions."));
   }
 
   openReviewBatchSuggestionPicker() {
-    const suggestions = this.reviewBatchSuggestions();
-    if (!suggestions.length) {
-      new Notice(this.t("No shared batch review suggestion is available."));
-      return;
-    }
-    if (suggestions.length === 1) {
-      this.openReviewPageBatchModal(suggestions[0]);
-      return;
-    }
-    this.openContextPicker({
-      title: this.t("Pick Batch Review"),
-      description: this.t("Batch review is only offered when multiple pages share the same preferred or default transition."),
-      submitLabel: this.t("Batch review"),
-      options: suggestions.map((suggestion) => ({
-        value: suggestion.key,
-        label: suggestion.label,
-        description: suggestion.description,
-        suggestion,
-      })),
-      onSubmit: (option) => this.openReviewPageBatchModal(option.suggestion || option),
-    });
+    new Notice(this.t("Batch review was removed in W4; use review-page for explicit page transitions."));
   }
 
-  openReviewRewriteContextPicker(options = this.visibleRewriteCandidates()) {
-    this.openContextAwareAction({
-      title: this.t("Pick Rewrite Context"),
-      description: this.t("Prefer an explicit rewrite proposal object before falling back to manual slug entry."),
-      keyName: "slug",
-      options,
-      emptyNotice: this.t("No visible concept context is available; fell back to the manual form."),
-      onFallback: () => this.openReviewRewriteModal(),
-      onSubmit: (option) => this.openReviewRewriteTransitionPicker(option),
-    });
+  openReviewRewriteContextPicker(_options = this.visibleRewriteCandidates()) {
+    new Notice(this.t("Concept rewrite commands were removed in W3; use review-page on the concept page instead."));
   }
 
-  openReviewActionContextPicker(options = this.visibleActionCandidates("review")) {
-    this.openContextAwareAction({
-      title: this.t("Pick Review Action"),
-      description: this.t("Prefer an explicit action control object before falling back to manual action id entry."),
-      keyName: "actionId",
-      options,
-      emptyNotice: this.t("No visible machine-memory action context is available; fell back to the manual form."),
-      onFallback: () => this.openReviewActionModal(),
-      onSubmit: (option) => this.openReviewActionTransitionPicker(option),
-    });
+  openReviewActionContextPicker(_options = this.visibleActionCandidates("review")) {
+    new Notice(this.t("Machine-memory action commands were removed in W3; use review-page instead."));
   }
 
-  openApplyArchiveContextPicker(options = this.visibleArchiveCandidates("apply")) {
-    this.openContextAwareAction({
-      title: this.t("Pick Archive Target"),
-      description: this.t("Prefer an explicit archive control object before falling back to manual entry id."),
-      keyName: "entryId",
-      options,
-      emptyNotice: this.t("No visible archive context is available; fell back to the manual form."),
-      onFallback: () => this.openApplyArchiveModal(),
-      onSubmit: (option) => this.openApplyArchiveModal({ entryId: option.entryId || option.value || "" }),
-    });
+  openApplyArchiveContextPicker(_options = this.visibleArchiveCandidates("apply")) {
+    new Notice(this.t("Archive commands were removed in W3; inspect manifest pages manually."));
   }
 
-  openRevertArchiveContextPicker(options = this.visibleArchiveCandidates("revert")) {
-    this.openContextAwareAction({
-      title: this.t("Pick Archive Revert Target"),
-      description: this.t("Prefer an explicit archive control object before falling back to manual entry id."),
-      keyName: "entryId",
-      options,
-      emptyNotice: this.t("No visible archive context is available; fell back to the manual form."),
-      onFallback: () => this.openRevertArchiveModal(),
-      onSubmit: (option) => this.openRevertArchiveModal({ entryId: option.entryId || option.value || "" }),
-    });
+  openRevertArchiveContextPicker(_options = this.visibleArchiveCandidates("revert")) {
+    new Notice(this.t("Archive commands were removed in W3; inspect manifest pages manually."));
   }
 
   openApplyActionContextPicker(options = this.visibleActionCandidates("apply")) {
@@ -850,44 +784,12 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     });
   }
 
-  openReviewRewriteTransitionPicker(control) {
-    const slug = String(control.slug || control.value || "").trim();
-    const currentStatus = String(control.currentStatus || control.current_status || control.status || "").trim();
-    this.openTransitionPicker({
-      title: this.t("Pick Rewrite Transition"),
-      description: this.t("Choose a valid next status for this rewrite proposal."),
-      controlType: "rewrite",
-      control,
-      emptyNotice: this.t("No explicit rewrite transition is available; fell back to the manual form."),
-      onFallback: () => this.openReviewRewriteModal({ slug, status: currentStatus }),
-      onManual: () => this.openReviewRewriteModal({ slug, status: currentStatus }),
-      onSubmit: (status) => {
-        this.runUiAction(
-          () => this.runReviewRewriteTransition(slug, status),
-          `Review rewrite transition: ${slug} -> ${status}`
-        );
-      },
-    });
+  openReviewRewriteTransitionPicker(_control) {
+    new Notice(this.t("Concept rewrite commands were removed in W3; use review-page on the concept page instead."));
   }
 
-  openReviewActionTransitionPicker(control) {
-    const actionId = String(control.actionId || control.action_id || control.value || "").trim();
-    const currentStatus = String(control.currentStatus || control.current_status || control.status || "").trim();
-    this.openTransitionPicker({
-      title: this.t("Pick Action Transition"),
-      description: this.t("Choose a valid next status for this machine-memory action."),
-      controlType: "action",
-      control,
-      emptyNotice: this.t("No explicit action transition is available; fell back to the manual form."),
-      onFallback: () => this.openReviewActionModal({ actionId, status: currentStatus }),
-      onManual: () => this.openReviewActionModal({ actionId, status: currentStatus }),
-      onSubmit: (status) => {
-        this.runUiAction(
-          () => this.runReviewActionTransition(actionId, status),
-          `Review action transition: ${actionId} -> ${status}`
-        );
-      },
-    });
+  openReviewActionTransitionPicker(_control) {
+    new Notice(this.t("Machine-memory action commands were removed in W3; use review-page instead."));
   }
 
   async openView(viewType, options = {}) {

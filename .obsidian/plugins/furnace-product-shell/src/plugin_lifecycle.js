@@ -15,18 +15,11 @@ async function handleProductShellVaultChange(plugin, relativePath) {
   }
 }
 
-async function syncProductShellEvidenceGraphConfig(plugin, { quiet = true } = {}) {
-  if (!plugin.repoState.valid) {
-    return null;
+async function syncProductShellEvidenceGraphConfig(_plugin, { quiet = true } = {}) {
+  if (!quiet) {
+    new Notice("sync-evidence-graph was removed in W4; open wiki/evidence-graph.md directly.");
   }
-  try {
-    return await plugin.execLauncher(["sync-evidence-graph"]);
-  } catch (error) {
-    if (!quiet) {
-      console.error("[furnace-product-shell] sync-evidence-graph failed", error);
-    }
-    return null;
-  }
+  return null;
 }
 
 async function maybeRepairProductShellEvidenceGraphFilter(plugin) {
