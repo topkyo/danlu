@@ -368,12 +368,6 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
         help="Filed-back page kind. Note: 'derived' is terminal (no review) and separate from the corpus candidate plane; 'decision' and 'judgment' enter the review-page workflow.",
     )
 
-    promote_parser = subparsers.add_parser("promote", help="Promote an output candidate into wiki/derived.")
-    promote_parser.add_argument("artifact_ref", help="Output candidate artifact_ref.")
-
-    demote_parser = subparsers.add_parser("demote", help="Mark an output candidate as demoted.")
-    demote_parser.add_argument("artifact_ref", help="Output candidate artifact_ref.")
-
     alchemy_start_parser = subparsers.add_parser("alchemy-start", help="Start a new elixir from a corpus.")
     alchemy_start_parser.add_argument("corpus_id")
     alchemy_start_parser.add_argument("--topic", required=True)
@@ -565,70 +559,6 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
     superseded_cleanup_parser.add_argument("--limit", type=int, default=50)
     superseded_cleanup_parser.add_argument("--note", default=None)
 
-    l3_create_parser = subparsers.add_parser(
-        "l3-proposal-create",
-        help="Create a manual L3 prompt/policy proposal fixture without applying it.",
-    )
-    l3_create_parser.add_argument("--kind", required=True, choices=("prompt_proposal", "policy_proposal"))
-    l3_create_parser.add_argument("--proposal-id", default=None)
-    l3_create_parser.add_argument("--target-file", required=True)
-    l3_create_parser.add_argument("--content-file", required=True)
-    l3_create_parser.add_argument("--rationale", default="")
-    l3_create_parser.add_argument("--evidence-ref", action="append", dest="evidence_refs", default=[])
-    l3_create_parser.add_argument("--signal-id", action="append", dest="signal_ids", default=[])
-    l3_create_parser.add_argument(
-        "--pattern",
-        default="manual_fixture",
-        choices=("failure_cluster", "recurring_feedback", "drift", "contract_failure", "manual_fixture"),
-    )
-    l3_generate_parser = subparsers.add_parser(
-        "l3-proposal-generate",
-        help="Generate L3 proposal candidates from execute-mode planner decisions.",
-    )
-    l3_generate_mode = l3_generate_parser.add_mutually_exclusive_group(required=True)
-    l3_generate_mode.add_argument("--dry-run", action="store_true", help="Preview generation candidates only.")
-    l3_generate_mode.add_argument("--apply", action="store_true", help="Create eligible proposal candidates.")
-    l3_generate_parser.add_argument("--planner-log-path", type=Path, default=None)
-    l3_generate_parser.add_argument("--limit", type=int, default=20)
-
-    review_group_parser = subparsers.add_parser("review", help="Review queue inspection commands.")
-    review_group_subparsers = review_group_parser.add_subparsers(dest="review_command", required=True)
-    review_proposals_parser = review_group_subparsers.add_parser(
-        "proposals",
-        help="List L3 prompt/policy proposals without mutating targets.",
-    )
-    review_proposals_parser.add_argument("--kind", choices=("prompt_proposal", "policy_proposal"))
-    review_proposals_parser.add_argument(
-        "--state",
-        choices=("candidate", "accepted", "rejected", "reverted", "stale", "revert_conflict"),
-    )
-    review_proposals_parser.add_argument("--json", action="store_true", help="Return full JSON records.")
-    review_proposal_generation_parser = review_group_subparsers.add_parser(
-        "proposal-generation",
-        help="Preview L3 proposal generation candidates from planner-log.",
-    )
-    review_proposal_generation_parser.add_argument("--planner-log-path", type=Path, default=None)
-    review_proposal_generation_parser.add_argument("--limit", type=int, default=20)
-    review_proposal_generation_parser.add_argument("--json", action="store_true", help="Return full JSON payload.")
-    review_proposal_parser = review_group_subparsers.add_parser(
-        "proposal",
-        help="Review one L3 prompt/policy proposal.",
-    )
-    review_proposal_parser.add_argument("proposal_id")
-    review_proposal_parser.add_argument("--status", required=True, choices=("rejected",))
-    review_proposal_parser.add_argument("--note")
-
-    apply_parser = subparsers.add_parser("apply", help="Accept and apply a manual L3 proposal by id.")
-    apply_parser.add_argument("proposal_id")
-    apply_parser.add_argument("--note")
-
-    revert_parser = subparsers.add_parser("revert", help="Revert an L3 proposal apply receipt.")
-    revert_parser.add_argument(
-        "receipt_id",
-        help="Receipt id of the L3 proposal apply receipt (action_id field inside .aiwiki/state/execution-receipts/l3-proposal-apply-<proposal_id>.json; or full receipt path; or receipt JSON basename).",
-    )
-    revert_parser.add_argument("--note")
-
     review_parser = subparsers.add_parser(
         "review-page",
         help="Advance a decision or judgment page through the explicit review workflow.",
@@ -653,87 +583,6 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
         help="Review every currently reviewable page from the shell summary.",
     )
 
-    rewrite_review_parser = subparsers.add_parser(
-        "review-rewrite",
-        help="Advance a concept rewrite proposal through the explicit rewrite workflow.",
-    )
-    rewrite_review_parser.add_argument("slug", help="Concept slug.")
-    rewrite_review_parser.add_argument("--status", required=True, help="Target rewrite proposal status.")
-    rewrite_review_parser.add_argument("--note", help="Optional review note.")
-
-    apply_rewrite_parser = subparsers.add_parser(
-        "apply-rewrite",
-        help="Apply an accepted concept rewrite proposal to the target concept page.",
-    )
-    apply_rewrite_parser.add_argument("slug", help="Concept slug.")
-    apply_rewrite_parser.add_argument("--note", help="Optional apply note.")
-    apply_rewrite_parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Write a rewrite preview artifact without mutating the concept page.",
-    )
-
-    verify_rewrite_parser = subparsers.add_parser(
-        "verify-rewrite",
-        help="Verify that an applied concept rewrite still matches the current concept/runtime state.",
-    )
-    verify_rewrite_parser.add_argument("slug", help="Concept slug.")
-    verify_rewrite_parser.add_argument("--note", help="Optional verification note.")
-
-    revert_rewrite_parser = subparsers.add_parser(
-        "revert-rewrite",
-        help="Revert the latest applied concept rewrite and restore the previous concept snapshot.",
-    )
-    revert_rewrite_parser.add_argument("slug", help="Concept slug.")
-    revert_rewrite_parser.add_argument("--note", help="Optional revert note.")
-
-    retire_concept_parser = subparsers.add_parser(
-        "retire-concept",
-        help="Apply an explicit concept lifecycle override and retire one or more concepts from default query ranking.",
-    )
-    retire_concept_parser.add_argument(
-        "slugs",
-        nargs="+",
-        help="One or more concept slugs (fail-fast: first failure aborts remaining).",
-    )
-    retire_concept_parser.add_argument("--note", help="Optional retire note (applied to all slugs).")
-
-    reactivate_concept_parser = subparsers.add_parser(
-        "reactivate-concept",
-        help="Clear the active retired override for one or more concepts and return them to heuristic lifecycle routing.",
-    )
-    reactivate_concept_parser.add_argument(
-        "slugs",
-        nargs="+",
-        help="One or more concept slugs (fail-fast: first failure aborts remaining).",
-    )
-    reactivate_concept_parser.add_argument("--note", help="Optional reactivate note (applied to all slugs).")
-
-    review_concept_parser = subparsers.add_parser(
-        "review-concept",
-        help=(
-            "Manual review-ack for concepts in the revisit/review buckets — "
-            "writes a concept lifecycle override pinning lifecycle_state."
-        ),
-    )
-    review_concept_parser.add_argument(
-        "slugs",
-        nargs="*",
-        help="One or more concept slugs (omit when using --all-pending).",
-    )
-    review_concept_parser.add_argument(
-        "--status",
-        required=True,
-        choices=("active", "deferred", "review"),
-        help="Target lifecycle_state for the override.",
-    )
-    review_concept_parser.add_argument("--note", help="Optional review note (applied to all slugs).")
-    review_concept_parser.add_argument(
-        "--all-pending",
-        action="store_true",
-        help="Review every concept currently in the revisit_concepts and review_concepts buckets.",
-    )
-
     review_queue_parser = subparsers.add_parser(
         "review-queue",
         help="List pending review items grouped by sub-bucket (decision-kind feed entries).",
@@ -750,122 +599,12 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
     review_queue_parser.add_argument("--json", action="store_true", help="Structured JSON output.")
     review_queue_parser.set_defaults(handler_command="review-queue")
 
-    action_review_parser = subparsers.add_parser(
-        "review-action",
-        help="Advance a machine-memory repair action through the explicit action workflow.",
-    )
-    action_review_parser.add_argument(
-        "action_ids",
-        nargs="*",
-        help="Machine-memory action ids or title fragments.",
-    )
-    action_review_parser.add_argument(
-        "--status",
-        required=True,
-        choices=("proposed", "accepted", "deferred", "resolved", "rejected"),
-        help="Target action status.",
-    )
-    action_review_parser.add_argument("--note", help="Optional action review note.")
-    action_review_parser.add_argument(
-        "--all-pending",
-        action="store_true",
-        help="Review all proposed review-first actions matching --kind.",
-    )
-    action_review_parser.add_argument(
-        "--kind",
-        help="Required with --all-pending; filters action kind (e.g. add-source-concept-link).",
-    )
-    action_review_parser.add_argument(
-        "--execution-band",
-        default="review-first",
-        help="Execution band filter for --all-pending (default: review-first).",
-    )
-
-    apply_action_parser = subparsers.add_parser(
-        "apply-action",
-        help="Apply an accepted low-risk machine-memory repair action through the safe execution layer.",
-    )
-    apply_action_parser.add_argument("action_id", nargs="?", help="Machine-memory action id or title fragment.")
-    apply_action_parser.add_argument("--note", help="Optional apply note.")
-    apply_action_parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Preview the safe-apply bundle without mutating manual-link state.",
-    )
-    apply_action_parser.add_argument(
-        "--bundle",
-        help="Optional execution bundle path to validate and consume during apply.",
-    )
-    apply_action_parser.add_argument(
-        "--batch",
-        nargs="+",
-        help="Apply multiple action ids/title fragments in one batch receipt.",
-    )
-    apply_action_parser.add_argument(
-        "--all-accepted-low-risk",
-        action="store_true",
-        help="Apply every currently accepted low-risk action as a batch.",
-    )
-
-    auto_resolve_actions_parser = subparsers.add_parser(
-        "auto-resolve-actions",
-        help="Apply accepted low-risk machine-memory actions and defer human-required exceptions.",
-    )
-    auto_resolve_actions_parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Preview auto-resolution decisions without writing receipts or state.",
-    )
-    auto_resolve_actions_parser.add_argument(
-        "--limit",
-        type=int,
-        help="Optional maximum number of active actions to evaluate.",
-    )
-    auto_resolve_actions_parser.add_argument(
-        "--accepted-only",
-        action="store_true",
-        help="Only evaluate active accepted actions; skip proposed/deferred review debt.",
-    )
-    auto_resolve_actions_parser.add_argument("--note", help="Optional note stored in auto-resolution receipts.")
-    auto_resolve_actions_parser.set_defaults(handler_command="auto-resolve-actions")
-
-    revert_action_parser = subparsers.add_parser(
-        "revert-action",
-        help="Revert the latest low-risk safe apply for a machine-memory action.",
-    )
-    revert_action_parser.add_argument("action_id", nargs="?", help="Machine-memory action id.")
-    revert_action_parser.add_argument("--note", help="Optional revert note.")
-    revert_action_parser.add_argument(
-        "--last-batch",
-        action="store_true",
-        help="Revert the most recent unreverted action apply batch.",
-    )
-
-    apply_archive_parser = subparsers.add_parser(
-        "apply-archive",
-        help="Apply a ready archive candidate and pin the material temperature to archived.",
-    )
-    apply_archive_parser.add_argument("entry_id", help="Manifest/material entry id.")
-    apply_archive_parser.add_argument("--note", help="Optional apply note.")
-    apply_archive_parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Write an archive bundle preview without mutating material state.",
-    )
-
-    revert_archive_parser = subparsers.add_parser(
-        "revert-archive",
-        help="Revert the latest explicit archive transition and restore the material to cold.",
-    )
-    revert_archive_parser.add_argument("entry_id", help="Manifest/material entry id.")
-    revert_archive_parser.add_argument("--note", help="Optional revert note.")
-
     batch_review_parser = subparsers.add_parser(
         "batch-review",
         help=(
             "One-shot alias that routes a batch decision through existing review primitives "
-            "(review-page --all-pending / review-action --all-pending --kind ... / apply-action --all-accepted-low-risk). "
-            "User must still pick the batch and supply --note; runtime never auto-adopts."
+            "(review-page --all-pending). User must still pick the batch and supply --note; "
+            "runtime never auto-adopts."
         ),
     )
     batch_review_parser.add_argument(

@@ -24,37 +24,16 @@ from ..compile.pipeline import compile_wiki
 from ..content.io import ingest_source
 from ..content.memory import action_supports_low_risk_apply
 from ..drop import drop_image, drop_note, drop_pdf, drop_repo, drop_url
-from ..execution.archive import (
-    apply_material_archive,
-    revert_material_archive,
-)
 from ..execution.ask import (
     ask_question,
     file_back,
 )
-from ..execution.concept_rewrite import (
-    apply_concept_rewrite,
-    revert_concept_rewrite,
-    review_concept_rewrite,
-    verify_concept_rewrite,
-)
-from ..execution.lifecycle import (
-    reactivate_concept,
-    retire_concept,
-    review_concept,
-    review_concepts_batch,
-)
 from ..execution.machine_memory_actions import (
-    apply_machine_memory_action,
-    auto_resolve_machine_memory_actions,
     resolve_machine_memory_action_query,
-    revert_machine_memory_action,
-    review_machine_memory_action,
     review_machine_memory_actions_batch,
 )
 from ..execution.machine_memory_batch import (
     apply_machine_memory_actions_batch,
-    revert_machine_memory_action_batch,
     review_pages_batch,
 )
 from ..execution.review import review_page
@@ -93,19 +72,9 @@ from ..runner.clients import llm_probe, llm_status
 from ..runner.commands import (
     run_audit_backfill,
     run_audit_preview,
-    run_demote,
-    run_l3_proposal_accept,
-    run_l3_proposal_apply,
-    run_l3_proposal_create,
-    run_l3_proposal_generate,
-    run_l3_proposal_generation_preview,
-    run_l3_proposal_list,
-    run_l3_proposal_reject,
-    run_l3_proposal_revert,
     run_planner_log_list,
     run_planner_log_rollback,
     run_planner_log_rollback_preview,
-    run_promote,
     run_signals_list,
     run_signals_show,
 )
@@ -124,30 +93,24 @@ from .dispatch_helpers import (
     _flatten_model_fallback_args,
     _flatten_model_retry_args,
     _format_feed_entry_line,
-    _format_l3_generation_preview_line,
-    _format_l3_proposal_summary_line,
     _format_planner_decision_summary_line,
     _format_review_next_surface,
     _format_signal_show_text,
     _format_signal_summary_line,
     _handle_batch_review_alias,
     _handle_review_next,
-    _l3_command,
-    _l3_review_item,
     _latest_run_compile_summary,
     _maybe_auto_process,
     _metric_to_dict,
     _page_review_item,
     _pending_review_pages,
     _print_run_compile_fail_fast_breadcrumb,
-    _read_text_argument,
     _ready_actions_batch_helper,
     _render_metrics_text,
     _render_today_text,
     _resolve_action_id,
     _resolve_action_ids,
     _resolve_review_action_ids,
-    _resolve_review_concept_slugs,
     _resolve_review_pages,
     _review_action_item,
     _review_page_command,
@@ -170,8 +133,6 @@ from .universal_input import (
     _rewrite_universal_drop_argv,
     _top_level_drop_index,
 )
-
-L3_PROPOSAL_REVIEW_STATUSES = ("accepted", "rejected")
 
 
 def _resolve_vault_root(args: argparse.Namespace) -> Path:
@@ -368,14 +329,6 @@ def _handle_report_subgraph(args: argparse.Namespace, root: Path) -> tuple[objec
     )
 
 
-def _handle_promote_demote(args: argparse.Namespace, root: Path) -> tuple[object, str | None]:
-    if args.handler_command == "promote":
-        return _out(run_promote(root, args.artifact_ref))
-    if args.handler_command == "demote":
-        return _out(run_demote(root, args.artifact_ref))
-    raise ValueError(f"Unsupported command: {args.handler_command}")
-
-
 def _handle_alchemy(args: argparse.Namespace, root: Path) -> tuple[object, str | None]:
     if args.handler_command == "alchemy-start":
         include_elixir_ids = None
@@ -447,40 +400,6 @@ def _handle_alchemy_lane(args: argparse.Namespace, root: Path) -> tuple[object, 
     return _out(result)
 
 
-def _handle_l3(args: argparse.Namespace, root: Path) -> tuple[object, str | None]:
-    text_output = None
-    if args.handler_command == "l3-proposal-create":
-        result = run_l3_proposal_create(root, kind=args.kind, proposal_id=args.proposal_id, target_file=args.target_file, content=_read_text_argument(root, args.content_file), rationale=args.rationale, evidence_refs=args.evidence_refs, signal_ids=args.signal_ids, pattern=args.pattern)
-    elif args.handler_command == "l3-proposal-generate":
-        result = run_l3_proposal_generate(root, planner_log_path=args.planner_log_path, limit=args.limit, apply=args.apply)
-    elif args.handler_command == "review":
-        if args.review_command == "proposals":
-            result = run_l3_proposal_list(root, kind=args.kind, state=args.state)
-            if not args.json:
-                text_output = "\n".join(_format_l3_proposal_summary_line(item) for item in result) or "(no L3 proposals)"
-        elif args.review_command == "proposal-generation":
-            result = run_l3_proposal_generation_preview(root, planner_log_path=args.planner_log_path, limit=args.limit)
-            if not args.json:
-                candidates = result.get("candidates", []) if isinstance(result, dict) else []
-                text_output = "\n".join(_format_l3_generation_preview_line(item) for item in candidates) or "(no L3 proposal generation candidates)"
-        elif args.review_command == "proposal":
-            if args.status not in L3_PROPOSAL_REVIEW_STATUSES:
-                raise ValueError(f"Unsupported L3 proposal review status: {args.status!r}; expected one of: {L3_PROPOSAL_REVIEW_STATUSES}")
-            if args.status == "accepted":
-                result = run_l3_proposal_accept(root, args.proposal_id, note=args.note)
-            else:
-                result = run_l3_proposal_reject(root, args.proposal_id, note=args.note)
-        else:
-            raise ValueError(f"Unsupported review command: {args.review_command}")
-    elif args.handler_command == "apply":
-        result = run_l3_proposal_apply(root, args.proposal_id, note=args.note)
-    elif args.handler_command == "revert":
-        result = run_l3_proposal_revert(root, args.receipt_id, note=args.note)
-    else:
-        raise ValueError(f"Unsupported command: {args.handler_command}")
-    return _out(result, text_output)
-
-
 def _handle_signals_planner_audit(args: argparse.Namespace, root: Path) -> tuple[object, str | None]:
     text_output = None
     if args.handler_command == "signals-list":
@@ -518,68 +437,6 @@ def _handle_review_lifecycle(args: argparse.Namespace, root: Path) -> tuple[obje
     if args.handler_command == "review-page":
         review_pages = _resolve_review_pages(root, args.page, use_next=args.next, batch=args.batch, all_pending=args.all_pending)
         result = review_pages_batch(root, review_pages, args.status, note=args.note, confidence=args.confidence) if len(review_pages) > 1 or args.batch or args.all_pending else review_page(root, review_pages[0], args.status, note=args.note, confidence=args.confidence)
-    elif args.handler_command == "review-rewrite":
-        result = review_concept_rewrite(root, args.slug, args.status, note=args.note)
-    elif args.handler_command == "apply-rewrite":
-        result = apply_concept_rewrite(root, args.slug, note=args.note, dry_run=args.dry_run)
-    elif args.handler_command == "verify-rewrite":
-        result = verify_concept_rewrite(root, args.slug, note=args.note)
-    elif args.handler_command == "revert-rewrite":
-        result = revert_concept_rewrite(root, args.slug, note=args.note)
-    elif args.handler_command == "retire-concept":
-        slugs = list(args.slugs) if isinstance(args.slugs, list) else [args.slugs]
-        if len(slugs) == 1:
-            result = retire_concept(root, slugs[0], note=args.note)
-        else:
-            receipts: list[dict[str, object]] = []
-            for slug in slugs:
-                receipts.append(retire_concept(root, slug, note=args.note))
-            result = {"slugs": slugs, "receipts": receipts, "count": len(receipts)}
-        compile_wiki(root)
-    elif args.handler_command == "reactivate-concept":
-        slugs = list(args.slugs) if isinstance(args.slugs, list) else [args.slugs]
-        if len(slugs) == 1:
-            result = reactivate_concept(root, slugs[0], note=args.note)
-        else:
-            receipts = []
-            for slug in slugs:
-                receipts.append(reactivate_concept(root, slug, note=args.note))
-            result = {"slugs": slugs, "receipts": receipts, "count": len(receipts)}
-        compile_wiki(root)
-    elif args.handler_command == "review-concept":
-        review_slugs = _resolve_review_concept_slugs(root, list(args.slugs) if isinstance(args.slugs, list) else [], all_pending=args.all_pending)
-        result = review_concepts_batch(root, review_slugs, status=args.status, note=args.note) if len(review_slugs) > 1 or args.all_pending else review_concept(root, review_slugs[0], status=args.status, note=args.note)
-        compile_wiki(root)
-    elif args.handler_command == "review-action":
-        review_action_ids = _resolve_review_action_ids(root, list(args.action_ids) if isinstance(args.action_ids, list) else [], all_pending=args.all_pending, kind=args.kind, execution_band=args.execution_band)
-        result = review_machine_memory_action(root, review_action_ids[0], args.status, note=args.note) if len(review_action_ids) == 1 and not args.all_pending else review_machine_memory_actions_batch(root, review_action_ids, args.status, note=args.note)
-    elif args.handler_command == "apply-action":
-        action_ids = _resolve_action_ids(root, args.action_id, batch=args.batch, all_accepted_low_risk=args.all_accepted_low_risk)
-        if len(action_ids) > 1 or args.batch or args.all_accepted_low_risk:
-            if args.bundle:
-                raise ValueError("--bundle is only supported for single-action apply.")
-            result = apply_machine_memory_actions_batch(root, action_ids, note=args.note, dry_run=args.dry_run)
-        else:
-            result = apply_machine_memory_action(root, action_ids[0], note=args.note, dry_run=args.dry_run, bundle_path=args.bundle)
-    elif args.handler_command == "auto-resolve-actions":
-        result = auto_resolve_machine_memory_actions(
-            root,
-            dry_run=args.dry_run,
-            limit=args.limit,
-            include_proposed=not args.accepted_only,
-            note=args.note,
-        )
-    elif args.handler_command == "revert-action":
-        if args.last_batch:
-            result = revert_machine_memory_action_batch(root, note=args.note)
-        else:
-            if not args.action_id:
-                raise ValueError("Provide an action id or use --last-batch.")
-            result = revert_machine_memory_action(root, _resolve_action_id(root, args.action_id), note=args.note)
-    elif args.handler_command == "apply-archive":
-        result = apply_material_archive(root, args.entry_id, note=args.note, dry_run=args.dry_run)
-    elif args.handler_command == "revert-archive":
-        result = revert_material_archive(root, args.entry_id, note=args.note)
     elif args.handler_command == "batch-review":
         result = _handle_batch_review_alias(root, args)
     elif args.handler_command == "review-next":
@@ -685,8 +542,6 @@ _ASK_HANDLERS = {
 }
 
 _ALCHEMY_HANDLERS = {
-    "promote": _handle_promote_demote,
-    "demote": _handle_promote_demote,
     "alchemy-start": _handle_alchemy,
     "alchemy-distill": _handle_alchemy,
     "alchemy-finalize": _handle_alchemy,
@@ -694,14 +549,6 @@ _ALCHEMY_HANDLERS = {
     "alchemy-revert": _handle_alchemy,
     "alchemy-demote": _handle_alchemy,
     "alchemy": _handle_alchemy,
-}
-
-_L3_HANDLERS = {
-    "l3-proposal-create": _handle_l3,
-    "l3-proposal-generate": _handle_l3,
-    "review": _handle_l3,
-    "apply": _handle_l3,
-    "revert": _handle_l3,
 }
 
 _SIGNALS_PLANNER_AUDIT_HANDLERS = {
@@ -715,19 +562,6 @@ _SIGNALS_PLANNER_AUDIT_HANDLERS = {
 
 _REVIEW_LIFECYCLE_HANDLERS = {
     "review-page": _handle_review_lifecycle,
-    "review-rewrite": _handle_review_lifecycle,
-    "apply-rewrite": _handle_review_lifecycle,
-    "verify-rewrite": _handle_review_lifecycle,
-    "revert-rewrite": _handle_review_lifecycle,
-    "retire-concept": _handle_review_lifecycle,
-    "reactivate-concept": _handle_review_lifecycle,
-    "review-concept": _handle_review_lifecycle,
-    "review-action": _handle_review_lifecycle,
-    "apply-action": _handle_review_lifecycle,
-    "auto-resolve-actions": _handle_review_lifecycle,
-    "revert-action": _handle_review_lifecycle,
-    "apply-archive": _handle_review_lifecycle,
-    "revert-archive": _handle_review_lifecycle,
     "batch-review": _handle_review_lifecycle,
     "review-next": _handle_review_lifecycle,
 }
@@ -757,7 +591,6 @@ _HANDLERS = {
     **_LIVE_SURFACE_HANDLERS,
     **_ASK_HANDLERS,
     **_ALCHEMY_HANDLERS,
-    **_L3_HANDLERS,
     **_SIGNALS_PLANNER_AUDIT_HANDLERS,
     **_REVIEW_LIFECYCLE_HANDLERS,
     **_RUNTIME_WORKFLOW_HANDLERS,

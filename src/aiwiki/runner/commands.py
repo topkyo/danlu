@@ -1,93 +1,9 @@
-"""Thin command façades for L3 proposals, audit, planner rollback, candidates, protocol learn, signals."""
+"""Thin command façades for audit, planner rollback, and signals."""
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
-
-from aiwiki.app_utils import runtime_write_operation
-
-
-def run_l3_proposal_create(
-    root: Path,
-    *,
-    kind: str,
-    target_file: str,
-    content: str,
-    proposal_id: str | None = None,
-    rationale: str = "",
-    evidence_refs: list[str] | None = None,
-    signal_ids: list[str] | None = None,
-    pattern: str = "manual_fixture",
-) -> dict[str, Any]:
-    from aiwiki.execution.l3_proposals import create_l3_proposal
-
-    return create_l3_proposal(
-        root,
-        kind=kind,
-        target_file=target_file,
-        content=content,
-        proposal_id=proposal_id,
-        rationale=rationale,
-        evidence_refs=evidence_refs,
-        signal_ids=signal_ids,
-        pattern=pattern,
-    )
-
-
-def run_l3_proposal_list(root: Path, *, kind: str | None = None, state: str | None = None) -> list[dict[str, Any]]:
-    from aiwiki.execution.l3_proposals import list_l3_proposals
-
-    return list_l3_proposals(root, kind=kind, state=state)
-
-
-def run_l3_proposal_generation_preview(
-    root: Path,
-    *,
-    planner_log_path: Path | None = None,
-    limit: int = 20,
-) -> dict[str, Any]:
-    from aiwiki.execution.l3_proposals import preview_l3_proposal_generation
-
-    return preview_l3_proposal_generation(root, planner_log_path=planner_log_path, limit=limit)
-
-
-def run_l3_proposal_generate(
-    root: Path,
-    *,
-    planner_log_path: Path | None = None,
-    limit: int = 20,
-    apply: bool = False,
-) -> dict[str, Any]:
-    if not apply:
-        return run_l3_proposal_generation_preview(root, planner_log_path=planner_log_path, limit=limit)
-    from aiwiki.execution.l3_proposals import generate_l3_proposals_from_planner
-
-    return generate_l3_proposals_from_planner(root, planner_log_path=planner_log_path, limit=limit)
-
-
-def run_l3_proposal_apply(root: Path, proposal_id: str, *, note: str | None = None) -> dict[str, Any]:
-    from aiwiki.execution.l3_proposals import apply_l3_proposal
-
-    return apply_l3_proposal(root, proposal_id, note=note)
-
-
-def run_l3_proposal_accept(root: Path, proposal_id: str, *, note: str | None = None) -> dict[str, Any]:
-    from aiwiki.execution.l3_proposals import accept_l3_proposal
-
-    return accept_l3_proposal(root, proposal_id, note=note)
-
-
-def run_l3_proposal_reject(root: Path, proposal_id: str, *, note: str | None = None) -> dict[str, Any]:
-    from aiwiki.execution.l3_proposals import reject_l3_proposal
-
-    return reject_l3_proposal(root, proposal_id, note=note)
-
-
-def run_l3_proposal_revert(root: Path, receipt_id: str, *, note: str | None = None) -> dict[str, Any]:
-    from aiwiki.execution.l3_proposals import revert_l3_proposal
-
-    return revert_l3_proposal(root, receipt_id, note=note)
 
 
 def run_audit_preview(root: Path, *, limit: int = 50) -> dict[str, Any]:
@@ -125,20 +41,6 @@ def run_planner_log_rollback(
     from aiwiki.planner.rollback import apply_planner_log_rollback_marker
 
     return apply_planner_log_rollback_marker(root, signal_id=signal_id, trace_id=trace_id, limit=limit, apply=apply)
-
-
-@runtime_write_operation
-def run_promote(root: Path, artifact_ref: str) -> dict[str, Any]:
-    from aiwiki.execution.candidates import promote_candidate
-
-    return promote_candidate(root, artifact_ref)
-
-
-@runtime_write_operation
-def run_demote(root: Path, artifact_ref: str) -> dict[str, Any]:
-    from aiwiki.execution.candidates import demote_candidate
-
-    return demote_candidate(root, artifact_ref)
 
 
 def run_signals_list(
@@ -193,4 +95,3 @@ def run_planner_log_list(
         since=since,
         limit=limit,
     )
-

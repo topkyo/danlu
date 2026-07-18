@@ -61,18 +61,9 @@ from aiwiki.runner.clients import (  # noqa: F401
 from aiwiki.runner.commands import (  # noqa: F401
     run_audit_backfill,
     run_audit_preview,
-    run_demote,
-    run_l3_proposal_apply,
-    run_l3_proposal_create,
-    run_l3_proposal_generate,
-    run_l3_proposal_generation_preview,
-    run_l3_proposal_list,
-    run_l3_proposal_reject,
-    run_l3_proposal_revert,
     run_planner_log_list,
     run_planner_log_rollback,
     run_planner_log_rollback_preview,
-    run_promote,
     run_signals_list,
     run_signals_show,
 )
