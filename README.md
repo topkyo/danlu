@@ -58,7 +58,7 @@ cd ../demo-furnace-vault
 ```bash
 ./scripts/aiwiki-launcher.sh drop markdown --title "Morning material" --text "Capture the latest signal."
 ./scripts/aiwiki-launcher.sh advanced compile
-./scripts/aiwiki-launcher.sh advanced run-ask "Compare A and B on thesis, catalyst, risk" --format report
+./scripts/aiwiki-launcher.sh advanced run-ask "Compare A and B on thesis, catalyst, risk"
 ./scripts/aiwiki-launcher.sh advanced file-back output/reports/xxx.md
 ./scripts/aiwiki-launcher.sh advanced nightly
 ```

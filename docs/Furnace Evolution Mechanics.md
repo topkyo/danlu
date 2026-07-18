@@ -505,7 +505,7 @@ aiwiki ask "VLA 的核心设计权衡是什么" --protocol research --corpus res
 # → 当前：创建/命中 corpus，写入 active-corpora.json，status=active
 
 aiwiki ask "和传统 HLA 相比有哪些优劣" --corpus research-vla-2026q2
-# → 当前：每轮 output 写入 output/reports、output/slides、output/figures 等可见产物
+# → 当前：每轮 output 写入 output/reports/*.md（自由 Markdown 报告；Ask 不再产出 slides/figures 等分叉 format）
 # → 当前：.aiwiki/state/output-candidates.json 记录候选状态，output_refs 追加到 corpus
 # → 绝不自动写入 wiki/
 
@@ -677,7 +677,7 @@ L3 proposal **只允许**写入以下文件：
 
 | 命令 | 语义 | 写目标 |
 |---|---|---|
-| `aiwiki ask "<q>" --corpus <id>` | 当前：绑定或创建 corpus turn；追加 output_refs | `output/reports` / `output/slides` / `output/figures` 等产物 + `.aiwiki/state/output-candidates.json` + `.aiwiki/state/active-corpora.json` |
+| `aiwiki ask "<q>" --corpus <id>` | 当前：绑定或创建 corpus turn；追加 output_refs | `output/reports/*.md` + `.aiwiki/state/output-candidates.json` + `.aiwiki/state/active-corpora.json` |
 | `aiwiki promote <artifact_ref>` | 当前：output candidate → `wiki/derived/` | `wiki/derived/` + candidate state |
 | `aiwiki demote <artifact_ref>` | 当前：demote output candidate | `.aiwiki/state/output-candidates.json` |
 | `aiwiki alchemy-start <corpus-id> --topic <topic>` | 当前：从该 corpus 的已 promoted output 创建 draft elixir | `.aiwiki/staging/elixirs/` |

@@ -113,9 +113,9 @@
 - Modify: `README.md` 若仍写 ask format 列表
 - **不要**改 `docs/archive/**` 历史保真文
 
-- [ ] **Step 1:** Active 文档去掉「六段骨架 / note format / ask slides|figure|decision-memo|sop」为现行能力的表述。
-- [ ] **Step 2:** `PROGRESS.md` 记：freeform ask + hard-delete formats + shell 按钮修复。
-- [ ] **Verify:** `bash scripts/docs_consistency_check.sh`（若存在且适用）；人工确认无「现行六段」矛盾
+- [x] **Step 1:** Active 文档去掉「六段骨架 / note format / ask slides|figure|decision-memo|sop」为现行能力的表述。
+- [x] **Step 2:** `PROGRESS.md` 记：freeform ask + hard-delete formats + shell 按钮修复。
+- [x] **Verify:** `bash scripts/docs_consistency_check.sh`（若存在且适用）；人工确认无「现行六段」矛盾
 
 **Commit:** `docs: sync active docs for freeform ask-only markdown`
 
