@@ -7,7 +7,7 @@ function noticeRemovedCommand(plugin, message) {
 function buildFileBackModalSpec(plugin, prefill = {}) {
   return {
     title: plugin.t("File Back"),
-    description: plugin.t("File an output artifact back into wiki/derived, wiki/decisions, or wiki/judgments."),
+    description: plugin.t("File an output artifact back into wiki/judgments for thin review."),
     fields: [
       {
         key: "artifact",
@@ -22,23 +22,11 @@ function buildFileBackModalSpec(plugin, prefill = {}) {
         placeholder: plugin.t("Optional filed-back title"),
         initialValue: prefill.title || "",
       },
-      {
-        key: "kind",
-        label: plugin.t("Kind"),
-        kind: "select",
-        initialValue: prefill.kind || "judgment",
-        options: [
-          ["derived", plugin.t("derived")],
-          ["decision", plugin.t("decision")],
-          ["judgment", plugin.t("judgment")],
-        ],
-      },
     ],
     onSubmit: async (values) => {
       const args = [values.artifact];
       appendOptionalArg(args, "--title", values.title);
-      appendOptionalArg(args, "--kind", values.kind);
-      await plugin.runCliAction(`File Back: ${values.kind}`, "file-back", args);
+      await plugin.runCliAction(plugin.t("File Back"), "file-back", args);
     },
   };
 }
@@ -279,76 +267,6 @@ function buildRevertActionModalSpec(plugin, prefill = {}) {
       noticeRemovedCommand(
         plugin,
         "Machine-memory action commands were removed in W3; use review-page instead."
-      );
-    },
-  };
-}
-
-function buildReviewPageBatchModalSpec(plugin, prefill = {}) {
-  const pagePaths = Array.isArray(prefill.pagePaths) ? prefill.pagePaths : [];
-  const statusOptions = Array.isArray(prefill.statusOptions) ? prefill.statusOptions : [];
-  const normalizedStatusOptions = statusOptions.map((option) => ({
-    value: option.value,
-    label: option.label || plugin.transitionLabel("page", option.value),
-  }));
-  const statusField = normalizedStatusOptions.length
-    ? {
-        key: "status",
-        label: plugin.t("Status"),
-        required: true,
-        kind: "select",
-        initialValue: prefill.status || normalizedStatusOptions[0].value || "",
-        options: normalizedStatusOptions,
-      }
-    : {
-        key: "status",
-        label: plugin.t("Status"),
-        required: true,
-        placeholder: plugin.t("tracking / needs-revisit / approved ..."),
-        initialValue: prefill.status || "",
-      };
-  return {
-    title: plugin.t("Batch Review Pages"),
-    description: prefill.description || plugin.t("Advance multiple review pages that share a safe common transition."),
-    submitLabel: plugin.t("Run batch"),
-    fields: [
-      {
-        key: "pages",
-        label: plugin.t("Page paths"),
-        required: true,
-        kind: "textarea",
-        rows: 6,
-        placeholder: plugin.t("wiki/judgments/... (one per line)"),
-        initialValue: pagePaths.join("\n"),
-      },
-      statusField,
-      {
-        key: "note",
-        label: plugin.t("Note"),
-        kind: "textarea",
-        rows: 4,
-        placeholder: plugin.t("Optional shared batch note"),
-        initialValue: prefill.note || "",
-      },
-      {
-        key: "confidence",
-        label: plugin.t("Confidence"),
-        placeholder: plugin.t("Optional shared confidence override"),
-        initialValue: prefill.confidence || "",
-      },
-    ],
-    onSubmit: async (values) => {
-      const paths = parseLineList(values.pages);
-      if (!paths.length) {
-        throw new Error(plugin.t("Batch review requires at least one page path."));
-      }
-      if (typeof plugin.runReviewPageBatchTransition === "function") {
-        await plugin.runReviewPageBatchTransition(paths, values.status, values.note, values.confidence);
-        return;
-      }
-      noticeRemovedCommand(
-        plugin,
-        "Batch review was removed in W4; use review-page for explicit page transitions."
       );
     },
   };

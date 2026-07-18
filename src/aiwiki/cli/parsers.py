@@ -202,16 +202,10 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
 
     file_back_parser = subparsers.add_parser(
         "file-back",
-        help="File a markdown artifact back into wiki/derived (machine-memory terminal layer, no review), wiki/decisions, or wiki/judgments (subject to review-page workflow).",
+        help="File a markdown artifact back into wiki/judgments for thin review-page workflow.",
     )
     file_back_parser.add_argument("artifact", help="Path to a markdown artifact.")
     file_back_parser.add_argument("--title", help="Optional filed-back title.")
-    file_back_parser.add_argument(
-        "--kind",
-        choices=("derived", "decision", "judgment"),
-        default="judgment",
-        help="Filed-back page kind. Default judgment enters review-page workflow; derived is terminal (no review); decision also enters review-page workflow.",
-    )
 
     alchemy_start_parser = subparsers.add_parser("alchemy-start", help="Start a new elixir from a corpus.")
     alchemy_start_parser.add_argument("corpus_id")
@@ -258,21 +252,6 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
     review_parser.add_argument("--status", required=True, help="Target review status for the page.")
     review_parser.add_argument("--note", help="Optional review note to store in the page.")
     review_parser.add_argument("--confidence", help="Optional confidence override for judgment pages.")
-    review_parser.add_argument(
-        "--next",
-        action="store_true",
-        help="Auto-select the highest-priority review page from the current shell summary.",
-    )
-    review_parser.add_argument(
-        "--batch",
-        nargs="+",
-        help="Review multiple pages in one batch receipt.",
-    )
-    review_parser.add_argument(
-        "--all-pending",
-        action="store_true",
-        help="Review every currently reviewable page from the shell summary.",
-    )
 
     review_queue_parser = subparsers.add_parser(
         "review-queue",
@@ -485,7 +464,7 @@ def _configure_ask_parser(parser: argparse.ArgumentParser) -> None:
 
 def _add_auto_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "--auto",
+        "--no-auto",
         action="store_true",
-        help="Run one deterministic processing pass after the material is dropped.",
+        help="Skip deterministic compile+lint after a successful drop.",
     )

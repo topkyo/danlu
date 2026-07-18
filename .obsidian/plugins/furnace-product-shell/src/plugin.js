@@ -331,10 +331,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     await this.runCliAction(`Review Page: ${status}`, "review-page", [pagePath, "--status", status]);
   }
 
-  async runReviewPageBatchTransition(pagePaths, status, note = "", confidence = "") {
-    new Notice(this.t("Batch review was removed in W4; use review-page for explicit page transitions."));
-  }
-
   async runReviewRewriteTransition(slug, status) {
     new Notice(this.t("Concept rewrite commands were removed in W3; use review-page on the concept page instead."));
   }
@@ -646,7 +642,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       return;
     }
     const label = String(item.title || this.t("沉淀")).trim() || this.t("沉淀");
-    await this.runCliAction(label, "file-back", [reportPath, "--kind", "judgment"]);
+    await this.runCliAction(label, "file-back", [reportPath]);
   }
 
   openCompoundAlchemyStart(suggest) {
@@ -709,18 +705,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       onFallback: () => this.openReviewPageModal(),
       onSubmit: (option) => this.openReviewPageTransitionPicker(option),
     });
-  }
-
-  openReviewNextTransitionPicker() {
-    this.openReviewPageContextPicker();
-  }
-
-  openReviewPageBatchModal(_prefill = {}) {
-    new Notice(this.t("Batch review was removed in W4; use review-page for explicit page transitions."));
-  }
-
-  openReviewBatchSuggestionPicker() {
-    new Notice(this.t("Batch review was removed in W4; use review-page for explicit page transitions."));
   }
 
   openReviewRewriteContextPicker(_options = this.visibleRewriteCandidates()) {

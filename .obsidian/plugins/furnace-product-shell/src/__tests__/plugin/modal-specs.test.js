@@ -50,9 +50,6 @@ function makePlugin(overrides = {}) {
     runCliAction: async (label, command, args) => {
       calls.push({ label, command, args });
     },
-    runReviewPageBatchTransition: async (paths, status, note, confidence) => {
-      calls.push({ label: "batch", command: "notice", paths, status, note, confidence });
-    },
     runApplyAllAcceptedLowRiskCommand: async () => {
       calls.push({ label: "apply-all-low-risk", command: "notice" });
     },
@@ -107,43 +104,21 @@ test("apply action modal spec routes through removed-command notice hook", async
   });
 });
 
-test("batch review modal spec rejects empty batches and routes through notice hook", async () => {
-  const context = loadModalSpecContextWithNotice();
-  context.Notice = (message) => {
-    context.__lastNotice = message;
-  };
-  const plugin = makePlugin();
-  const spec = context.buildReviewPageBatchModalSpec(plugin, {
-    pagePaths: ["wiki/a.md", "wiki/b.md"],
-    statusOptions: [{ value: "accepted" }],
-  });
-
-  expect(spec.submitLabel).toBe("Run batch");
-  expect(spec.fields[1]).toMatchObject({ key: "status", kind: "select", initialValue: "accepted" });
-  await spec.onSubmit({
-    pages: "wiki/a.md\nwiki/b.md\nwiki/a.md",
-    status: "accepted",
-    note: "shared",
-    confidence: "medium",
-  });
-  expect(plugin.calls[0]).toEqual({
-    label: "batch",
-    command: "notice",
-    paths: ["wiki/a.md", "wiki/b.md"],
-    status: "accepted",
-    note: "shared",
-    confidence: "medium",
-  });
-
-  await expect(spec.onSubmit({ pages: "", status: "accepted" })).rejects.toThrow("Batch review requires at least one page path.");
-});
-
-test("file back modal defaults kind to judgment", async () => {
+test("file back modal submits judgment-only file-back args", async () => {
   const context = loadModalSpecContext();
   const plugin = makePlugin();
   const spec = context.buildFileBackModalSpec(plugin, {});
 
-  expect(spec.fields.find((field) => field.key === "kind").initialValue).toBe("judgment");
+  expect(spec.fields.map((field) => field.key)).toEqual(["artifact", "title"]);
+  await spec.onSubmit({
+    artifact: "output/reports/current.md",
+    title: "Follow-up",
+  });
+  expect(plugin.calls[0]).toEqual({
+    label: "File Back",
+    command: "file-back",
+    args: ["output/reports/current.md", "--title", "Follow-up"],
+  });
 });
 
 test("alchemy start modal spec submits corpus and topic args", async () => {

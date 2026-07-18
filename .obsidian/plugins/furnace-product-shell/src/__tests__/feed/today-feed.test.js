@@ -293,7 +293,7 @@ test("buildTodayFeed surfaces compound suggest action entries", () => {
       {
         kind: "compound-suggest",
         title: "沉淀：Today question",
-        command: "PYTHONPATH=src python3 -m aiwiki.cli --root . file-back output/reports/today.md --kind judgment",
+        command: "PYTHONPATH=src python3 -m aiwiki.cli --root . file-back output/reports/today.md",
         path: "output/reports/today.md",
         reason: "multi-turn-same-corpus",
         action: "file-back-judgment",

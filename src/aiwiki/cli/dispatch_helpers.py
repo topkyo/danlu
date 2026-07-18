@@ -607,7 +607,7 @@ def _emit_legacy_drop_deprecation_warning(args: argparse.Namespace) -> None:
 
 
 def _maybe_auto_process(root: Path, result: dict[str, object], args: argparse.Namespace) -> dict[str, object]:
-    if not getattr(args, "auto", False):
+    if getattr(args, "no_auto", False):
         return result
     auto_result = auto_process_once(root)
     return {
@@ -630,46 +630,3 @@ def _build_parser() -> argparse.ArgumentParser:
     return build_parser()
 
 
-def _pending_review_pages(root: Path) -> list[str]:
-    summary = build_shell_summary(root)
-    review_controls = summary.get("review_controls", {})
-    if not isinstance(review_controls, dict):
-        review_controls = {}
-    pending: list[str] = []
-    for candidate in review_controls.get("pages", []):
-        if not isinstance(candidate, dict) or not candidate.get("can_review"):
-            continue
-        candidate_path = str(candidate.get("path") or "")
-        if candidate_path:
-            pending.append(candidate_path)
-    return pending
-
-
-def _resolve_review_pages(
-    root: Path,
-    page: str | None,
-    *,
-    use_next: bool,
-    batch: list[str] | None,
-    all_pending: bool,
-) -> list[str]:
-    selected_modes = int(bool(use_next)) + int(bool(batch)) + int(bool(all_pending))
-    if page and selected_modes:
-        raise ValueError("Use PAGE by itself, or choose exactly one of --next/--batch/--all-pending.")
-    if selected_modes > 1:
-        raise ValueError("Choose only one of --next, --batch, or --all-pending.")
-    if use_next:
-        pending = _pending_review_pages(root)
-        if not pending:
-            raise RuntimeError("No review page is ready for --next.")
-        return [pending[0]]
-    if batch:
-        return [item for item in batch if item.strip()]
-    if all_pending:
-        pending = _pending_review_pages(root)
-        if not pending:
-            raise RuntimeError("No review pages are currently pending.")
-        return pending
-    if page:
-        return [page]
-    raise ValueError("Provide a review page path or use --next/--batch/--all-pending.")

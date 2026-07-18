@@ -972,7 +972,7 @@ def test_file_back_judgment_preserves_derived_promoted_to(  # pragma: no cover -
         encoding="utf-8",
     )
 
-    _run_cli(vault, ["file-back", report_ref, "--kind", "judgment", "--title", "D3 old review"])
+    _run_cli(vault, ["file-back", report_ref, "--title", "D3 old review"])
 
     candidates_state = json.loads(
         (vault / ".aiwiki" / "state" / "output-candidates.json").read_text(encoding="utf-8")
