@@ -29,13 +29,6 @@ function buildAskCommandSpec({ question, format, mode, protocol }) {
     args.push("--protocol", protocol);
   }
   if (mode === "run-ask") {
-    const directQuestion = String(question || "").trim();
-    const canUseDirect = false
-      && !directQuestion.includes("材料路径供系统路由使用：")
-      && !directQuestion.includes("本次投喂材料路径：");
-    if (canUseDirect) {
-      args.push("--direct");
-    }
     args.push("--lean");
   }
   return {

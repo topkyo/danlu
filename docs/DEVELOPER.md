@@ -2,7 +2,7 @@
 title: "炼丹炉开发者指南"
 kind: "guide"
 status: "active"
-updated_at: "2026-07-15"
+updated_at: "2026-07-18"
 related_docs:
   - README.md
   - docs/INSTALL.md
@@ -33,7 +33,7 @@ related_docs:
 - 金丹主链路已落地：`alchemy-start / alchemy-distill / alchemy-finalize / alchemy-promote` 覆盖 candidate plane、settled plane、DAG/provenance gate、promote/revert/demote receipt、Stage-3 compounding acceptance 与 maturity gate 的 `elixir_quality_proof`；剩余 planned 只指显式 LLM/human contract 下的 semantic distillation。
 - `src/aiwiki/app_shell/`：Product Shell summary、controls、status、HTML/surface assembly；Obsidian 插件源码在 `.obsidian/plugins/furnace-product-shell/src/`，它是用户 surface，不拥有 runtime SoT。
 - `src/aiwiki/app_routing.py`：material routing、archive candidate、active corpus and temperature 逻辑。
-- `src/aiwiki/app_queries.py`：ranking / report / slides / decision-memo / sop query helpers。
+- `src/aiwiki/app_queries.py`：ranking / report query helpers（Ask 仅 `render_report` → `output/reports/*.md` 自由 Markdown）。
 - `src/aiwiki/app_linting/`：lint phases、repair backlog、nightly health write helpers。
 - `src/aiwiki/app_vault.py`：new-vault scaffold 与 Obsidian bootstrap owner。
 - `src/aiwiki/app_types.py`：稳定 TypedDict contracts（如 `ManifestEntry` / `CompileState` / `ShellSummary`）。
@@ -116,6 +116,7 @@ runtime policy 缺省采用 `autonomy_profile=agentic`：未写 `.aiwiki/state/a
 - `llm-check`、`shell-summary.json`、Product Shell 会显示 requested/effective backend/model、model fallback 链，以及 usage 可见性/计费口径；backend fallback 链默认为空
 - 默认 `llm-check` 只做静态路由检查；显式加 `--probe` 后才会发一个极小真实请求，区分“backend 能解析出来”和“当前账号真能跑”
 - API provider 会尽量透传响应里的 usage
+- `run-ask` / `ask` 只产出 `output/reports/*.md` 自由 Markdown 报告；CLI `--format` 仅 `report`（缺省即 report）；旧值 `note|slides|figure|decision-memo|sop` 与 `--direct` 已硬删，argparse 直接拒绝
 - `run-ask` 现在会先用 balanced prompt；如果碰到 timeout，会自动再试一次 lean prompt；失败时写出可审计失败说明和 receipt，不再伪装为 deterministic fallback 成功
 - `run-ask` 现在也支持显式 `--lean` 与 `--timeout <seconds>`，用于直接选择稳优先 prompt 或覆盖单次调用 timeout，而不改动全局环境变量
 - 默认不做隐式 model fallback；需要同 backend 多模型 fallback 时必须显式传 `--model-fallback model_a,model_b`（可重复）或设置 `AIWIKI_MODEL_FALLBACK=model_a,model_b`，CLI 参数优先于 env
@@ -192,7 +193,7 @@ drop.py                    raw materialization owner（url / pdf / image / repo 
 compile/                   compile pipeline phases（content / runtime / output / persist）
 app_compile.py             legacy orchestration / compat hotspot；新逻辑优先下沉
 app_compile_ops.py         protocol switch / recurring promotion / agent-pack helpers
-app_queries.py             ranking / report / slides / decision-memo / sop query helpers
+app_queries.py             ranking / report query helpers (Ask freeform md only)
 app_linting/               lint phases / repair backlog / nightly health helpers
 
 content/                   source / concept / derived / memory output 物化 owner

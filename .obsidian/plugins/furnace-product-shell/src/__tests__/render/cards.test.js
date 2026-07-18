@@ -35,16 +35,16 @@ if (!HTMLElement.prototype.addClass) {
   };
 }
 
-const { renderFeedCard, renderReportCard, isReportUnread } = require("../../render/cards");
+const { renderFeedCard, renderReportCard, renderConfirmationCard, isReportUnread } = require("../../render/cards");
 
 function makeMockPlugin() {
   return {
     settings: { lastViewedTimestamp: null },
     t: (key) => key,
-    goToReport: jest.fn(),
+    openWorkspacePath: jest.fn().mockResolvedValue(true),
     runReportSubgraphCommand: jest.fn().mockResolvedValue(),
-    viewReviewTodayEntry: jest.fn(),
-    snoozeTodayEntry: jest.fn(),
+    openReviewCenterView: jest.fn().mockResolvedValue(),
+    runTodaySnoozeCommand: jest.fn().mockResolvedValue(),
   };
 }
 
@@ -134,5 +134,36 @@ describe("renderReportCard", () => {
 
     const graphBtn = Array.from(cardEl.querySelectorAll("button")).find((btn) => btn.textContent === "View graph");
     expect(graphBtn).toBeUndefined();
+  });
+
+  test("Open report button calls openWorkspacePath", () => {
+    const plugin = makeMockPlugin();
+    const cardEl = document.createElement("div");
+
+    renderReportCard(plugin, cardEl, { target: "output/reports/foo.md" });
+
+    const openBtn = Array.from(cardEl.querySelectorAll("button")).find((btn) => btn.textContent === "Open report");
+    openBtn.click();
+
+    expect(plugin.openWorkspacePath).toHaveBeenCalledWith("output/reports/foo.md");
+  });
+});
+
+describe("renderConfirmationCard", () => {
+  test("review and snooze buttons call existing plugin APIs", async () => {
+    const plugin = makeMockPlugin();
+    const cardEl = document.createElement("div");
+
+    renderConfirmationCard(plugin, cardEl, { target: "review:pending-item" });
+
+    const reviewBtn = Array.from(cardEl.querySelectorAll("button")).find((btn) => btn.textContent === "Review");
+    const snoozeBtn = Array.from(cardEl.querySelectorAll("button")).find((btn) => btn.textContent === "Snooze");
+
+    reviewBtn.click();
+    snoozeBtn.click();
+    await Promise.resolve();
+
+    expect(plugin.openReviewCenterView).toHaveBeenCalled();
+    expect(plugin.runTodaySnoozeCommand).toHaveBeenCalledWith("review:pending-item");
   });
 });

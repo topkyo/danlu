@@ -14,6 +14,8 @@
 
 ## 当前动态
 
+- 2026-07-18 (freeform ask markdown-only)：Ask 契约收敛为单一自由 Markdown 报告（`output/reports/*.md`）；硬删 note/slides/figure/decision-memo/sop ask format 与 `--direct`（零兼容、无 alias）；去掉六段 Required Sections 与 `_validate_report_sections`；Product Shell Today 打开报告 / 审阅 / snooze 按钮接线修复；acceptance `prompt_hash` 刷新。`drop note` 投料与 judgment 派生 packs 未动。验证：`bash scripts/verify.sh all` PASS（18 acceptance + Product Shell Jest）。
+
 - 2026-07-18 (self-reach 续炼收口)：file-back 保留 derived `promoted_to`（`ask.py`）；dogfood settled 金丹 2、judgments 6 confirmed；acceptance +1 `test_file_back_judgment_preserves_derived_promoted_to`（18 passed）。成色 B+。
 
 - 2026-07-17 (Obsidian dump P3 derived)：`output/agents|packs|pilots` → `.aiwiki/derived/`；`wiki/rewrite-proposals` 对 state 外孤儿页 unlink；indexes 遥测页保持 KEEP+ignore（已在 userIgnoreFilters，非白屏级）。

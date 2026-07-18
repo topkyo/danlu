@@ -14,6 +14,7 @@ from aiwiki.app_utils import (
     read_text_preview,
     relative_path,
     render_scalar,
+    strip_frontmatter,
 )
 from aiwiki.config import LLMConfig
 from aiwiki.content.io import preserved_section
@@ -876,212 +877,31 @@ def _extract_related_concept_slugs(markdown: str) -> list[str]:
 
 
 def _validate_output_markdown(markdown: str, output_format: str, source_ids: list[str]) -> None:
-    if output_format in {"report", "decision-memo", "sop", "figure", "note"}:
-        frontmatter = parse_frontmatter(markdown)
-        if not frontmatter:
-            raise RuntimeError("Ask response is missing frontmatter.")
-    if source_ids and "wiki/sources/" not in markdown:
-        raise RuntimeError("Ask response is missing explicit source-page citations.")
-    if output_format == "report":
-        _validate_report_sections(markdown)
+    del source_ids
+    if output_format != "report":
+        raise RuntimeError(f"Unsupported ask output format: {output_format}")
+    frontmatter = parse_frontmatter(markdown)
+    if not frontmatter:
+        raise RuntimeError("Ask response is missing frontmatter.")
+    if not strip_frontmatter(markdown).strip():
+        raise RuntimeError("Ask response body is empty.")
+    _reject_unfilled_llm_placeholders(markdown)
 
 
-_REPORT_REQUIRED_SECTIONS: tuple[str, ...] = (
-    "## 结论",
-    "## 关键证据",
-    "## 反证与不确定性",
-    "## 行动建议",
-    "## 下次观察信号",
-    "## 引用",
-)
-
-_REPORT_SECTION_BULLET_MINIMUMS: dict[str, int] = {
-    "## 关键证据": 3,
-    "## 反证与不确定性": 1,
-    "## 行动建议": 1,
-    "## 下次观察信号": 1,
-    "## 引用": 1,
-}
-
-_REPORT_PLACEHOLDER_MARKER = "_LLM:"
-
-_REPORT_CITATION_PATTERN = re.compile(r"wiki/sources/[a-z0-9._-]+\.md")
-_REPORT_ORDERED_LIST_PATTERN = re.compile(r"^[0-9]+[.)]\s+\S")
-
-
-def _validate_report_sections(markdown: str) -> None:
-    """Enforce decision-grade report skeleton + per-section bullet minimums.
-
-    Steps (in order):
-      1. Scan line-anchored H2 headings outside fenced code blocks; require
-         the six required sections in fixed order. Inline body matches,
-         fenced-code occurrences, and longer lookalikes such as
-         ``## 结论补充`` are rejected.
-      2. Reject any unfilled ``_LLM:`` placeholder marker anywhere in the
-         document (outside fenced code blocks). LLM is expected to replace
-         every hint line before returning.
-      3. For each required section listed in ``_REPORT_SECTION_BULLET_MINIMUMS``,
-         count column-0 list items in its body (the lines between its H2
-         and the next H2 or end-of-document), excluding fenced code blocks,
-         empty bullets, and ``_LLM:`` placeholder lines. Top-level ``- `` and
-         ordered-list items count; sub-bullets and continuation lines do not.
-      4. Citation integrity:
-         - Dedup: every ``wiki/sources/*.md`` path under ``## 引用`` is
-           unique (fence-aware; ``## 引用`` body stops at the next H2 to
-           exclude the trailing ``## 参考`` block rendered by the skeleton).
-         - Body ⊆ Citations: every citation path appearing in the report
-           body between ``## 结论`` and ``## 引用`` (fence-aware) must also
-           appear under ``## 引用``.
-
-    R98.3 additions, ordered before existing phases:
-      0. Unclosed fenced code block: if the document ends while still
-         inside a ``` or ~~~ fence, reject with a named error before
-         attempting section detection (an unclosed fence silently
-         swallows subsequent H2s and produces misleading errors).
-      1.5. Duplicate required H2: if any heading in
-         ``_REPORT_REQUIRED_SECTIONS`` appears more than once, reject
-         with a named error. Repeating a required section has no
-         legitimate use in the six-section skeleton (use ``###`` for
-         sub-headings instead).
-    """
-    lines = markdown.splitlines()
-    h2_positions: list[tuple[int, str]] = []
+def _reject_unfilled_llm_placeholders(markdown: str) -> None:
     in_fence = False
-    for index, line in enumerate(lines):
+    for line in markdown.splitlines():
         stripped = line.lstrip()
         if stripped.startswith("```") or stripped.startswith("~~~"):
             in_fence = not in_fence
             continue
         if in_fence:
             continue
-        if line.startswith("## ") and not line.startswith("### "):
-            h2_positions.append((index, line.strip()))
-    # Phase 0: unclosed fence detection (uses the final state of the
-    # same scan above so toggle semantics stay in lock-step with
-    # _count_report_list_items / _extract_report_citations).
-    if in_fence:
-        raise RuntimeError("Report has unclosed fenced code block.")
-
-    h2_titles = [title for _, title in h2_positions]
-    cursor = 0
-    matched_positions: dict[str, int] = {}
-    for heading in _REPORT_REQUIRED_SECTIONS:
-        try:
-            found = h2_titles.index(heading, cursor)
-        except ValueError as exc:
-            raise RuntimeError(f"Report missing required section: {heading}") from exc
-        matched_positions[heading] = h2_positions[found][0]
-        cursor = found + 1
-
-    # Phase 1.5: duplicate required H2 rejection.
-    # No legitimate report repeats a required section; use ### sub-headings
-    # for finer structure. Phase 1.5 runs after Phase 1 so missing-section
-    # errors (more actionable) still take priority.
-    required_set = set(_REPORT_REQUIRED_SECTIONS)
-    seen_required: set[str] = set()
-    for _line_index, title in h2_positions:
-        if title not in required_set:
-            continue
-        if title in seen_required:
-            raise RuntimeError(f"Report has duplicate required section: {title}")
-        seen_required.add(title)
-
-    in_fence = False
-    for line in lines:
-        stripped = line.lstrip()
-        if stripped.startswith("```") or stripped.startswith("~~~"):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
-        if stripped.startswith(_REPORT_PLACEHOLDER_MARKER):
-            raise RuntimeError(
-                f"Report contains unfilled placeholder marker '{_REPORT_PLACEHOLDER_MARKER}'."
-            )
-
-    section_ranges: dict[str, tuple[int, int]] = {}
-    for position_index, (line_index, title) in enumerate(h2_positions):
-        if title not in _REPORT_REQUIRED_SECTIONS:
-            continue
-        body_start = line_index + 1
-        if position_index + 1 < len(h2_positions):
-            body_end = h2_positions[position_index + 1][0]
-        else:
-            body_end = len(lines)
-        # Phase 1.5 已拒绝 duplicate required H2，此处 setdefault 实际只会写入一次。
-        section_ranges.setdefault(title, (body_start, body_end))
-
-    for heading, minimum in _REPORT_SECTION_BULLET_MINIMUMS.items():
-        body_start, body_end = section_ranges[heading]
-        list_item_count = _count_report_list_items(lines[body_start:body_end])
-        if list_item_count < minimum:
-            raise RuntimeError(
-                f"Report section {heading} needs at least {minimum} top-level list items;"
-                f" found {list_item_count}."
-            )
-
-    # Phase 4: citation integrity.
-    # Use matched_positions (ordered match) — NOT section_ranges — to avoid
-    # mismatch when a stray duplicate "## 引用" appears before the ordered
-    # match. citations range is computed fresh: next H2 after the matched
-    # "## 引用" line, or EOF.
-    conclusion_idx = matched_positions["## 结论"]
-    citations_idx = matched_positions["## 引用"]
-    body_start = conclusion_idx + 1
-    body_end = citations_idx
-    citations_start = citations_idx + 1
-    citations_end = len(lines)
-    for line_index, _title in h2_positions:
-        if line_index > citations_idx:
-            citations_end = line_index
-            break
-
-    citation_paths = _extract_report_citations(lines[citations_start:citations_end])
-    seen: set[str] = set()
-    for path in citation_paths:
-        if path in seen:
-            raise RuntimeError(
-                f"Report ## 引用 has duplicate citation path: {path}"
-            )
-        seen.add(path)
-
-    body_paths = _extract_report_citations(lines[body_start:body_end])
-    citation_set = set(citation_paths)
-    for path in body_paths:
-        if path not in citation_set:
-            raise RuntimeError(
-                f"Report body cites path not listed under ## 引用: {path}"
-            )
+        if stripped.startswith("_LLM:"):
+            raise RuntimeError("Ask response contains unfilled placeholder marker '_LLM:'.")
 
 
-def _count_report_list_items(section_lines: list[str]) -> int:
-    """Count column-0 list items in a section body.
-
-    Skips fenced code blocks, empty bullets, and ``_LLM:`` placeholder lines.
-    Top-level ``- `` bullets and ordered-list items count. Sub-bullets and
-    continuation lines are not counted.
-    """
-    count = 0
-    in_fence = False
-    for line in section_lines:
-        stripped = line.lstrip()
-        if stripped.startswith("```") or stripped.startswith("~~~"):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
-        if line.startswith("- "):
-            body = line[2:].strip()
-        elif _REPORT_ORDERED_LIST_PATTERN.match(line):
-            body = re.sub(r"^[0-9]+[.)]\s+", "", line, count=1).strip()
-        else:
-            continue
-        if not body:
-            continue
-        if body.startswith(_REPORT_PLACEHOLDER_MARKER):
-            continue
-        count += 1
-    return count
+_CITATION_PATH_PATTERN = re.compile(r"wiki/sources/[a-z0-9._-]+\.md")
 
 
 def _extract_report_citations(section_lines: list[str]) -> list[str]:
@@ -1102,7 +922,7 @@ def _extract_report_citations(section_lines: list[str]) -> list[str]:
         if in_fence:
             continue
         line_seen: set[str] = set()
-        for path in _REPORT_CITATION_PATTERN.findall(line):
+        for path in _CITATION_PATH_PATTERN.findall(line):
             if path in line_seen:
                 continue
             line_seen.add(path)

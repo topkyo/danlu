@@ -244,5 +244,6 @@ M-UX.1 ~ M-UX.6 之后，Product Shell 的实际产品面继续向“一个输�
 - Today feed 的可见 target 不再默认展示 `output/...` / `wiki/...` runtime path，而以“报告 / 判断页 / 决策页 / 提案页 / 关系图谱”等产品标签呈现；真实路径仍由按钮动作持有。
 - 报告卡和 Today 报告动作使用 “Open report / 打开报告”，而不是泛化的 “Open / 打开”，让报告入口成为明确输出端。
 - 关系图谱 HTML 已从 `component / slug / wiki 页面 / Hub / rewrite` 口吻收敛到“关系组 / 关键词或来源编号 / 详情页 / 核心概念 / 核心来源 / 改写提案”。
+- **2026-07-18（freeform ask + Today 动作修复）**：Ask / Universal Input 提问只走 `run-ask` → `output/reports/*.md`（无 format 选择 UI、无 `--direct`）；Today 报告卡「打开报告 / 审阅 / 稍后」按钮已接线到 `openWorkspacePath`、review center 与 `runTodaySnoozeCommand`。
 
 这些变更不扩展 `shell-summary`，不新增 settings schema，不移动 runtime 目录，也不删除 CLI/operator 能力。

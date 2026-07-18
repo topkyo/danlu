@@ -15,7 +15,7 @@ raw → compile → wiki → ask → output → file-back → review
 - **raw**：你扔进去的原料（网页、PDF、图片、repo、会议纪要、随笔）。
 - **compile**：炼丹炉把原料整理成结构化的 source page、concept、provenance。
 - **wiki**：炼化后的知识沉淀，分为 `wiki/sources/`（来源层）和 `wiki/derived/`、judgments、decisions（派生层）。
-- **ask**：你向炉子提问，生成报告、对比、决策备忘录。
+- **ask**：你向炉子提问，生成一篇自由 Markdown 报告（`output/reports/*.md`）；LLM 按问题组织内容，不再强制六段骨架或多 format 分叉。
 - **output**：产出物，包括报告、仪表盘、审计 receipt。
 - **file-back**：把高价值结论写回 wiki，形成可积累的判断资产。
 - **review / nightly / judgment**：定期审阅、 aging、修复、沉淀金丹（跨周期复用的 thesis）。
@@ -95,17 +95,16 @@ Product Shell 适合日常快速投料和查看状态。复杂治理操作建议
 
 ```bash
 ./scripts/aiwiki-launcher.sh advanced run-ask \
-  "对比 A 公司与 B 公司在 thesis、catalyst、risk、invalidation 四个维度" \
-  --format report
+  "对比 A 公司与 B 公司在 thesis、catalyst、risk、invalidation 四个维度"
 ```
 
 也可以换 protocol 改变回答偏好：
 
 ```bash
-./scripts/aiwiki-launcher.sh advanced run-ask "..." --format report --protocol research
+./scripts/aiwiki-launcher.sh advanced run-ask "..." --protocol research
 ```
 
-生成的报告落在 `output/reports/`。失败时会写 receipt 与可审计失败说明，**不会假装成功**。
+Ask 只产出 `output/reports/*.md` 自由 Markdown 报告（CLI 仅接受 `--format report`，旧 format 如 `note` / `slides` 会立即失败）。失败时会写 receipt 与可审计失败说明，**不会假装成功**。
 
 ### 第 4 步：回流
 
