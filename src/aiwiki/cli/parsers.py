@@ -44,7 +44,7 @@ def build_parser() -> argparse.ArgumentParser:
     _register_drop_subcommand_parsers(drop_subparsers)
     advanced_parser = subparsers.add_parser(
         "advanced",
-        help="高级抽屉：系统状态、receipts、audit、repair、lanes、调试入口",
+        help="高级抽屉：系统状态、receipts、compile/lint、review-page、alchemy、调试入口",
     )
     advanced_subparsers = advanced_parser.add_subparsers(dest="advanced_command", required=True)
     _register_legacy_top_level_parsers(advanced_subparsers)

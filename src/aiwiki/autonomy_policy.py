@@ -10,6 +10,7 @@ The policy file lives at ``.aiwiki/state/autonomy-policy.json``::
       "disable_l3_generate": false,
       "disable_external_llm": false,
       "auto_apply_light": true,
+      # legacy/unused after W3/W9: nightly no longer calls runner auto_adopt
       "auto_adopt_l1": true,
       "auto_adopt_l2": true,
       "auto_adopt_l3": true,
@@ -32,6 +33,9 @@ Backward-compat by design:
 
 Nightly autonomy, external LLM gating, and governed apply receipts all read this
 module so the local runtime has one policy source for automation boundaries.
+
+``auto_adopt_*`` flags remain in schema for legacy state JSON but are unused after
+W3/W9 (nightly no longer calls ``runner.auto_adopt``).
 """
 
 from __future__ import annotations
@@ -69,6 +73,7 @@ class AutonomyPolicy:
     disable_l3_generate: bool = False
     disable_external_llm: bool = False
     auto_apply_light: bool = True
+    # legacy/unused after W3/W9: kept for old autonomy-policy.json compatibility
     auto_adopt_l1: bool = True
     auto_adopt_l2: bool = True
     auto_adopt_l3: bool = True
