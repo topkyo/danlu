@@ -10,7 +10,8 @@ from typing import Any
 
 from ..app_state import execution_receipt_history_path, llm_receipt_log_path, runtime_history_path
 from ..app_utils import atomic_append_jsonl, runtime_write_lock, sha256_bytes
-from .protocol_learnings import AUDIT_STATE_PATH
+
+PROTOCOL_LEARNINGS_AGE_AUDIT_PATH = ".aiwiki/state/protocol_learnings_age.json"
 
 AUDIT_STREAM_PATH = ".aiwiki/state/audit.jsonl"
 
@@ -133,7 +134,7 @@ def preview_universal_audit_stream(root: Path, *, limit: int = 50) -> dict[str, 
             if len(records) < limit:
                 records.append(_audit_record(source_stream, f"{rel_path}#L{line_number}", document))
 
-    age_audit_path = root / AUDIT_STATE_PATH
+    age_audit_path = root / PROTOCOL_LEARNINGS_AGE_AUDIT_PATH
     if age_audit_path.exists():
         document = _load_json_document(age_audit_path)
         if document:
@@ -202,8 +203,8 @@ def append_universal_audit_record(root: Path, *, source_stream: str, source_ref:
 def protocol_learnings_age_source_ref(document: dict[str, Any]) -> str:
     run_at = document.get("run_at")
     if isinstance(run_at, str) and run_at.strip():
-        return f"{AUDIT_STATE_PATH}#run_at={run_at.strip()}"
-    return AUDIT_STATE_PATH
+        return f"{PROTOCOL_LEARNINGS_AGE_AUDIT_PATH}#run_at={run_at.strip()}"
+    return PROTOCOL_LEARNINGS_AGE_AUDIT_PATH
 
 
 def _existing_audit_event_ids(path: Path, *, strict: bool = False) -> set[str]:

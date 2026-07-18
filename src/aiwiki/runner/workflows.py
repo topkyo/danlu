@@ -1203,41 +1203,6 @@ def run_nightly(
                 "retry_prompt_profile": "",
             }
         # contract EP-029 Step 3 §5: nightly auto-applies active -> stale, never demote/archive.
-        # Non-fatal: aging failure is logged but does not block nightly; audit file always emitted.
-        try:
-            from aiwiki.execution.protocol_learnings import age_learnings
-
-            protocol_learnings_age = age_learnings(root, apply=True, emitted_by="nightly")
-        except Exception as age_exc:  # noqa: BLE001 - aging must not break nightly
-            from aiwiki.execution.protocol_learnings import AUDIT_STATE_PATH as _AUDIT_PATH
-            from aiwiki.execution.protocol_learnings import _atomic_write_text as _age_atomic_write
-
-            protocol_learnings_age = {
-                "apply": True,
-                "run_at": utc_now(),
-                "aged": [],
-                "aged_ids": [],
-                "skipped": [],
-                "errors": [{"reason": f"aging failed: {age_exc}"}],
-                "error": str(age_exc),
-            }
-            try:
-                audit_path = root / _AUDIT_PATH
-                audit_path.parent.mkdir(parents=True, exist_ok=True)
-                _age_atomic_write(
-                    audit_path,
-                    json.dumps(protocol_learnings_age, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
-                )
-            except Exception as audit_exc:  # noqa: BLE001 - last-ditch audit write
-                # AGENTS.md: no silent swallow. Surface on stderr + retain in-memory payload
-                # so the nightly result dict carries the failure reason for downstream visibility.
-                import sys as _sys
-
-                print(
-                    f"[nightly] protocol-learnings aging audit write failed: {audit_exc}",
-                    file=_sys.stderr,
-                )
-                protocol_learnings_age["audit_write_error"] = str(audit_exc)
         llm_audit = _merge_llm_audits(
             _llm_audit_from_result(compile_result),
             _llm_audit_from_result(lint_result),
@@ -1391,7 +1356,6 @@ def run_nightly(
         "compile": compile_result,
         "lint": lint_result,
         "promotions": promotion_result,
-        "protocol_learnings_age": protocol_learnings_age,
         "agent_loop": state.get("agent_loop", {}),
         "signal_pipeline": state.get("signal_pipeline", {}),
         "aging": state["aging"],

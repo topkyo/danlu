@@ -75,7 +75,6 @@ from .app_protocol import (
     ensure_layout,
     entry_focus_score,
     load_protocol_state,
-    protocol_output_guidance,
     protocol_paths,
     protocol_runtime_schema_path,
     protocol_runtime_summary,
@@ -576,16 +575,6 @@ def machine_memory_query_plan_lines(machine_query: dict[str, Any]) -> list[str]:
     return lines
 
 
-def compact_output_guidance_lines(
-    output_guidance: list[str],
-    default_line: str,
-    *,
-    limit: int = 3,
-) -> list[str]:
-    guidance = [str(line).strip() for line in output_guidance if str(line).strip()]
-    return guidance[:limit] if guidance else [default_line]
-
-
 def compact_machine_memory_focus_lines(machine_query: dict[str, Any]) -> list[str]:
     lines: list[str] = []
     matched_terms = [str(term).strip() for term in machine_query.get("matched_terms", []) if str(term).strip()]
@@ -657,7 +646,6 @@ def render_report(
 ) -> str:
     active_protocol = protocol_state["active_protocol"]
     title = human_query_title(question)
-    output_guidance = protocol_output_guidance(root, active_protocol, "report")
     focus_lines = compact_machine_memory_focus_lines(machine_query)
     frontmatter = render_frontmatter(
         {
@@ -679,15 +667,10 @@ def render_report(
         "## 参考",
         f"- 当前协议：`{active_protocol}` ({protocol_title(active_protocol)})。",
         "",
-        "_协议输出偏置：_",
     ]
     if focus_lines and focus_lines != ["- 当前没有明显的机器记忆命中，先从优先来源开始。"]:
         lines.extend(["", "_机器记忆提示：_"])
         lines.extend(focus_lines)
-    lines.extend(
-        f"- {line}"
-        for line in compact_output_guidance_lines(output_guidance, "当前协议没有额外的报告偏置。")
-    )
     lines.extend(
         [
             "",

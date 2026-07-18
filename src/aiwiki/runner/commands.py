@@ -141,31 +141,6 @@ def run_demote(root: Path, artifact_ref: str) -> dict[str, Any]:
     return demote_candidate(root, artifact_ref)
 
 
-@runtime_write_operation
-def run_protocol_learn_add(root: Path, protocol: str, title: str, source_refs: list[str] | None) -> dict[str, Any]:
-    from aiwiki.execution.protocol_learnings import add_learning
-
-    return add_learning(root, protocol, title=title, source_refs=source_refs)
-
-
-def run_protocol_learn_list(
-    root: Path,
-    protocol: str | None = None,
-    *,
-    state_filter: str | None = None,
-    include_archived: bool = False,
-) -> list[dict[str, Any]]:
-    from aiwiki.execution.protocol_learnings import list_learnings
-
-    return list_learnings(root, protocol, state_filter=state_filter, include_archived=include_archived)
-
-
-def run_protocol_learn_show(root: Path, learning_id: str) -> dict[str, Any]:
-    from aiwiki.execution.protocol_learnings import show_learning
-
-    return show_learning(root, learning_id)
-
-
 def run_signals_list(
     root: Path,
     *,
@@ -219,44 +194,3 @@ def run_planner_log_list(
         limit=limit,
     )
 
-
-@runtime_write_operation
-def run_protocol_learn_age(root: Path, protocol: str | None = None, apply: bool = False) -> dict[str, Any]:
-    from aiwiki.execution.protocol_learnings import age_learnings
-
-    return age_learnings(root, protocol=protocol, apply=apply)
-
-
-@runtime_write_operation
-def run_protocol_learn_verify(root: Path, learning_id: str) -> dict[str, Any]:
-    from aiwiki.execution.protocol_learnings import verify_learning
-
-    return verify_learning(root, learning_id)
-
-
-@runtime_write_operation
-def run_protocol_learn_revert_activate(root: Path, learning_id: str, *, note: str | None = None) -> dict[str, Any]:
-    from aiwiki.execution.protocol_learnings import revert_learning_activation
-
-    return revert_learning_activation(root, learning_id, note=note)
-
-
-@runtime_write_operation
-def run_protocol_learn_demote(root: Path, learning_id: str) -> dict[str, Any]:
-    from aiwiki.execution.protocol_learnings import demote_learning
-
-    return demote_learning(root, learning_id)
-
-
-@runtime_write_operation
-def run_protocol_learn_archive(root: Path, learning_id: str) -> dict[str, Any]:
-    from aiwiki.execution.protocol_learnings import archive_learning
-
-    return archive_learning(root, learning_id)
-
-
-@runtime_write_operation
-def run_protocol_learn_supersede(root: Path, replacement_id: str, superseded_ids: list[str]) -> dict[str, Any]:
-    from aiwiki.execution.protocol_learnings import supersede_learning
-
-    return supersede_learning(root, replacement_id, superseded_ids)

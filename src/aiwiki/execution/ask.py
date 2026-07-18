@@ -90,7 +90,6 @@ from ..input_router import is_obsidian_open_link
 from ..memory.graph import build_machine_memory_query
 from ..notify import notify_report_generated
 from ..render.paths import append_wiki_log
-from .protocol_learnings import load_learnings_for_protocol
 from .receipts import write_execution_receipt
 from .run_notes import run_id_for_artifact, write_run_notes, write_run_notes_frontmatter
 
@@ -414,7 +413,6 @@ def ask_question(
     *,
     no_cache: bool = False,
     corpus_id_override: str | None = None,
-    load_protocol_learnings: bool = False,
     write_graph_anchors: bool = True,
     notify: bool = True,
 ) -> dict[str, Any]:
@@ -483,19 +481,6 @@ def ask_question(
         created_at,
         artifact_id,
     )
-
-    if load_protocol_learnings:
-        learnings = load_learnings_for_protocol(root, active_protocol)
-        if learnings:
-            block_lines = ["", "## Protocol Learnings", ""]
-            for learning in learnings:
-                block_lines.append(f"- [{learning['learning_id']}] {learning['title']}: {learning['lesson']}")
-            block = "\n".join(block_lines) + "\n"
-            insert_at = content.find("\n## ")
-            if insert_at >= 0:
-                content = content[:insert_at] + block + content[insert_at:]
-            else:
-                content += block
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(content, encoding="utf-8")
