@@ -21,7 +21,6 @@ from ..app_lifecycle import (
 )
 from ..app_protocol import (
     ACTION_STATUSES,
-    PROTOCOL_LIBRARY,
     REWRITE_PROPOSAL_STATUSES,
     ensure_layout,
     load_protocol_state,
@@ -151,7 +150,6 @@ def shell_capabilities(root: Path) -> dict[str, Any]:
                 "run-ask",
                 "nightly",
                 "protocol-status",
-                "protocol-set",
                 "llm-check",
             ],
             "p1": [
@@ -189,13 +187,9 @@ def shell_capabilities(root: Path) -> dict[str, Any]:
 
 def shell_protocol_state(root: Path) -> ProtocolState:
     state = load_protocol_state(root)
-    available = sorted(PROTOCOL_LIBRARY)
-    active = str(state.get("active_protocol") or DEFAULT_PROTOCOL)
-    if active not in available:
-        active = DEFAULT_PROTOCOL if DEFAULT_PROTOCOL in available else (available[0] if available else DEFAULT_PROTOCOL)
     return {
-        "active_protocol": active,
-        "available_protocols": available,
+        "active_protocol": str(state.get("active_protocol") or DEFAULT_PROTOCOL),
+        "available_protocols": [DEFAULT_PROTOCOL],
         "protocols": list(state.get("protocols", [])) if isinstance(state.get("protocols"), list) else [],
         "state_path": str(state.get("state_path") or ""),
     }

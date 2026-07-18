@@ -329,6 +329,11 @@ from .render.views import (
 
 @runtime_write_operation
 def set_active_protocol(root: Path, protocol: str) -> dict[str, Any]:
+    candidate = protocol.strip().lower()
+    if candidate != DEFAULT_PROTOCOL:
+        raise ValueError(
+            f"Unknown protocol: {protocol}. Only '{DEFAULT_PROTOCOL}' is supported."
+        )
     active = resolve_protocol(root, protocol)
     path = protocol_state_path(root)
     atomic_write_text(path, json.dumps({"version": 1, "active_protocol": active}, indent=2, sort_keys=True) + "\n")
