@@ -709,6 +709,8 @@ const ZH_TEXT = {
   "Unable to open {path}": "无法打开 {path}",
   "Path not found: {path}": "路径不存在：{path}",
   "Unable to open resource: {path}": "无法打开资源：{path}",
+  "File exists but Obsidian has not indexed it (check Excluded files / userIgnoreFilters): {path}":
+    "文件存在但 Obsidian 未索引（请检查「排除的文件」/ userIgnoreFilters）：{path}",
   Materials: "原料投入",
   "Push new material into the furnace.": "把新原料投进炉子，等下一次编译或夜间巡检收敛。",
   "Latest outputs": "最新产出",

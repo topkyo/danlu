@@ -185,12 +185,15 @@ async function openProductShellWorkspacePath(plugin, relativePath) {
     new Notice(plugin.t("Path not found: {path}", { path: normalized }));
     return false;
   }
-  if (typeof plugin.app.vault.adapter.getResourcePath === "function") {
-    const resourcePath = plugin.app.vault.adapter.getResourcePath(normalized);
-    window.open(resourcePath, "_blank");
-    return true;
-  }
-  new Notice(plugin.t("Unable to open resource: {path}", { path: normalized }));
+  // File exists on disk but Obsidian did not index it (common when path is in
+  // Settings → Files → Excluded files / userIgnoreFilters). Do not silently
+  // window.open — Desktop often shows no visible result.
+  new Notice(
+    plugin.t(
+      "File exists but Obsidian has not indexed it (check Excluded files / userIgnoreFilters): {path}",
+      { path: normalized }
+    )
+  );
   return false;
 }
 

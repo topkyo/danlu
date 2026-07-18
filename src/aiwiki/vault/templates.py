@@ -35,6 +35,7 @@ DEFAULT_OBSIDIAN_APP = {
         "output/review/",
         "output/slides/",
         "output/figures/",
+        # Never ignore output/reports/ — Product Shell "Open report" needs Obsidian indexing.
         ".aiwiki/",
     ],
 }

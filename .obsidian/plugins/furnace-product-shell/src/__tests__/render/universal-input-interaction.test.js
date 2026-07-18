@@ -1,6 +1,7 @@
 "use strict";
 
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const vm = require("vm");
 
@@ -909,6 +910,33 @@ test("openWorkspacePath rejects absolute and escaping paths before vault lookup"
   expect(context.__notices).toEqual([
     "Unable to open /tmp/secret.md",
     "Unable to open ../secret.md",
+  ]);
+});
+
+test("openWorkspacePath notices when file exists but Obsidian did not index it", async () => {
+  const context = loadRenderContext();
+  const plugin = new context.FurnaceProductShellPlugin();
+  plugin.t = (text, vars = {}) => String(text).replace("{path}", vars.path || "");
+  const vaultRoot = fs.mkdtempSync(path.join(os.tmpdir(), "furnace-open-"));
+  const reportRel = "output/reports/demo.md";
+  fs.mkdirSync(path.join(vaultRoot, "output/reports"), { recursive: true });
+  fs.writeFileSync(path.join(vaultRoot, reportRel), "# demo\n");
+  plugin.repoState = { root: vaultRoot };
+  const openFile = jest.fn();
+  plugin.app = {
+    vault: {
+      getAbstractFileByPath: jest.fn().mockReturnValue(null),
+      adapter: { getResourcePath: jest.fn() },
+    },
+    workspace: { getLeaf: jest.fn(() => ({ openFile })) },
+  };
+
+  await expect(plugin.openWorkspacePath(reportRel)).resolves.toBe(false);
+
+  expect(openFile).not.toHaveBeenCalled();
+  expect(plugin.app.vault.adapter.getResourcePath).not.toHaveBeenCalled();
+  expect(context.__notices).toEqual([
+    "File exists but Obsidian has not indexed it (check Excluded files / userIgnoreFilters): output/reports/demo.md",
   ]);
 });
 
