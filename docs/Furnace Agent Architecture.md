@@ -16,9 +16,11 @@ related_docs:
 
 # 炼丹炉 Agent 架构
 
-这份文档是炼丹炉（aiwiki runtime）当前终局架构的唯一 SoT。
+这份文档是炼丹炉（aiwiki runtime）的**架构边界 / AgentOS 史料 SoT**；**现行产品 CLI 与知识复利主链**以 `docs/USER_GUIDE.md`、`docs/specs/2026-07-18-knowledge-compounding-principles.md` 与 `docs/Furnace Runtime Operations.md` 为准。
 
-> **实现状态说明（2026-04-26）**：本文定义终局架构边界，不等同于所有机制均已完整落地。当前 runtime 已落地五层文件平面、显式 LLM backend、Product Shell shell-facing contract、L2 protocol-learning 生命周期与显式 activation revert baseline、active corpus / output candidate state、repair planner state，最小金丹 `alchemy-start / alchemy-distill / alchemy-finalize / alchemy-promote` 链路、legacy migration read-only preview + explicit apply baseline 与 superseded cleanup dry-run + deletion apply baseline，planner-log observe-only / execute-mode decision log 与 rollback marker baseline，heavy/light lane 的 read-only dry-run preview、显式 receipted action apply bridge、deterministic primitive receipt wrapper、显式 heavy lane `review` / `distill` / `propose` primitive apply、execute-mode `alchemy auto` deterministic 调度入口与显式 heavy `review` / `distill` / `propose` opt-in、lane primitive trace/audit metadata、高风险 primitive deferred metadata、`judge/distill/review/propose` scoped dry-run preview、`judge` 直接 scoped refresh-marker apply baseline、`judge` semantic proposal-preview artifact baseline、`judge` accepted proposal apply baseline、`review` 直接 scoped apply baseline、`distill` 直接 scoped candidate-refresh apply baseline 与 `propose` scoped proposal-plane apply baseline，以及 L3 prompt/policy proposal 的手工/fixture 创建、execute-mode 自动生成 baseline、Shell review surface、人工 reject、hash-gated apply 和 receipt-gated revert baseline；通用 audit stream 当前已有 read-only preview、显式 append-only backfill baseline，并已接入 execution receipt、runtime history、LLM receipt 与 protocol-learning aging writer direct append，backfill 对 direct append 已写入的同一 source event 幂等跳过。
+> **产品面收敛（2026-07-18，W1–W7）**：多协议、`protocol-learn-*`、L3 apply/revert、rewrite/repair/archive 候选链、`alchemy` 膨胀 CLI、`run-compile`/`run-lint`、signals/planner-log ops、`audit-preview`/`audit-backfill` 等已从 **产品 CLI 删除**。现行主链为 `drop` / `watch` / 确定性 `compile`+`lint` / `ask` / 薄 `file-back`+`review-page` / 金丹最小链 `alchemy-start|distill|finalize|promote(+revert|demote)` / `trace`。下文大量「已落地」清单若仍点名已删 CLI，视为 **历史实现快照**，不得当作当前用户面命令。
+
+> **实现状态说明（2026-04-26，史料）**：本文定义终局架构边界，不等同于所有机制均已完整落地。当前 runtime 已落地五层文件平面、显式 LLM backend、Product Shell shell-facing contract、active corpus / output candidate state、最小金丹 `alchemy-start / alchemy-distill / alchemy-finalize / alchemy-promote` 链路等；下文对 L3 / rewrite / alchemy auto / audit-preview 等的详细枚举以 W3–W7 删除边界为准，不再视为现行产品入口。
 
 它同时取代：
 
@@ -142,7 +144,7 @@ related_docs:
 |---|---|---|
 | **Observe before schedule** | 先落 normalized signal stream 与 planner-log，只记录不自动调度。 | 先验证 signal schema、去重、scope 与 severity，不改变 runtime 行为。 |
 | **Manual-first before automation** | L3 proposal、elixir candidate promote、heavy/light lane 都先支持手动触发与 dry-run。 | 人工 gate 先跑通 receipt / revert / stale hash，避免把自动化风险混入 schema 风险。 |
-| **Scoped primitives only** | 新调度层只能组合现有 scoped primitives；不得引入绕过 `apply-rewrite / apply-action / apply-archive` 等链路的通用写回。 | 保留当前可审计、可回滚的执行边界，降低迁移复杂度。 |
+| **Scoped primitives only** | 新调度层只能组合现行 scoped primitives（`compile` / `lint` / `ask` / `file-back` / `review-page` / 金丹最小链 / `trace`）；不得引入绕过 receipt/audit 的通用写回。W3 已删的 `apply-rewrite` / `apply-action` / `apply-archive` 不再是产品边界。 | 保留当前可审计、可回滚的执行边界，降低迁移复杂度。 |
 | **Compatibility adapters over migration** | 旧 `wiki/elixirs/` 最小链路继续可读；新增 candidate plane 不强制迁移旧文件。 | 避免一次性数据迁移，把风险限制在新入口。 |
 | **No hidden backend choice** | planner、heavy、light、proposal generator 都不得自动切换 LLM backend。 | 保持成本、隐私和失败模式可解释。 |
 | **Kill switch by design** | 每个 planned 机制必须有 `--dry-run`、禁用开关或只读 fallback。 | 任何阶段出现坏 proposal / 坏 signal / 锁异常时可局部停用，不影响 deterministic baseline。 |
