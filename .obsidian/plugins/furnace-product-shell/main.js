@@ -247,7 +247,7 @@ const ZH_TEXT = {
   "Advanced command visibility refreshes after reloading Obsidian.": "高级命令可见性会在重载 Obsidian 后刷新。",
   "Full runtime is Desktop-only. iPad/iOS Obsidian can only be a future companion; it cannot run the local launcher, Python CLI, or full ingest/review flow.": "全功能 runtime 仅支持 Desktop。iPad/iOS Obsidian 未来只能作为 companion，不能运行本地 launcher、Python CLI 或完整投料/复审流程。",
   "LLM backend": "LLM 后端",
-  "Select the LLM provider used by run-compile / run-ask / run-nightly. Common providers are listed first; advanced entries are for local CLI sessions or custom OpenAI-compatible endpoints.": "选择 run-compile / run-ask / run-nightly 使用的 LLM API provider。",
+  "Select the LLM provider used by compile / run-ask / run-nightly. Common providers are listed first; advanced entries are for local CLI sessions or custom OpenAI-compatible endpoints.": "选择 compile / run-ask / run-nightly 使用的 LLM API provider。",
   "LLM model": "LLM 模型",
   "Model for the selected API provider. Empty uses that provider profile default when one exists.": "所选 API provider 的模型。留空时使用该 provider profile 的默认模型（如果有）。",
   "API key": "API Key",
@@ -2636,18 +2636,7 @@ function isMaintenanceCommandAction(target, reason) {
   if (reasonText.startsWith("batch-hint:")) return true;
   const maintenanceTokens = [
     " review-page ",
-    " review-action ",
-    " apply-action ",
-    " revert-action ",
-    " review-concept ",
-    " retire-concept ",
-    " reactivate-concept ",
-    " apply-rewrite ",
-    " review-rewrite ",
-    " revert-rewrite ",
-    " apply-archive ",
-    " revert-archive ",
-    " alchemy auto ",
+    " batch-review ",
   ];
   return maintenanceTokens.some((token) => targetText.includes(token));
 }
@@ -2664,7 +2653,7 @@ function buildAgentLoopEntries(summary, todayDate) {
 
   let title = "预演下一步维护";
   let summaryText = "今日维护预演完成，暂不需要自动执行";
-  let target = "PYTHONPATH=src python3 -m aiwiki.cli --root . alchemy auto --dry-run";
+  let target = "wiki/indexes/repair-backlog.md";
   let autoState = "idle";
   if (status === "failed") {
     summaryText = "今日维护预演失败，需要人工查看";
@@ -4155,7 +4144,7 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName(t("LLM backend"))
-      .setDesc(t("Select the LLM provider used by run-compile / run-ask / run-nightly. Common providers are listed first; advanced entries are for local CLI sessions or custom OpenAI-compatible endpoints."))
+      .setDesc(t("Select the LLM provider used by compile / run-ask / run-nightly. Common providers are listed first; advanced entries are for local CLI sessions or custom OpenAI-compatible endpoints."))
       .addDropdown((dropdown) => {
         for (const profile of LLM_PROVIDER_PROFILES) {
           const prefix = profile.tier === "advanced" ? "Advanced · " : "";
@@ -4625,7 +4614,7 @@ function resolveBatchHintInvocation(plugin, action) {
     return null;
   }
   const command = String(action.command || "");
-  if (kind === "batch-apply" && command.includes("apply-action --all-accepted-low-risk")) {
+  if (kind === "batch-apply" && command.includes("batch-review apply-low-risk")) {
     return {
       label: plugin.t("Run batch"),
       run: () => plugin.runApplyAllAcceptedLowRiskCommand(),
@@ -4637,7 +4626,7 @@ function resolveBatchHintInvocation(plugin, action) {
       run: () => plugin.openReviewBatchSuggestionPicker(),
     };
   }
-  if (kind === "batch-review" && command.includes("review-action --all-pending")) {
+  if (kind === "batch-review" && command.includes("batch-review action")) {
     // Action-kind batch review still routes through the batch suggestion picker;
     // the picker filters to the active suggestion bundle, so the same entry point works.
     return {
@@ -7679,6 +7668,10 @@ function buildReviewRewriteModalSpec(plugin, prefill = {}) {
     onSubmit: async (values) => {
       const args = [values.slug, "--status", values.status];
       appendOptionalArg(args, "--note", values.note);
+      if (typeof plugin.runReviewRewriteTransition === "function") {
+        await plugin.runReviewRewriteTransition(values.slug, values.status);
+        return;
+      }
       await plugin.runCliAction(`Review Rewrite: ${values.slug}`, "review-rewrite", args);
     },
   };
@@ -7774,6 +7767,10 @@ function buildReviewActionModalSpec(plugin, prefill = {}) {
       { key: "note", label: plugin.t("Note"), kind: "textarea", rows: 4, placeholder: plugin.t("Optional action review note"), initialValue: prefill.note || "" },
     ],
     onSubmit: async (values) => {
+      if (typeof plugin.runReviewActionTransition === "function") {
+        await plugin.runReviewActionTransition(values.action_id, values.status);
+        return;
+      }
       const args = [values.action_id, "--status", values.status];
       appendOptionalArg(args, "--note", values.note);
       await plugin.runCliAction(`Review Action: ${values.action_id}`, "review-action", args);
@@ -7792,13 +7789,11 @@ function buildApplyActionModalSpec(plugin, prefill = {}) {
       { key: "dry_run", label: plugin.t("Dry run"), kind: "toggle", initialValue: Boolean(prefill.dryRun) },
     ],
     onSubmit: async (values) => {
-      const args = [values.action_id];
-      appendOptionalArg(args, "--note", values.note);
-      appendOptionalArg(args, "--bundle", values.bundle);
+      const args = ["apply-low-risk", "--note", values.note || "Apply accepted low-risk repair"];
       if (values.dry_run) {
         args.push("--dry-run");
       }
-      await plugin.runCliAction(`Apply Action: ${values.action_id}`, "apply-action", args);
+      await plugin.runCliAction(`Apply All Low-Risk`, "batch-review", args);
     },
   };
 }
@@ -7812,6 +7807,10 @@ function buildRevertActionModalSpec(plugin, prefill = {}) {
       { key: "note", label: plugin.t("Note"), kind: "textarea", rows: 4, placeholder: plugin.t("Optional revert note"), initialValue: prefill.note || "" },
     ],
     onSubmit: async (values) => {
+      if (typeof plugin.runRevertLastBatchCommand === "function") {
+        await plugin.runRevertLastBatchCommand();
+        return;
+      }
       const args = [values.action_id];
       appendOptionalArg(args, "--note", values.note);
       await plugin.runCliAction(`Revert Action: ${values.action_id}`, "revert-action", args);
@@ -9906,11 +9905,11 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async runReviewRewriteTransition(slug, status) {
-    await this.runCliAction(`Review Rewrite: ${slug}`, "review-rewrite", [slug, "--status", status]);
+    new Notice(this.t("Concept rewrite commands were removed in W3; use review-page on the concept page instead."));
   }
 
   async runReviewActionTransition(actionId, status) {
-    await this.runCliAction(`Review Action: ${actionId}`, "review-action", [actionId, "--status", status]);
+    new Notice(this.t("Machine-memory action commands were removed in W3; use batch-review or review-page instead."));
   }
 
   visibleReviewPageCandidates() {
@@ -10077,11 +10076,15 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async runApplyAllAcceptedLowRiskCommand() {
-    await this.runCliAction(this.t("Apply All Low-Risk"), "apply-action", ["--all-accepted-low-risk"]);
+    await this.runCliAction(this.t("Apply All Low-Risk"), "batch-review", [
+      "apply-low-risk",
+      "--note",
+      "Product Shell batch apply low-risk repairs",
+    ]);
   }
 
   async runRevertLastBatchCommand() {
-    await this.runCliAction(this.t("Revert Last Batch"), "revert-action", ["--last-batch"]);
+    new Notice(this.t("Batch revert commands were removed in W3; inspect execution receipts manually."));
   }
 
   async openHomeNote() {

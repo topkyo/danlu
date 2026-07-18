@@ -14,6 +14,8 @@
 
 ## 当前动态
 
+- 2026-07-18 (W3 governance side-cuts)：按 spec W3 ADOPT 列表删除 AgentOS governance CLI 与膨胀面——L3 apply/revert、rewrite/repair/archive、candidate promote/demote、`review-action`/`apply-action`、`signals-*`/`planner-log-*`/`audit-*`、`run-compile`/`run-lint`、`alchemy auto/lane/heavy/light` CLI；保留 `alchemy-start/distill/finalize/promote/revert/demote`、`watch`、`compile`、`lint`、`nightly`、`ask`/`run-ask*`、`file-back`、`review-page`、`trace`、`llm-check`。Acceptance 改 function-level observe setup + lane apply helper；Product Shell batch hint 改 `batch-review`；Active docs 同步。验证：`bash scripts/verify.sh all` PASS。
+
 - 2026-07-18 (W2 compounding rank + suggest)：Ask 默认提升 confirmed judgment / settled elixir 选型权重；`used_refs` 写入 report frontmatter 与 receipt；`compound_suggest` 稀缺规则进 shell-summary（multi-turn + linked refs，max 3）；Today / report card CTA 接线。Acceptance 新增 `W2/case_compounding_rank_suggest`（`test_w2_compounding_rank_and_suggest_acceptance`）。验证：`bash scripts/verify.sh all` PASS。
 
 - 2026-07-18 (W1 single-protocol runtime)：物理收敛为单 runtime `general` only——删除 `schema/protocols/{investing,research,product,ops}`、CLI `protocol-set/status` 与 `protocol-learn-*`、ask `--protocol`/`--load-learnings`、Product Shell 协议选择器；非 `general` state 一次性 coerce 并重写 `.aiwiki/state/protocol.json`。Active docs（USER_GUIDE / DEVELOPER / Evolution / Architecture）与 acceptance fixtures 已同步。验证：`bash scripts/docs_consistency_check.sh` PASS；`bash scripts/verify.sh all` PASS。

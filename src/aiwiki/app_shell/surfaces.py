@@ -551,8 +551,8 @@ def _collect_batch_hints(
         emit(
             "batch-review",
             f"批量审阅 {count} 个 {action_kind} 候选",
-            f"PYTHONPATH=src python3 -m aiwiki.cli --root . review-action --all-pending --kind {action_kind} --status accepted",
-            f"batch-hint:review-action:{action_kind}",
+            f"PYTHONPATH=src python3 -m aiwiki.cli --root . batch-review action --kind {action_kind} --status accepted --note \"Batch review {action_kind}\"",
+            f"batch-hint:batch-review:{action_kind}",
             count,
         )
 
@@ -560,8 +560,8 @@ def _collect_batch_hints(
         emit(
             "batch-apply",
             f"批量预演 {can_apply_total} 个 low-risk apply",
-            "PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action --all-accepted-low-risk --dry-run",
-            "batch-hint:apply-action:low-risk",
+            "PYTHONPATH=src python3 -m aiwiki.cli --root . batch-review apply-low-risk --dry-run --note \"Batch apply low-risk repairs\"",
+            "batch-hint:batch-review:apply-low-risk",
             can_apply_total,
         )
 

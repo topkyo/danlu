@@ -21,9 +21,9 @@ alchemy-start/distill/finalize/promote(+revert/demote), watch, compile, lint, as
 
 **Depends on:** none
 
-- [ ] Remove parsers/dispatch/legacy for: l3-*, apply/revert (L3), review-rewrite/apply-rewrite/verify-rewrite/revert-rewrite, retire/reactivate/review-concept, review-action/apply-action/auto-resolve/revert-action, apply-archive/revert-archive, promote/demote
-- [ ] Delete or gut owner modules only if unused after CLI removal; fix imports
-- [ ] **Verify:** `bash scripts/verify.sh python-static cli-smoke`
+- [x] Remove parsers/dispatch/legacy for: l3-*, apply/revert (L3), review-rewrite/apply-rewrite/verify-rewrite/revert-rewrite, retire/reactivate/review-concept, review-action/apply-action/auto-resolve/revert-action, apply-archive/revert-archive, promote/demote
+- [x] Delete or gut owner modules only if unused after CLI removal; fix imports
+- [x] **Verify:** `bash scripts/verify.sh python-static cli-smoke`
 
 **Commit:** `feat(cut): remove L3 rewrite repair archive promote CLI`
 
@@ -33,10 +33,10 @@ alchemy-start/distill/finalize/promote(+revert/demote), watch, compile, lint, as
 
 **Depends on:** Task 1
 
-- [ ] Remove `alchemy` dry-run/lane/judge/propose/auto expansion CLI; keep primitive alchemy-* commands
-- [ ] Nightly: remove auto L2/L3/judgment adopt; keep deterministic compile+lint path
-- [ ] Remove `run-compile`, `run-lint` CLI (keep `compile`, `lint`)
-- [ ] **Verify:** `bash scripts/verify.sh python-static cli-smoke`
+- [x] Remove `alchemy` dry-run/lane/judge/propose/auto expansion CLI; keep primitive alchemy-* commands
+- [x] Nightly: remove auto L2/L3/judgment adopt; keep deterministic compile+lint path
+- [x] Remove `run-compile`, `run-lint` CLI (keep `compile`, `lint`)
+- [x] **Verify:** `bash scripts/verify.sh python-static cli-smoke`
 
 **Commit:** `feat(cut): slim alchemy nightly; drop run-compile/run-lint`
 
@@ -46,9 +46,9 @@ alchemy-start/distill/finalize/promote(+revert/demote), watch, compile, lint, as
 
 **Depends on:** Task 1
 
-- [ ] Remove signals-list/show/replay, planner-log-*, audit-preview/backfill CLI and unused modules
-- [ ] Stop derived packs / auto aging proposal generation where cheap; delete dead render paths
-- [ ] **Verify:** `bash scripts/verify.sh python-static`
+- [x] Remove signals-list/show/replay, planner-log-*, audit-preview/backfill CLI and unused modules
+- [x] Stop derived packs / auto aging proposal generation where cheap; delete dead render paths
+- [x] **Verify:** `bash scripts/verify.sh python-static`
 
 **Commit:** `feat(cut): remove signals planner audit and pack factories`
 
@@ -58,9 +58,9 @@ alchemy-start/distill/finalize/promote(+revert/demote), watch, compile, lint, as
 
 **Depends on:** Task 2, Task 3
 
-- [ ] Fix acceptance/Shell that call deleted commands
-- [ ] Active docs + PROGRESS; `bash scripts/verify.sh all`
-- [ ] **Verify:** all PASS
+- [x] Fix acceptance/Shell that call deleted commands
+- [x] Active docs + PROGRESS; `bash scripts/verify.sh all`
+- [x] **Verify:** all PASS
 
 **Commit:** `test+docs: W3 governance side-cuts`
 

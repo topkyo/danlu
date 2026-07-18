@@ -92,9 +92,9 @@ test("apply action modal spec includes optional bundle and dry-run args", async 
     dry_run: true,
   });
   expect(plugin.calls[0]).toEqual({
-    label: "Apply Action: act-1",
-    command: "apply-action",
-    args: ["act-1", "--note", "safe", "--bundle", "output/actions/act-1.json", "--dry-run"],
+    label: "Apply All Low-Risk",
+    command: "batch-review",
+    args: ["apply-low-risk", "--note", "safe", "--dry-run"],
   });
 });
 

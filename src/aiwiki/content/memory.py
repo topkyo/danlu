@@ -791,11 +791,14 @@ def remove_stale_generated_markdown_files(directory: Path, active_stems: set[str
 
 def describe_machine_memory_action(action: dict[str, Any], *, root: Path | None = None) -> dict[str, Any]:
     from ..app_protocol import PENDING_ACTION_STATUSES
-    action_id = str(action.get("id") or "")
     kind = str(action.get("kind") or "")
     status = str(action.get("status") or "proposed")
     active = bool(action.get("active", True))
-    review_prefix = f"PYTHONPATH=src python3 -m aiwiki.cli --root . review-action {action_id}"
+    review_prefix = (
+        f"PYTHONPATH=src python3 -m aiwiki.cli --root . batch-review action --kind {kind}"
+        if kind
+        else "PYTHONPATH=src python3 -m aiwiki.cli --root . review-queue --bucket mm_actions --json"
+    )
     kind_steps = {
         "add-source-concept-link": "检查来源页与概念页是否应补引用或反链。",
         "connect-isolated-source": "把孤立来源接入至少一个稳定概念。",
@@ -823,8 +826,8 @@ def describe_machine_memory_action(action: dict[str, Any], *, root: Path | None 
         if action_supports_low_risk_apply(action_with_policy):
             next_step = "这是低风险动作；可以直接通过 safe execution layer 应用，再让 compile 收敛状态。"
             command_hint = (
-                f'PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {action_id}'
-                ' --note "Applied accepted low-risk repair."'
+                "PYTHONPATH=src python3 -m aiwiki.cli --root . batch-review apply-low-risk"
+                ' --dry-run --note "Applied accepted low-risk repair."'
             )
         else:
             next_step = f"{next_step} 完成后将动作标为 resolved。"

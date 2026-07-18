@@ -1,17 +1,1 @@
-{
-  "duplicate_count": 1,
-  "emitted_by_decision": {
-    "enqueue-heavy": 0,
-    "enqueue-light": 1,
-    "escalate-human": 0,
-    "generate-proposal": 0,
-    "ignore": 0
-  },
-  "invalid_count": 0,
-  "log_path": ".aiwiki/state/planner-log.jsonl",
-  "new_count": 1,
-  "scanned_count": 2,
-  "signals_path": ".aiwiki/state/signals.jsonl",
-  "skip_examples": [],
-  "status": "ok"
-}
+{"duplicate_count": 1, "emitted_by_decision": {"enqueue-heavy": 0, "enqueue-light": 1, "escalate-human": 0, "generate-proposal": 0, "ignore": 0}, "invalid_count": 0, "log_path": ".aiwiki/state/planner-log.jsonl", "new_count": 1, "scanned_count": 2, "signals_path": ".aiwiki/state/signals.jsonl", "skip_examples": [], "status": "ok"}

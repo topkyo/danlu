@@ -384,18 +384,7 @@ function isMaintenanceCommandAction(target, reason) {
   if (reasonText.startsWith("batch-hint:")) return true;
   const maintenanceTokens = [
     " review-page ",
-    " review-action ",
-    " apply-action ",
-    " revert-action ",
-    " review-concept ",
-    " retire-concept ",
-    " reactivate-concept ",
-    " apply-rewrite ",
-    " review-rewrite ",
-    " revert-rewrite ",
-    " apply-archive ",
-    " revert-archive ",
-    " alchemy auto ",
+    " batch-review ",
   ];
   return maintenanceTokens.some((token) => targetText.includes(token));
 }
@@ -412,7 +401,7 @@ function buildAgentLoopEntries(summary, todayDate) {
 
   let title = "预演下一步维护";
   let summaryText = "今日维护预演完成，暂不需要自动执行";
-  let target = "PYTHONPATH=src python3 -m aiwiki.cli --root . alchemy auto --dry-run";
+  let target = "wiki/indexes/repair-backlog.md";
   let autoState = "idle";
   if (status === "failed") {
     summaryText = "今日维护预演失败，需要人工查看";

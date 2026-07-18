@@ -27,7 +27,7 @@ related_docs:
 |---|---|---|---|---|
 | `aiwiki-watch.service` | 长驻 daemon | 每 5 秒 inbox 扫描 | **否**（默认 `--deterministic-only`）| `Restart=always` |
 | `aiwiki-nightly.timer` → `aiwiki-nightly.service` | 定时 oneshot | 每天 00:00 | **是**（默认 full local furnace profile）| `Persistent=true` 错过补跑 |
-| 用户/agent 显式 `run-compile` / `run-ask` / `run-lint` | 手动 worker | 按需 | 是 | 无（手动调用） |
+| 用户/agent 显式 `run-ask` / `run-nightly` | 手动 worker | 按需 | 是 | 无（手动调用） |
 
 > 2026-07-15 清理：原 `aiwiki-dogfood-maturity.timer` 行已删除（属于历史验证 harness，本轮 scripts + systemd 一并删除 `install_user_service.sh` 的 `AIWIKI_INSTALL_DOGFOOD_MATURITY` 分支）。如升级机器上的旧 unit，自动 cleanup 由 `scripts/install_user_service.sh` / `uninstall_user_service.sh` 兜底。
 
@@ -188,10 +188,11 @@ watcher 不调 LLM，那 LLM 在哪发生？三条路径：
 
 | 入口 | 触发方式 | 持锁 | 用途 |
 |---|---|---|---|
-| `aiwiki run-compile [--paths] [--limit]` | 手动 / agent 调用 | 是 | LLM enrichment：补 source frontmatter / concept summary |
-| `aiwiki run-ask "<question>" --format report [--protocol P]` | 手动 / agent 调用 | 是 | LLM-backed reasoning：生成 query report |
-| `aiwiki run-nightly --compile-limit N` | nightly timer 触发 | 是 | 一次跑 nightly 全套 + LLM compile |
-| `aiwiki run-lint` | 手动 | 是 | LLM 辅助 lint（少用） |
+| `aiwiki compile` | 手动 / watcher / nightly | 是 | 确定性 compile：manifest → wiki sources/indexes |
+| `aiwiki lint` | 手动 / nightly | 是 | 确定性 lint + repair backlog |
+| `aiwiki run-ask "<question>" --format report` | 手动 / agent 调用 | 是 | LLM-backed reasoning：生成 query report |
+| `aiwiki run-nightly --compile-limit N` | nightly timer 触发 | 是 | compile + semantic lint worker（可选） |
+| `aiwiki nightly` | 手动 / timer | 是 | 确定性 compile + lint + nightly health |
 
 所有 `run-*` 路径都：
 - 先做 `preflight_check_backend`（4-state probe），结果记入 receipt 的 `backend_compat` 字段

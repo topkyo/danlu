@@ -326,7 +326,7 @@ function resolveBatchHintInvocation(plugin, action) {
     return null;
   }
   const command = String(action.command || "");
-  if (kind === "batch-apply" && command.includes("apply-action --all-accepted-low-risk")) {
+  if (kind === "batch-apply" && command.includes("batch-review apply-low-risk")) {
     return {
       label: plugin.t("Run batch"),
       run: () => plugin.runApplyAllAcceptedLowRiskCommand(),
@@ -338,7 +338,7 @@ function resolveBatchHintInvocation(plugin, action) {
       run: () => plugin.openReviewBatchSuggestionPicker(),
     };
   }
-  if (kind === "batch-review" && command.includes("review-action --all-pending")) {
+  if (kind === "batch-review" && command.includes("batch-review action")) {
     // Action-kind batch review still routes through the batch suggestion picker;
     // the picker filters to the active suggestion bundle, so the same entry point works.
     return {

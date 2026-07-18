@@ -153,6 +153,10 @@ function buildReviewRewriteModalSpec(plugin, prefill = {}) {
     onSubmit: async (values) => {
       const args = [values.slug, "--status", values.status];
       appendOptionalArg(args, "--note", values.note);
+      if (typeof plugin.runReviewRewriteTransition === "function") {
+        await plugin.runReviewRewriteTransition(values.slug, values.status);
+        return;
+      }
       await plugin.runCliAction(`Review Rewrite: ${values.slug}`, "review-rewrite", args);
     },
   };
@@ -248,6 +252,10 @@ function buildReviewActionModalSpec(plugin, prefill = {}) {
       { key: "note", label: plugin.t("Note"), kind: "textarea", rows: 4, placeholder: plugin.t("Optional action review note"), initialValue: prefill.note || "" },
     ],
     onSubmit: async (values) => {
+      if (typeof plugin.runReviewActionTransition === "function") {
+        await plugin.runReviewActionTransition(values.action_id, values.status);
+        return;
+      }
       const args = [values.action_id, "--status", values.status];
       appendOptionalArg(args, "--note", values.note);
       await plugin.runCliAction(`Review Action: ${values.action_id}`, "review-action", args);
@@ -266,13 +274,11 @@ function buildApplyActionModalSpec(plugin, prefill = {}) {
       { key: "dry_run", label: plugin.t("Dry run"), kind: "toggle", initialValue: Boolean(prefill.dryRun) },
     ],
     onSubmit: async (values) => {
-      const args = [values.action_id];
-      appendOptionalArg(args, "--note", values.note);
-      appendOptionalArg(args, "--bundle", values.bundle);
+      const args = ["apply-low-risk", "--note", values.note || "Apply accepted low-risk repair"];
       if (values.dry_run) {
         args.push("--dry-run");
       }
-      await plugin.runCliAction(`Apply Action: ${values.action_id}`, "apply-action", args);
+      await plugin.runCliAction(`Apply All Low-Risk`, "batch-review", args);
     },
   };
 }
@@ -286,6 +292,10 @@ function buildRevertActionModalSpec(plugin, prefill = {}) {
       { key: "note", label: plugin.t("Note"), kind: "textarea", rows: 4, placeholder: plugin.t("Optional revert note"), initialValue: prefill.note || "" },
     ],
     onSubmit: async (values) => {
+      if (typeof plugin.runRevertLastBatchCommand === "function") {
+        await plugin.runRevertLastBatchCommand();
+        return;
+      }
       const args = [values.action_id];
       appendOptionalArg(args, "--note", values.note);
       await plugin.runCliAction(`Revert Action: ${values.action_id}`, "revert-action", args);

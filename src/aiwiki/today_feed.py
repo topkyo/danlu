@@ -310,14 +310,14 @@ def _build_agent_loop_entries(summary: dict[str, Any], today_date: str) -> list[
             else:
                 summary_text = "今日维护预演完成，暂不需要自动执行"
             title = "预演下一步维护"
-            target = "PYTHONPATH=src python3 -m aiwiki.cli --root . alchemy auto --dry-run"
+            target = "wiki/indexes/repair-backlog.md"
 
     return [
         FeedEntry(
             kind="automation",
             title=title if status != "failed" else "预演下一步维护",
             summary=summary_text,
-            target=target if status != "failed" else "PYTHONPATH=src python3 -m aiwiki.cli --root . alchemy auto --dry-run",
+            target=target if status != "failed" else "wiki/indexes/repair-backlog.md",
             timestamp=timestamp,
             protocol=str(summary.get("active_protocol") or ""),
         )
@@ -549,18 +549,7 @@ def _is_maintenance_command_action(*, target: str, reason: str) -> bool:
         return True
     maintenance_tokens = (
         " review-page ",
-        " review-action ",
-        " apply-action ",
-        " revert-action ",
-        " review-concept ",
-        " retire-concept ",
-        " reactivate-concept ",
-        " apply-rewrite ",
-        " review-rewrite ",
-        " revert-rewrite ",
-        " apply-archive ",
-        " revert-archive ",
-        " alchemy auto ",
+        " batch-review ",
     )
     return any(token in target_text for token in maintenance_tokens)
 

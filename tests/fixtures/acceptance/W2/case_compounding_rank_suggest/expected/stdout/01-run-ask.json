@@ -61,40 +61,8 @@
       "rank",
       "acceptance"
     ],
-    "planner_next_action": {
-      "action_id": "singleton-concept-compounding",
-      "blocked": false,
-      "depends_on": [],
-      "impact_score": 37,
-      "priority": "medium",
-      "priority_score": 45,
-      "status": "proposed",
-      "title": "\u6269\u5c55\u5355\u8282\u70b9\u6982\u5ff5 Compounding"
-    },
-    "planner_priority_queue": [
-      {
-        "action_id": "singleton-concept-compounding",
-        "blocked": false,
-        "depends_on": [],
-        "impact_score": 37,
-        "priority": "medium",
-        "priority_score": 45,
-        "status": "proposed",
-        "title": "\u6269\u5c55\u5355\u8282\u70b9\u6982\u5ff5 Compounding"
-      },
-      {
-        "action_id": "refresh-citation-snapshots-compounding-thesis",
-        "blocked": true,
-        "depends_on": [
-          "singleton-concept-compounding"
-        ],
-        "impact_score": 37,
-        "priority": "medium",
-        "priority_score": 41,
-        "status": "proposed",
-        "title": "\u5237\u65b0\u5f15\u7528\u5feb\u7167 Compounding Thesis"
-      }
-    ],
+    "planner_next_action": {},
+    "planner_priority_queue": [],
     "protocol_shard_source_ids": [
       "compounding-source"
     ],
@@ -189,7 +157,7 @@
     "relevant_actions": [
       {
         "apply_ready": "false",
-        "command_hint": "PYTHONPATH=src python3 -m aiwiki.cli --root . review-action refresh-citation-snapshots-compounding-thesis --status accepted --note \"Accepted for manual repair.\"",
+        "command_hint": "PYTHONPATH=src python3 -m aiwiki.cli --root . batch-review action --kind refresh-citation-snapshots --status accepted --note \"Accepted for manual repair.\"",
         "execution_policy": "triage",
         "focus_score": 0,
         "id": "refresh-citation-snapshots-compounding-thesis",
@@ -197,11 +165,9 @@
         "next_step": "\u5237\u65b0 citation snapshot metadata\uff0c\u8ba9 drift / review surface \u6536\u655b\u3002",
         "primary_path": "wiki/judgments/compounding-thesis.md",
         "priority": "medium",
-        "proposal_kind": "refresh-snapshots",
-        "proposal_summary": "\u5237\u65b0 judgment citation snapshot metadata\uff0c\u8ba9 drift / review surface \u6536\u655b\u3002",
-        "proposal_targets": [
-          "wiki/judgments/compounding-thesis.md"
-        ],
+        "proposal_kind": "",
+        "proposal_summary": "",
+        "proposal_targets": [],
         "reason": "snapshot gap `1`",
         "secondary_path": "",
         "status": "proposed",
@@ -209,7 +175,7 @@
       },
       {
         "apply_ready": "false",
-        "command_hint": "PYTHONPATH=src python3 -m aiwiki.cli --root . review-action singleton-concept-compounding --status accepted --note \"Accepted for manual repair.\"",
+        "command_hint": "PYTHONPATH=src python3 -m aiwiki.cli --root . batch-review action --kind expand-singleton-concept --status accepted --note \"Accepted for manual repair.\"",
         "execution_policy": "triage",
         "focus_score": 0,
         "id": "singleton-concept-compounding",
@@ -217,11 +183,9 @@
         "next_step": "\u6269\u5c55\u5355\u8282\u70b9\u6982\u5ff5\u7684\u76f8\u5173\u6765\u6e90\u6216\u76f8\u5173\u6982\u5ff5\u3002",
         "primary_path": "wiki/concepts/compounding.md",
         "priority": "medium",
-        "proposal_kind": "expand-concept",
-        "proposal_summary": "\u6269\u5c55\u5355\u8282\u70b9\u6982\u5ff5\u7684\u6765\u6e90\u8986\u76d6\u6216\u76f8\u5173\u6982\u5ff5\u8fb9\u754c\u3002",
-        "proposal_targets": [
-          "wiki/concepts/compounding.md"
-        ],
+        "proposal_kind": "",
+        "proposal_summary": "",
+        "proposal_targets": [],
         "reason": "\u5f53\u524d\u53ea\u5173\u8054 `1` \u4e2a\u6765\u6e90\uff0c\u4e14\u6ca1\u6709\u6982\u5ff5\u95f4\u8fde\u63a5\u3002",
         "secondary_path": "",
         "status": "proposed",
@@ -267,7 +231,7 @@
         "rank",
         "acceptance"
       ],
-      "planner_next_action_id": "singleton-concept-compounding",
+      "planner_next_action_id": "",
       "protocol": "general",
       "query_signature": "sha256:b68eb602da42e1d5e59df6be5850ce6ad7823c40687ead156f7d56ac7a175f21",
       "ranked_concept_slugs": [

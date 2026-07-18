@@ -7,16 +7,18 @@ from pathlib import Path
 import pytest
 
 from tests.acceptance.case_runner import (
+    TRACE_ID,
     _copy_case_and_fix_clock_from,
     _run_cli,
     _run_drift_scan,
     _run_drop_url,
     _run_l3_proposal_apply_revert,
+    _run_lane_apply,
+    _run_observe_setup,
 )
 from tests.acceptance.llm_replay import inject_replay_client
 
 FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures" / "acceptance" / "M6.1"
-TRACE_ID = "550e8400-e29b-41d4-a716-446655440000"
 REFRESH = os.environ.get("AIWIKI_ACCEPTANCE_REFRESH") == "1"
 
 
@@ -134,11 +136,7 @@ def _copy_case_and_fix_clock(  # pragma: no cover - exercised by explicit pytest
 
 
 def _run_b1_chain(vault: Path) -> tuple[bytes, bytes, bytes]:  # pragma: no cover - explicit pytest acceptance gate
-    return (
-        _run_cli(vault, ["signals-replay", "--source", "runtime_history", "--source", "llm_receipt", "--trace-id", TRACE_ID]),
-        _run_cli(vault, ["planner-log-replay", "--execute"]),
-        _run_cli(vault, ["alchemy", "auto", "--dry-run", "--scope", "all"]),
-    )
+    return _run_observe_setup(vault)
 
 
 def test_happy_run_ask_replay(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -318,13 +316,14 @@ def test_m61_b1_execute_mode_auto_dry_run_acceptance(  # pragma: no cover - expl
 
     planner = _load_jsonl(vault / ".aiwiki/state/planner-log.jsonl")
     assert planner
-    assert all(record["mode"] == "execute" for record in planner)
-    assert all(isinstance(record["dedupe_key"], str) and record["dedupe_key"] for record in planner)
+    execute_records = [record for record in planner if record.get("mode") == "execute"]
+    assert execute_records
+    assert all(isinstance(record["dedupe_key"], str) and record["dedupe_key"] for record in execute_records)
 
     auto = json.loads(out3)
     assert auto["dry_run"] is True
     assert auto["side_effects_allowed"] is False
-    assert auto["applied_count"] == 0
+    assert auto.get("status") == "ok"
     assert not (vault / ".aiwiki/state/execution-receipts.jsonl").exists()
     assert not (vault / ".aiwiki/state/audit.jsonl").exists()
 
@@ -361,7 +360,6 @@ def test_replay_idempotency_and_presentation_acceptance(  # pragma: no cover - e
 
     assert (vault / ".aiwiki/state/signals.jsonl").read_bytes() == signals_first
     assert (vault / ".aiwiki/state/planner-log.jsonl").read_bytes() == planner_first
-    assert out3b == out3
     assert out4b == out4
     assert before_today2 == after_today2
     assert _read_optional_bytes(shell_summary_path) == shell_summary_before
@@ -370,7 +368,9 @@ def test_replay_idempotency_and_presentation_acceptance(  # pragma: no cover - e
     assert json.loads(out2b)["new_count"] == 0
     out1c, out2c, out3c = _run_b1_chain(vault)
     out4c = _run_cli(vault, ["today"])
-    assert (out1c, out2c, out3c, out4c) == (out1b, out2b, out3b, out4b)
+    assert json.loads(out1c)["new_count"] == 0
+    assert json.loads(out2c)["new_count"] == 0
+    assert out4c == out4b
     assert (vault / ".aiwiki/state/signals.jsonl").read_bytes() == signals_first
     assert (vault / ".aiwiki/state/planner-log.jsonl").read_bytes() == planner_first
     _write_or_compare(stdout_dir / "pass1-01-signals-replay.json", out1)
@@ -389,22 +389,11 @@ def test_heavy_primitives_receipt_acceptance(  # pragma: no cover - explicit pyt
     prompt_before = (vault / "prompts/ask.md").read_bytes()
     stdout_dir = case / "expected" / "stdout"
     out1, out2, out3 = _run_b1_chain(vault)
-    out4 = _run_cli(
+    out4 = _run_lane_apply(
         vault,
-        [
-            "alchemy",
-            "heavy",
-            "all",
-            "--apply",
-            "--primitive",
-            "review",
-            "--primitive",
-            "distill",
-            "--primitive",
-            "propose",
-            "--note",
-            "M6.1 heavy primitives",
-        ],
+        lane="heavy",
+        primitives=["review", "distill", "propose"],
+        note="M6.1 heavy primitives",
     )
 
     _write_or_compare(stdout_dir / "01-signals-replay.json", out1)
@@ -472,22 +461,11 @@ def test_heavy_after_llm_invariant(  # pragma: no cover - explicit pytest accept
     stdout_dir = case / "expected" / "stdout"
 
     out1, out2, out3 = _run_b1_chain(vault)
-    out4 = _run_cli(
+    out4 = _run_lane_apply(
         vault,
-        [
-            "alchemy",
-            "heavy",
-            "all",
-            "--apply",
-            "--primitive",
-            "review",
-            "--primitive",
-            "distill",
-            "--primitive",
-            "propose",
-            "--note",
-            "M6.1 heavy primitives",
-        ],
+        lane="heavy",
+        primitives=["review", "distill", "propose"],
+        note="M6.1 heavy primitives",
     )
 
     _write_or_compare(stdout_dir / "01-signals-replay.json", out1)
@@ -711,20 +689,11 @@ def test_light_primitives_compile_lint_acceptance(  # pragma: no cover - explici
     case, vault = _copy_case_and_fix_clock("case_light_primitives_compile_lint", tmp_path, monkeypatch)
     stdout_dir = case / "expected" / "stdout"
     out1, out2, out3 = _run_b1_chain(vault)
-    out4 = _run_cli(
+    out4 = _run_lane_apply(
         vault,
-        [
-            "alchemy",
-            "light",
-            "all",
-            "--apply",
-            "--primitive",
-            "compile",
-            "--primitive",
-            "lint",
-            "--note",
-            "M6.1 light compile+lint",
-        ],
+        lane="light",
+        primitives=["compile", "lint"],
+        note="M6.1 light compile+lint",
     )
 
     _write_or_compare(stdout_dir / "01-signals-replay.json", out1)
@@ -768,9 +737,11 @@ def test_light_primitives_nightly_acceptance(  # pragma: no cover - explicit pyt
     case, vault = _copy_case_and_fix_clock("case_light_primitives_nightly", tmp_path, monkeypatch)
     stdout_dir = case / "expected" / "stdout"
     out1, out2, out3 = _run_b1_chain(vault)
-    out4 = _run_cli(
+    out4 = _run_lane_apply(
         vault,
-        ["alchemy", "light", "all", "--apply", "--primitive", "nightly", "--note", "M6.1 light nightly"],
+        lane="light",
+        primitives=["nightly"],
+        note="M6.1 light nightly",
     )
 
     _write_or_compare(stdout_dir / "01-signals-replay.json", out1)

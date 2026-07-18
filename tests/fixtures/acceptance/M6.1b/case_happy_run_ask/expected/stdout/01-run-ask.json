@@ -53,28 +53,8 @@
     "matched_terms": [
       "deterministic"
     ],
-    "planner_next_action": {
-      "action_id": "isolated-source-source-a",
-      "blocked": false,
-      "depends_on": [],
-      "impact_score": 37,
-      "priority": "medium",
-      "priority_score": 45,
-      "status": "proposed",
-      "title": "\u8fde\u63a5\u5b64\u7acb\u6765\u6e90 Source A"
-    },
-    "planner_priority_queue": [
-      {
-        "action_id": "isolated-source-source-a",
-        "blocked": false,
-        "depends_on": [],
-        "impact_score": 37,
-        "priority": "medium",
-        "priority_score": 45,
-        "status": "proposed",
-        "title": "\u8fde\u63a5\u5b64\u7acb\u6765\u6e90 Source A"
-      }
-    ],
+    "planner_next_action": {},
+    "planner_priority_queue": [],
     "protocol_shard_source_ids": [
       "source-a"
     ],
@@ -101,7 +81,7 @@
     "relevant_actions": [
       {
         "apply_ready": "false",
-        "command_hint": "PYTHONPATH=src python3 -m aiwiki.cli --root . review-action isolated-source-source-a --status accepted --note \"Accepted for manual repair.\"",
+        "command_hint": "PYTHONPATH=src python3 -m aiwiki.cli --root . batch-review action --kind connect-isolated-source --status accepted --note \"Accepted for manual repair.\"",
         "execution_policy": "triage",
         "focus_score": 0,
         "id": "isolated-source-source-a",
@@ -109,11 +89,9 @@
         "next_step": "\u628a\u5b64\u7acb\u6765\u6e90\u63a5\u5165\u81f3\u5c11\u4e00\u4e2a\u7a33\u5b9a\u6982\u5ff5\u3002",
         "primary_path": "wiki/sources/source-a.md",
         "priority": "medium",
-        "proposal_kind": "connect-source",
-        "proposal_summary": "\u628a\u5b64\u7acb\u6765\u6e90\u63a5\u5165\u81f3\u5c11\u4e00\u4e2a\u7a33\u5b9a\u6982\u5ff5\uff0c\u5e76\u663e\u5f0f\u8bb0\u5f55\u4f9d\u636e\u3002",
-        "proposal_targets": [
-          "wiki/sources/source-a.md"
-        ],
+        "proposal_kind": "",
+        "proposal_summary": "",
+        "proposal_targets": [],
         "reason": "\u6765\u6e90\u8282\u70b9\u5f53\u524d\u6ca1\u6709\u63a5\u5165\u4efb\u4f55\u6982\u5ff5\u3002",
         "secondary_path": "",
         "status": "proposed",
@@ -159,7 +137,7 @@
       "matched_terms": [
         "deterministic"
       ],
-      "planner_next_action_id": "isolated-source-source-a",
+      "planner_next_action_id": "",
       "protocol": "general",
       "query_signature": "sha256:b78c37f7f322b689dfc4c93133c504b1dacd6ca78996165d6bcf5c4195af5430",
       "ranked_concept_slugs": [],

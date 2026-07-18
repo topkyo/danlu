@@ -83,10 +83,10 @@ Product Shell 适合日常快速投料和查看状态。复杂治理操作建议
 - `wiki/derived/`：抽取的概念、关系、摘要。
 - `output/control/`：状态摘要、review queue、lint 报告。
 
-如果你想让 LLM 参与 enrichment：
+如果你想让 LLM 参与 enrichment，用受控 worker 入口（不再提供 `run-compile` / `run-lint` CLI）：
 
 ```bash
-./scripts/aiwiki-launcher.sh advanced run-compile --limit 3
+./scripts/aiwiki-launcher.sh advanced run-nightly --compile-limit 3 --no-semantic-lint
 ```
 
 ### 第 3 步：提问
@@ -143,7 +143,7 @@ file-back 会把结论整理成 judgment、decision 或 derived page，并保留
 
 ### 1. 未配置 LLM
 
-表现：`run-ask`、`run-compile` 提示没有可用的 LLM backend。
+表现：`run-ask`、`run-nightly` 提示没有可用的 LLM backend。
 
 处理：配置 key，然后跑 `./scripts/aiwiki-launcher.sh advanced llm-check --probe`。不影响确定性链路（投料、compile、today、lint）。
 

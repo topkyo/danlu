@@ -120,8 +120,8 @@ test("isMaintenanceCommandAction detects batch-hint prefix", () => {
 
 test("isMaintenanceCommandAction detects maintenance tokens", () => {
   expect(isMaintenanceCommandAction(" review-page foo.md ", "")).toBe(true);
-  expect(isMaintenanceCommandAction(" apply-action ", "")).toBe(true);
-  expect(isMaintenanceCommandAction(" alchemy auto --dry-run ", "")).toBe(true);
+  expect(isMaintenanceCommandAction(" batch-review ", "")).toBe(true);
+  expect(isMaintenanceCommandAction(" wiki/indexes/repair-backlog.md ", "")).toBe(false);
 });
 
 test("isMaintenanceCommandAction returns false for user commands", () => {

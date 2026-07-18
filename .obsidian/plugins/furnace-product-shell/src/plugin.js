@@ -345,11 +345,11 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async runReviewRewriteTransition(slug, status) {
-    await this.runCliAction(`Review Rewrite: ${slug}`, "review-rewrite", [slug, "--status", status]);
+    new Notice(this.t("Concept rewrite commands were removed in W3; use review-page on the concept page instead."));
   }
 
   async runReviewActionTransition(actionId, status) {
-    await this.runCliAction(`Review Action: ${actionId}`, "review-action", [actionId, "--status", status]);
+    new Notice(this.t("Machine-memory action commands were removed in W3; use batch-review or review-page instead."));
   }
 
   visibleReviewPageCandidates() {
@@ -516,11 +516,15 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async runApplyAllAcceptedLowRiskCommand() {
-    await this.runCliAction(this.t("Apply All Low-Risk"), "apply-action", ["--all-accepted-low-risk"]);
+    await this.runCliAction(this.t("Apply All Low-Risk"), "batch-review", [
+      "apply-low-risk",
+      "--note",
+      "Product Shell batch apply low-risk repairs",
+    ]);
   }
 
   async runRevertLastBatchCommand() {
-    await this.runCliAction(this.t("Revert Last Batch"), "revert-action", ["--last-batch"]);
+    new Notice(this.t("Batch revert commands were removed in W3; inspect execution receipts manually."));
   }
 
   async openHomeNote() {

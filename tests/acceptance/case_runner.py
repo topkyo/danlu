@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import itertools
+import json
 import os
 import shutil
 import uuid
@@ -12,6 +13,8 @@ from unittest.mock import patch
 import pytest
 
 from aiwiki.cli import main
+
+TRACE_ID = "550e8400-e29b-41d4-a716-446655440000"
 
 FIXED_NOW = datetime(2026, 4, 27, 0, 0, 0, tzinfo=timezone.utc)
 
@@ -162,6 +165,53 @@ def _run_drop_url(  # pragma: no cover - exercised by explicit pytest acceptance
     payload = dict(_DEFAULT_DROP_URL_FETCHED if fetched is None else fetched)
     monkeypatch.setattr("aiwiki.drop._fetch_url", lambda u, root=None: payload)
     return drop_url(vault, url, title=title)
+
+
+def _json_stdout(payload: object) -> bytes:  # pragma: no cover - exercised by explicit pytest acceptance gate
+    return (json.dumps(payload, sort_keys=True, ensure_ascii=False) + "\n").encode("utf-8")
+
+
+def _run_observe_setup(vault: Path) -> tuple[bytes, bytes, bytes]:  # pragma: no cover - exercised by explicit pytest acceptance gate
+    """Function-level setup replacing deleted signals/planner/alchemy-auto CLI."""
+
+    from aiwiki.agent_loop import run_nightly_agent_loop_preview
+    from aiwiki.planner import write_planner_log
+    from aiwiki.signals import collect_signals
+
+    signals_result = collect_signals(
+        vault,
+        sources=["runtime_history", "llm_receipt"],
+        trace_id=TRACE_ID,
+    )
+    planner_result = write_planner_log(vault, mode="execute")
+    preview_result = run_nightly_agent_loop_preview(vault)
+    return (
+        _json_stdout(signals_result),
+        _json_stdout(planner_result),
+        _json_stdout(preview_result),
+    )
+
+
+def _run_lane_apply(  # pragma: no cover - exercised by explicit pytest acceptance gate
+    vault: Path,
+    *,
+    lane: str,
+    primitives: list[str],
+    note: str,
+) -> bytes:
+    """Apply alchemy lane primitives without the deleted ``alchemy <lane>`` CLI."""
+
+    from aiwiki.runner.alchemy import run_alchemy_lane_apply
+
+    result = run_alchemy_lane_apply(
+        vault,
+        lane=lane,
+        scope="all",
+        primitives=primitives,
+        note=note,
+        allow_current_writer_lock=True,
+    )
+    return _json_stdout(result)
 
 
 def _run_l3_proposal_apply_revert(  # pragma: no cover - exercised by explicit pytest acceptance gate
