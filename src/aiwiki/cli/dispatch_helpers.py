@@ -30,41 +30,6 @@ def _flatten_model_retry_args(values: list[str]) -> list[str]:
 _flatten_model_fallback_args = _flatten_model_retry_args
 
 
-def _latest_run_compile_summary(root: Path) -> dict[str, object]:
-    path = root / ".aiwiki" / "logs" / "runs.jsonl"
-    if not path.exists():
-        return {}
-    for line in reversed(path.read_text(encoding="utf-8").splitlines()):
-        if not line.strip():
-            continue
-        try:
-            payload = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(payload, dict) and payload.get("event") == "run-compile-summary":
-            return payload
-    return {}
-
-
-def _print_run_compile_fail_fast_breadcrumb(result: dict[str, object]) -> None:
-    for stage, prefix in [
-        ("pages", "pages"),
-        ("concept_pages", "concept_pages"),
-        ("rewrite_concept_pages", "rewrite_concept_pages"),
-    ]:
-        failed = int(result.get(f"failed_{prefix}", 0) or 0)
-        remaining = int(result.get(f"remaining_{prefix}", 0) or 0)
-        attempted = int(result.get(f"attempted_{prefix}", 0) or 0)
-        succeeded = int(result.get(f"succeeded_{prefix}", 0) or 0)
-        if failed > 0 or remaining > 0:
-            print(
-                f"aiwiki: → run-compile aborted at {stage}: "
-                f"attempted={attempted} succeeded={succeeded} "
-                f"failed={failed} remaining={remaining} (fail-fast). "
-                f"Re-run after addressing the failure.",
-                file=sys.stderr,
-            )
-
 def today_command(root: Path, *, as_json: bool = False) -> int:
     summary = build_shell_summary(root)
     feed = build_today_feed(summary)

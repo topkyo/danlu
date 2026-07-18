@@ -2,7 +2,7 @@
 kind: "elixir"
 elixir_id: "elixir-d3-old"
 elixir_state: "settled"
-protocol: "research"
+protocol: general
 iteration: "0"
 provenance_corpus: "corpus-d3-old"
 derived_from:

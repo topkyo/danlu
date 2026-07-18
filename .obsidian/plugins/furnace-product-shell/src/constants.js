@@ -434,7 +434,6 @@ const ZH_TEXT = {
   "Choose a recent report.": "选择最近报告。",
   "Open decision": "打开决策",
   "Open judgment": "打开判断",
-  "Open Review": "打开审阅",
   "Copy target": "复制目标",
   Report: "报告",
   "Decision page": "决策页",

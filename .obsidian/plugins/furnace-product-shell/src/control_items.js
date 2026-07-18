@@ -162,8 +162,7 @@ function commonReviewTransitionOptions(plugin, pages) {
     });
 }
 
-function reviewBatchSuggestions(plugin) {
-  // Batch review UX was removed in W4; keep helper for Advanced diagnostics only.
+function reviewBatchSuggestions(_plugin) {
   return [];
 }
 

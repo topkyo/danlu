@@ -626,7 +626,6 @@ const ZH_TEXT = {
   "Choose a recent report.": "选择最近报告。",
   "Open decision": "打开决策",
   "Open judgment": "打开判断",
-  "Open Review": "打开审阅",
   "Copy target": "复制目标",
   Report: "报告",
   "Decision page": "决策页",
@@ -4359,17 +4358,6 @@ function renderStatusPanel(plugin, container) {
   ]);
 }
 
-function resolveBatchHintInvocation(_plugin, action) {
-  if (!action || typeof action !== "object") {
-    return null;
-  }
-  const kind = String(action.kind || "");
-  if (kind === "batch-review" || kind === "batch-apply") {
-    return null;
-  }
-  return null;
-}
-
 function renderSuggestedNextActionsBlock(plugin, container, options = {}) {
   const maxItems = Number.isFinite(Number(options.maxItems)) ? Math.max(1, Number(options.maxItems)) : 2;
   const summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : null;
@@ -4396,13 +4384,7 @@ function renderSuggestedNextActionsBlock(plugin, container, options = {}) {
       copy.createDiv({ cls: "furnace-shell-meta", text: metaParts.join(" | ") });
     }
     const buttons = item.createDiv({ cls: "furnace-shell-inline-actions furnace-shell-inline-actions-compact" });
-    const batchInvocation = resolveBatchHintInvocation(plugin, action);
-    if (batchInvocation) {
-      const runButton = buttons.createEl("button", { text: batchInvocation.label, cls: "mod-cta" });
-      runButton.addEventListener("click", () => {
-        plugin.runUiAction(batchInvocation.run, `Run batch hint: ${action.title || action.command}`);
-      });
-    } else if (action.kind === "compound-suggest") {
+    if (action.kind === "compound-suggest") {
       const compoundAction = String(action.action || "").trim();
       if (compoundAction === "file-back-judgment") {
         const fileBackBtn = buttons.createEl("button", { text: plugin.t("沉淀"), cls: "mod-cta" });
@@ -6665,8 +6647,7 @@ function commonReviewTransitionOptions(plugin, pages) {
     });
 }
 
-function reviewBatchSuggestions(plugin) {
-  // Batch review UX was removed in W4; keep helper for Advanced diagnostics only.
+function reviewBatchSuggestions(_plugin) {
   return [];
 }
 

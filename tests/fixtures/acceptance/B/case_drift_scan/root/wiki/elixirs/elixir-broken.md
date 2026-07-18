@@ -1,6 +1,6 @@
 ---
 id: elixir-broken
-protocol: research
+protocol: general
 derived_from:
   - "wiki/judgments/does-not-exist.md"
 ---

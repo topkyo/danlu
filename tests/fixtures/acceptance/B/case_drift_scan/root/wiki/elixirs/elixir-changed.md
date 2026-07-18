@@ -1,6 +1,6 @@
 ---
 id: elixir-changed
-protocol: research
+protocol: general
 citations:
   - "raw/evidence.md"
   - "raw/missing.md"
