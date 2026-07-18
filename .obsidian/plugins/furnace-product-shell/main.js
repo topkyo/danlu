@@ -198,7 +198,7 @@ const VIEW_TYPE_RECENT_RUNS = "furnace-product-shell-recent-runs";
 const VIEW_TYPE_REVIEW_CENTER = "furnace-product-shell-review-center";
 const VIEW_TYPE_EXECUTION_CENTER = "furnace-product-shell-execution-center";
 const SHELL_SUMMARY_PATH = "output/control/shell-summary.json";
-const DEFAULT_PROTOCOLS = ["general", "investing", "research", "product", "ops"];
+const DEFAULT_PROTOCOLS = ["general"];
 const DEFAULT_LOCALE = "zh";
 const DEFAULT_SETTINGS = {
   launcherPath: "scripts/aiwiki-launcher.sh",
@@ -1564,14 +1564,11 @@ function buildUniversalInputCommandSpec({ payload, title }) {
   };
 }
 
-function buildAskCommandSpec({ question, format, mode, protocol }) {
+function buildAskCommandSpec({ question, format, mode }) {
   const finalFormat = "report";
   const longRunning = mode === "run-ask" && finalFormat === "report";
   const command = longRunning ? "run-ask-submit" : mode;
   const args = [command, question, "--format", finalFormat];
-  if (protocol) {
-    args.push("--protocol", protocol);
-  }
   if (mode === "run-ask") {
     args.push("--lean");
   }
@@ -2192,11 +2189,8 @@ function getActiveProtocolFromSummary(summary) {
   return String(summary && summary.active_protocol ? summary.active_protocol : "general");
 }
 
-function getAvailableProtocolsFromSummary(summary) {
-  const fromSummary = summary && Array.isArray(summary.available_protocols)
-    ? summary.available_protocols.filter((item) => typeof item === "string" && item)
-    : [];
-  return fromSummary.length ? fromSummary : DEFAULT_PROTOCOLS;
+function getAvailableProtocolsFromSummary(_summary) {
+  return DEFAULT_PROTOCOLS.slice();
 }
 
 function getActiveFilePathFromApp(app) {
@@ -2746,7 +2740,7 @@ module.exports = {
 
 // --- src/modals.js ---
 
-// Modal subclasses (AskCommand, CaptureNote, Protocol, Search, DropUrl,
+// Modal subclasses (AskCommand, CaptureNote, Search, DropUrl,
 // DropFile, DropImage, StructuredCommand, ContextPicker).
 
 // Shared modal helpers
@@ -2807,14 +2801,6 @@ class AskCommandModal extends Modal {
     questionInput.addClass("furnace-shell-code");
     const questionError = questionSetting.controlEl.createDiv({ cls: "furnace-modal-error" });
 
-    const protocolSetting = new Setting(contentEl).setName(t("协议"));
-    const protocolSelect = protocolSetting.controlEl.createEl("select");
-    protocolSelect.createEl("option", { text: t("当前协议"), value: "" });
-    this.plugin.getAvailableProtocols().forEach((protocol) => {
-      const option = protocolSelect.createEl("option", { text: protocol, value: protocol });
-      option.value = protocol;
-    });
-
     const { submitBtn } = modalSubmitRow(contentEl, t("运行"), t("取消"), function (btn) {
       const question = String(questionInput.value || "").trim();
       if (!question) {
@@ -2824,10 +2810,9 @@ class AskCommandModal extends Modal {
       clearInlineError(questionError);
       setSubmitLoading(btn, t("分析中…"));
       const self = this;
-      const protocol = String(protocolSelect.value || "").trim();
       self.close();
       self.plugin.runUiAction(function () {
-        return self.plugin.runAskCommand({ question, format: "report", mode: "run-ask", protocol });
+        return self.plugin.runAskCommand({ question, format: "report", mode: "run-ask" });
       }, t("Ask modal"));
     }.bind(this), function () { this.close(); }.bind(this));
 
@@ -2892,49 +2877,6 @@ class CaptureNoteModal extends Modal {
     }, function () { self.close(); });
 
     textInput.focus();
-  }
-}
-
-class ProtocolCommandModal extends Modal {
-  constructor(app, plugin) {
-    super(app);
-    this.plugin = plugin;
-  }
-
-  onOpen() {
-    const { contentEl } = this;
-    const t = this.plugin.t.bind(this.plugin);
-    contentEl.empty();
-    contentEl.addClass("furnace-shell-view");
-    contentEl.createEl("h2", { text: t("Set Protocol") });
-
-    const setting = new Setting(contentEl).setName(t("Protocol"));
-    const select = setting.controlEl.createEl("select");
-    this.plugin.getAvailableProtocols().forEach((protocol) => {
-      const option = select.createEl("option", { text: protocol, value: protocol });
-      option.value = protocol;
-    });
-    select.value = this.plugin.getActiveProtocol();
-
-    const actionSetting = new Setting(contentEl);
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Apply")).setCta().onClick(async () => {
-        const protocol = String(select.value || "").trim();
-        if (!protocol) {
-          new Notice(t("Choose a protocol."));
-          return;
-        }
-        this.close();
-        this.plugin.runUiAction(() => this.plugin.runProtocolSetCommand(protocol), t("Set protocol modal"));
-      })
-    );
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Cancel")).onClick(() => {
-        this.close();
-      })
-    );
-
-    select.focus();
   }
 }
 
@@ -3795,7 +3737,6 @@ function runtimeClientRequestArgs(command, request) {
     const question = String(payload.question || "").trim();
     const args = ["ask", question];
     if (payload.format) args.push("--format", String(payload.format));
-    if (payload.protocol) args.push("--protocol", String(payload.protocol));
     return args;
   }
   const source = String(payload.source || payload.url || payload.path || "").trim();
@@ -7522,19 +7463,11 @@ function buildFileBackModalSpec(plugin, prefill = {}) {
           ["judgment", plugin.t("judgment")],
         ],
       },
-      {
-        key: "protocol",
-        label: plugin.t("Protocol"),
-        kind: "select",
-        initialValue: prefill.protocol || "",
-        options: [["", plugin.t("current protocol")], ...plugin.getAvailableProtocols().map((item) => [item, item])],
-      },
     ],
     onSubmit: async (values) => {
       const args = [values.artifact];
       appendOptionalArg(args, "--title", values.title);
       appendOptionalArg(args, "--kind", values.kind);
-      appendOptionalArg(args, "--protocol", values.protocol);
       await plugin.runCliAction(`File Back: ${values.kind}`, "file-back", args);
     },
   };
@@ -8709,12 +8642,12 @@ async function runProductShellUniversalInputCommand(plugin, { payload, title }) 
   return await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
 }
 
-async function runProductShellAskCommand(plugin, { question, format, mode, protocol }) {
-  const spec = buildAskCommandSpec({ question, format, mode, protocol });
+async function runProductShellAskCommand(plugin, { question, format, mode }) {
+  const spec = buildAskCommandSpec({ question, format, mode });
   return await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
 }
 
-async function runProductShellDroppedPayloadsWithAutoAsk(plugin, { payloads, question, protocol }) {
+async function runProductShellDroppedPayloadsWithAutoAsk(plugin, { payloads, question }) {
   const normalizedPayloads = Array.isArray(payloads)
     ? payloads
       .map((payload) => {
@@ -8748,7 +8681,6 @@ async function runProductShellDroppedPayloadsWithAutoAsk(plugin, { payloads, que
       question: askQuestion,
       format: askFormat,
       mode: "run-ask",
-      protocol,
     });
     runNotesPath = String(askPayload && askPayload.run_notes_path || "");
     runId = String(askPayload && askPayload.run_id || "");
@@ -8774,7 +8706,7 @@ function completeProductShellPendingMaterialDrop(plugin, id, materialPaths) {
   return false;
 }
 
-async function runProductShellDroppedFilesWithAutoAsk(plugin, { files, question, protocol }) {
+async function runProductShellDroppedFilesWithAutoAsk(plugin, { files, question }) {
   const normalizedFiles = Array.isArray(files)
     ? files
       .map((file) => ({
@@ -8786,7 +8718,6 @@ async function runProductShellDroppedFilesWithAutoAsk(plugin, { files, question,
   return await plugin.runDroppedPayloadsWithAutoAsk({
     payloads: normalizedFiles.map((file) => ({ path: file.path, title: file.name })),
     question,
-    protocol,
   });
 }
 
@@ -9681,10 +9612,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return getActiveProtocolFromSummary(this.shellSummary);
   }
 
-  getAvailableProtocols() {
-    return getAvailableProtocolsFromSummary(this.shellSummary);
-  }
-
   getActiveFilePath() {
     return getActiveFilePathFromApp(this.app);
   }
@@ -10014,10 +9941,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return openProductShellOutputsHub(this);
   }
 
-  async runProtocolSetCommand(protocol) {
-    await this.runPluginCommand(`${this.t("Set Protocol")}: ${protocol}`, ["protocol-set", protocol], { refreshAfter: true });
-  }
-
   pushPendingSubmission(displayText, opts = {}) {
     return pushPendingSubmissionRuntime(this, displayText, opts);
   }
@@ -10090,20 +10013,20 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return runProductShellUniversalInputCommand(this, { payload, title });
   }
 
-  async runAskCommand({ question, format, mode, protocol }) {
-    return runProductShellAskCommand(this, { question, format, mode, protocol });
+  async runAskCommand({ question, format, mode }) {
+    return runProductShellAskCommand(this, { question, format, mode });
   }
 
-  async runDroppedPayloadsWithAutoAsk({ payloads, question, protocol }) {
-    return runProductShellDroppedPayloadsWithAutoAsk(this, { payloads, question, protocol });
+  async runDroppedPayloadsWithAutoAsk({ payloads, question }) {
+    return runProductShellDroppedPayloadsWithAutoAsk(this, { payloads, question });
   }
 
   completePendingMaterialDrop(id, materialPaths) {
     return completeProductShellPendingMaterialDrop(this, id, materialPaths);
   }
 
-  async runDroppedFilesWithAutoAsk({ files, question, protocol }) {
-    return runProductShellDroppedFilesWithAutoAsk(this, { files, question, protocol });
+  async runDroppedFilesWithAutoAsk({ files, question }) {
+    return runProductShellDroppedFilesWithAutoAsk(this, { files, question });
   }
 
   async runReportSubgraphCommand({ reportPath }) {

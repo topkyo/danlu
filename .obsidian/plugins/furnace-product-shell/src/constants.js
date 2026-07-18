@@ -6,7 +6,7 @@ const VIEW_TYPE_RECENT_RUNS = "furnace-product-shell-recent-runs";
 const VIEW_TYPE_REVIEW_CENTER = "furnace-product-shell-review-center";
 const VIEW_TYPE_EXECUTION_CENTER = "furnace-product-shell-execution-center";
 const SHELL_SUMMARY_PATH = "output/control/shell-summary.json";
-const DEFAULT_PROTOCOLS = ["general", "investing", "research", "product", "ops"];
+const DEFAULT_PROTOCOLS = ["general"];
 const DEFAULT_LOCALE = "zh";
 const DEFAULT_SETTINGS = {
   launcherPath: "scripts/aiwiki-launcher.sh",

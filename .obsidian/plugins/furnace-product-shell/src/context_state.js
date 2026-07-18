@@ -4,11 +4,8 @@ function getActiveProtocolFromSummary(summary) {
   return String(summary && summary.active_protocol ? summary.active_protocol : "general");
 }
 
-function getAvailableProtocolsFromSummary(summary) {
-  const fromSummary = summary && Array.isArray(summary.available_protocols)
-    ? summary.available_protocols.filter((item) => typeof item === "string" && item)
-    : [];
-  return fromSummary.length ? fromSummary : DEFAULT_PROTOCOLS;
+function getAvailableProtocolsFromSummary(_summary) {
+  return DEFAULT_PROTOCOLS.slice();
 }
 
 function getActiveFilePathFromApp(app) {

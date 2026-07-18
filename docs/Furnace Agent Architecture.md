@@ -26,7 +26,7 @@ related_docs:
 - `Furnace Ultimate Architecture.md`（九层终局叙事）
 - `Furnace Protocols.md`（一个炉子多协议）
 
-实现契约（heavy / light 炼丹、active corpus、金丹、protocol-learning、L3 proposal）单独放在配套文档 [[docs/Furnace Evolution Mechanics|炼丹炉进化机制]] 中，本文档只负责回答“炼丹炉是什么 agent 系统，它的边界在哪”。
+实现契约（heavy / light 炼丹、active corpus、金丹、L3 proposal）单独放在配套文档 [[docs/Furnace Evolution Mechanics|炼丹炉进化机制]] 中，本文档只负责回答“炼丹炉是什么 agent 系统，它的边界在哪”。
 
 ## 1. Positioning：炼丹炉是什么 agent 系统
 
@@ -59,14 +59,14 @@ related_docs:
 
 ### 用户面只暴露两件事
 
-- **唯一输入端**：`drop`。用户把任意 raw 资产（URL / PDF / image / repo / text / question）丢进炼丹炉，runtime 自动识别类型并路由到对应协议。用户不需要选 protocol、不需要选 phase、不需要选 backend、不需要选 lane（heavy / light）。
+- **唯一输入端**：`drop`。用户把任意 raw 资产（URL / PDF / image / repo / text / question）丢进炼丹炉，runtime 自动识别类型并路由到 `general` 单 runtime。用户不需要选 protocol、不需要选 phase、不需要选 backend、不需要选 lane（heavy / light）。
 - **唯一输出端**：`today`。用户每天打开炼丹炉，只看到今天该看什么——新报告、待 review 的判断、已完成的金丹、需要拍板的 L3 proposal。其余所有运维状态（System Status / LLM Health / Graph Health / Execution Center / Repair Backlog / Recent Runs）都不在首屏，必须主动展开 Advanced 抽屉才能看到。
 
 ### 一切其他细节都是 internal mechanics
 
 下列概念**对用户全部隐藏**，只对 operator / debugger / agent loop 可见：
 
-- 5 个 protocol（general / investing / research / product / ops）的内部路由
+- 单 runtime（`general`）下的 review window、file-back 模板与 ask 偏置
 - 4 个 API backend（deepseek-api / opencode-api / openai-api / anthropic-api）的选择与切换
 - 8+ phase（compile / lint / nightly / review / distill / propose / judge / aging / repair / escalation）的调度
 - candidate plane / settled plane / receipt / audit stream / planner-log / signal stream / rollback marker
@@ -126,13 +126,13 @@ related_docs:
 | 文件平面与 deterministic baseline | implemented | `raw / wiki / .aiwiki/state / schema / output` 已是 runtime 主结构，核心 `compile / lint / nightly` 与 scoped apply/revert 写回语义不依赖 LLM。 |
 | 显式 backend 选择 | implemented | `AIWIKI_LLM_BACKEND` 必须显式设置；planner 不做 backend auto-routing。 |
 | Product Shell surface | implemented | 插件通过 launcher CLI 与 `output/control/shell-summary.json` 工作，不直接拥有 runtime state。 |
-| L2 protocol-learning | implemented | 已有 `active / stale / demoted / archived / superseded` 生命周期与 replacement DAG 校验；`protocol-learn-revert-activate` 可显式回滚带 metadata 的最近一次 `stale -> active` verify activation，并通过 runtime-history 进入 universal audit。 |
+| L2 protocol-learning | retired (W1) | W1 已物理删除 `protocol-learn-*` CLI、ask `--load-learnings` 与 nightly aging hook；历史 `wiki/protocol-learnings/` 页可读但不再写入或注入。 |
 | active corpus / output candidates | implemented | `.aiwiki/state/active-corpora.json` 与 `.aiwiki/state/output-candidates.json` 已作为运行态工作集与候选状态。 |
 | 金丹最小链路 | implemented | 当前 CLI 为 `alchemy-start / alchemy-distill / alchemy-finalize / alchemy-promote`，已落 `.aiwiki/staging/elixirs/` 候选平面、`wiki/elixirs/` 持久平面、provenance、DAG 校验、Stage-3 compounding acceptance、promote/revert/demote receipt 与 maturity gate `elixir_quality_proof`；promotion revert 已按 receipt/hash gate 回到 candidate 并写 universal audit；legacy migration 已有 read-only preview 与显式 apply baseline，superseded cleanup 已有 read-only preview 与显式 deletion apply baseline。剩余 planned 范围仅指显式 LLM/human contract 下的 semantic distillation 与更高自治金丹演化，不影响最小主链路完成状态。 |
 | planner | partial | 当前已有 `.aiwiki/state/planner-state.json` 的 repair/execution proposal planner，以及 `.aiwiki/state/planner-log.jsonl` 的 signal observe-only / execute-mode decision log；新 planner-log record 会写入由 decision 派生的 `phase`（`observe / light / heavy / proposal / human`），旧 v1 records 缺 `phase` 仍合法可 replay；`planner-log-replay --execute` 只追加 execute-mode decisions，不直接运行 lane/apply/proposal；`planner-log-rollback --dry-run/--apply` 可预览或显式追加独立 rollback marker stream，但不删除或重写 planner-log；execute-mode deterministic scheduler consumption 已通过 `alchemy auto` 和 `l3-proposal-generate` 落地，高风险 LLM-backed phase orchestration 仍需独立 primitive contract。 |
 | heavy/light alchemy lane | partial | 已有 `aiwiki alchemy heavy|light <scope> --dry-run` 只读 preview，`--apply --action-id ...` 到既有 receipted low-risk action batch 的显式桥接，`--apply --primitive compile|lint|nightly` 的 deterministic receipt wrapper，显式 heavy `--apply --primitive review` 到 direct scoped review apply 的桥接，显式 heavy `--apply --primitive distill` 到 direct scoped distill apply 的桥接，显式 heavy `--apply --primitive propose` 到 scoped proposal-plane apply 的桥接，以及 `aiwiki alchemy auto --dry-run|--apply` 对 execute-mode deterministic planner decisions 的显式调度入口；`alchemy auto --lane heavy --primitive review\|distill\|propose` 可显式 opt-in 调度 review/distill/propose，但默认 auto 不选择三者。lane apply 会写 `alchemy-lane-started / alchemy-lane-completed` runtime-history audit events，scheduler apply 会写 `alchemy-auto-scheduler` runtime-history audit event，lane primitive receipt 已显式携带 planner trace 与 execution receipt history audit metadata；`judge` 当前支持 direct `aiwiki alchemy judge <scope> --apply` 对已有 judgment/decision refs 写 deterministic managed refresh marker，也支持 `aiwiki alchemy judge <scope> --propose` 为已有 refs 生成 semantic refresh proposal-preview artifacts，以及 `aiwiki alchemy judge-proposal <proposal> --apply` 对 `state=accepted` 且 target `before_hash` 匹配的 proposal 写入 target managed section；这些路径都不由 runtime 生成判断结论、不改 status/confidence/review lifecycle、不创建 scope-only judgment/decision、不调用 LLM，也不进入 lane/auto；`review` 可显式写 review queue managed section 与 receipt/audit，但不进入 light lane；`distill` 可显式刷新 scoped preview 中已有 elixir candidate refs，并写 receipt/audit/runtime history，不创建新 elixir、不 promote/finalize、不进入 light/default auto；`propose` 可显式写 L3 proposal plane 并写 receipt/audit/runtime history，但不进入 light lane，且不写目标 prompt/policy 文件。 |
 | L3 prompt/policy proposal | implemented | 已有 manual baseline：`l3-proposal-create` 写入 `.aiwiki/staging/proposals/prompt|policy`，`l3-proposal-generate --dry-run|--apply` 可从 execute-mode `generate-proposal` planner decisions 创建 prompt proposal 候选，`alchemy propose <scope> --apply` 可从 scoped dirty preview 直接生成 prompt proposal 候选并写 proposal-generation receipt/audit，`review proposals`、`review proposal-generation` 和 `shell-status` 的 `review_controls.l3_proposals` 只读列队，`review proposal <id> --status accepted|rejected` 显式人工 accept/reject，`apply <proposal-id>` 仅在 `human_accepted` 或 `metadata_only` 时通过 `before_hash` 写回/登记并生成 receipt，`revert <receipt-id>` 通过 `after_hash` clean revert 并写 runtime-history / universal audit，冲突时生成 `human_merge_required` hint；agentic nightly 默认自动登记 `metadata_only`，不会无人值守改核心 prompt/policy/schema。 |
-| universal audit stream | implemented | 当前已有 `aiwiki audit-preview --dry-run` 只读归一化 execution receipts、LLM receipts、runtime history 与 protocol-learning aging audit，并可通过 `aiwiki audit-backfill --apply` 显式 append 缺失 records 到 `.aiwiki/state/audit.jsonl`；execution receipt、runtime history、LLM receipt 与 protocol-learning aging writer 已直接 append universal audit record，且 backfill 对 direct append 已写 records 幂等跳过。 |
+| universal audit stream | implemented | 当前已有 `aiwiki audit-preview --dry-run` 只读归一化 execution receipts、LLM receipts 与 runtime history，并可通过 `aiwiki audit-backfill --apply` 显式 append 缺失 records 到 `.aiwiki/state/audit.jsonl`；execution receipt、runtime history 与 LLM receipt writer 已直接 append universal audit record，且 backfill 对 direct append 已写 records 幂等跳过。 |
 
 ## 2.2 9+ Feasibility Contract
 
@@ -190,7 +190,6 @@ signal 是完整 planner 的唯一输入来源。目标 signal 包括（非穷�
 - 用户 `review` 反馈（accept / reject / rewrite）
 - `runtime failure` 模式（contract validation 持续失败、lint 反复回归）
 - `schedule tick`（nightly / weekly / periodic light tick）
-- `protocol-learning` 累积阈值命中
 - 金丹 `dependency` 断裂（被引用的 elixir 被 demote / superseded）
 
 每条 signal 都被标准化为：
@@ -250,7 +249,6 @@ feedback 会重新进入 signal 流，构成 loop 的闭合。
 learning 是 loop 的唯一合法“进化出口”。它只允许落到三个受控位置：
 
 - **L1 runtime state**（`.aiwiki/state/*`、temperature、active corpus 降温）
-- **L2 protocol-learning**（`wiki/protocol-learnings/` 的候选/老化/supersede）
 - **L3 prompt/policy proposal**（`.aiwiki/staging/proposals/prompt/`、`.aiwiki/staging/proposals/policy/`，当前为 manual baseline + execute-mode automatic candidate generation baseline）
 
 learning 不允许自动改 `src/aiwiki/**`，不允许自动改 schema 核心结构，不允许越过 review 链直接写入 `prompts/*.md` 或 `schema/policies/*`。
@@ -262,7 +260,7 @@ learning 不允许自动改 `src/aiwiki/**`，不允许自动改 schema 核心�
 | 平面 | 物理位置 | 角色 |
 |---|---|---|
 | **事实平面** | `raw/` | 唯一事实输入，不可被派生层覆盖 |
-| **知识/判断平面** | `wiki/sources/`、`wiki/concepts/`、`wiki/decisions/`、`wiki/judgments/`、`wiki/elixirs/`、`wiki/protocol-learnings/` | 人读资产；派生输出 + 凝丹 + 经验沉淀 |
+| **知识/判断平面** | `wiki/sources/`、`wiki/concepts/`、`wiki/decisions/`、`wiki/judgments/`、`wiki/elixirs/` | 人读资产；派生输出 + 凝丹（历史 `wiki/protocol-learnings/` 只读，W1 已退役写入面） |
 | **运行态平面** | `.aiwiki/state/*` | machine-readable runtime state（manifest、active corpus、compile state、aging、routing） |
 | **规则平面** | `schema/`、`prompts/` | 系统行为的显式契约；L3 proposal 的目标目录 |
 | **产物/Proposal 平面** | `.aiwiki/staging/`、`.aiwiki/staging/proposals/`、`output/reports/`、`.aiwiki/derived/packs/` | 候选区、提案区、最终导出 |
@@ -298,7 +296,7 @@ learning 不允许自动改 `src/aiwiki/**`，不允许自动改 schema 核心�
                feedback → learning
 ```
 
-- **Heavy Alchemy**：事件驱动、深链路、作用域有限定。处理“知识意义被改变”的信号（新事实、反证、drift 大范围命中、金丹断裂、protocol-learning 结构调整）。
+- **Heavy Alchemy**：事件驱动、深链路、作用域有限定。处理“知识意义被改变”的信号（新事实、反证、drift 大范围命中、金丹断裂）。
 - **Light Alchemy**：定时驱动、窄链路、预算严格。处理“知识卫生”事务（nightly aging、候选区清理、index 刷新、cold/archive 建议）。
 - **锁与优先级**：两者共享 single writer 锁；heavy 优先；light 拿不到锁即 skip，不做长等待。
 - **不允许 light 静默升级为 heavy**。
@@ -351,17 +349,17 @@ L0（维护层）由 `AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT=1` 控制；L1-L3/Judgment
 
 当前本机 full furnace / dogfood nightly profile（2026-06）默认开启每晚自动维护、治理、判断复核、metadata-only L3 学习与 heavy semantic 非核心 apply；watcher 仍保持 deterministic-only，fallback 和 L3 核心写回仍需显式启用，所有学习必须 receipt-gated、可审计、可回滚。
 
-## 9. Protocols, Operator Control, and Backend Selection
+## 9. Single Protocol Runtime and Operator Control
 
-**"一个炉子，多个 protocol"** 的原则本轮继续生效：
+**"一个炉子，一个 runtime"**（W1 定案）：
 
-- Protocol 当前集合：`general / investing / research / product / ops`。
+- Protocol 当前唯一 slug：`general`。
+- 规则层：`schema/protocols/general/`；非 `general` 的旧 state slug 在加载时一次性迁移并重写 `.aiwiki/state/protocol.json`。
 - Protocol 作用在：
   - planner 的 bias（热区偏好、review 频次、light 节奏）
-  - review cadence（不同 protocol 的老化速度不同）
-  - elixir compounding（同 protocol 内的金丹复利优先）
+  - review cadence 与 elixir compounding 的默认窗口
   - output 模板与 judgment 字段
-- Protocol **不是硬隔离**，但当前 runtime 只做 deterministic cross-protocol match：跨协议证据是否被纳入工作集，由 graph / judgment / drift 信号在 deterministic 规则下决定，runtime 不做语义召回（不基于 LLM 相似度判断"另一个协议的 evidence 是否相关"）。任何跨协议召回必须留可追溯的 deterministic 触发依据（signal id、graph edge、ref 关系），并随 receipt/audit 一起记录。基于语义/向量的跨协议证据召回不在默认可用边界内。
+- 已删除：`protocol-set` / `protocol-status` / `protocol-learn-*` CLI、ask `--protocol` / `--load-learnings`、Product Shell 协议选择器。旧 slug **不得** silent alias 成功执行切换命令。
 
 操作者控制：
 

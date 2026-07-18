@@ -15,9 +15,7 @@ from ..app_state import (
     cognitive_history_path,
     concept_quality_path,
     concept_rewrite_index_path,
-    default_domain_pilot_build_state,
     default_output_pack_build_state,
-    domain_pilot_build_state_path,
     execution_audit_html_path,
     execution_center_html_path,
     furnace_center_html_path,
@@ -57,16 +55,10 @@ from ..render.paths import (
     review_packs_dir,
     sop_drafts_dir,
 )
-from ..render.pilots import (
-    build_domain_pilots_incremental,
-    domain_pilots_index_path,
-    pilot_scorecards_dir,
-)
 from ..render.review_center import render_review_center_html
 from ..render.views import (
     render_agent_workbench,
     render_aging_report,
-    render_domain_pilots_index,
     render_review_queue,
 )
 from .context import CompileContext
@@ -411,60 +403,13 @@ def compile_output_phase(context: CompileContext) -> None:
             },
         )
 
-    domain_pilot_build = build_domain_pilots_incremental(
-        context.root,
-        context.decision_pages,
-        context.judgment_pages,
-        context.memory,
-        context.protocol_state,
-        context.recent_outputs,
-        context.all_outputs,
-        context.output_packs,
-        context.execution_audit,
-        context.compiled_at,
-        knowledge_lifecycle=context.knowledge_lifecycle,
-        material_routing=context.material_routing,
-    )
-    domain_pilot_build_state = domain_pilot_build.get("state_document", {})
-    if not isinstance(domain_pilot_build_state, dict):
-        domain_pilot_build_state = default_domain_pilot_build_state()
-    try:
-        write_json_document_if_changed_ignoring_generated_timestamps(
-            domain_pilot_build_state_path(context.root),
-            domain_pilot_build_state,
-        )
-    except OSError as exc:
-        logger.warning("cache domain-pilot build-state save failed: %s", exc)
-    context.domain_pilots = domain_pilot_build.get("domain_pilots", {})
-    if not isinstance(context.domain_pilots, dict):
-        context.domain_pilots = {
-            "compiled_at": context.compiled_at,
-            "active_protocol": context.protocol_state["active_protocol"],
-            "scorecards": [],
-        }
-    context.dirty_domain_pilot_protocols = list(domain_pilot_build.get("dirty_protocols", []))
-    context.clean_domain_pilot_protocols = list(domain_pilot_build.get("clean_protocols", []))
-    dirty_domain_pilot_protocol_set = set(context.dirty_domain_pilot_protocols)
-    context.write_domain_pilot_artifact(
-        domain_pilots_index_path(context.root),
-        render_domain_pilots_index(context.domain_pilots, context.compiled_at, context.protocol_state["active_protocol"]),
-    )
-    for scorecard in context.domain_pilots.get("scorecards", []):
-        if (
-            isinstance(scorecard, dict)
-            and str(scorecard.get("protocol") or "") in dirty_domain_pilot_protocol_set
-            and "content" in scorecard
-        ):
-            context.write_domain_pilot_artifact(context.root / str(scorecard["path"]), str(scorecard["content"]))
-    if context.dirty_domain_pilot_protocols or domain_pilot_build.get("removed_protocols"):
-        context.removed_pages += remove_stale_generated_markdown_files(
-            pilot_scorecards_dir(context.root),
-            {
-                Path(str(scorecard["path"])).stem
-                for scorecard in context.domain_pilots.get("scorecards", [])
-                if isinstance(scorecard, dict)
-            },
-        )
+    context.domain_pilots = {
+        "compiled_at": context.compiled_at,
+        "active_protocol": context.protocol_state["active_protocol"],
+        "scorecards": [],
+    }
+    context.dirty_domain_pilot_protocols = []
+    context.clean_domain_pilot_protocols = []
 
     agent_packs = build_agent_packs(
         context.root,

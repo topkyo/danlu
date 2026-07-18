@@ -936,12 +936,11 @@ test("runAskCommand uses background submit for report mode", async () => {
     question: "请生成一份深度报告",
     format: "report",
     mode: "run-ask",
-    protocol: "research",
   });
 
   expect(plugin.runPluginCommand).toHaveBeenCalledWith(
     expect.stringContaining("Long Report"),
-    ["run-ask-submit", "请生成一份深度报告", "--format", "report", "--protocol", "research", "--lean"],
+    ["run-ask-submit", "请生成一份深度报告", "--format", "report", "--lean"],
     expect.objectContaining({ refreshAfter: true, longRunning: true, backgroundSubmit: true })
   );
   expect(payload).toEqual({ payload: { kind: "run-ask-background-job", job_id: "job-1" } });

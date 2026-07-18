@@ -1,4 +1,4 @@
-// Modal subclasses (AskCommand, CaptureNote, Protocol, Search, DropUrl,
+// Modal subclasses (AskCommand, CaptureNote, Search, DropUrl,
 // DropFile, DropImage, StructuredCommand, ContextPicker).
 
 // Shared modal helpers
@@ -59,14 +59,6 @@ class AskCommandModal extends Modal {
     questionInput.addClass("furnace-shell-code");
     const questionError = questionSetting.controlEl.createDiv({ cls: "furnace-modal-error" });
 
-    const protocolSetting = new Setting(contentEl).setName(t("协议"));
-    const protocolSelect = protocolSetting.controlEl.createEl("select");
-    protocolSelect.createEl("option", { text: t("当前协议"), value: "" });
-    this.plugin.getAvailableProtocols().forEach((protocol) => {
-      const option = protocolSelect.createEl("option", { text: protocol, value: protocol });
-      option.value = protocol;
-    });
-
     const { submitBtn } = modalSubmitRow(contentEl, t("运行"), t("取消"), function (btn) {
       const question = String(questionInput.value || "").trim();
       if (!question) {
@@ -76,10 +68,9 @@ class AskCommandModal extends Modal {
       clearInlineError(questionError);
       setSubmitLoading(btn, t("分析中…"));
       const self = this;
-      const protocol = String(protocolSelect.value || "").trim();
       self.close();
       self.plugin.runUiAction(function () {
-        return self.plugin.runAskCommand({ question, format: "report", mode: "run-ask", protocol });
+        return self.plugin.runAskCommand({ question, format: "report", mode: "run-ask" });
       }, t("Ask modal"));
     }.bind(this), function () { this.close(); }.bind(this));
 
@@ -144,49 +135,6 @@ class CaptureNoteModal extends Modal {
     }, function () { self.close(); });
 
     textInput.focus();
-  }
-}
-
-class ProtocolCommandModal extends Modal {
-  constructor(app, plugin) {
-    super(app);
-    this.plugin = plugin;
-  }
-
-  onOpen() {
-    const { contentEl } = this;
-    const t = this.plugin.t.bind(this.plugin);
-    contentEl.empty();
-    contentEl.addClass("furnace-shell-view");
-    contentEl.createEl("h2", { text: t("Set Protocol") });
-
-    const setting = new Setting(contentEl).setName(t("Protocol"));
-    const select = setting.controlEl.createEl("select");
-    this.plugin.getAvailableProtocols().forEach((protocol) => {
-      const option = select.createEl("option", { text: protocol, value: protocol });
-      option.value = protocol;
-    });
-    select.value = this.plugin.getActiveProtocol();
-
-    const actionSetting = new Setting(contentEl);
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Apply")).setCta().onClick(async () => {
-        const protocol = String(select.value || "").trim();
-        if (!protocol) {
-          new Notice(t("Choose a protocol."));
-          return;
-        }
-        this.close();
-        this.plugin.runUiAction(() => this.plugin.runProtocolSetCommand(protocol), t("Set protocol modal"));
-      })
-    );
-    actionSetting.addButton((button) =>
-      button.setButtonText(t("Cancel")).onClick(() => {
-        this.close();
-      })
-    );
-
-    select.focus();
   }
 }
 

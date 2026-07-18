@@ -10,9 +10,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from ..app_cache import cache_status_summary, drop_query_cache, force_rebuild_query_cache
-from ..app_compile_ops import set_active_protocol
 from ..app_linting.core import lint_wiki
-from ..app_protocol import ensure_layout, load_protocol_state
+from ..app_protocol import ensure_layout
 from ..app_shell import build_shell_summary, rewrite_followup_payload_for_paths, shell_search, shell_status_dashboard
 from ..app_state import (
     load_machine_memory_action_state,
@@ -107,15 +106,6 @@ from ..runner.commands import (
     run_planner_log_rollback,
     run_planner_log_rollback_preview,
     run_promote,
-    run_protocol_learn_add,
-    run_protocol_learn_age,
-    run_protocol_learn_archive,
-    run_protocol_learn_demote,
-    run_protocol_learn_list,
-    run_protocol_learn_revert_activate,
-    run_protocol_learn_show,
-    run_protocol_learn_supersede,
-    run_protocol_learn_verify,
     run_signals_list,
     run_signals_show,
 )
@@ -266,18 +256,10 @@ def _handle_compile_family(args: argparse.Namespace, root: Path) -> tuple[object
         _print_run_compile_fail_fast_breadcrumb(result)
         return _out(result)
     if args.handler_command == "file-back":
-        result = file_back(root, args.artifact, title=args.title, kind=args.kind, protocol=args.protocol)
+        result = file_back(root, args.artifact, title=args.title, kind=args.kind)
         if result.get("next_step_hint"):
             print(f"aiwiki: → {result['next_step_hint']}", file=sys.stderr)
         return _out(result)
-    raise ValueError(f"Unsupported command: {args.handler_command}")
-
-
-def _handle_protocol(args: argparse.Namespace, root: Path) -> tuple[object, str | None]:
-    if args.handler_command == "protocol-status":
-        return _out(set_active_protocol(root, args.set_protocol) if args.set_protocol else load_protocol_state(root))
-    if args.handler_command == "protocol-set":
-        return _out(set_active_protocol(root, args.protocol))
     raise ValueError(f"Unsupported command: {args.handler_command}")
 
 
@@ -316,13 +298,12 @@ def _handle_live_surface(args: argparse.Namespace, root: Path) -> tuple[object, 
 
 def _handle_ask_family(args: argparse.Namespace, root: Path) -> tuple[object, str | None]:
     if args.handler_command == "ask":
-        ask_kwargs = {"protocol": args.protocol, "no_cache": args.no_cache, "load_protocol_learnings": args.load_learnings}
+        ask_kwargs = {"no_cache": args.no_cache}
         if getattr(args, "corpus", None) is not None:
             ask_kwargs["corpus_id_override"] = args.corpus
         return _out(ask_question(root, args.question, args.format, **ask_kwargs))
     if args.handler_command == "run-ask":
         ask_kwargs = {
-            "protocol": args.protocol,
             "lean": args.lean,
             "timeout_seconds": args.timeout,
             "no_cache": args.no_cache,
@@ -332,7 +313,6 @@ def _handle_ask_family(args: argparse.Namespace, root: Path) -> tuple[object, st
         return _out(run_ask(root, args.question, args.format, **ask_kwargs))
     if args.handler_command == "run-ask-submit":
         ask_kwargs = {
-            "protocol": args.protocol,
             "lean": args.lean,
             "timeout_seconds": args.timeout,
             "no_cache": args.no_cache,
@@ -401,7 +381,7 @@ def _handle_alchemy(args: argparse.Namespace, root: Path) -> tuple[object, str |
         include_elixir_ids = None
         if args.include_elixir is not None:
             include_elixir_ids = [item.strip() for item in args.include_elixir.split(",")]
-        kwargs = {"protocol": args.protocol}
+        kwargs = {}
         if include_elixir_ids is not None:
             kwargs["include_elixir_ids"] = include_elixir_ids
         return _out(run_alchemy_start(root, args.corpus_id, args.topic, **kwargs))
@@ -499,30 +479,6 @@ def _handle_l3(args: argparse.Namespace, root: Path) -> tuple[object, str | None
     else:
         raise ValueError(f"Unsupported command: {args.handler_command}")
     return _out(result, text_output)
-
-
-def _handle_protocol_learn(args: argparse.Namespace, root: Path) -> tuple[object, str | None]:
-    if args.handler_command == "protocol-learn-add":
-        result = run_protocol_learn_add(root, args.protocol, args.title, args.source_refs)
-    elif args.handler_command == "protocol-learn-list":
-        result = run_protocol_learn_list(root, args.protocol, state_filter=args.state, include_archived=args.include_archived)
-    elif args.handler_command == "protocol-learn-show":
-        result = run_protocol_learn_show(root, args.learning_id)
-    elif args.handler_command == "protocol-learn-age":
-        result = run_protocol_learn_age(root, protocol=args.protocol, apply=args.apply)
-    elif args.handler_command == "protocol-learn-verify":
-        result = run_protocol_learn_verify(root, args.learning_id)
-    elif args.handler_command == "protocol-learn-revert-activate":
-        result = run_protocol_learn_revert_activate(root, args.learning_id, note=args.note)
-    elif args.handler_command == "protocol-learn-demote":
-        result = run_protocol_learn_demote(root, args.learning_id)
-    elif args.handler_command == "protocol-learn-archive":
-        result = run_protocol_learn_archive(root, args.learning_id)
-    elif args.handler_command == "protocol-learn-supersede":
-        result = run_protocol_learn_supersede(root, args.replacement_id, args.superseded_ids)
-    else:
-        raise ValueError(f"Unsupported command: {args.handler_command}")
-    return _out(result)
 
 
 def _handle_signals_planner_audit(args: argparse.Namespace, root: Path) -> tuple[object, str | None]:
@@ -703,8 +659,6 @@ _COMPILE_PROTOCOL_HANDLERS = {
     "compile": _handle_compile_family,
     "run-compile": _handle_compile_family,
     "file-back": _handle_compile_family,
-    "protocol-status": _handle_protocol,
-    "protocol-set": _handle_protocol,
 }
 
 _LIVE_SURFACE_HANDLERS = {
@@ -748,18 +702,6 @@ _L3_HANDLERS = {
     "review": _handle_l3,
     "apply": _handle_l3,
     "revert": _handle_l3,
-}
-
-_PROTOCOL_LEARN_HANDLERS = {
-    "protocol-learn-add": _handle_protocol_learn,
-    "protocol-learn-list": _handle_protocol_learn,
-    "protocol-learn-show": _handle_protocol_learn,
-    "protocol-learn-age": _handle_protocol_learn,
-    "protocol-learn-verify": _handle_protocol_learn,
-    "protocol-learn-revert-activate": _handle_protocol_learn,
-    "protocol-learn-demote": _handle_protocol_learn,
-    "protocol-learn-archive": _handle_protocol_learn,
-    "protocol-learn-supersede": _handle_protocol_learn,
 }
 
 _SIGNALS_PLANNER_AUDIT_HANDLERS = {
@@ -816,7 +758,6 @@ _HANDLERS = {
     **_ASK_HANDLERS,
     **_ALCHEMY_HANDLERS,
     **_L3_HANDLERS,
-    **_PROTOCOL_LEARN_HANDLERS,
     **_SIGNALS_PLANNER_AUDIT_HANDLERS,
     **_REVIEW_LIFECYCLE_HANDLERS,
     **_RUNTIME_WORKFLOW_HANDLERS,

@@ -199,22 +199,22 @@ def ensure_protocol_scaffold(root: Path) -> None:
     index_path = base / "index.md"
     if not index_path.exists():
         index_path.write_text(render_protocol_library_index(), encoding="utf-8")
-    for slug in sorted(PROTOCOL_LIBRARY):
-        runtime_schema = protocol_runtime_schema_path(root, slug)
-        runtime_schema.parent.mkdir(parents=True, exist_ok=True)
-        if not runtime_schema.exists():
-            atomic_write_text(
-                runtime_schema,
-                json.dumps(default_protocol_runtime_schema(slug), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-            )
-        overview = base / slug / "index.md"
-        overview.parent.mkdir(parents=True, exist_ok=True)
-        if not overview.exists():
-            overview.write_text(render_protocol_overview(slug), encoding="utf-8")
-        for section in PROTOCOL_SECTION_FILES:
-            path = base / slug / f"{section}.md"
-            if not path.exists():
-                path.write_text(render_protocol_section(slug, section), encoding="utf-8")
+    slug = DEFAULT_PROTOCOL
+    runtime_schema = protocol_runtime_schema_path(root, slug)
+    runtime_schema.parent.mkdir(parents=True, exist_ok=True)
+    if not runtime_schema.exists():
+        atomic_write_text(
+            runtime_schema,
+            json.dumps(default_protocol_runtime_schema(slug), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        )
+    overview = base / slug / "index.md"
+    overview.parent.mkdir(parents=True, exist_ok=True)
+    if not overview.exists():
+        overview.write_text(render_protocol_overview(slug), encoding="utf-8")
+    for section in PROTOCOL_SECTION_FILES:
+        path = base / slug / f"{section}.md"
+        if not path.exists():
+            path.write_text(render_protocol_section(slug, section), encoding="utf-8")
     state = protocol_state_path(root)
     if not state.exists():
         atomic_write_text(state, json.dumps(default_protocol_state(), indent=2, sort_keys=True) + "\n")
@@ -222,10 +222,7 @@ def ensure_protocol_scaffold(root: Path) -> None:
 
 def available_protocols(root: Path) -> list[str]:
     ensure_protocol_scaffold(root)
-    protocols: list[str] = []
-    for path in sorted((root / "schema" / "protocols").glob("*/index.md")):
-        protocols.append(path.parent.name)
-    return protocols
+    return [DEFAULT_PROTOCOL]
 
 
 def protocol_descriptor(root: Path, slug: str) -> ProtocolDescriptor:
@@ -247,8 +244,8 @@ def load_protocol_state(root: Path) -> ProtocolState:
     state = load_json_document_strict(path) if path.exists() else default_protocol_state()
     available = available_protocols(root)
     active = str(state.get("active_protocol") or DEFAULT_PROTOCOL)
-    if active not in available:
-        active = DEFAULT_PROTOCOL if DEFAULT_PROTOCOL in available else (available[0] if available else DEFAULT_PROTOCOL)
+    if active != DEFAULT_PROTOCOL:
+        active = DEFAULT_PROTOCOL
     normalized = {"version": 1, "active_protocol": active}
     if state != normalized:
         atomic_write_text(path, json.dumps(normalized, indent=2, sort_keys=True) + "\n")
@@ -265,10 +262,10 @@ def resolve_protocol(root: Path, protocol: str | None = None) -> str:
     if protocol is None:
         return str(state.get("active_protocol") or DEFAULT_PROTOCOL)
     candidate = protocol.strip().lower()
-    available_protocols = list(state.get("available_protocols") or [])
-    if candidate not in available_protocols:
-        available = ", ".join(available_protocols)
-        raise ValueError(f"Unknown protocol: {protocol}. Available protocols: {available}")
+    if candidate != DEFAULT_PROTOCOL:
+        raise ValueError(
+            f"Unknown protocol: {protocol}. Only '{DEFAULT_PROTOCOL}' is supported."
+        )
     return candidate
 
 

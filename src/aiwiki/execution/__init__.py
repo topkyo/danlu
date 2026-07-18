@@ -12,7 +12,6 @@ dedicated owner module in this subpackage:
 - :mod:`aiwiki.execution.machine_memory_actions` — ``apply-action`` / ``revert-action``
 - :mod:`aiwiki.execution.machine_memory_batch`   — nightly batch orchestration
 - :mod:`aiwiki.execution.review`           — ``review`` primitive
-- :mod:`aiwiki.execution.protocol_learnings` — L2 protocol-learning lifecycle
 - :mod:`aiwiki.execution.alchemy`          — ``alchemy-start/distill/finalize/promote/revert/demote``
 - :mod:`aiwiki.execution.l3_proposals`     — manual L3 proposal lifecycle + generation preview
 - :mod:`aiwiki.execution.audit_preview`    — universal audit stream read-only preview

@@ -58,11 +58,10 @@ def render_protocol_library_index() -> str:
     lines = [
         "# 协议规则索引",
         "",
-        "这里存放统一炼丹炉的多协议规则层。",
+        "这里存放统一炼丹炉的单 runtime 协议规则层。",
         "",
-        "- 炉子只有一个。",
-        "- 领域协议可以有很多套。",
-        f"- 当前 starter library 已提供 `{ ' / '.join(sorted(PROTOCOL_LIBRARY)) }` {len(PROTOCOL_LIBRARY)} 套协议。",
+        "- 炉子只有一个 runtime：`general`。",
+        "- 领域差异通过概念、判断和 schema 扩展表达，不再拆多套 protocol slug。",
         "",
         "## 可用协议",
     ]
@@ -73,16 +72,15 @@ def render_protocol_library_index() -> str:
             "",
             "## 约束",
             "",
-            "- 协议层是统一 runtime 的覆盖层，不是新的 runtime 分叉。",
-            "- 领域差异优先落到 `schema/protocols/`，而不是复制一套 `aiwiki`。",
+            "- 协议层是统一 runtime 的规则覆盖，不是新的 runtime 分叉。",
+            "- 非 `general` 的旧 protocol slug 会在 state 加载时一次性迁移到 `general`。",
             "",
-            "## 当前已经生效的运行时差异",
+            "## 运行时行为",
             "",
-            "- `decision / judgment` 的默认 review window 会按协议变化。",
-            "- `file-back` 生成的 `decision / judgment` 页面模板会按协议变化。",
-            "- recurring promotion 的标题前缀和分类提示会按协议变化。",
-            "- `review / nightly / repair` 的优先级和焦点会按协议变化。",
-            "- `query / output / execution proposal` 会按协议加入领域偏置。",
+            "- `decision / judgment` 默认 review window 沿通用协议执行。",
+            "- `file-back` 生成的页面模板沿通用协议执行。",
+            "- recurring promotion、review / nightly / repair 沿通用协议焦点执行。",
+            "- `query / output / execution proposal` 沿通用协议偏置执行。",
         ]
     )
     return "\n".join(lines) + "\n"

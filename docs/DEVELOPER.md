@@ -172,7 +172,7 @@ bash scripts/verify.sh [scripts|smoke|python-static|acceptance|cli-smoke|product
 ```bash
 bash scripts/verify.sh
 PYTHONPATH=src python3 -m unittest discover -s tests -p 'test_*.py'
-PYTHONPATH=src python3 -m aiwiki.cli --root . advanced protocol-status
+PYTHONPATH=src python3 -m aiwiki.cli --root . advanced shell-status
 ```
 
 新增能力时，优先沿下面这张模块边界图落位，而不是继续往巨石文件里堆：
@@ -192,7 +192,7 @@ drop.py                    raw materialization owner（url / pdf / image / repo 
 
 compile/                   compile pipeline phases（content / runtime / output / persist）
 app_compile.py             legacy orchestration / compat hotspot；新逻辑优先下沉
-app_compile_ops.py         protocol switch / recurring promotion / agent-pack helpers
+app_compile_ops.py         protocol state / recurring promotion / agent-pack helpers
 app_queries.py             ranking / report query helpers (Ask freeform md only)
 app_linting/               lint phases / repair backlog / nightly health helpers
 
@@ -213,7 +213,7 @@ signals/                   review / repair / aging / escalation 信号源
 
 app_state.py               持久化状态 I/O 单一入口
                            best-effort + strict 双语义；strict raise CorruptStateError（M9-P0.4）
-app_protocol.py            协议 layout / schema / protocol runtime / review windows
+app_protocol.py            单 runtime layout / schema / protocol state / review windows
 app_utils.py               runtime lock / markdown / JSON / safe_fetch primitives
 app_shell/                 product shell runtime surfaces（summary / controls / status / HTML）
 app_vault.py               new-vault scaffold / Obsidian bootstrap
@@ -224,6 +224,6 @@ app_vault.py               new-vault scaffold / Obsidian bootstrap
 - `raw/` 是唯一事实输入层；不要把结论直接写回 source 层。
 - `wiki/sources/` 与 `wiki/derived|decisions|judgments/` 必须分层，派生产物保留 provenance。
 - 新 CLI 命令优先放 `cli/` + owner module，不要在 shim 或 shell surface 上偷接逻辑。
-- 新协议能力先落 `schema/protocols/*`，再让 runtime 消费；不要反过来让代码先漂移。
+- 协议规则只维护 `schema/protocols/general/` 单 runtime；不要重新引入多 slug 切换或 per-protocol scaffold。
 - 事实层 mutation 必须走 `execution/`，receipt 写失败必须 rollback（不允许半写）。
 - 持久化状态读取必须显式选 best-effort 还是 strict（见 `docs/Furnace Agent Architecture.md` §11.1）。

@@ -114,7 +114,6 @@ function runtimeClientRequestArgs(command, request) {
     const question = String(payload.question || "").trim();
     const args = ["ask", question];
     if (payload.format) args.push("--format", String(payload.format));
-    if (payload.protocol) args.push("--protocol", String(payload.protocol));
     return args;
   }
   const source = String(payload.source || payload.url || payload.path || "").trim();

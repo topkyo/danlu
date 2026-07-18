@@ -14,7 +14,7 @@ related_docs:
 
 # 炼丹炉进化机制
 
-这份文档定义炼丹炉“如何进化”的实现契约：signal 如何路由到 heavy / light 炼丹、active corpus 如何持久化、金丹如何炼成与复利、L2 protocol-learning 如何衔接既有实装、L3 prompt/policy proposal 如何受控写回。
+这份文档定义炼丹炉“如何进化”的实现契约：signal 如何路由到 heavy / light 炼丹、active corpus 如何持久化、金丹如何炼成与复利、L3 prompt/policy proposal 如何受控写回（L2 protocol-learning 已在 W1 退役，见 §9）。
 
 > **实现状态说明（2026-06-01）**：本文是“已实现契约 + 明确剩余 target markers”的 SoT。当前已落地 active corpus / output candidates、L2 protocol-learning 生命周期与显式 activation revert baseline、repair planner state、agentic nightly low-risk auto-consume、显式 backend 选择、金丹 `alchemy-start / alchemy-distill / alchemy-finalize / alchemy-promote` 候选主路径、candidate plane、settled plane、DAG/provenance gate、promote/revert/demote receipt、Stage-3 compounding acceptance 与 `elixir_quality_proof`；legacy elixir migration read-only preview 与显式 apply baseline、superseded cleanup read-only preview 与显式 deletion apply baseline，planner-log observe-only / execute-mode decision log 与 rollback marker baseline，heavy/light lane read-only dry-run preview、显式 receipted action apply bridge、deterministic primitive receipt wrapper、显式 heavy lane `review` / `distill` / `propose` primitive apply、execute-mode `alchemy auto` deterministic 调度入口与默认 heavy semantic 非核心 apply、lane primitive trace/audit metadata、signal pipeline heavy semantic contract summary、`judge/distill/review/propose` scoped dry-run preview、`review` 直接 scoped apply baseline、`distill` 直接 scoped candidate-refresh apply baseline、`propose` scoped proposal-plane apply baseline、`judge` 直接 scoped refresh-marker apply baseline、`judge` semantic proposal-preview artifact baseline、`judge` accepted proposal apply baseline 和其余高风险 primitive deferred metadata，以及 L3 prompt/policy proposal 的手工/fixture 创建、execute-mode deterministic automatic candidate generation baseline、Shell review surface、人工 accept/reject、hash-gated apply、receipt-gated revert 与 execution receipt history audit metadata baseline；通用 audit stream 已提供 preview、显式 append-only backfill，并已接入 execution receipt / runtime history / LLM receipt / protocol-learning aging writer direct append，backfill 对 direct append 已写入的同一 source event 幂等跳过。agentic L3 auto-adopt 默认开启 metadata-only/非核心学习且不会无人值守改核心 prompt/policy/schema；以下章节用 `implemented / partial / planned` 标记区分，`partial/planned` 只保留给超出 agentic 非核心边界的路径。
 
@@ -36,7 +36,7 @@ related_docs:
 - `active_corpus` 的持久化 schema 与生命周期（implemented）
 - `wiki/elixirs/` 的 frontmatter 与 DAG 约束（partial）
 - Chaining / Distillation / Compounding 三阶段 CLI 语义（当前 CLI + 目标 CLI delta）
-- L2 protocol-learning 与现有 EP-029 Step 4 的衔接
+- L2 protocol-learning 历史契约（W1 已退役，§9）
 - L3 prompt/policy proposal 的触发、产物、审批、写回、revert 契约（manual baseline + execute-mode automatic candidate generation baseline + nightly auto-adopt L3 proposal accept+apply）
 
 本文档**不**定义：
@@ -60,7 +60,7 @@ related_docs:
 | `dedupe_key` | string | yes | no | signal 的唯一幂等边界；格式见 §2.3。planner / replay 只按精确字符串相等去重。 |
 | `kind` | enum | yes | no | `raw_added / counter_evidence / drift / review_feedback / runtime_failure / schedule_tick / learning_threshold / elixir_dependency_break`。 |
 | `scope` | object | yes | no | 归一化作用域；用于 planner scope 计算，不等同于 trigger source。 |
-| `scope.protocol` | enum | yes | no | `general / investing / research / product / ops`。 |
+| `scope.protocol` | enum | yes | no | 固定为 `general`（W1 单 runtime；历史 signal 若带旧 slug 只作只读字段，emitter 不得再写非 `general`）。 |
 | `scope.corpus_id` | string | no | no | corpus 级信号时填写；未知时省略，不得写 `null`。 |
 | `scope.source_ids` | array[string] | yes | no | 规范化后的 source id 列表；无则写 `[]`。 |
 | `scope.concept_slugs` | array[string] | yes | no | 规范化后的 concept slug 列表；无则写 `[]`。 |
@@ -83,11 +83,11 @@ related_docs:
 {
   "schema_version": 1,
   "signal_id": "sig-20260424-abc123",
-  "dedupe_key": "raw_added:research:runtime_history:raw/inbox/example.md",
+  "dedupe_key": "raw_added:general:runtime_history:raw/inbox/example.md",
   "kind": "raw_added",
   "scope": {
-    "protocol": "research",
-    "corpus_id": "research-transformer-scaling",
+    "protocol": "general",
+    "corpus_id": "corpus-transformer-scaling",
     "source_ids": ["src-1"],
     "concept_slugs": ["scaling-law"],
     "elixir_refs": [],
@@ -119,10 +119,10 @@ Signal kinds（本轮最小集）：
 | `review_feedback` | 用户 accept / reject / rewrite | low-high（按裁决映射） |
 | `runtime_failure` | contract validation / lint 持续失败 | medium |
 | `schedule_tick` | nightly / weekly / periodic light tick | low |
-| `learning_threshold` | protocol-learning 候选累积到阈值 | medium |
+| `learning_threshold` | （W1 已退役）历史 protocol-learning 阈值 signal | medium |
 | `elixir_dependency_break` | 被引用 elixir 被 demote / superseded | high |
 
-当前实现中，`learning_threshold` 来自 `protocol-learn-age --apply` / nightly protocol-learning aging 的 runtime-history `learning-threshold` 事件；collector 不直接扫描 `wiki/protocol-learnings/` 页面。
+W1 已删除 protocol-learning aging；collector 仍可能从**历史** runtime-history `learning-threshold` 事件映射只读 signal，但不再产生新事件。
 
 Signal **从不直接触发 phase**，必须经过 planner 决策。
 
@@ -182,7 +182,7 @@ Signal **从不直接触发 phase**，必须经过 planner 决策。
 - 纯文案澄清、注释增强、对**原本就非法**数据的更明确报错，不触发 version bump。
 - reader / validator 必须先按 `schema_version` 选择 parser，再做字段校验；不允许 best-effort 混读，不允许 silent downgrade。
 
-当前状态：runtime 已有 `runtime-history.jsonl`、LLM receipts、review / execution receipts、planner-state 等可观测输入；`signals-replay` 已能从 runtime history、LLM receipts 和 execution receipt history 中归一化部分 signal。`raw_added` 当前由 `ingest_source` 与 `drop-*` 投料入口先写 `runtime-history.jsonl` 的 `raw-added` 事件，再由 collector observe-only 映射；不直接扫描 `raw/` 作为事件源。`counter_evidence` 当前由 compile runtime 的 `counter_evidence_scan` 先写 runtime-history `counter-evidence` 事件，再由 collector observe-only 映射；不直接扫描 judgment / decision pages 作为事件源。`learning_threshold` 当前由 protocol-learning aging apply 写入 runtime-history `learning-threshold` 事件，再由 collector observe-only 映射；不直接扫描 `wiki/protocol-learnings/`。`schedule_tick` 当前由 `run_nightly` 成功路径写入 runtime-history `nightly` 事件，再由 collector observe-only 映射；nightly 不自动触发 `signals-replay` / `planner-log-replay` / lane apply。`archive_event` 的 `source_event_ref` 当前只允许指向 execution receipt history（如 `.aiwiki/state/execution-receipts.jsonl#L12`），避免把 `wiki/archives/` 事实页误当事件源。`review_outcome` 作为 future source_kind 只允许明确的 review outcome event log path；当前 review 事件仍通过 runtime history 映射，不新增第二套 writer。`.aiwiki/logs/runs.jsonl` 是 runner health/logging artifact，v1 不定义 `run_log` source_kind，不能伪装成现有 source_kind 接入 `signals-replay`。
+当前状态：runtime 已有 `runtime-history.jsonl`、LLM receipts、review / execution receipts、planner-state 等可观测输入；`signals-replay` 已能从 runtime history、LLM receipts 和 execution receipt history 中归一化部分 signal。`raw_added` 当前由 `ingest_source` 与 `drop-*` 投料入口先写 `runtime-history.jsonl` 的 `raw-added` 事件，再由 collector observe-only 映射；不直接扫描 `raw/` 作为事件源。`counter_evidence` 当前由 compile runtime 的 `counter_evidence_scan` 先写 runtime-history `counter-evidence` 事件，再由 collector observe-only 映射；不直接扫描 judgment / decision pages 作为事件源。`learning_threshold`（W1 已退役）仅可能从**历史** runtime-history 映射只读 signal。`schedule_tick` 当前由 `run_nightly` 成功路径写入 runtime-history `nightly` 事件，再由 collector observe-only 映射；nightly 不自动触发 `signals-replay` / `planner-log-replay` / lane apply。`archive_event` 的 `source_event_ref` 当前只允许指向 execution receipt history（如 `.aiwiki/state/execution-receipts.jsonl#L12`），避免把 `wiki/archives/` 事实页误当事件源。`review_outcome` 作为 future source_kind 只允许明确的 review outcome event log path；当前 review 事件仍通过 runtime history 映射，不新增第二套 writer。`.aiwiki/logs/runs.jsonl` 是 runner health/logging artifact，v1 不定义 `run_log` source_kind，不能伪装成现有 source_kind 接入 `signals-replay`。
 
 落地约束：
 
@@ -250,7 +250,6 @@ heavy 是**事件驱动的深度重炼**，面向“知识意义可能被改变�
 - `counter_evidence`（severity=high 及以上）
 - `drift`（命中 active judgment 或 active corpus）
 - `elixir_dependency_break`
-- `learning_threshold` 达到结构调整条件
 - 用户显式触发（当前已支持 `aiwiki alchemy heavy <scope> --dry-run` preview；执行留到 M5）
 
 ### 4.3 动作序列
@@ -351,8 +350,8 @@ light **不允许**触发 `judge`、`distill`、`propose`、`apply`。
 
 ```json
 {
-  "corpus_id": "research-transformer-scaling",
-  "protocol": "research",
+  "corpus_id": "corpus-transformer-scaling",
+  "protocol": "general",
   "topic": "Compare scaling laws and inference-time compute",
   "focus_kind": "question | review | nightly | judgment | alchemy",
   "focus_ref": "...",
@@ -417,10 +416,10 @@ light **不允许**触发 `judge`、`distill`、`propose`、`apply`。
 ```yaml
 ---
 kind: elixir
-elixir_id: elixir-research-scaling-2026q2
-protocol: research
+elixir_id: elixir-scaling-2026q2
+protocol: general
 elixir_state: draft | distilling | candidate | settled | superseded
-corpus_id: research-transformer-scaling
+corpus_id: corpus-transformer-scaling
 derived_from:
   - wiki/judgments/scaling-law-baseline.md
   - wiki/decisions/inference-compute-tradeoff.md
@@ -501,16 +500,16 @@ promoted_at: null
 ### 8.1 阶段 1：Chaining（串主题）
 
 ```bash
-aiwiki ask "VLA 的核心设计权衡是什么" --protocol research --corpus research-vla-2026q2
+aiwiki ask "VLA 的核心设计权衡是什么" --corpus corpus-vla-2026q2
 # → 当前：创建/命中 corpus，写入 active-corpora.json，status=active
 
-aiwiki ask "和传统 HLA 相比有哪些优劣" --corpus research-vla-2026q2
+aiwiki ask "和传统 HLA 相比有哪些优劣" --corpus corpus-vla-2026q2
 # → 当前：每轮 output 写入 output/reports/*.md（自由 Markdown 报告；Ask 不再产出 slides/figures 等分叉 format）
 # → 当前：.aiwiki/state/output-candidates.json 记录候选状态，output_refs 追加到 corpus
 # → 绝不自动写入 wiki/
 
 aiwiki drop-url https://example.com/vla-paper
-aiwiki ask "结合新 paper 重新评估权衡" --corpus research-vla-2026q2
+aiwiki ask "结合新 paper 重新评估权衡" --corpus corpus-vla-2026q2
 ```
 
 **验收准则**：第二轮 `ask` 能无缝读取前轮 output；`wiki/` 不被自动写入。
@@ -521,7 +520,7 @@ aiwiki ask "结合新 paper 重新评估权衡" --corpus research-vla-2026q2
 aiwiki promote output/reports/query-20260424-example.md
 # → 当前：把 output candidate promote 到 wiki/derived/，供金丹引用
 
-aiwiki alchemy-start research-vla-2026q2 --topic "VLA 机器人架构"
+aiwiki alchemy-start corpus-vla-2026q2 --topic "VLA 机器人架构"
 # → 当前：从该 corpus 下已 promoted 的 wiki/derived/ 输出生成 .aiwiki/staging/elixirs/<elixir-id>.md，state=draft
 
 aiwiki alchemy-distill <elixir-id> --question "延迟约束如何改变架构权衡？"
@@ -538,43 +537,34 @@ aiwiki alchemy-promote --elixir-id <elixir-id>
 ### 8.3 阶段 3：Compounding（复利）
 
 ```bash
-aiwiki alchemy-start research-vla-2026q2 --topic "下一代 VLA 架构" --include-elixir elixir-vla-2026q1
+aiwiki alchemy-start corpus-vla-2026q2 --topic "下一代 VLA 架构" --include-elixir elixir-vla-2026q1
 aiwiki alchemy-distill <new-elixir-id> --question "如何吸收旧金丹结论？" --include-elixir elixir-foundation-arch-2025q4
 # → 当前：显式引用 settled 金丹，写入 derived_from，并执行 DAG 校验
 ```
 
 **验收准则**：
 
-- 同 protocol 的 ask 能显式加载 `protocol-learnings`（L2）
 - 新金丹能显式引用旧金丹（DAG 校验通过）
 - 引用链不形成无限自循环
 
-## 9. L2 Protocol-Learning Contract
+## 9. L2 Protocol-Learning Contract（W1 已退役）
 
-L2 layer 已在 EP-029 Step 4 落地。本文档**继承**现有实现，不引入破坏性变更。
+W1 已物理删除 `protocol-learn-*` CLI、ask `--load-learnings`、nightly protocol-learning aging 与 ask 侧 protocol guidance 注入。下列 EP-029 契约**仅作历史参考**；新 runtime 不得再写入 `wiki/protocol-learnings/` 或把 L2 当作当前进化出口。
 
-### 9.1 现有实装（EP-029 Step 4）
+### 9.1 历史实装（EP-029 Step 4，已退役）
 
-- 存储：`wiki/protocol-learnings/<protocol>/<learning-id>.md`
-- 生命周期：`active / stale / demoted / archived / superseded`
-- 校验：replacement graph（supersede DAG）
-- 加载：`ask --load-learnings` 只加载 `active` 且显式 opt-in
+- 存储：`wiki/protocol-learnings/<protocol>/<learning-id>.md`（历史页只读）
+- 生命周期：`active / stale / demoted / archived / superseded`（CLI 已删）
+- 加载：`ask --load-learnings`（CLI 已删）
 
-### 9.2 本文档新增约束
+### 9.2 退役后约束
 
-- heavy/light alchemy **可以**作为新 learning 候选来源（来自 failure cluster / review 聚类），但必须走现有 `active → stale → superseded` 生命周期与 graph 校验。
-- `active` 状态的装载**必须**显式（CLI flag 或 protocol 级 opt-in），**不**做隐式全局注入。
-- L2 的职责是**经验沉淀**，**不**是偷偷改 prompt / policy——那是 L3 的范围。
+- 经验沉淀改走 L3 prompt/policy proposal 或显式 wiki 写回；**不**恢复隐式 protocol-learning 注入。
+- heavy/light alchemy 仍可产生 L3 候选，但不得绕过 review / apply / revert 链。
 
-### 9.3 触发 learning 候选生成
+### 9.3 触发 learning 候选生成（历史设计，未再启用）
 
-目标 signal→proposal 路径：
-
-- `review_feedback` 聚类出 recurring pattern（同一 protocol、同类 reject 理由、≥ 3 次）
-- `drift` 反复命中同一类 judgment
-- `runtime_failure` 聚类出稳定失败模式
-
-完整 planner 落地后可发出 `generate-proposal`（targeting `wiki/protocol-learnings/<protocol>/_candidates/`）。人工 accept 后转为 `active`。当前可通过 `protocol-learn-add` 显式新增 learning，再用 `protocol-learn-age / verify / demote / archive / supersede` 治理生命周期。
+目标 signal→proposal 路径曾包括 `review_feedback` 聚类、`drift` 反复命中、`runtime_failure` 聚类；对应 `protocol-learn-add` / `protocol-learn-age` CLI 已删除。
 
 ## 10. L3 Prompt/Policy Proposal Contract
 
@@ -604,7 +594,7 @@ L2 layer 已在 EP-029 Step 4 落地。本文档**继承**现有实现，不引�
 ---
 kind: prompt_proposal | policy_proposal
 proposal_id: prop-20260424-001
-target_file: prompts/investing-review.md  # 或 schema/policies/aging.json
+target_file: prompts/general-review.md  # 或 schema/policies/aging.json
 trigger:
   signal_ids: ["sig-1", "sig-2", "sig-3"]
   pattern: failure_cluster | recurring_feedback | drift | contract_failure
@@ -687,10 +677,9 @@ L3 proposal **只允许**写入以下文件：
 | `aiwiki alchemy legacy-migration --apply` | 当前：显式为缺失 tombstone 的 legacy settled elixir 创建 candidate tombstone，并写 receipt / audit；不改 settled source，不做 cleanup | `.aiwiki/staging/elixirs/` + execution receipt |
 | `aiwiki alchemy superseded-cleanup --dry-run` | 当前：只读盘点 superseded tombstone 的清理候选和阻塞原因；不删除 | 读 `.aiwiki/staging/elixirs/` + `wiki/elixirs/` |
 | `aiwiki alchemy superseded-cleanup --apply` | 当前：显式删除支持清理的 superseded candidate tombstone，并写 receipt / audit；不改 settled source，不删除阻塞项 | `.aiwiki/staging/elixirs/` + execution receipt |
-| `aiwiki protocol-learn-add/list/show/age/verify/revert-activate/demote/archive/supersede` | 当前：L2 learning 生命周期治理；`revert-activate` 只回滚带 metadata 的最近一次 `stale -> active` verify activation | `wiki/protocol-learnings/` + runtime history |
 | `aiwiki signals-list/show` / `aiwiki planner-log-list` | 当前：只读 inspection；`--since` 必须为 ISO datetime，`--limit` 必须大于 0 | 读 `.aiwiki/state/signals.jsonl` / `.aiwiki/state/planner-log.jsonl` |
 | `aiwiki planner-log-rollback --dry-run\|--apply` | 当前：预览或显式追加 rollback marker；planner-log 本体保持 append-only，不删除不重写 | 读 `.aiwiki/state/planner-log.jsonl`；写 `.aiwiki/state/planner-log-rollback.jsonl` |
-| `aiwiki audit-preview --dry-run` | 当前：只读预览分散审计来源归一化后的目标 audit stream 记录；不写 `audit.jsonl` | 读 execution receipts / LLM receipts / runtime history / protocol-learning aging audit |
+| `aiwiki audit-preview --dry-run` | 当前：只读预览分散审计来源归一化后的目标 audit stream 记录；不写 `audit.jsonl` | 读 execution receipts / LLM receipts / runtime history |
 | `aiwiki audit-backfill --apply` | 当前：显式 append-only backfill 缺失的 universal audit records；按 `audit_event_id` 幂等跳过已有记录 | `.aiwiki/state/audit.jsonl` |
 | `aiwiki alchemy heavy <scope> --dry-run` / `aiwiki alchemy light <scope> --dry-run` | 当前：只读 preview lane scope、primitive plan、预算、锁结果和 deferred primitive metadata；不 execute | 读 `.aiwiki/state/planner-log.jsonl` + `.aiwiki/state/signals.jsonl` |
 | `aiwiki alchemy judge <scope> --dry-run\|--apply\|--propose`; `aiwiki alchemy judge-proposal <proposal> --apply` | 当前：dry-run preview heavy dirty scope 内的 judgment refresh candidates；direct apply 只给已有 judgment/decision refs 写 managed refresh marker；`--propose` 只给已有 refs 写 semantic refresh proposal-preview artifacts；`judge-proposal --apply` 只 apply `state=accepted` 且 `before_hash` 匹配的 proposal accepted block；写路径都写 receipt/runtime-history/universal-audit；不调用 LLM、不由 runtime 生成 judgment 结论、不改变 status/confidence/review lifecycle、不创建 scope-only 页面、不进入 lane/auto | 读 `.aiwiki/state/planner-log.jsonl` + `.aiwiki/state/signals.jsonl`；direct apply 写 `wiki/judgments/` 或 `wiki/decisions/` existing refs 与 receipt/audit；propose 写 `.aiwiki/staging/proposals/judge/` 与 receipt/audit；accepted proposal apply 写 target managed section 与 proposal state |
@@ -718,10 +707,9 @@ L3 proposal **只允许**写入以下文件：
 - heavy alchemy 显式 apply 启动 / 完成（当前通过 `alchemy-lane-started / alchemy-lane-completed` runtime history 进入 universal audit）
 - light alchemy 显式 apply 启动 / 完成（当前通过 `alchemy-lane-started / alchemy-lane-completed` runtime history 进入 universal audit；budget_exceeded 仍由 dry-run status 表达，不写执行事件）
 - elixir promotion / demotion / supersede（candidate promote chain）
-- L2 learning 状态变更（当前已有 protocol-learning aging audit / 状态文件；threshold signal 与 activation revert 通过 runtime history 观察映射）
 - L3 proposal manual create / generate candidate / reject / accept / revert（当前已有 manual baseline 与 execute-mode automatic candidate generation baseline）
 
-当前审计仍以分散日志为源：execution receipts、LLM receipts、runtime history、protocol-learning aging audit 等分别承担各自领域的审计语义。`aiwiki audit-preview --dry-run` 可只读预览这些来源归一化后的目标 audit record（含 source stream/ref、event type、trace、subject、revert_supported）。`aiwiki audit-backfill --apply` 可显式把缺失记录 append 到 `.aiwiki/state/audit.jsonl`，并按稳定 `audit_event_id` 幂等跳过已存在记录。M5.9 起，`append_execution_receipt_history` 在写 execution receipt history 后会直接 append 对应 universal audit record；M5.10 起，`append_runtime_history` 在写 runtime history 后也会直接 append 对应 universal audit record；M5.11 起，LLM receipt log 写入后也会直接 append 对应 universal audit record；M5.12 起，protocol-learning aging audit 写入后也会直接 append 对应 universal audit record。因为 protocol-learning aging audit 是覆盖写 JSON snapshot，其 universal audit `source_ref` 带 `run_at` fragment 以区分多次 aging run。
+当前审计仍以分散日志为源：execution receipts、LLM receipts、runtime history 等分别承担各自领域的审计语义。`aiwiki audit-preview --dry-run` 可只读预览这些来源归一化后的目标 audit record（含 source stream/ref、event type、trace、subject、revert_supported）。`aiwiki audit-backfill --apply` 可显式把缺失记录 append 到 `.aiwiki/state/audit.jsonl`，并按稳定 `audit_event_id` 幂等跳过已存在记录。M5.9 起，`append_execution_receipt_history` 在写 execution receipt history 后会直接 append 对应 universal audit record；M5.10 起，`append_runtime_history` 在写 runtime history 后也会直接 append 对应 universal audit record；M5.11 起，LLM receipt log 写入后也会直接 append 对应 universal audit record。
 
 ### 12.2 Revert 适用范围
 
@@ -729,7 +717,6 @@ revert **可以**：
 
 - 回滚 L3 accept（当前已支持 receipt-gated clean revert：按 apply receipt `after_hash` 校验当前目标，再恢复 `before_content`；冲突时写 `human_merge_required` hint）
 - 回滚 elixir promotion（当前已支持 receipt/hash-gated revert：删除 settled elixir、恢复 candidate tombstone 为 candidate，并写 `elixir_revert` execution receipt / universal audit）
-- 回滚 L2 learning activate（当前已支持显式 `protocol-learn-revert-activate`，仅回滚带 metadata 的最近一次 `stale -> active` verify activation，并写 runtime-history / universal audit）
 
 revert **不可以**：
 
@@ -746,7 +733,7 @@ revert **不可以**：
 
 | Milestone | 新增能力 | 禁止事项 | 验收 gate |
 |---|---|---|---|
-| **M0 Baseline Freeze** | 固化当前 active corpus、output candidates、L2 learning、最小金丹、scoped apply/revert。 | 不新增自动调度；不迁移旧金丹。 | `verify` 全绿；docs 与 CLI 语义一致；Product Shell 只读事实不回退。 |
+| **M0 Baseline Freeze** | 固化当前 active corpus、output candidates、单 runtime `general`、最小金丹、scoped apply/revert。 | 不新增自动调度；不迁移旧金丹。 | `verify` 全绿；docs 与 CLI 语义一致；Product Shell 只读事实不回退。 |
 | **M1 Signal Observability** | 新增 `.aiwiki/state/signals.jsonl` 与 `.aiwiki/state/planner-log.jsonl`，从 runtime-history / receipts 归一化 signal。 | `mode` 只能是 `observe_only`；不得触发 phase。 | signal schema fixture、dedupe replay、trace 回链、坏 schema fail-fast。 |
 | **M2 Elixir Candidate Plane** | 新增 `.aiwiki/staging/elixirs/`、candidate frontmatter、promote/demote/revert receipt。 | 不强制迁移旧 `wiki/elixirs/`；不绕过 DAG / provenance gate。 | promote hash gate、revert clean/stale 分支、DAG 环路拒绝、路径穿越拒绝。 |
 | **M3 L3 Proposal** | 新增 prompt/policy proposal kind，支持手工/fixture 创建、execute-mode deterministic candidate generation、review、apply、revert。 | 不自动 accept proposal；不写 `src/aiwiki/**`、schema core 或 protocol core；不以 LLM 结果作为默认生成内容。 | before_hash mismatch 退为 stale；receipt 可 clean revert；冲突生成 human_merge_required；generation idempotent 且不触碰目标文件。 |

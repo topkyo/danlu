@@ -40,10 +40,10 @@
 - Modify: `src/aiwiki/app_shell/meta.py` — `shell_protocol_state` / capabilities: remove `protocol-set` from p0; `available_protocols == ["general"]` only
 - Modify: `src/aiwiki/app_compile_ops.py` — `set_active_protocol` only accepts `general` or delete callers later
 
-- [ ] **Step 1:** Shrink `PROTOCOL_LIBRARY` to `{"general": ...}` only.
-- [ ] **Step 2:** Coerce logic in `load_protocol_state`: if active not `general`, set active=`general`, write state, do not preserve investing/research behavior.
-- [ ] **Step 3:** Align `shell_protocol_state()` with the same single list (fix dual-source bug).
-- [ ] **Verify:** `bash scripts/verify.sh python-static`
+- [x] **Step 1:** Shrink `PROTOCOL_LIBRARY` to `{"general": ...}` only.
+- [x] **Step 2:** Coerce logic in `load_protocol_state`: if active not `general`, set active=`general`, write state, do not preserve investing/research behavior.
+- [x] **Step 3:** Align `shell_protocol_state()` with the same single list (fix dual-source bug).
+- [x] **Verify:** `bash scripts/verify.sh python-static`
 
 **Commit:** `feat(protocol): collapse library and state to general-only`
 
@@ -64,10 +64,10 @@
 - Modify: `src/aiwiki/app_queries.py` / `app_protocol.py` — remove `protocol_output_guidance` injection into report seed if present
 - Grep-clean imports/signals referencing `protocol_learning`
 
-- [ ] **Step 1:** Delete learn CLI + module + nightly hook.
-- [ ] **Step 2:** Remove B45 guidance/learnings injection from ask path.
-- [ ] **Step 3:** Remove `protocol-set` / `protocol-status` parsers and dispatch (A1 CLI).
-- [ ] **Verify:** `rg 'protocol-learn|load_learnings_for_protocol|protocol-set' src/aiwiki` → no live commands; `bash scripts/verify.sh python-static cli-smoke`
+- [x] **Step 1:** Delete learn CLI + module + nightly hook.
+- [x] **Step 2:** Remove B45 guidance/learnings injection from ask path.
+- [x] **Step 3:** Remove `protocol-set` / `protocol-status` parsers and dispatch (A1 CLI).
+- [x] **Verify:** `rg 'protocol-learn|load_learnings_for_protocol|protocol-set' src/aiwiki` → no live commands; `bash scripts/verify.sh python-static cli-smoke`
 
 **Commit:** `feat(protocol): remove learnings CLI and ask protocol guidance`
 
@@ -86,9 +86,9 @@
 - Modify: pilots render/lint call sites (`render/pilots.py` consumers in `app_linting/*`, `app_queries.py`) — stop generating per-protocol pilots; delete or no-op pilot generation
 - Delete or gut: `.aiwiki/derived/pilots` layout expectations if only for multi-protocol scorecards
 
-- [ ] **Step 1:** Delete four protocol trees under repo `schema/protocols/`.
-- [ ] **Step 2:** Stop pilot scorecard generation for multiple protocols.
-- [ ] **Verify:** `test -d schema/protocols/investing` fails; `bash scripts/verify.sh python-static`
+- [x] **Step 1:** Delete four protocol trees under repo `schema/protocols/`.
+- [x] **Step 2:** Stop pilot scorecard generation for multiple protocols.
+- [x] **Verify:** `test -d schema/protocols/investing` fails; `bash scripts/verify.sh python-static`
 
 **Commit:** `feat(protocol): delete non-general schema trees and pilots`
 
@@ -104,9 +104,9 @@
 - Update Jest that assume five protocols or `research` pickers
 - Rebuild: `bash .obsidian/plugins/furnace-product-shell/build.sh` (or repo `build.sh`)
 
-- [ ] **Step 1:** Remove UI + command wiring for protocol set/pick.
-- [ ] **Step 2:** Rebuild `main.js`; fix Jest.
-- [ ] **Verify:** `bash scripts/verify.sh product-shell-static`
+- [x] **Step 1:** Remove UI + command wiring for protocol set/pick.
+- [x] **Step 2:** Rebuild `main.js`; fix Jest.
+- [x] **Verify:** `bash scripts/verify.sh product-shell-static`
 
 **Commit:** `fix(shell): remove multi-protocol picker and protocol-set`
 
@@ -122,9 +122,9 @@
 - Modify: `tests/fixtures/.../wiki/indexes/domain-pilots.md` if multi-protocol
 - Modify: `tests/test_acceptance_loop.py` — replace `--protocol research` with no flag or `general`
 
-- [ ] **Step 1:** Collapse M6.1 idempotency fixture to general-only schema.
-- [ ] **Step 2:** Fix acceptance loop protocol flags.
-- [ ] **Verify:** `bash scripts/verify.sh acceptance`
+- [x] **Step 1:** Collapse M6.1 idempotency fixture to general-only schema.
+- [x] **Step 2:** Fix acceptance loop protocol flags.
+- [x] **Verify:** `bash scripts/verify.sh acceptance`
 
 **Commit:** `test: single-protocol acceptance fixtures`
 
@@ -140,10 +140,10 @@
 - Modify: `docs/plans/2026-07-18-w1-single-protocol-runtime.md` checkboxes
 - Do **not** rewrite `docs/archive/**`
 
-- [ ] **Step 1:** Active doc sync for single protocol.
-- [ ] **Step 2:** `bash scripts/docs_consistency_check.sh`
-- [ ] **Step 3:** `bash scripts/verify.sh all`
-- [ ] **Verify:** all PASS
+- [x] **Step 1:** Active doc sync for single protocol.
+- [x] **Step 2:** `bash scripts/docs_consistency_check.sh`
+- [x] **Step 3:** `bash scripts/verify.sh all`
+- [x] **Verify:** all PASS
 
 **Commit:** `docs: sync active docs for single-protocol runtime`
 

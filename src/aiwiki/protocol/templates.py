@@ -34,7 +34,6 @@ LAYOUT_DIRS = (
     ".aiwiki/derived/packs/review",
     ".aiwiki/derived/packs/decision-memos",
     ".aiwiki/derived/packs/sop-drafts",
-    ".aiwiki/derived/pilots",
     ".aiwiki/cache",
     ".aiwiki/logs",
 )
@@ -149,9 +148,9 @@ DEFAULT_DASHBOARD_FILES = {
             "",
             "这里是统一炼丹炉的协议入口页。",
             "",
-            "- 当前 active protocol 会在 `compile` 后写到这里。",
-            "- 具体规则落在 `schema/protocols/`。",
-            "- 这里展示的是“一个统一炉子，多种领域协议”的运行时入口，而不是新的 runtime 分叉。",
+            "- 当前 runtime 只有 `general` 协议。",
+            "- 具体规则落在 `schema/protocols/general/`。",
+            "- 这里展示的是单 runtime 入口，而不是多套 protocol slug 分叉。",
         ]
     )
     + "\n",
@@ -339,18 +338,6 @@ DEFAULT_DASHBOARD_FILES = {
             "- `decision memos` 会把已审 decision / judgment 导出成稳定 memo。",
             "- `SOP drafts` 会把 ready action / execution proposal 导出成可执行草案。",
             "- 这些 pack 先保持 deterministic markdown 产物，不引入新的 runtime 执行器。",
-        ]
-    )
-    + "\n",
-    "wiki/indexes/domain-pilots.md": "\n".join(
-        [
-            "# 领域 Pilot 总览",
-            "",
-            "这里会汇总 compile 生成的协议 pilot scorecard。",
-            "",
-            "- `.aiwiki/derived/pilots/*.md` 会按协议生成高密度场景压实的 deterministic scorecard。",
-            "- scorecard 负责回答：这个协议现在处于 seed / building / compounding 的哪一档。",
-            "- 它们不会改变 runtime，只负责把协议运行密度、判断资产和执行信号收拢成可追踪入口。",
         ]
     )
     + "\n",

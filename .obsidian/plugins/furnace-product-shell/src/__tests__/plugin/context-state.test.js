@@ -10,7 +10,7 @@ function loadContextStateContext() {
     require,
     fs,
     path,
-    DEFAULT_PROTOCOLS: ["general", "product", "ops"],
+    DEFAULT_PROTOCOLS: ["general"],
     Array,
     String,
     Object,
@@ -26,13 +26,10 @@ test("active protocol helpers use summary values with defaults", () => {
   expect(context.getActiveProtocolFromSummary({ active_protocol: "research" })).toBe("research");
   expect(context.getActiveProtocolFromSummary({ active_protocol: "" })).toBe("general");
   expect(context.getAvailableProtocolsFromSummary({ available_protocols: ["product", "", 7, "ops"] })).toEqual([
-    "product",
-    "ops",
+    "general",
   ]);
   expect(context.getAvailableProtocolsFromSummary({ available_protocols: [] })).toEqual([
     "general",
-    "product",
-    "ops",
   ]);
 });
 

@@ -54,19 +54,11 @@ function buildFileBackModalSpec(plugin, prefill = {}) {
           ["judgment", plugin.t("judgment")],
         ],
       },
-      {
-        key: "protocol",
-        label: plugin.t("Protocol"),
-        kind: "select",
-        initialValue: prefill.protocol || "",
-        options: [["", plugin.t("current protocol")], ...plugin.getAvailableProtocols().map((item) => [item, item])],
-      },
     ],
     onSubmit: async (values) => {
       const args = [values.artifact];
       appendOptionalArg(args, "--title", values.title);
       appendOptionalArg(args, "--kind", values.kind);
-      appendOptionalArg(args, "--protocol", values.protocol);
       await plugin.runCliAction(`File Back: ${values.kind}`, "file-back", args);
     },
   };

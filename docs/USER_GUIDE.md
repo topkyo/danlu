@@ -98,12 +98,6 @@ Product Shell 适合日常快速投料和查看状态。复杂治理操作建议
   "对比 A 公司与 B 公司在 thesis、catalyst、risk、invalidation 四个维度"
 ```
 
-也可以换 protocol 改变回答偏好：
-
-```bash
-./scripts/aiwiki-launcher.sh advanced run-ask "..." --protocol research
-```
-
 Ask 只产出 `output/reports/*.md` 自由 Markdown 报告（CLI 仅接受 `--format report`，旧 format 如 `note` / `slides` 会立即失败）。失败时会写 receipt 与可审计失败说明，**不会假装成功**。
 
 ### 第 4 步：回流
@@ -114,7 +108,7 @@ Ask 只产出 `output/reports/*.md` 自由 Markdown 报告（CLI 仅接受 `--fo
 ./scripts/aiwiki-launcher.sh advanced file-back output/reports/xxx.md
 ```
 
-file-back 会根据当前 protocol 把结论整理成 judgment、decision 或 derived page，并保留来源链路。
+file-back 会把结论整理成 judgment、decision 或 derived page，并保留来源链路。
 
 ### 第 5 步：复盘与金丹
 
@@ -135,27 +129,13 @@ file-back 会根据当前 protocol 把结论整理成 judgment、decision 或 de
 
 沉淀下来的 reusable thesis 会变成 `wiki/elixirs/` 中的金丹，供下一轮研究引用。
 
-## 协议切换
+## 单 runtime 协议
 
-炼丹炉内置多个 protocol，影响 review window、file-back 模板、ask 排序偏好等：
+炼丹炉只有一个协议 runtime：`general`。领域差异通过概念、判断和 schema 扩展表达，不再提供多 protocol 切换或 `--protocol` 覆盖。
 
-- **investing**：关注 company / sector / thesis / catalyst / risk / invalidation。
-- **research**：关注 paper / repo / benchmark / experiment / architecture decision。
-- **general**：通用知识管理。
-- **product / ops**：产品、运营、项目管理。
-
-查看和切换：
-
-```bash
-./scripts/aiwiki-launcher.sh advanced protocol-status
-./scripts/aiwiki-launcher.sh advanced protocol-set investing
-```
-
-单次 ask 也可以临时指定 protocol：
-
-```bash
-./scripts/aiwiki-launcher.sh advanced run-ask "..." --protocol research
-```
+- 规则层见 vault 内 `schema/protocols/general/`。
+- 旧 vault 若 state 里仍写着 `investing` / `research` 等非 `general` slug，runtime 会在加载时一次性迁移到 `general` 并重写 `.aiwiki/state/protocol.json`。
+- `protocol-set`、`protocol-status`、`protocol-learn-*` 等历史 CLI 已删除；Product Shell 也不再提供协议选择器。
 
 ## 失败处理三态
 

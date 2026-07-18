@@ -831,8 +831,6 @@ def test_elixir_stage3_compounding(  # pragma: no cover - explicit pytest accept
             "corpus-d3-new",
             "--topic",
             "D3 compounding",
-            "--protocol",
-            "research",
             "--include-elixir",
             elixir_old,
         ],
@@ -932,7 +930,7 @@ def test_file_back_judgment_preserves_derived_promoted_to(  # pragma: no cover -
     report_path = vault / report_ref
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(
-        "---\nprotocol: research\n---\n\n# D3 old report\n\nSeed report for file-back regression.\n",
+        "---\nprotocol: general\n---\n\n# D3 old report\n\nSeed report for file-back regression.\n",
         encoding="utf-8",
     )
 
@@ -962,8 +960,6 @@ def test_file_back_judgment_preserves_derived_promoted_to(  # pragma: no cover -
             "corpus-d3-old",
             "--topic",
             "D3 file-back anchor check",
-            "--protocol",
-            "research",
         ],
     )
     start_payload = json.loads(out_start)

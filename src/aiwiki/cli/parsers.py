@@ -177,22 +177,6 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
         help="Restore Obsidian Graph to the evidence-only view (reports, sources, raw; no concepts).",
     )
 
-    protocol_status_parser = subparsers.add_parser(
-        "protocol-status",
-        help="Show the active furnace protocol and available protocol library.",
-    )
-    protocol_status_parser.add_argument(
-        "--set",
-        dest="set_protocol",
-        help="Optional protocol slug to activate before printing status.",
-    )
-
-    protocol_set_parser = subparsers.add_parser(
-        "protocol-set",
-        help="Set the active furnace protocol for subsequent ask/file-back/nightly workflows.",
-    )
-    protocol_set_parser.add_argument("protocol", help="Protocol slug, for example general, investing, or research.")
-
     subparsers.add_parser(
         "shell-status",
         help="Write and return the Product Shell summary contract for front-end workbench integrations.",
@@ -238,27 +222,6 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
 
     ask_parser = subparsers.add_parser("ask", help="Generate a query artifact grounded in the wiki.")
     _configure_ask_parser(ask_parser)
-
-    protocol_learn_add_parser = subparsers.add_parser("protocol-learn-add", help="Add a protocol learning.")
-    protocol_learn_add_parser.add_argument("protocol", help="Protocol slug.")
-    protocol_learn_add_parser.add_argument("--title", required=True, help="Learning title.")
-    protocol_learn_add_parser.add_argument("--source-ref", action="append", dest="source_refs", help="Source reference.")
-
-    protocol_learn_list_parser = subparsers.add_parser("protocol-learn-list", help="List protocol learnings.")
-    protocol_learn_list_parser.add_argument("protocol", nargs="?", help="Optional protocol slug.")
-    protocol_learn_list_parser.add_argument(
-        "--state",
-        choices=("active", "stale", "demoted", "superseded", "archived"),
-        help="可选：仅显示指定 state 的 learning。",
-    )
-    protocol_learn_list_parser.add_argument(
-        "--include-archived",
-        action="store_true",
-        help="包含 archived learning；默认隐藏 archived。",
-    )
-
-    protocol_learn_show_parser = subparsers.add_parser("protocol-learn-show", help="Show a protocol learning.")
-    protocol_learn_show_parser.add_argument("learning_id", help="Learning id.")
 
     signals_list_parser = subparsers.add_parser("signals-list", help="List runtime signals (read-only inspection).")
     signals_list_parser.add_argument("--kind", help="Optional exact signal kind filter.")
@@ -309,53 +272,6 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
     audit_backfill_mode.add_argument("--apply", action="store_true", help="Append missing audit records.")
     audit_backfill_parser.add_argument("--limit", type=int, default=50)
 
-    protocol_learn_age_parser = subparsers.add_parser(
-        "protocol-learn-age",
-        help="Scan protocol learnings for aging and optionally apply stale transitions.",
-    )
-    protocol_learn_age_parser.add_argument("--protocol", help="可选：仅扫描指定 protocol。")
-    protocol_learn_age_parser.add_argument(
-        "--apply",
-        action="store_true",
-        help="实际写入 active → stale 变更；默认仅 dry-run。",
-    )
-
-    protocol_learn_verify_parser = subparsers.add_parser(
-        "protocol-learn-verify",
-        help="Verify a protocol learning and restore it to active.",
-    )
-    protocol_learn_verify_parser.add_argument("learning_id", help="Learning id.")
-
-    protocol_learn_revert_activate_parser = subparsers.add_parser(
-        "protocol-learn-revert-activate",
-        help="Revert the latest supported stale -> active protocol learning activation.",
-    )
-    protocol_learn_revert_activate_parser.add_argument("learning_id", help="Learning id.")
-    protocol_learn_revert_activate_parser.add_argument("--note", help="Optional revert note.")
-
-    protocol_learn_demote_parser = subparsers.add_parser(
-        "protocol-learn-demote",
-        help="Demote a protocol learning.",
-    )
-    protocol_learn_demote_parser.add_argument("learning_id", help="Learning id.")
-
-    protocol_learn_archive_parser = subparsers.add_parser(
-        "protocol-learn-archive",
-        help="Archive a protocol learning.",
-    )
-    protocol_learn_archive_parser.add_argument("learning_id", help="Learning id.")
-
-    protocol_learn_supersede_parser = subparsers.add_parser(
-        "protocol-learn-supersede",
-        help="Supersede one or more protocol learnings with an active replacement learning.",
-    )
-    protocol_learn_supersede_parser.add_argument("replacement_id", help="Active replacement learning id.")
-    protocol_learn_supersede_parser.add_argument(
-        "superseded_ids",
-        nargs="+",
-        help="One or more target learning ids to mark as superseded.",
-    )
-
     run_ask_parser = subparsers.add_parser(
         "run-ask",
         help="Create a query artifact and use the configured LLM to fill it in place.",
@@ -367,7 +283,6 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
         default="report",
         help="Output artifact format.",
     )
-    run_ask_parser.add_argument("--protocol", help="Optional protocol override for this query.")
     run_ask_parser.add_argument(
         "--no-cache",
         action="store_true",
@@ -396,7 +311,6 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
         default="report",
         help="Output artifact format. Background submit currently supports reports only.",
     )
-    run_ask_submit_parser.add_argument("--protocol", help="Optional protocol override for this query.")
     run_ask_submit_parser.add_argument(
         "--no-cache",
         action="store_true",
@@ -453,7 +367,6 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
         default="derived",
         help="Filed-back page kind. Note: 'derived' is terminal (no review) and separate from the corpus candidate plane; 'decision' and 'judgment' enter the review-page workflow.",
     )
-    file_back_parser.add_argument("--protocol", help="Optional protocol override for the filed-back page.")
 
     promote_parser = subparsers.add_parser("promote", help="Promote an output candidate into wiki/derived.")
     promote_parser.add_argument("artifact_ref", help="Output candidate artifact_ref.")
@@ -464,7 +377,6 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
     alchemy_start_parser = subparsers.add_parser("alchemy-start", help="Start a new elixir from a corpus.")
     alchemy_start_parser.add_argument("corpus_id")
     alchemy_start_parser.add_argument("--topic", required=True)
-    alchemy_start_parser.add_argument("--protocol", required=True)
     alchemy_start_parser.add_argument("--include-elixir", type=str, default=None, help="可选：额外包含的金丹 id，多个用逗号分隔。")
 
     alchemy_distill_parser = subparsers.add_parser("alchemy-distill", help="Distill an existing draft elixir.")
@@ -1309,14 +1221,12 @@ def _configure_ask_parser(parser: argparse.ArgumentParser) -> None:
         default="report",
         help="Output artifact format.",
     )
-    parser.add_argument("--protocol", help="Optional protocol override for this query.")
     parser.add_argument(
         "--no-cache",
         action="store_true",
         help="Bypass volatile SQLite query cache and force deterministic JSON scan.",
     )
     parser.add_argument("--corpus", help="Optional active corpus id to reuse across ask rounds.")
-    parser.add_argument("--load-learnings", action="store_true", help="Load protocol learnings into the prompt.")
 
 
 def _add_auto_flags(parser: argparse.ArgumentParser) -> None:
