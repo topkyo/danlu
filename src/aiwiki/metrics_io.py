@@ -10,7 +10,7 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any, Iterable
 
-from aiwiki.execution.alchemy import CANDIDATE_ELIXIR_DIR
+from aiwiki.execution.alchemy_helpers import CANDIDATE_ELIXIR_DIR
 from aiwiki.execution.l3_proposals import STAGING_PROPOSALS_DIR
 from aiwiki.metrics import MetricsSnapshot, OutputMeta, ProposalMeta, ReceiptMeta, WikiPageMeta
 from aiwiki.render.paths import execution_receipts_dir, legacy_execution_receipt_path
@@ -90,7 +90,7 @@ def _read_review_counts(root: Path) -> Iterable[tuple[str, int]]:
     """
 
     try:
-        lifecycle = import_module("aiwiki.app_lifecycle")
+        lifecycle = import_module("aiwiki.lifecycle.status")
         decisions = lifecycle.collect_curated_pages(root, "decisions", "decision")
         judgments = lifecycle.collect_curated_pages(root, "judgments", "judgment")
         queue = lifecycle.review_queue(decisions, judgments)

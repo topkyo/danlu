@@ -31,9 +31,6 @@ import contextlib
 from pathlib import Path
 from typing import Any
 
-from ..app_lifecycle import judgment_lifecycle_profile, valid_curated_statuses
-from ..app_protocol import ensure_layout, schedule_review_windows
-from ..app_state_paths import execution_receipt_history_path, runtime_history_path
 from ..compile.pipeline import compile_wiki
 from ..content.io import (
     append_review_history_entry,
@@ -41,12 +38,15 @@ from ..content.io import (
     entry_lookup_maps,
     review_history_entries,
 )
-from ..lifecycle.status import resolve_thin_review_transition
+from ..lifecycle.knowledge import judgment_lifecycle_profile
+from ..lifecycle.status import resolve_thin_review_transition, valid_curated_statuses
 from ..lifecycle.templates import (
     curated_frontmatter_hints,
     curated_structured_value_is_placeholder,
     repair_curated_page_body,
 )
+from ..protocol.review_windows import schedule_review_windows
+from ..protocol.scaffold import ensure_layout
 from ..render.paths import append_wiki_log
 from ..state.constants import DEFAULT_PROTOCOL
 from ..state.manifest import load_manifest
@@ -64,6 +64,7 @@ from ..utils.markdown import (
 from ..utils.path import relative_path
 from .audit_preview import AUDIT_STREAM_PATH
 from .history import append_runtime_history
+from .paths import execution_receipt_history_path, runtime_history_path
 from .receipts import write_execution_receipt
 
 

@@ -17,3 +17,5 @@ Expected screenshot filenames（对齐 `scripts/screenshot-script.md` 镜号）�
 Optional recording: `demo-walkthrough-10min.mp4`（旁白见 `scripts/video-script-10min.md`）。
 
 > 本目录目前可为占位；媒体文件由人工在 Desktop Obsidian 按 shot list 产出后提交。缺媒体不阻塞「对外 demo checklist」前五项（fixture 可走完）。
+>
+> **商业 Go-Live 阻塞**：正式对外销售前必须补齐 9 张 screenshot + 10min walkthrough 视频。这是外部人工产物依赖，不能由 runtime 代码自动生成；需作者在 Desktop Obsidian 现场录制后提交。缺媒体期间可诚实走 fixture demo，但不得宣称「demo 媒体已就绪」。

@@ -9,10 +9,10 @@ import json
 from pathlib import Path
 from typing import Any
 
-from ..app_state_paths import machine_memory_action_state_path
 from ..state.collections import normalize_versioned_record_list_state
 from ..state.io import CorruptStateError, load_json_document, load_json_document_strict
 from ..utils.io import atomic_write_text, runtime_write_operation
+from .paths import machine_memory_action_state_path
 
 
 def default_machine_memory_action_state() -> dict[str, Any]:

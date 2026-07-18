@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..app_lifecycle import display_action_status
-from ..app_protocol import ACTION_STATUSES
+from ..lifecycle.status import display_action_status
+from ..protocol.runtime_config import ACTION_STATUSES
 from ..state.constants import DEFAULT_PROTOCOL
 
 

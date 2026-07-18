@@ -8,15 +8,15 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..app_state_paths import (
+from ..state.constants import DEFAULT_PROTOCOL
+from ..state.io import load_json_document, save_json_document
+from .paths import (
     concept_build_state_path,
     domain_pilot_build_state_path,
     machine_memory_build_state_path,
     output_pack_build_state_path,
     ranking_build_state_path,
 )
-from ..state.constants import DEFAULT_PROTOCOL
-from ..state.io import load_json_document, save_json_document
 
 
 def default_concept_build_state() -> dict[str, Any]:

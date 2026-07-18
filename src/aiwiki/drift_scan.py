@@ -39,8 +39,8 @@ from pathlib import Path
 from typing import Any
 
 from . import clock
-from .app_state_paths import runtime_history_path
 from .execution.history import append_runtime_history
+from .execution.paths import runtime_history_path
 from .signals.collector import SIGNALS_REL_PATH
 from .signals.schema import (
     PROTOCOLS,

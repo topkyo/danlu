@@ -57,7 +57,7 @@ related_docs:
 1. **知识 compiler**：`raw → wiki/sources → wiki/derived → output` 的强分层，派生不可覆盖原始 source。
 2. **Receipt + revert + universal audit stream**：所有写入可审计、可回滚。
 3. **Deterministic baseline**：不依赖 LLM 也能跑 `compile / lint / nightly`。
-4. **Protocol multiplexing**：一份 substrate 支持多领域协议。
+4. **单协议 substrate**：一份 `general` 编译 substrate + schema 扩展覆盖多领域；不售卖多 protocol 切换面。
 5. **金丹（Elixir）**：跨周期 distillation 的复合知识资产，有独立生命周期。
 
 ## 4. 不包含
@@ -73,5 +73,6 @@ related_docs:
 
 ## 5. 变更记录
 
+- 2026-07-18：§3 修正「Protocol multiplexing」→「单协议 substrate」，与 single-protocol general-only 对齐。
 - 2026-07-15：补充 vs LLM-Wiki 轻量实现列；明确 production runtime 定位。
 - 2026-07-14：初版，对外销售口径，只讲差异化。

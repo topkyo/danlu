@@ -6,19 +6,18 @@ import re
 from pathlib import Path
 from typing import Any
 
-from ..app_lifecycle import (
-    display_curated_status,
-    display_judgment_lifecycle_state,
-    display_rewrite_proposal_status,
-    render_knowledge_lifecycle_entry_summary,
-    select_knowledge_lifecycle_entries,
-    sort_curated_pages,
-    sort_knowledge_lifecycle_entries,
-)
-from ..app_protocol import page_focus_score, protocol_title
 from ..content.io import review_history_entries
 from ..execution.history import load_runtime_history
-from ..lifecycle.knowledge import load_knowledge_lifecycle_state
+from ..lifecycle.knowledge import (
+    display_judgment_lifecycle_state,
+    load_knowledge_lifecycle_state,
+    render_knowledge_lifecycle_entry_summary,
+    select_knowledge_lifecycle_entries,
+    sort_knowledge_lifecycle_entries,
+)
+from ..lifecycle.status import display_curated_status, display_rewrite_proposal_status, sort_curated_pages
+from ..protocol.descriptors import protocol_title
+from ..protocol.focus_scoring import page_focus_score
 from ..state.constants import DEFAULT_PROTOCOL
 from .views import render_curated_page_summary
 

@@ -12,14 +12,11 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from ..app_protocol import (
-    DEFAULT_PROTOCOL,
-    EXECUTION_BAND_LABELS,
-    protocol_execution_policy_rule,
-)
-from ..app_state_paths import execution_policy_log_path, execution_receipt_history_path
+from ..protocol.runtime_config import EXECUTION_BAND_LABELS, protocol_execution_policy_rule
+from ..state.constants import DEFAULT_PROTOCOL
 from ..state.io import CorruptStateError
 from ..utils.io import atomic_append_jsonl, runtime_write_operation
+from .paths import execution_policy_log_path, execution_receipt_history_path
 
 logger = logging.getLogger(__name__)
 

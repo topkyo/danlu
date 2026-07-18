@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from typing import cast
+
+from ..utils.path import relative_path
 from .library import PROTOCOL_LIBRARY
 from .templates import PROTOCOL_SECTION_FILES, PROTOCOL_SECTION_TITLES
+from .types import ProtocolDescriptor
 
 AGENT_PACK_LIBRARY = (
     {
@@ -117,3 +122,29 @@ def render_protocol_section(slug: str, section: str) -> str:
     for line in body:
         lines.append(f"- {line}")
     return "\n".join(lines) + "\n"
+
+
+def protocol_descriptor(root: Path, slug: str) -> ProtocolDescriptor:
+    base = root / "schema" / "protocols" / slug
+    return cast(
+        ProtocolDescriptor,
+        {
+            "slug": slug,
+            "title": protocol_title(slug),
+            "summary": protocol_summary(slug),
+            "paths": {
+                "index": relative_path(root, base / "index.md"),
+                **{section: relative_path(root, base / f"{section}.md") for section in PROTOCOL_SECTION_FILES},
+            },
+        },
+    )
+
+
+def protocol_paths(root: Path, protocol: str | None = None) -> list[str]:
+    from .state import resolve_protocol
+
+    slug = resolve_protocol(root, protocol)
+    base = root / "schema" / "protocols" / slug
+    paths = [relative_path(root, base / "index.md")]
+    paths.extend(relative_path(root, base / f"{section}.md") for section in PROTOCOL_SECTION_FILES)
+    return paths

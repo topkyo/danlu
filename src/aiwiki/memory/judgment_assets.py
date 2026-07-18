@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from ..content.io import preserved_section
-from ..execution.alchemy import ELIXIR_DIR
+from ..execution.alchemy_helpers import ELIXIR_DIR
 from ..state.constants import DEFAULT_PROTOCOL
 from ..state.manifest import load_manifest
 from ..utils.markdown import analyze_citation_snapshots, parse_frontmatter, strip_frontmatter

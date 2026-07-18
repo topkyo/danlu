@@ -5,18 +5,18 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..app_lifecycle import rewrite_proposal_needs_review
-from ..app_memory_query import concept_page_snapshot
-from ..app_protocol import ensure_layout
-from ..app_state_paths import concept_rewrite_proposal_page_path
+from ..content.concepts import concept_page_snapshot
 from ..content.rewrite import load_concept_rewrite_state, save_concept_rewrite_state
 from ..execution.repair_plan import rewrite_proposal_is_apply_ready
+from ..lifecycle.status import rewrite_proposal_needs_review
+from ..protocol.scaffold import ensure_layout
 from ..utils.io import write_if_changed
 from ..utils.path import relative_path
 from .execution_surfaces import (
     concept_rewrite_proposal_digest,
     render_concept_rewrite_proposal_page,
 )
+from .paths import concept_rewrite_proposal_page_path
 
 
 def store_concept_rewrite_candidate(

@@ -20,15 +20,15 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from aiwiki.app_execution import append_execution_receipt_history, compute_file_sha256
 from aiwiki.app_linting.core import lint_wiki
-from aiwiki.app_protocol import ensure_layout
-from aiwiki.app_state_paths import execution_receipt_history_path
 from aiwiki.compile.pipeline import compile_wiki
 from aiwiki.execution import machine_memory_batch as _machine_memory_batch
 from aiwiki.execution.audit_preview import AUDIT_STREAM_PATH
-from aiwiki.execution.history import append_runtime_history
+from aiwiki.execution.history import append_execution_receipt_history, append_runtime_history
+from aiwiki.execution.paths import execution_receipt_history_path
+from aiwiki.execution.receipts import compute_file_sha256
 from aiwiki.execution.runtime_surfaces import nightly_health
+from aiwiki.protocol.scaffold import ensure_layout
 from aiwiki.render.paths import execution_receipt_path
 from aiwiki.runner import alchemy_distill as _alchemy_distill
 from aiwiki.runner import alchemy_judge as _alchemy_judge
@@ -141,27 +141,27 @@ def _resolve_alchemy_planner_log_path(root: Path, planner_log_path: Path | None)
 
 
 def run_alchemy_legacy_migration_preview(root: Path, *, limit: int = 50) -> dict[str, Any]:
-    from aiwiki.execution.alchemy import preview_legacy_elixir_migration
+    from aiwiki.execution.alchemy_migration import preview_legacy_elixir_migration
 
     return preview_legacy_elixir_migration(root, limit=limit)
 
 
 @runtime_write_operation
 def run_alchemy_legacy_migration_apply(root: Path, *, limit: int = 50, note: str | None = None) -> dict[str, Any]:
-    from aiwiki.execution.alchemy import apply_legacy_elixir_migration
+    from aiwiki.execution.alchemy_migration import apply_legacy_elixir_migration
 
     return apply_legacy_elixir_migration(root, limit=limit, note=note)
 
 
 def run_alchemy_superseded_cleanup_preview(root: Path, *, limit: int = 50) -> dict[str, Any]:
-    from aiwiki.execution.alchemy import preview_superseded_elixir_cleanup
+    from aiwiki.execution.alchemy_cleanup import preview_superseded_elixir_cleanup
 
     return preview_superseded_elixir_cleanup(root, limit=limit)
 
 
 @runtime_write_operation
 def run_alchemy_superseded_cleanup_apply(root: Path, *, limit: int = 50, note: str | None = None) -> dict[str, Any]:
-    from aiwiki.execution.alchemy import apply_superseded_elixir_cleanup
+    from aiwiki.execution.alchemy_cleanup import apply_superseded_elixir_cleanup
 
     return apply_superseded_elixir_cleanup(root, limit=limit, note=note)
 

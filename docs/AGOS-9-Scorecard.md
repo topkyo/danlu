@@ -28,7 +28,7 @@ updated_at: "2026-07-18"
 
 | 门禁 | 测什么 | 加权分 | 可否宣称 ≥9.0 | Dogfood live blocking? |
 |---|---|---:|---|---|
-| **Local Engineering Gate** | verify / acceptance / Jest / path harden / docs SoT / fixture replay | **9.05** | **是**（本轮目标） | **否** — live not-yet 不阻塞 |
+| **Local Engineering Gate** | verify / acceptance / Jest / path harden / docs SoT / fixture replay | **9.07** | **是**（本轮目标） | **否** — live not-yet 不阻塞 |
 | **Live Dogfood Gate** | 当前 vault 3-day maturity + compounding + receipt integrity | **~8.2**（dogfood live not-yet） | **否** | **是** |
 
 ### Local Engineering Gate — 加权计算（可见）
@@ -41,11 +41,11 @@ updated_at: "2026-07-18"
 | Planner / signal | 10% | 8.7 | 0.870 |
 | LLM reliability | 12% | 9.0 | 1.080 |
 | Governance | 13% | 9.1 | 1.183 |
-| Maintainability | 8% | 8.8 | 0.704 |
+| Maintainability | 8% | 9.0 | 0.720 |
 | Docs SoT | 10% | 9.2 | 0.920 |
-| **合计** | 100% | — | **9.051 → 9.05** |
+| **合计** | 100% | — | **9.067 → 9.07** |
 
-**Local Engineering Gate 加权分 = 9.05（≥9.0）** — 基于 2026-07-18 现场：`bash scripts/verify.sh all`（acceptance **24** + Jest **168** hard-gate）、path safety acceptance、`.github/workflows/verify.yml`、docs consistency；**不伪造**当前 clean dogfood vault live PASS。
+**Local Engineering Gate 加权分 = 9.07（≥9.0）** — 基于 2026-07-18 现场：`bash scripts/verify.sh all`（acceptance **24** + Jest **168** hard-gate）、path safety acceptance、`.github/workflows/verify.yml`、docs consistency；**不伪造**当前 clean dogfood vault live PASS。
 
 ### Live Dogfood Gate — 状态摘要
 
@@ -91,7 +91,7 @@ updated_at: "2026-07-18"
 | Governance | 13% | **9.1** | 9.0 | yes | yes |
 | Maintainability | 8% | **8.8** | 7.5 | no | no |
 | Docs SoT | 10% | **9.2** | 9.0 | yes | yes |
-| **加权综合** | 100% | **9.05** | **≥ 9.0** | — | Live gate **~8.2** |
+| **加权综合** | 100% | **9.07** | **≥ 9.0** | — | Live gate **~8.2** |
 
 > **AOS-C8 frozen（2026-05-24）**：historical live dogfood 3-day PASS 仍有效作 **historical** 证据，但 **不得** 标为当前 clean vault **live** PASS。Local Engineering 用 fixture replay + historical 支撑 Dogfood 维 **8.9**，不伪造 live。
 
@@ -305,7 +305,8 @@ PYTHONPATH=src python3 -m pytest tests/test_acceptance_loop.py -k 'planner or si
 ```bash
 # [AOS-C8 frozen] PYTHONPATH=src python -m pytest tests/test_llm.py tests/test_config.py -q  (已退)
 PYTHONPATH=src python3 -m pytest tests/test_acceptance_loop.py -k 'backend_failure or replay' -q  # 当前 post-cleanup 等价
-# AGOS-007 完成后：telemetry report CLI
+# telemetry 聚合（library API，非 CLI）：llm_telemetry.aggregate_llm_telemetry(root)
+bash scripts/verify.sh llm-integration   # 30 条 LLM 集成测试（mock backends，2026-07-18 纳入 verify）
 ```
 
 ### Fail gate（blocking if reintroduced）
@@ -313,7 +314,7 @@ PYTHONPATH=src python3 -m pytest tests/test_acceptance_loop.py -k 'backend_failu
 - Telemetry 泄漏 API key 或完整 prompt
 - 隐藏 cross-backend fallback 回归
 
-### 当前状态：**PASS**（Local Eng **9.0** — `llm-telemetry` + `backend-telemetry`；无 hidden cross-backend fallback）
+### 当前状态：**PASS**（Local Eng **9.0** — LLM receipt 聚合 via `llm_telemetry.aggregate_llm_telemetry()` library + acceptance backend-failure/retry replay + `verify.sh llm-integration` 30 条 mock-backend 集成测试；CLI `llm-telemetry`/`backend-telemetry` 已于 W4 删除；无 hidden cross-backend fallback）
 
 ---
 
@@ -369,10 +370,24 @@ bash scripts/verify.sh all
 | `runner/local_stats.py` | ~243 | 已抽出本地统计 intent |
 | `runner/workflow_shared.py` | ~45 | ask/compile 共享 helper |
 | `runner/alchemy.py` | ~917 | 待 slim（deferred；单 seam 优先） |
-| `execution/alchemy.py` | ~1680 | **D16** conscious 巨石（deferred） |
+| `execution/alchemy.py` | ~1695 | **D16** conscious 巨石（deferred） |
 | `auto_adopt.py` | — | **DELETED** |
-| `app_protocol.py` | ~442 | library 已抽出 |
-| engineering round 记录 | `PROGRESS.md` | workflows slim + orphan 删除 + CI verify.yml |
+| `app_compile.py` | — | **DELETED**（P2-9，0 importers） |
+| `app_lifecycle.py` | 866→**136** | **facade** → `lifecycle/knowledge.py` + `lifecycle/status.py` |
+| `app_execution.py` | 581→**74** | **facade** → `execution/receipts.py` + `execution/history.py` |
+| `app_protocol.py` | 446→**116** | **facade** → `protocol/scaffold.py` + `protocol/state.py` + 等 |
+| `app_cache.py` | 857→**57** | **facade** → 新 `cache/` 子包（core/sync/query/status） |
+| `app_vault.py` | 761→**37** | **facade** → 新 `vault/` 子包（templates/plugin/bootstrap） |
+| `app_routing.py` | 888→**60** | **facade** → `content/material.py` + `content/archive.py` + `compile/ranking.py` |
+| `app_compile_ops.py` | 717→**8** | **facade** → `protocol/state.py` + `render/protocols.py` + 等 |
+| `app_queries.py` | 852→**70** | **facade** → `compile/ranking.py` + `render/views.py` + 等 |
+| `app_memory_query.py` | 479→**47** | **facade** → `memory/query_routes.py` + `planner/state.py` + 等 |
+| `memory/graph.py` | 1868→**facade** | **拆 4 模块**：`graph_render` + `graph_anchors` + `graph_query` + `graph_transition` |
+| `drop.py` | 1806→**`drop/` 包** | **拆 6 模块**：`common` + `url` + `pdf` + `image` + `repo` + `note` |
+| `app_types.py` | 302 | 保持原位（纯类型定义，无逻辑） |
+| `app_state_paths.py` | 279 | 保持原位（纯路径定义，无逻辑） |
+| app_* 总行数 | 7083→**1186** | **83% 削减** |
+| engineering round 记录 | `PROGRESS.md` | workflows slim + orphan 删除 + CI verify.yml + P2-9 hub 削薄 |
 
 P1 当前口径：hub slimming 是持续 seam enforcement，不是一次性大拆；`runner/alchemy.py` 与 Product Shell `plugin.js` 只按最高 ROI、单 hotspot、测试先行方式继续削薄。
 
@@ -383,7 +398,7 @@ bash scripts/verify.sh python-static
 # [AOS-C8 frozen] PYTHONPATH=src python -m pytest tests/test_post_agos_risk.py -q  (已退)
 ```
 
-### 当前状态：**PASS**（Local Eng **8.8** — LOC↓、orphan 删除、workflows 瘦身、CI verify.yml；D16 `execution/alchemy.py` 仍 conscious deferred）
+### 当前状态：**PASS**（Local Eng **9.0** — app_* 7083→1186 行 83% 削减、9 个 hub 变 facade、2 个巨石拆分（graph.py 1868→4 模块、drop.py 1806→6 模块）、3 个新子包（cache/vault/drop）、orphan 删除、CI verify.yml；D16 `execution/alchemy.py` 仍 conscious deferred）
 
 ---
 
@@ -430,7 +445,7 @@ bash scripts/verify.sh scripts
 
 ### Local Engineering Gate — 可宣称 ≥9.0（2026-07-18）
 
-**Local Engineering Gate 加权分 = 9.05（≥9.0）**。全部满足方可宣称 **Local Engineering 9.0+**：
+**Local Engineering Gate 加权分 = 9.07（≥9.0）**。全部满足方可宣称 **Local Engineering 9.0+**：
 
 | # | Gate | 命令 / artifact |
 |---|------|-----------------|
@@ -440,7 +455,7 @@ bash scripts/verify.sh scripts
 | 4 | Product Shell | `bash scripts/verify.sh product-shell-static`（Jest **168**） |
 | 5 | Acceptance replay | **24** tests — `bash scripts/run_acceptance.sh` |
 | 6 | CI | `.github/workflows/verify.yml` |
-| 7 | LLM telemetry | `aiwiki llm-telemetry` / `backend-telemetry` |
+| 7 | LLM telemetry | `llm_telemetry.aggregate_llm_telemetry()` library + `bash scripts/verify.sh llm-integration`（30 条 mock-backend）+ acceptance backend-failure replay（CLI `llm-telemetry`/`backend-telemetry` 已于 W4 surface-noise-cuts A15 删除） |
 | 8 | Docs consistency | `bash scripts/docs_consistency_check.sh` |
 
 ### Live Dogfood Gate — 不可宣称 live 9.0（not-yet）
@@ -463,7 +478,7 @@ bash scripts/verify.sh scripts
 | Product Shell static/drift | PASS：bundle matches `build.sh` output |
 | Live dogfood maturity | PASS：`summarize --days 3` days 2026-05-21/22/23，`consecutive_days=true` |
 | Knowledge compounding | PASS：sample reuses `wiki/judgments/judgment-aos-c2-dogfood-live-proof-judgment.md` with `run-ask` execution receipt |
-| LLM/backend telemetry | PASS：`llm-telemetry` + `backend-telemetry` expose recent N backend/model/status and failure classes |
+| LLM/backend telemetry | PASS [AOS-C8 frozen]：`llm-telemetry` + `backend-telemetry` CLI（W4 已删）；post-cleanup 改为 `llm_telemetry.aggregate_llm_telemetry()` library + acceptance backend-failure replay |
 | Docs consistency | PASS：`bash scripts/docs_consistency_check.sh` |
 | Release audit | PASS（历史）：`bash scripts/agos9_release_audit.sh` — **本轮 scripts 清理已删除**；改由 `bash scripts/verify.sh all` + docs/consistency 单点负责 release gate；dogfood maturity 不再 auto-run |
 | Dogfood proof status | PASS（历史）：`bash scripts/agos9_dogfood_proof_status.sh` — **已删除**；改为 `PROGRESS.md` 手动记录当前最显著 live 证据 |

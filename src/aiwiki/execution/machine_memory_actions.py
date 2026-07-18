@@ -37,8 +37,10 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from ..app_execution import (
-    append_execution_receipt_history,
+from ..compile.pipeline import compile_wiki
+from ..content.material import load_manual_link_state, save_manual_link_state
+from ..execution.history import append_execution_receipt_history
+from ..execution.receipts import (
     build_execution_bundle,
     build_execution_receipt,
     execution_bundle_digest,
@@ -46,34 +48,23 @@ from ..app_execution import (
     write_execution_bundle_document,
     write_execution_dry_run_document,
 )
-from ..app_lifecycle import (
-    action_needs_review,
-    evaluate_page_aging,
-)
-from ..app_protocol import (
-    ACTION_STATUSES,
-    PENDING_ACTION_STATUSES,
-    ensure_layout,
-    load_protocol_state,
-    schedule_review_windows,
-)
-from ..app_state_paths import (
-    execution_dry_run_path,
-    execution_receipt_history_path,
+from ..lifecycle.aging import evaluate_page_aging
+from ..lifecycle.paths import (
     knowledge_lifecycle_override_state_path,
     knowledge_lifecycle_state_path,
-    machine_memory_action_state_path,
-    manual_link_state_path,
-    runtime_history_path,
 )
-from ..compile.pipeline import compile_wiki
-from ..content.material import load_manual_link_state, save_manual_link_state
+from ..lifecycle.status import action_needs_review
 from ..memory.action_core import (
     action_supports_low_risk_apply,
     safe_apply_preview,
     validate_low_risk_action_targets,
 )
 from ..memory.action_state import load_machine_memory_action_state_strict, save_machine_memory_action_state
+from ..memory.paths import machine_memory_action_state_path, manual_link_state_path
+from ..protocol.review_windows import schedule_review_windows
+from ..protocol.runtime_config import ACTION_STATUSES, PENDING_ACTION_STATUSES
+from ..protocol.scaffold import ensure_layout
+from ..protocol.state import load_protocol_state
 from ..render.paths import (
     append_wiki_log,
     execution_bundle_path,
@@ -89,6 +80,11 @@ from ..utils.security import safe_resolve_within
 from .audit_preview import AUDIT_STREAM_PATH
 from .history import append_runtime_history
 from .patch_plan import build_page_patch_plan
+from .paths import (
+    execution_dry_run_path,
+    execution_receipt_history_path,
+    runtime_history_path,
+)
 from .repair_plan import repair_execution_proposals
 
 AUTO_RESOLUTION_RECEIPTS_DIR = Path(".aiwiki") / "state" / "execution-receipts" / "auto-resolution"

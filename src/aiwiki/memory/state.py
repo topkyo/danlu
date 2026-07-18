@@ -8,8 +8,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..app_state_paths import machine_memory_state_path
 from ..state.io import load_json_document
+from ..state.paths import machine_memory_state_path
 
 
 def load_machine_memory(root: Path) -> dict[str, Any]:

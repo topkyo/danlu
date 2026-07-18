@@ -5,17 +5,20 @@ from __future__ import annotations
 import html
 from typing import Any
 
-from ..app_lifecycle import (
-    collect_aging_signals,
+from ..lifecycle.aging import collect_aging_signals
+from ..lifecycle.knowledge import (
+    knowledge_lifecycle_governance_summary,
+    render_knowledge_lifecycle_entry_summary,
+)
+from ..lifecycle.status import (
     display_action_status,
     display_curated_status,
     display_rewrite_proposal_status,
-    knowledge_lifecycle_governance_summary,
-    render_knowledge_lifecycle_entry_summary,
     review_queue,
 )
-from ..app_protocol import PROTOCOL_LIBRARY, protocol_title
 from ..memory.action_core import action_supports_low_risk_apply
+from ..protocol.descriptors import protocol_title
+from ..protocol.library import PROTOCOL_LIBRARY
 from ..state.constants import DEFAULT_PROTOCOL
 from .html_theme import html_meta_theme, html_theme_css
 from .packs import compact_section_lines, protocol_output_pack_rows

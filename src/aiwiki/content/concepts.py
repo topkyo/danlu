@@ -7,8 +7,13 @@ import re
 from pathlib import Path
 from typing import Any
 
-from ..app_protocol import CAUSAL_RELATION_TYPES, CONCEPT_HARDNESS_LEVELS, CONFLICT_SIGNAL_PAIRS, EVIDENCE_GAP_MARKERS
 from ..compile.build import load_concept_build_state
+from ..protocol.runtime_config import (
+    CAUSAL_RELATION_TYPES,
+    CONCEPT_HARDNESS_LEVELS,
+    CONFLICT_SIGNAL_PAIRS,
+    EVIDENCE_GAP_MARKERS,
+)
 from ..utils.hash import compiled_source_sha, sha256_bytes
 from ..utils.markdown import (
     build_citation_snapshots,
@@ -1162,3 +1167,29 @@ def _action_priority_rank(priority: str) -> int:
     from ..memory.action_core import action_priority_rank
 
     return action_priority_rank(priority)
+
+
+def concept_page_snapshot(root: Path, slug: str) -> dict[str, Any]:
+    path = root / "wiki" / "concepts" / f"{slug}.md"
+    if not path.exists():
+        return {
+            "path": relative_path(root, path),
+            "title": slug,
+            "source_signature": "",
+            "source_pages": [],
+            "summary": "",
+            "content": "",
+        }
+    content = path.read_text(encoding="utf-8", errors="replace")
+    frontmatter = parse_frontmatter(content)
+    source_pages = frontmatter.get("source_pages", [])
+    if not isinstance(source_pages, list):
+        source_pages = []
+    return {
+        "path": relative_path(root, path),
+        "title": str(frontmatter.get("title") or path.stem),
+        "source_signature": str(frontmatter.get("source_signature") or ""),
+        "source_pages": [str(item) for item in source_pages if isinstance(item, str)],
+        "summary": preserved_section(content, "Summary", ""),
+        "content": content,
+    }

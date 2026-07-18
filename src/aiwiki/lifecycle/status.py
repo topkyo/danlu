@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
-from ..app_protocol import (
+from ..content.io import curated_asset_section_snapshot, review_history_entries
+from ..protocol.focus_scoring import page_focus_score
+from ..protocol.review_windows import schedule_review_windows
+from ..protocol.runtime_config import (
     DECISION_STATUSES,
     JUDGMENT_STATUSES,
     PENDING_ACTION_STATUSES,
@@ -12,6 +17,13 @@ from ..app_protocol import (
     PENDING_JUDGMENT_REVIEW_STATUSES,
     PENDING_REWRITE_PROPOSAL_STATUSES,
 )
+from ..protocol.templates import CURATED_ASSET_SECTION_ORDER
+from ..state.constants import DEFAULT_PROTOCOL
+from ..utils.markdown import analyze_citation_snapshots, frontmatter_string_list, parse_frontmatter
+from ..utils.path import relative_path
+from ..utils.time import utc_now
+from .aging import evaluate_page_aging
+from .types import JudgmentAsset
 
 THIN_REVIEW_TRANSITIONS = ("pending-review", "confirmed", "discarded")
 
@@ -246,3 +258,179 @@ def archive_transition_profile(*, can_apply: bool, can_revert: bool) -> dict[str
     if can_revert:
         return transition_profile(["revert"], preferred_transitions=["revert"], default_transition="revert")
     return transition_profile([])
+
+
+def sort_curated_pages(pages: list[dict[str, str]]) -> list[dict[str, str]]:
+    def sort_key(page: dict[str, str]) -> tuple[str, str]:
+        return (page.get("reviewed_at", "") or page.get("updated_at", ""), page["title"].lower())
+
+    return sorted(pages, key=sort_key, reverse=True)
+
+
+def judgment_asset_frontmatter(
+    *,
+    frontmatter: dict[str, Any],
+    page_id: str,
+    title: str,
+    path: str,
+    kind: str,
+    status: str,
+    protocol: str,
+    citations: list[str],
+    revisit_after: str,
+    escalate_after: str,
+) -> JudgmentAsset:
+    return {
+        "page_id": page_id,
+        "title": title,
+        "path": path,
+        "kind": kind,
+        "status": status,
+        "protocol": protocol,
+        "citations": citations,
+        "confidence": str(frontmatter.get("confidence") or ""),
+        "counter_evidence": frontmatter_string_list(frontmatter, "counter_evidence"),
+        "invalidation_rule": str(frontmatter.get("invalidation_rule") or "").strip(),
+        "next_signals": frontmatter_string_list(frontmatter, "next_signals"),
+        "revisit_after": revisit_after,
+        "escalate_after": escalate_after,
+        "formed_at": str(frontmatter.get("formed_at") or frontmatter.get("last_compiled_at") or ""),
+        "last_reviewed": str(frontmatter.get("last_reviewed") or frontmatter.get("reviewed_at") or ""),
+    }
+
+
+def collect_curated_pages(root: Path, folder: str, expected_kind: str) -> list[dict[str, str]]:
+    pages: list[dict[str, str]] = []
+    now = datetime.now(timezone.utc)
+    for path in sorted((root / "wiki" / folder).glob("*.md")):
+        content = path.read_text(encoding="utf-8", errors="replace")
+        frontmatter = parse_frontmatter(content)
+        status = str(frontmatter.get("status") or default_curated_status(expected_kind))
+        reviewed_at = str(frontmatter.get("reviewed_at") or "")
+        updated_at = str(frontmatter.get("last_compiled_at") or "")
+        protocol = str(frontmatter.get("protocol") or DEFAULT_PROTOCOL)
+        revisit_after = str(frontmatter.get("revisit_after") or "")
+        escalate_after = str(frontmatter.get("escalate_after") or "")
+        if not revisit_after and not escalate_after:
+            base_timestamp = reviewed_at or updated_at or utc_now()
+            revisit_after, escalate_after = schedule_review_windows(
+                expected_kind,
+                status,
+                base_timestamp,
+                protocol=protocol,
+                root=root,
+            )
+        asset_snapshots = {
+            heading: curated_asset_section_snapshot(
+                content,
+                heading,
+                revisit_after=revisit_after,
+                escalate_after=escalate_after,
+            )
+            for heading in CURATED_ASSET_SECTION_ORDER
+        }
+        citations = [str(path) for path in frontmatter.get("citations", []) if isinstance(path, str) and path.strip()]
+        asset_frontmatter = judgment_asset_frontmatter(
+            frontmatter=frontmatter,
+            page_id=str(frontmatter.get("id") or path.stem),
+            title=str(frontmatter.get("title") or path.stem),
+            path=relative_path(root, path),
+            kind=str(frontmatter.get("kind") or ""),
+            status=status,
+            protocol=protocol,
+            citations=citations,
+            revisit_after=revisit_after,
+            escalate_after=escalate_after,
+        )
+        citation_snapshot_state = analyze_citation_snapshots(root, citations, frontmatter)
+        review_entries = review_history_entries(content)
+        asset_score = sum(1 for snapshot in asset_snapshots.values() if snapshot.get("meaningful"))
+        pages.append(
+            {
+                "page_id": str(frontmatter.get("id") or path.stem),
+                "title": str(frontmatter.get("title") or path.stem),
+                "path": relative_path(root, path),
+                "kind": str(frontmatter.get("kind") or ""),
+                "status": status,
+                "protocol": protocol,
+                "confidence": str(frontmatter.get("confidence") or ""),
+                "reviewed_at": reviewed_at,
+                "updated_at": updated_at,
+                "revisit_after": revisit_after,
+                "escalate_after": escalate_after,
+                "matches_expected_kind": str(frontmatter.get("kind") or "") == expected_kind,
+                "pending_review": "true" if page_needs_review(expected_kind, status) else "false",
+                "asset_score": str(asset_score),
+                "has_counter_evidence": "true" if asset_snapshots["Counter Evidence"]["meaningful"] else "false",
+                "has_invalidation": "true" if asset_snapshots["Invalidation"]["meaningful"] else "false",
+                "has_next_signals": "true" if asset_snapshots["Next Signals"]["meaningful"] else "false",
+                "has_review_history": "true" if asset_snapshots["Review History"]["meaningful"] else "false",
+                "review_history_entries": str(asset_snapshots["Review History"]["review_history_entries"]),
+                "latest_review_history_entry": review_entries[0] if review_entries else "",
+                "citation_count": str(len(citations)),
+                "citation_snapshot_count": str(len(citation_snapshot_state["recorded"])),
+                "citation_drift": "true" if citation_snapshot_state["has_drift"] else "false",
+                "citation_drift_count": str(len(citation_snapshot_state["drifted"])),
+                "citation_snapshot_gap_count": str(
+                    len(citation_snapshot_state["missing"]) + len(citation_snapshot_state["stale"])
+                ),
+                "formed_at": str(asset_frontmatter.get("formed_at") or ""),
+                "last_reviewed": str(asset_frontmatter.get("last_reviewed") or ""),
+                "counter_evidence_count": str(len(asset_frontmatter.get("counter_evidence", []))),
+                "next_signal_count": str(len(asset_frontmatter.get("next_signals", []))),
+                "invalidation_rule": str(asset_frontmatter.get("invalidation_rule") or ""),
+                "has_counter_evidence_metadata": "true" if "counter_evidence" in frontmatter else "false",
+                "has_invalidation_rule_metadata": "true" if "invalidation_rule" in frontmatter else "false",
+                "has_next_signals_metadata": "true" if "next_signals" in frontmatter else "false",
+                "has_formed_at_metadata": "true" if "formed_at" in frontmatter else "false",
+                "has_last_reviewed_metadata": "true" if "last_reviewed" in frontmatter else "false",
+                "has_structured_counter_evidence": "true" if asset_frontmatter.get("counter_evidence") else "false",
+                "has_structured_invalidation_rule": "true"
+                if str(asset_frontmatter.get("invalidation_rule") or "").strip()
+                else "false",
+                "has_structured_next_signals": "true" if asset_frontmatter.get("next_signals") else "false",
+            }
+        )
+    enriched: list[dict[str, str]] = []
+    for page in pages:
+        enriched_page = dict(page)
+        enriched_page.update(evaluate_page_aging(enriched_page, now=now))
+        enriched.append(enriched_page)
+    return sort_curated_pages(enriched)
+
+
+def review_queue(
+    decisions: list[dict[str, str]],
+    judgments: list[dict[str, str]],
+    *,
+    active_protocol: str = DEFAULT_PROTOCOL,
+) -> dict[str, list[dict[str, str]]]:
+    pending_decisions = sorted(
+        [page for page in decisions if page.get("pending_review") == "true"],
+        key=lambda page: (
+            0 if page.get("escalation_candidate") == "true" else 1,
+            0 if page.get("overdue_review") == "true" else 1,
+            -page_focus_score(active_protocol, page),
+            page.get("revisit_after", "") or "9999",
+            page["title"].lower(),
+        ),
+    )
+    pending_judgments = sorted(
+        [page for page in judgments if page.get("pending_review") == "true"],
+        key=lambda page: (
+            0 if page.get("escalation_candidate") == "true" else 1,
+            0 if page.get("overdue_review") == "true" else 1,
+            -page_focus_score(active_protocol, page),
+            page.get("revisit_after", "") or "9999",
+            page["title"].lower(),
+        ),
+    )
+    reviewed = [
+        page for page in decisions + judgments if page.get("reviewed_at") and page.get("pending_review") != "true"
+    ]
+    reviewed = sorted(reviewed, key=lambda page: (page.get("reviewed_at", ""), page["title"].lower()), reverse=True)
+    return {
+        "pending_decisions": pending_decisions,
+        "pending_judgments": pending_judgments,
+        "recently_reviewed": reviewed,
+    }

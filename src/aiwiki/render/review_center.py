@@ -5,17 +5,19 @@ from __future__ import annotations
 import html
 from typing import Any
 
-from ..app_lifecycle import (
-    collect_aging_signals,
-    display_action_status,
-    display_curated_status,
+from ..lifecycle.aging import collect_aging_signals
+from ..lifecycle.knowledge import (
+    default_knowledge_lifecycle_state,
     display_judgment_lifecycle_state,
     display_knowledge_lifecycle_state,
-    display_rewrite_proposal_status,
     knowledge_lifecycle_governance_summary,
+)
+from ..lifecycle.status import (
+    display_action_status,
+    display_curated_status,
+    display_rewrite_proposal_status,
     review_queue,
 )
-from ..lifecycle.knowledge import default_knowledge_lifecycle_state
 from ..memory.action_core import action_supports_low_risk_apply
 from ..state.constants import DEFAULT_PROTOCOL
 from .html_theme import html_meta_theme, html_theme_css

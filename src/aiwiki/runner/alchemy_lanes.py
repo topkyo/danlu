@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 from aiwiki import autonomy_policy
-from aiwiki.app_state_paths import execution_receipt_history_path
 from aiwiki.execution.audit_preview import AUDIT_STREAM_PATH
+from aiwiki.execution.paths import execution_receipt_history_path
 from aiwiki.render.paths import execution_receipt_path
 from aiwiki.runner import alchemy_support as support
 from aiwiki.utils.path import relative_path

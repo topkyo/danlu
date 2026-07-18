@@ -3,10 +3,16 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..app_protocol import ensure_layout
-from ..app_state_paths import output_candidates_state_path
+from ..content.io import collect_output_artifacts
+from ..content.outputs import classify_recurring_output_kind
+from ..protocol.runtime_config import AUTO_PROMOTION_MIN_OCCURRENCES
+from ..protocol.scaffold import ensure_layout
+from ..render.paths import append_wiki_log
 from ..state.collections import normalize_versioned_record_list_state
 from ..state.io import load_json_document, save_json_document
+from ..state.paths import output_candidates_state_path
+from ..utils.io import runtime_write_operation
+from ..utils.time import utc_now
 
 
 def default_output_candidates_state() -> dict[str, Any]:
@@ -216,3 +222,75 @@ def demote_candidate(root: Path, artifact_ref: str) -> dict[str, Any]:
     write_candidate_frontmatter(artifact_path, candidate_state="demoted")
     remove_output_candidate(root, artifact_ref)
     return {"artifact_ref": artifact_ref, "status": "demoted"}
+
+
+@runtime_write_operation
+def promote_recurring_outputs(root: Path) -> dict[str, Any]:
+    ensure_layout(root)
+    groups: dict[tuple[str, str], list[dict[str, str]]] = {}
+    for artifact in collect_output_artifacts(root):
+        groups.setdefault((artifact["protocol"], artifact["query_signature"]), []).append(artifact)
+
+    generated_at = utc_now()
+    enqueued = 0
+    promotions: list[dict[str, str]] = []
+    for (protocol, query_signature), artifacts in sorted(groups.items()):
+        if len(artifacts) < AUTO_PROMOTION_MIN_OCCURRENCES:
+            continue
+        query = artifacts[0]["query"]
+        kind = classify_recurring_output_kind(query, protocol)
+        if kind not in {"decision", "judgment"}:
+            continue
+        candidate = upsert_output_candidate(
+            root,
+            artifact_ref=artifacts[-1]["path"],
+            candidate_state="pending",
+            created_at=generated_at,
+            updated_at=generated_at,
+            format=artifacts[-1].get("format", ""),
+            protocol=protocol,
+            corpus_id=artifacts[-1].get("corpus_id", ""),
+            question=query,
+            promotion_origin="nightly-recurring",
+        )
+        candidate["recurring_kind"] = kind
+        state = load_output_candidates_state(root)
+        for item in state.get("candidates", []):
+            if str(item.get("artifact_ref") or "") == artifacts[-1]["path"]:
+                item["recurring_kind"] = kind
+                break
+        save_output_candidates_state(root, state)
+        enqueued += 1
+        promotions.append(
+            {
+                "kind": kind,
+                "action": "enqueued",
+                "path": candidate["artifact_ref"],
+                "candidate_ref": candidate["artifact_ref"],
+                "protocol": protocol,
+                "query": query,
+                "query_signature": query_signature,
+                "occurrences": str(len(artifacts)),
+                "latest_artifact": artifacts[-1]["path"],
+            }
+        )
+        append_wiki_log(
+            root,
+            "enqueue",
+            query,
+            [
+                f"kind: `{kind}`",
+                f"protocol: `{protocol}`",
+                "action: `enqueued`",
+                f"occurrences: `{len(artifacts)}`",
+                f"candidate_ref: `{candidate['artifact_ref']}`",
+                f"latest_artifact: `{artifacts[-1]['path']}`",
+            ],
+        )
+
+    return {
+        "count": enqueued,
+        "created": 0,
+        "updated": 0,
+        "pages": promotions,
+    }

@@ -10,11 +10,11 @@ from typing import Any
 
 from aiwiki.app_linting.core import lint_wiki
 from aiwiki.app_linting.nightly import write_nightly_health
-from aiwiki.app_protocol import ensure_layout
-from aiwiki.app_state_paths import nightly_health_state_path
 from aiwiki.compile.pipeline import compile_wiki
 from aiwiki.execution.audit_reconciliation import reconcile_execution_receipts
 from aiwiki.execution.receipts import write_execution_receipt
+from aiwiki.lifecycle.paths import nightly_health_state_path
+from aiwiki.protocol.scaffold import ensure_layout
 from aiwiki.runner.clients import create_client  # noqa: F401 — acceptance replay patch seam
 from aiwiki.runner.receipts import _empty_llm_audit, record_llm_attempt
 from aiwiki.runner.workflow_shared import _receipt_error_class
@@ -168,9 +168,9 @@ def run_nightly(
 
 
 from aiwiki.runner.workflows_ask import (  # noqa: E402
-    _effective_run_ask_timeout,
-    _safe_quoted_report_reference_paths,
     run_ask,
     run_ask_resume,
     run_ask_submit,
 )
+from aiwiki.runner.workflows_ask_context import _safe_quoted_report_reference_paths  # noqa: E402
+from aiwiki.runner.workflows_ask_receipts import _effective_run_ask_timeout  # noqa: E402

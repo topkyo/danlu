@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from ..app_protocol import (
+from ..protocol.runtime_config import (
     DECISION_QUERY_MARKERS,
     JUDGMENT_QUERY_MARKERS,
     PROTOCOL_CLASSIFICATION_MARKERS,

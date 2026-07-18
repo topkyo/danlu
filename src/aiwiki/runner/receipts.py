@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from aiwiki.app_protocol import ensure_layout
+from aiwiki.protocol.scaffold import ensure_layout
 from aiwiki.runner.clients import (
     _append_fallback_stage,
     _client_backend_name,

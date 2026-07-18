@@ -7,7 +7,7 @@ including indirect mock seams (utc_now, load_llm_receipt_history).
 from __future__ import annotations
 
 import sys
-import types
+from types import ModuleType
 
 from aiwiki.utils.time import utc_now
 
@@ -56,7 +56,7 @@ _meta.build_shell_summary = build_shell_summary
 _meta.render_product_shell_html = render_product_shell_html
 
 
-class _CompatModule(types.ModuleType):
+class _CompatModule(ModuleType):
     def __setattr__(self, name: str, value: object) -> None:
         super().__setattr__(name, value)
         if name == "utc_now":

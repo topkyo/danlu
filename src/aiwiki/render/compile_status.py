@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..app_lifecycle import collect_aging_signals, review_queue
-from ..app_protocol import protocol_title
 from ..compile.state import default_compile_state
+from ..lifecycle.aging import collect_aging_signals
+from ..lifecycle.status import review_queue
+from ..protocol.descriptors import protocol_title
 
 DETAIL_LABELS = {
     "manifest_entries": "entries",

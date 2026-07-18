@@ -8,10 +8,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..app_state_paths import planner_state_path, query_route_telemetry_path
 from ..state.constants import DEFAULT_PROTOCOL
 from ..state.io import load_json_document, save_json_document
+from ..utils.hash import question_signature
 from ..utils.path import relative_path
+from ..utils.time import utc_now
+from .paths import planner_state_path, query_route_telemetry_path
 
 
 def default_planner_state() -> dict[str, Any]:
@@ -104,3 +106,55 @@ def load_query_route_telemetry(root: Path) -> dict[str, Any]:
 
 def save_query_route_telemetry(root: Path, document: dict[str, Any]) -> None:
     save_json_document(query_route_telemetry_path(root), document)
+
+
+def record_query_route_telemetry(
+    root: Path,
+    *,
+    question: str,
+    machine_query: dict[str, Any],
+    protocol: str = DEFAULT_PROTOCOL,
+    occurred_at: str | None = None,
+) -> dict[str, Any]:
+    occurred_at = occurred_at or utc_now()
+    telemetry_state = load_query_route_telemetry(root)
+    entries = [dict(entry) for entry in telemetry_state.get("entries", []) if isinstance(entry, dict)]
+    entry = {
+        "query_signature": question_signature(question),
+        "question_preview": question.strip()[:160],
+        "occurred_at": occurred_at,
+        "protocol": protocol,
+        "selected_strategy": str(machine_query.get("selected_strategy") or ""),
+        "selection_reason": str(machine_query.get("selection_reason") or ""),
+        "matched_terms": list(machine_query.get("matched_terms", []) or [])[:8],
+        "matched_source_markers": list(machine_query.get("matched_source_markers", []) or [])[:4],
+        "matched_graph_markers": list(machine_query.get("matched_graph_markers", []) or [])[:4],
+        "route_count": len(machine_query.get("query_routes", []) or []),
+        "ranked_source_ids": list(machine_query.get("ranked_source_ids", []) or [])[:5],
+        "ranked_concept_slugs": list(machine_query.get("ranked_concept_slugs", []) or [])[:5],
+        "ranked_judgment_ids": list(machine_query.get("ranked_judgment_ids", []) or [])[:5],
+        "ranked_elixir_ids": list(machine_query.get("ranked_elixir_ids", []) or [])[:5],
+        "touched_component_ids": list(machine_query.get("touched_component_ids", []) or [])[:5],
+        "planner_next_action_id": str((machine_query.get("planner_next_action") or {}).get("action_id") or ""),
+    }
+    entries.insert(0, entry)
+    strategy_counts: dict[str, int] = {}
+    protocol_counts: dict[str, int] = {}
+    for item in entries[:24]:
+        strategy = str(item.get("selected_strategy") or "")
+        scoped_protocol = str(item.get("protocol") or DEFAULT_PROTOCOL)
+        if strategy:
+            strategy_counts[strategy] = strategy_counts.get(strategy, 0) + 1
+        if scoped_protocol:
+            protocol_counts[scoped_protocol] = protocol_counts.get(scoped_protocol, 0) + 1
+    document = {
+        "version": 1,
+        "updated_at": occurred_at,
+        "state_path": relative_path(root, query_route_telemetry_path(root)),
+        "entries": entries[:24],
+        "strategy_counts": strategy_counts,
+        "protocol_counts": protocol_counts,
+        "last_entry": entry,
+    }
+    save_query_route_telemetry(root, document)
+    return document

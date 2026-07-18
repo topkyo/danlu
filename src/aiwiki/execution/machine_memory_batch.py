@@ -19,14 +19,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..app_execution import (
+from ..execution.receipts import (
     build_execution_batch_receipt,
     write_execution_batch_receipt_document,
 )
-from ..app_protocol import ensure_layout
-from ..app_state_paths import execution_batch_receipt_path, runtime_history_path
 from ..memory.action_core import action_supports_low_risk_apply
 from ..memory.action_state import load_machine_memory_action_state_strict
+from ..protocol.scaffold import ensure_layout
 from ..render.paths import append_wiki_log
 from ..state.io import load_json_document_strict
 from ..utils.io import runtime_write_operation
@@ -37,6 +36,7 @@ from . import review as _review
 from .alchemy import _restore_file_bytes, _snapshot_file_bytes
 from .audit_preview import AUDIT_STREAM_PATH
 from .history import append_runtime_history, load_runtime_history_strict
+from .paths import execution_batch_receipt_path, runtime_history_path
 
 
 class MachineMemoryActionApplyBatchReceiptError(RuntimeError):

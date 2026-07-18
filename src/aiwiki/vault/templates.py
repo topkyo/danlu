@@ -1,22 +1,9 @@
-"""Vault bootstrap helpers for new 炼丹炉 workspaces.
-
-OWNER STATUS: legacy owner. New large logic blocks should be extracted to a
-dedicated subpackage (e.g. `aiwiki.vault.*`) rather than added here.
-See AGENTS.md migration policy.
-"""
-
+"""Vault templates and constants for Obsidian vault bootstrapping."""
 from __future__ import annotations
 
-import hashlib
-import os
 import shlex
 from pathlib import Path
 from typing import Any
-
-from .app_protocol import ensure_layout
-from .execution.runtime_surfaces import shell_status
-from .utils.io import render_json_document, write_if_changed
-from .vault_obsidian_graph import DEFAULT_OBSIDIAN_GRAPH
 
 PLUGIN_ID = "furnace-product-shell"
 
@@ -154,7 +141,6 @@ USER_HIDDEN_FOLDER_PATHS: tuple[str, ...] = (
     "output/slides",
 )
 
-
 def _folder_label_selectors(path: str) -> tuple[str, ...]:
     return (
         f'.nav-folder[data-path="{path}"] > .nav-folder-title > .nav-folder-title-content',
@@ -167,7 +153,6 @@ def _folder_label_selectors(path: str) -> tuple[str, ...]:
         f'.tree-item-self[data-path="{path}"] .tree-item-title',
     )
 
-
 def _folder_container_selectors(path: str) -> tuple[str, ...]:
     return (
         f'.nav-folder[data-path="{path}"]',
@@ -175,7 +160,6 @@ def _folder_container_selectors(path: str) -> tuple[str, ...]:
         f'.nav-folder-title[data-path="{path}"]',
         f'.tree-item-self[data-path="{path}"]',
     )
-
 
 def _render_folder_label_snippet() -> str:
     lines = [
@@ -224,7 +208,6 @@ def _render_folder_label_snippet() -> str:
             ]
         )
     return "\n".join(lines)
-
 
 def _default_workspace_document() -> dict[str, Any]:
     return {
@@ -372,7 +355,6 @@ def _default_workspace_document() -> dict[str, Any]:
         },
     }
 
-
 def _render_vault_readme(runtime_root: Path) -> str:
     runtime = str(runtime_root.resolve())
     return (
@@ -432,7 +414,6 @@ def _render_vault_readme(runtime_root: Path) -> str:
         + "\n"
     )
 
-
 def _render_vault_home() -> str:
     return (
         "\n".join(
@@ -484,7 +465,6 @@ def _render_vault_home() -> str:
         )
         + "\n"
     )
-
 
 def _render_launcher_script(runtime_root: Path) -> str:
     quoted_runtime = shlex.quote(str(runtime_root.resolve()))
@@ -588,99 +568,6 @@ def _render_launcher_script(runtime_root: Path) -> str:
         ]
     )
 
-
-def _plugin_template_paths(runtime_root: Path) -> dict[str, Path]:
-    plugin_root = runtime_root / ".obsidian" / "plugins" / PLUGIN_ID
-    return {
-        "manifest": plugin_root / "manifest.json",
-        "main": plugin_root / "main.js",
-        "styles": plugin_root / "styles.css",
-    }
-
-
-def _validate_runtime_root(runtime_root: Path) -> None:
-    required = [
-        runtime_root / "src" / "aiwiki" / "cli" / "__init__.py",
-        runtime_root / "src" / "aiwiki" / "cli" / "__main__.py",
-        runtime_root / ".obsidian" / "plugins" / PLUGIN_ID / "main.js",
-        runtime_root / ".obsidian" / "plugins" / PLUGIN_ID / "manifest.json",
-        runtime_root / ".obsidian" / "plugins" / PLUGIN_ID / "styles.css",
-    ]
-    missing = [str(path) for path in required if not path.exists()]
-    if missing:
-        joined = ", ".join(missing)
-        raise FileNotFoundError(f"runtime root is missing required vault template assets: {joined}")
-
-
-def _plugin_release_targets(target_root: Path) -> dict[str, Path]:
-    return {
-        "manifest": target_root / ".obsidian" / "plugins" / PLUGIN_ID / "manifest.json",
-        "main": target_root / ".obsidian" / "plugins" / PLUGIN_ID / "main.js",
-        "styles": target_root / ".obsidian" / "plugins" / PLUGIN_ID / "styles.css",
-    }
-
-
-def _sha256_text(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
-def sync_product_shell_plugin(runtime_root: Path, target_root: Path) -> dict[str, Any]:
-    """Sync the generated Obsidian plugin release files into an existing vault.
-
-    Only release files are managed here. The local plugin ``data.json`` is
-    deliberately preserved because it may contain user-specific API keys.
-    """
-
-    runtime_root = runtime_root.resolve()
-    target_root = target_root.resolve()
-    _validate_runtime_root(runtime_root)
-    if not target_root.exists() or not target_root.is_dir():
-        raise FileNotFoundError(f"target vault does not exist or is not a directory: {target_root}")
-
-    source_paths = _plugin_template_paths(runtime_root)
-    target_paths = _plugin_release_targets(target_root)
-    changed_files: list[str] = []
-    source_hashes: dict[str, str] = {}
-
-    for label, source in source_paths.items():
-        relative = {
-            "manifest": f".obsidian/plugins/{PLUGIN_ID}/manifest.json",
-            "main": f".obsidian/plugins/{PLUGIN_ID}/main.js",
-            "styles": f".obsidian/plugins/{PLUGIN_ID}/styles.css",
-        }[label]
-        content = source.read_text(encoding="utf-8")
-        source_hashes[relative] = _sha256_text(content)
-        if write_if_changed(target_paths[label], content):
-            changed_files.append(relative)
-
-    return {
-        "status": "ok",
-        "vault_root": str(target_root),
-        "runtime_root": str(runtime_root),
-        "plugin_id": PLUGIN_ID,
-        "changed_files": sorted(changed_files),
-        "preserved_files": [f".obsidian/plugins/{PLUGIN_ID}/data.json"],
-        "source_hashes": source_hashes,
-    }
-
-
-def _ensure_target_is_safe(target_root: Path, *, force: bool) -> None:
-    if not target_root.exists():
-        return
-    if not target_root.is_dir():
-        raise FileExistsError(f"target path exists and is not a directory: {target_root}")
-    has_entries = any(target_root.iterdir())
-    if has_entries and not force:
-        raise FileExistsError(f"target vault already exists and is not empty: {target_root}")
-
-
-def _write_json(path: Path, payload: dict[str, Any] | list[Any]) -> bool:
-    if isinstance(payload, dict):
-        return write_if_changed(path, render_json_document(payload))
-    text = render_json_document({"items": payload})
-    return write_if_changed(path, text.replace('{\n  "items": ', "").rstrip("}\n") + "\n")
-
-
 def _render_indexes_readme() -> str:
     return (
         "\n".join(
@@ -700,62 +587,3 @@ def _render_indexes_readme() -> str:
         )
         + "\n"
     )
-
-
-def bootstrap_new_vault(runtime_root: Path, target_root: Path, *, force: bool = False) -> dict[str, Any]:
-    runtime_root = runtime_root.resolve()
-    target_root = target_root.resolve()
-    _validate_runtime_root(runtime_root)
-    _ensure_target_is_safe(target_root, force=force)
-
-    ensure_layout(target_root)
-    written_files: list[str] = []
-
-    managed_text_files = {
-        "README.md": _render_vault_readme(runtime_root),
-        "HOME.md": _render_vault_home(),
-        "wiki/indexes/README.md": _render_indexes_readme(),
-        "scripts/aiwiki-launcher.sh": _render_launcher_script(runtime_root),
-        f".obsidian/snippets/{FOLDER_LABEL_SNIPPET_NAME}.css": _render_folder_label_snippet(),
-    }
-    for relative, content in managed_text_files.items():
-        path = target_root / relative
-        if write_if_changed(path, content):
-            written_files.append(relative)
-
-    launcher_path = target_root / "scripts" / "aiwiki-launcher.sh"
-    current_mode = launcher_path.stat().st_mode
-    os.chmod(launcher_path, current_mode | 0o111)
-
-    json_files: dict[str, dict[str, Any]] = {
-        ".obsidian/appearance.json": DEFAULT_OBSIDIAN_APPEARANCE,
-        ".obsidian/app.json": DEFAULT_OBSIDIAN_APP,
-        ".obsidian/core-plugins.json": DEFAULT_OBSIDIAN_CORE_PLUGINS,
-        ".obsidian/graph.json": DEFAULT_OBSIDIAN_GRAPH,
-        ".obsidian/workspace.json": _default_workspace_document(),
-        f".obsidian/plugins/{PLUGIN_ID}/data.json": DEFAULT_PLUGIN_DATA,
-    }
-    for relative, payload in json_files.items():
-        path = target_root / relative
-        if write_if_changed(path, render_json_document(payload)):
-            written_files.append(relative)
-
-    community_plugins_path = target_root / ".obsidian" / "community-plugins.json"
-    community_plugins_text = '[\n  "furnace-product-shell"\n]\n'
-    if write_if_changed(community_plugins_path, community_plugins_text):
-        written_files.append(".obsidian/community-plugins.json")
-
-    plugin_sync = sync_product_shell_plugin(runtime_root, target_root)
-    written_files.extend(plugin_sync["changed_files"])
-
-    summary = shell_status(target_root)
-    return {
-        "status": "ok",
-        "vault_root": str(target_root),
-        "runtime_root": str(runtime_root),
-        "launcher_path": "scripts/aiwiki-launcher.sh",
-        "plugin_id": PLUGIN_ID,
-        "written_files": sorted(written_files),
-        "active_protocol": str(summary.get("active_protocol") or "general"),
-        "shell_summary_path": "output/control/shell-summary.json",
-    }

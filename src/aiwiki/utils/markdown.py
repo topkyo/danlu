@@ -122,6 +122,16 @@ def parse_frontmatter(text: str) -> dict[str, Any]:
     return data
 
 
+def frontmatter_string_list(frontmatter: dict[str, Any], key: str) -> list[str]:
+    value = frontmatter.get(key, [])
+    if isinstance(value, str):
+        item = value.strip()
+        return [item] if item else []
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if isinstance(item, str) and str(item).strip()]
+
+
 def strip_frontmatter(text: str) -> str:
     lines = text.splitlines()
     if not lines or lines[0].strip() != "---":

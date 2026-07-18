@@ -6,7 +6,8 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from ..app_protocol import PROTOCOL_LIBRARY, protocol_focus_score
+from ..protocol.focus_scoring import protocol_focus_score
+from ..protocol.library import PROTOCOL_LIBRARY
 from ..state.constants import DEFAULT_PROTOCOL
 from ..utils.time import parse_iso_datetime
 

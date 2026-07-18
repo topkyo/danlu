@@ -17,10 +17,10 @@ from pathlib import Path
 from typing import Any
 
 from ..app_linting import lint_wiki, write_nightly_health
-from ..app_protocol import ensure_layout
 from ..app_shell import build_shell_summary, write_shell_summary
-from ..app_state_paths import nightly_health_state_path
 from ..compile import compile_wiki
+from ..lifecycle.paths import nightly_health_state_path
+from ..protocol.scaffold import ensure_layout
 from ..utils.io import runtime_write_lock, runtime_write_operation
 from ..utils.path import relative_path
 

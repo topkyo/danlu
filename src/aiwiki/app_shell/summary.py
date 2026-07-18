@@ -6,36 +6,6 @@ import os
 from pathlib import Path
 from typing import Any
 
-from ..app_lifecycle import (
-    collect_curated_pages,
-    knowledge_lifecycle_governance_summary,
-    review_queue,
-)
-from ..app_protocol import (
-    ACTION_STATUSES,
-    PROTOCOL_LIBRARY,
-    REWRITE_PROPOSAL_STATUSES,
-    ensure_layout,
-    load_protocol_state,
-)
-from ..app_state_paths import (
-    agent_workbench_path,
-    domain_pilots_path,
-    execution_audit_html_path,
-    execution_audit_path,
-    execution_center_html_path,
-    execution_center_path,
-    furnace_center_html_path,
-    llm_receipt_log_path,
-    machine_memory_graph_html_path,
-    nightly_health_state_path,
-    output_packs_index_path,
-    product_shell_html_path,
-    review_center_html_path,
-    run_log_path,
-    shell_summary_path,
-)
-from ..app_types import ProtocolState, ShellSummary
 from ..compile.state import load_compile_state
 from ..config import LLMConfig
 from ..content.archive import (
@@ -47,14 +17,18 @@ from ..content.io import collect_recent_output_artifacts, summarize_runtime_even
 from ..content.rewrite import load_concept_rewrite_state
 from ..execution.history import load_llm_receipt_history, load_runtime_history
 from ..execution.l3_proposals import list_l3_proposals
+from ..execution.paths import llm_receipt_log_path, run_log_path
 from ..execution.policy import load_execution_receipt_history
 from ..input_router import is_obsidian_open_link
 from ..lifecycle.aging import collect_aging_signals
-from ..lifecycle.knowledge import load_knowledge_lifecycle_state
+from ..lifecycle.knowledge import knowledge_lifecycle_governance_summary, load_knowledge_lifecycle_state
+from ..lifecycle.paths import nightly_health_state_path
 from ..lifecycle.status import (
     action_transition_profile,
     archive_transition_profile,
+    collect_curated_pages,
     curated_page_transition_profile,
+    review_queue,
     rewrite_proposal_status_rank,
     rewrite_transition_profile,
     transition_profile,
@@ -68,7 +42,27 @@ from ..memory.action_core import (
 )
 from ..memory.state import load_machine_memory
 from ..planner.state import load_planner_state, load_query_route_telemetry
-from ..render.paths import execution_bundle_path, execution_proposal_path
+from ..protocol.library import PROTOCOL_LIBRARY
+from ..protocol.runtime_config import ACTION_STATUSES, REWRITE_PROPOSAL_STATUSES
+from ..protocol.scaffold import ensure_layout
+from ..protocol.state import load_protocol_state
+from ..protocol.types import ProtocolState
+from ..render.paths import (
+    agent_workbench_path,
+    domain_pilots_path,
+    execution_audit_html_path,
+    execution_audit_path,
+    execution_bundle_path,
+    execution_center_html_path,
+    execution_center_path,
+    execution_proposal_path,
+    furnace_center_html_path,
+    machine_memory_graph_html_path,
+    output_packs_index_path,
+    product_shell_html_path,
+    review_center_html_path,
+    shell_summary_path,
+)
 from ..render.views import (
     judgment_asset_attention_sort_key,
     judgment_asset_shell_record,
@@ -109,6 +103,7 @@ from .surfaces import (
     shell_recent_runs,
     shell_suggested_next_actions,
 )
+from .types import ShellSummary
 
 
 def _load_drift_aging_state(root: Path) -> dict[str, Any]:

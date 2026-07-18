@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from aiwiki.execution.alchemy import CANDIDATE_ELIXIR_DIR
+from aiwiki.execution.alchemy_helpers import CANDIDATE_ELIXIR_DIR
 from aiwiki.runner.alchemy_shared import _apply_paths, _capture_sizes, _rollback_truncate, _trace_summary
 
 

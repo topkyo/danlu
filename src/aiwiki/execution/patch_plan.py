@@ -10,8 +10,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..app_protocol import DEFAULT_PROTOCOL
 from ..memory.action_core import action_supports_low_risk_apply, safe_apply_preview
+from ..state.constants import DEFAULT_PROTOCOL
 from ..utils.markdown import parse_frontmatter
 
 PATCH_ROLE_LABELS = {

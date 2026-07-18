@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
-from aiwiki.execution.alchemy import CANDIDATE_ELIXIR_DIR
+from aiwiki.execution.alchemy_helpers import CANDIDATE_ELIXIR_DIR
 from aiwiki.execution.l3_proposals import STAGING_PROPOSALS_DIR
 from aiwiki.utils.markdown import parse_frontmatter
 

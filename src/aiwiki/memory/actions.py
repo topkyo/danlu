@@ -6,15 +6,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ..app_lifecycle import action_needs_review, evaluate_page_aging
-from ..app_protocol import (
+from ..lifecycle.aging import evaluate_page_aging
+from ..lifecycle.status import action_needs_review
+from ..protocol.review_windows import schedule_review_windows
+from ..protocol.runtime_config import (
     ACTION_STATUSES,
     LOW_RISK_APPLYABLE_ACTION_KINDS,
     PENDING_ACTION_STATUSES,
     RESOLVABLE_MONITOR_ACTION_KINDS,
-    schedule_review_windows,
 )
-from ..app_state_paths import machine_memory_action_state_path
 from ..state.constants import DEFAULT_PROTOCOL
 from ..utils.path import relative_path
 from ..utils.time import parse_iso_datetime
@@ -26,6 +26,7 @@ from .action_core import (
     validate_low_risk_action_targets,
 )
 from .action_state import load_machine_memory_action_state_strict, save_machine_memory_action_state
+from .paths import machine_memory_action_state_path
 
 
 def reconcile_machine_memory_actions(

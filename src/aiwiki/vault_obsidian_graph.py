@@ -170,7 +170,7 @@ def resolve_report_native_anchors(
 ) -> list[str]:
     """Resolve Obsidian-native anchors for a report (sources/judgments, never concepts)."""
     from .execution.ask import _build_graph_anchor_node_ids
-    from .memory.graph import build_machine_memory_query
+    from .memory.graph_query import build_machine_memory_query
 
     merged = list(raw_anchors) + [item for item in machine_anchors if item not in raw_anchors]
     native = native_graph_anchor_ids(merged)

@@ -11,16 +11,17 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..app_protocol import DEFAULT_PROTOCOL, action_focus_score
-from ..app_state_paths import planner_state_path
 from ..memory.action_core import (
     action_priority_rank,
     action_status_rank,
     describe_machine_memory_action,
     safe_apply_preview,
 )
+from ..planner.paths import planner_state_path
 from ..planner.state import load_planner_state
+from ..protocol.focus_scoring import action_focus_score
 from ..render.paths import execution_bundle_path, execution_proposal_path
+from ..state.constants import DEFAULT_PROTOCOL
 from ..utils.markdown import parse_frontmatter
 from ..utils.path import relative_path
 from ..utils.time import utc_now

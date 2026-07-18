@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from ..app_state_paths import cache_db_path, cache_status_path
+from ..cache.paths import cache_db_path, cache_status_path
 from ..utils.path import relative_path
 from .io import load_json_document, save_json_document
 

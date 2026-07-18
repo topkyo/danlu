@@ -24,6 +24,7 @@ Targets:
   smoke                 Run lightweight aiwiki CLI smoke.
   python-static         Run Python lint and bytecode compile checks.
   acceptance            Run acceptance replay checks.
+  llm-integration       Run LLM integration tests (30 tests, mock backends).
   cli-smoke             Check aiwiki CLI startup/help.
   product-shell-static  Run Product Shell JavaScript syntax checks.
   all                   Run static + smoke + acceptance (no pytest, no coverage). Default.
@@ -62,6 +63,10 @@ verify_python_static() {
 
 verify_acceptance() {
   bash scripts/run_acceptance.sh
+}
+
+verify_llm_integration() {
+  "$PYTHON" -m pytest tests/test_llm_integration.py -q
 }
 
 verify_cli_smoke() {
@@ -139,6 +144,10 @@ case "$TARGET" in
     verify_acceptance
     exit 0
     ;;
+  llm-integration)
+    verify_llm_integration
+    exit 0
+    ;;
   cli-smoke)
     verify_cli_smoke
     exit 0
@@ -162,3 +171,4 @@ esac
 
 verify_python_static
 verify_acceptance
+verify_llm_integration

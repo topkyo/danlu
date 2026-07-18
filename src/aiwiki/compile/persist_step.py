@@ -4,29 +4,32 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..app_cache import sync_query_cache
-from ..app_state_paths import (
+from ..cache.paths import cache_status_path
+from ..cache.sync import sync_query_cache
+from ..content.io import manifest_change_summary
+from ..content.paths import (
     active_corpora_state_path,
     archive_candidates_state_path,
-    cache_status_path,
-    compile_state_path,
-    concept_build_state_path,
-    domain_pilot_build_state_path,
+    material_routing_state_path,
+)
+from ..lifecycle.paths import (
     knowledge_lifecycle_override_state_path,
     knowledge_lifecycle_state_path,
-    machine_memory_build_state_path,
-    material_routing_state_path,
-    material_state_path,
-    output_pack_build_state_path,
-    ranking_build_state_path,
 )
-from ..content.io import manifest_change_summary
 from ..render.compile_status import render_compile_status
 from ..render.paths import append_wiki_log
+from ..state.paths import compile_state_path, material_state_path
 from ..utils.io import write_if_changed_ignoring_timestamps
 from ..utils.path import relative_path
 from ..vault_obsidian_graph import sync_evidence_graph_workspace
 from .context import CompileContext
+from .paths import (
+    concept_build_state_path,
+    domain_pilot_build_state_path,
+    machine_memory_build_state_path,
+    output_pack_build_state_path,
+    ranking_build_state_path,
+)
 from .state import save_compile_state
 
 

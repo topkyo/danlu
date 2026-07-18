@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from ..app_protocol import page_focus_score
+from ..protocol.focus_scoring import page_focus_score
 from ..state.constants import DEFAULT_PROTOCOL
 from ..utils.time import parse_iso_datetime
 

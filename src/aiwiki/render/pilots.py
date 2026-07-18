@@ -15,14 +15,15 @@ import json
 from pathlib import Path
 from typing import Any
 
-from ..app_lifecycle import (
-    protocol_related_concept_lifecycle_summary,
-    render_knowledge_lifecycle_entry_summary,
-)
-from ..app_protocol import PROTOCOL_LIBRARY, protocol_title
 from ..compile.build import load_domain_pilot_build_state
 from ..content.archive import load_material_routing_state
-from ..lifecycle.knowledge import load_knowledge_lifecycle_state
+from ..lifecycle.knowledge import (
+    load_knowledge_lifecycle_state,
+    render_knowledge_lifecycle_entry_summary,
+)
+from ..lifecycle.protocol import protocol_related_concept_lifecycle_summary
+from ..protocol.descriptors import protocol_title
+from ..protocol.library import PROTOCOL_LIBRARY
 from ..state.constants import DEFAULT_PROTOCOL
 from ..utils.hash import sha256_bytes
 from ..utils.markdown import render_frontmatter

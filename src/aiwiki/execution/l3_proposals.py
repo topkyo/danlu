@@ -10,13 +10,13 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from ..app_execution import append_execution_receipt_history
-from ..app_protocol import ensure_layout
-from ..app_state_paths import execution_receipt_history_path, l3_proposal_state_path, runtime_history_path
 from ..autonomy_domains import classify_l3_proposal
 from ..autonomy_policy import load_policy
+from ..execution.history import append_execution_receipt_history
+from ..protocol.scaffold import ensure_layout
 from ..render.paths import append_wiki_log, execution_receipt_path, resolve_execution_receipt_path
 from ..state.io import CorruptStateError, load_json_document_strict, save_json_document
+from ..state.paths import l3_proposal_state_path
 from ..utils.hash import sha256_file
 from ..utils.io import _durable_truncate, atomic_write_bytes, atomic_write_text, runtime_write_operation
 from ..utils.markdown import render_frontmatter
@@ -26,6 +26,7 @@ from ..utils.time import utc_now
 from .alchemy import _restore_file_bytes, _snapshot_file_bytes
 from .audit_preview import AUDIT_STREAM_PATH
 from .history import append_runtime_history
+from .paths import execution_receipt_history_path, runtime_history_path
 
 STAGING_PROPOSALS_DIR = ".aiwiki/staging/proposals"
 STAGING_PROMPT_PROPOSAL_DIR = f"{STAGING_PROPOSALS_DIR}/prompt"

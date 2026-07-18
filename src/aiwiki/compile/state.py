@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..app_state_paths import compile_state_path
 from ..state.io import load_json_document, save_json_document
+from ..state.paths import compile_state_path
 
 
 def default_compile_state() -> dict[str, Any]:

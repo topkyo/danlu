@@ -1,7 +1,9 @@
-"""Machine-memory query and routing helpers split from surfaces.
+"""Machine-memory query routing helpers extracted from app_memory_query.
 
-OWNER STATUS: legacy owner. New large logic blocks should be extracted to
-`aiwiki.memory.*` rather than added here. See AGENTS.md migration policy.
+Owns the deterministic route selection / adjacency / path-finding primitives
+used by the machine-memory query pipeline. Behavioral equivalence with the
+legacy `app_memory_query` facade is preserved; the facade re-exports these
+symbols for backward compatibility.
 """
 
 from __future__ import annotations
@@ -11,18 +13,9 @@ from collections import deque
 from pathlib import Path
 from typing import Any
 
-from .app_protocol import protocol_query_route_config
-from .app_state_paths import query_route_telemetry_path
-from .content.io import preserved_section
-from .execution.history import load_runtime_history
-from .planner.state import load_query_route_telemetry, save_query_route_telemetry
-from .state.constants import DEFAULT_PROTOCOL
-from .state.io import load_json_document
-from .utils.hash import question_signature, sha256_bytes
-from .utils.markdown import parse_frontmatter
-from .utils.path import relative_path
-from .utils.text import tokenize
-from .utils.time import utc_now
+from ..protocol.runtime_config import protocol_query_route_config
+from ..state.constants import DEFAULT_PROTOCOL
+from ..utils.hash import sha256_bytes
 
 
 def fallback_query_route_config() -> dict[str, Any]:
@@ -356,124 +349,13 @@ def build_machine_memory_query_routes(
     return routes
 
 
-def record_query_route_telemetry(
-    root: Path,
-    *,
-    question: str,
-    machine_query: dict[str, Any],
-    protocol: str = DEFAULT_PROTOCOL,
-    occurred_at: str | None = None,
-) -> dict[str, Any]:
-    occurred_at = occurred_at or utc_now()
-    telemetry_state = load_query_route_telemetry(root)
-    entries = [dict(entry) for entry in telemetry_state.get("entries", []) if isinstance(entry, dict)]
-    entry = {
-        "query_signature": question_signature(question),
-        "question_preview": question.strip()[:160],
-        "occurred_at": occurred_at,
-        "protocol": protocol,
-        "selected_strategy": str(machine_query.get("selected_strategy") or ""),
-        "selection_reason": str(machine_query.get("selection_reason") or ""),
-        "matched_terms": list(machine_query.get("matched_terms", []) or [])[:8],
-        "matched_source_markers": list(machine_query.get("matched_source_markers", []) or [])[:4],
-        "matched_graph_markers": list(machine_query.get("matched_graph_markers", []) or [])[:4],
-        "route_count": len(machine_query.get("query_routes", []) or []),
-        "ranked_source_ids": list(machine_query.get("ranked_source_ids", []) or [])[:5],
-        "ranked_concept_slugs": list(machine_query.get("ranked_concept_slugs", []) or [])[:5],
-        "ranked_judgment_ids": list(machine_query.get("ranked_judgment_ids", []) or [])[:5],
-        "ranked_elixir_ids": list(machine_query.get("ranked_elixir_ids", []) or [])[:5],
-        "touched_component_ids": list(machine_query.get("touched_component_ids", []) or [])[:5],
-        "planner_next_action_id": str((machine_query.get("planner_next_action") or {}).get("action_id") or ""),
-    }
-    entries.insert(0, entry)
-    strategy_counts: dict[str, int] = {}
-    protocol_counts: dict[str, int] = {}
-    for item in entries[:24]:
-        strategy = str(item.get("selected_strategy") or "")
-        scoped_protocol = str(item.get("protocol") or DEFAULT_PROTOCOL)
-        if strategy:
-            strategy_counts[strategy] = strategy_counts.get(strategy, 0) + 1
-        if scoped_protocol:
-            protocol_counts[scoped_protocol] = protocol_counts.get(scoped_protocol, 0) + 1
-    document = {
-        "version": 1,
-        "updated_at": occurred_at,
-        "state_path": relative_path(root, query_route_telemetry_path(root)),
-        "entries": entries[:24],
-        "strategy_counts": strategy_counts,
-        "protocol_counts": protocol_counts,
-        "last_entry": entry,
-    }
-    save_query_route_telemetry(root, document)
-    return document
-
-
-def recent_execution_dry_runs(root: Path, *, limit: int = 8) -> list[dict[str, Any]]:
-    records: list[dict[str, Any]] = []
-    for event in reversed(load_runtime_history(root)):
-        if not isinstance(event, dict):
-            continue
-        event_type = str(event.get("event_type") or "")
-        if "dry-run" not in event_type:
-            continue
-        preview_path = str(event.get("preview_path") or "")
-        payload = load_json_document(root / preview_path) if preview_path else {}
-        if not isinstance(payload, dict):
-            payload = {}
-        preview = payload.get("preview") if isinstance(payload.get("preview"), dict) else {}
-        bundle = payload.get("bundle") if isinstance(payload.get("bundle"), dict) else {}
-        safe_preview = bundle.get("safe_apply_preview") if isinstance(bundle.get("safe_apply_preview"), dict) else {}
-        affected_paths = preview.get("affected_paths") if isinstance(preview.get("affected_paths"), list) else []
-        if not affected_paths and isinstance(safe_preview.get("affected_paths"), list):
-            affected_paths = safe_preview.get("affected_paths")
-        records.append(
-            {
-                "event_type": event_type,
-                "title": str(
-                    payload.get("title")
-                    or event.get("action_id")
-                    or event.get("entry_id")
-                    or event.get("slug")
-                    or event_type
-                ),
-                "occurred_at": str(event.get("occurred_at") or payload.get("generated_at") or ""),
-                "preview_path": preview_path,
-                "bundle_path": str(event.get("bundle_path") or payload.get("bundle_path") or ""),
-                "apply_mode": str(
-                    payload.get("apply_mode")
-                    or preview.get("apply_mode")
-                    or safe_preview.get("apply_mode")
-                    or event_type
-                ),
-                "affected_paths": [str(path) for path in affected_paths if isinstance(path, str) and path],
-            }
-        )
-        if len(records) >= limit:
-            break
-    return records
-
-
-def concept_page_snapshot(root: Path, slug: str) -> dict[str, Any]:
-    path = root / "wiki" / "concepts" / f"{slug}.md"
-    if not path.exists():
-        return {
-            "path": relative_path(root, path),
-            "title": slug,
-            "source_signature": "",
-            "source_pages": [],
-            "summary": "",
-            "content": "",
-        }
-    content = path.read_text(encoding="utf-8", errors="replace")
-    frontmatter = parse_frontmatter(content)
-    source_pages = frontmatter.get("source_pages", [])
-    if not isinstance(source_pages, list):
-        source_pages = []
-    return {
-        "path": relative_path(root, path),
-        "title": str(frontmatter.get("title") or path.stem),
-        "source_signature": str(frontmatter.get("source_signature") or ""),
-        "source_pages": [str(item) for item in source_pages if isinstance(item, str)],
-        "summary": preserved_section(content, "Summary", ""),
-        "content": content,
-    }
+__all__ = [
+    "build_machine_memory_adjacency",
+    "build_machine_memory_query_routes",
+    "fallback_query_route_config",
+    "machine_memory_node_metadata",
+    "ranked_machine_memory_anchor_nodes",
+    "render_machine_memory_route",
+    "select_machine_memory_query_strategy",
+    "shortest_machine_memory_path",
+]

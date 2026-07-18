@@ -77,7 +77,7 @@ def _percentile(values: list[int], pct: int) -> int | None:
 def aggregate_backend_telemetry(root: Path, *, limit: int = 100) -> dict[str, Any]:
     """Summarize recent execution and LLM receipts for operator backend usage."""
 
-    from .app_state_paths import execution_receipt_history_path
+    from .execution.paths import execution_receipt_history_path
     from .metrics_io import _receipt_json_paths
     from .state.io import load_jsonl_documents
 

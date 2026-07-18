@@ -33,21 +33,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from ..app_execution import (
-    append_execution_receipt_history,
-    build_material_archive_bundle,
-    build_material_archive_receipt,
-    write_execution_bundle_document,
-    write_execution_dry_run_document,
-)
-from ..app_protocol import ensure_layout, load_protocol_state
-from ..app_queries import wiki_requires_compile
-from ..app_state_paths import (
-    archive_candidates_state_path,
-    archive_dry_run_path,
-    material_archive_action_id,
-    material_state_path,
-)
+from ..compile.content_step import wiki_requires_compile
 from ..compile.pipeline import compile_wiki
 from ..content.archive import (
     active_material_archive_entries,
@@ -57,6 +43,16 @@ from ..content.archive import (
 )
 from ..content.io import sync_manifest_with_raw
 from ..content.material import load_material_state
+from ..content.paths import archive_candidates_state_path
+from ..execution.history import append_execution_receipt_history
+from ..execution.receipts import (
+    build_material_archive_bundle,
+    build_material_archive_receipt,
+    write_execution_bundle_document,
+    write_execution_dry_run_document,
+)
+from ..protocol.scaffold import ensure_layout
+from ..protocol.state import load_protocol_state
 from ..render.paths import (
     append_wiki_log,
     execution_bundle_path,
@@ -65,9 +61,11 @@ from ..render.paths import (
 from ..state.constants import DEFAULT_PROTOCOL
 from ..state.io import load_json_document_strict
 from ..state.manifest import load_manifest
+from ..state.paths import material_state_path
 from ..utils.io import atomic_write_text, runtime_write_operation
 from ..utils.path import relative_path
 from .history import append_runtime_history
+from .paths import archive_dry_run_path, material_archive_action_id
 
 logger = logging.getLogger(__name__)
 

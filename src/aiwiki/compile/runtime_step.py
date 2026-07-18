@@ -7,24 +7,6 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from ..app_compile_ops import render_protocols_dashboard
-from ..app_lifecycle import build_knowledge_lifecycle_document
-from ..app_protocol import DEFAULT_DASHBOARD_FILES, MANAGED_DASHBOARD_TEMPLATE_FILES
-from ..app_routing import build_material_state_documents
-from ..app_state_paths import (
-    archive_candidates_state_path,
-    knowledge_lifecycle_state_path,
-    machine_memory_build_state_path,
-    machine_memory_graph_html_path,
-    machine_memory_graph_path,
-    machine_memory_history_path,
-    machine_memory_state_path,
-    material_routing_state_path,
-    material_state_path,
-    planner_state_path,
-    query_route_telemetry_path,
-    ranking_build_state_path,
-)
 from ..content.concepts import build_concept_quality
 from ..content.io import (
     collect_output_density_artifacts,
@@ -32,6 +14,8 @@ from ..content.io import (
     entry_ids_from_paths,
     entry_lookup_maps,
 )
+from ..content.material import build_material_state_documents
+from ..content.paths import archive_candidates_state_path, material_routing_state_path
 from ..execution.history import append_runtime_history
 from ..execution.policy import (
     append_execution_policy_decisions,
@@ -41,6 +25,8 @@ from ..execution.repair_plan import (
     build_machine_memory_repair_plan as build_machine_memory_repair_plan_memory,
 )
 from ..lifecycle.aging import collect_aging_signals
+from ..lifecycle.knowledge import build_knowledge_lifecycle_document
+from ..lifecycle.paths import knowledge_lifecycle_state_path
 from ..lifecycle.status import curated_page_transition_profile
 from ..memory.actions import reconcile_machine_memory_actions
 from ..memory.build_plan import plan_machine_memory_build
@@ -53,17 +39,23 @@ from ..memory.execution_surfaces import (
     build_execution_audit_snapshot,
     reconcile_concept_rewrite_proposals,
 )
-from ..memory.graph import (
+from ..memory.graph_anchors import collect_report_anchors
+from ..memory.graph_builder import build_machine_memory_graph
+from ..memory.graph_render import render_machine_memory_graph_html
+from ..memory.graph_transition import (
     append_machine_memory_history,
-    collect_report_anchors,
-    render_machine_memory_graph_html,
     summarize_machine_memory_transition,
 )
-from ..memory.graph_builder import build_machine_memory_graph
 from ..memory.health import build_machine_memory_health
 from ..memory.judgment_assets import attach_judgment_assets_to_machine_memory
+from ..memory.paths import machine_memory_history_path
 from ..memory.status import render_machine_memory_index
+from ..planner.paths import planner_state_path, query_route_telemetry_path
+from ..protocol.templates import DEFAULT_DASHBOARD_FILES, MANAGED_DASHBOARD_TEMPLATE_FILES
+from ..render.paths import machine_memory_graph_html_path, machine_memory_graph_path
+from ..render.protocols import render_protocols_dashboard
 from ..state.constants import DEFAULT_PROTOCOL
+from ..state.paths import machine_memory_state_path, material_state_path
 from ..utils.io import write_json_document_if_changed_ignoring_generated_timestamps
 from ..utils.markdown import parse_frontmatter, strip_frontmatter
 from ..utils.path import relative_path
@@ -71,6 +63,7 @@ from ..utils.text import tokenize
 from ..utils.time import parse_iso_datetime
 from .build import default_machine_memory_build_state, default_ranking_build_state
 from .context import CompileContext
+from .paths import machine_memory_build_state_path, ranking_build_state_path
 
 logger = logging.getLogger(__name__)
 

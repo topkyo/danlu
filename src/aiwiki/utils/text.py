@@ -91,6 +91,46 @@ STOP_WORDS = {
 }
 
 
+AUTO_ASK_PATH_MARKER = "本次投喂材料路径："
+AUTO_ASK_QUESTION_MARKER = "用户问题："
+AUTO_ASK_INLINE_PATH_MARKER = "材料路径供系统路由使用："
+AUTO_ASK_INLINE_HINT_PREFIX = "请优先使用本次投喂材料回答"
+
+
+def human_query_title(question: str) -> str:
+    """Return the user-facing title for an ask artifact.
+
+    Product Shell auto-ask prompts include repo paths as routing hints.  Those
+    hints are useful to the runtime but should not leak into report headings,
+    Obsidian titles, or output filenames.
+    """
+
+    text = str(question or "").strip()
+    if not text:
+        return "未命名问题"
+    marker_index = text.rfind(AUTO_ASK_QUESTION_MARKER)
+    if marker_index >= 0:
+        candidate = text[marker_index + len(AUTO_ASK_QUESTION_MARKER) :].strip()
+        if candidate:
+            text = candidate
+    visible_lines: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if AUTO_ASK_INLINE_PATH_MARKER in stripped:
+            before_marker = stripped.split(AUTO_ASK_INLINE_PATH_MARKER, 1)[0].strip()
+            before_marker = before_marker.removesuffix("；").removesuffix(";").strip()
+            if before_marker and before_marker != AUTO_ASK_INLINE_HINT_PREFIX:
+                visible_lines.append(before_marker)
+            continue
+        if stripped == AUTO_ASK_INLINE_HINT_PREFIX or stripped.startswith(f"{AUTO_ASK_INLINE_HINT_PREFIX}；"):
+            continue
+        visible_lines.append(line)
+    text = "\n".join(visible_lines).strip()
+    text = re.sub(r"(?m)^\s*-\s*(?:raw|wiki|output|\.aiwiki)/\S+\s*$", "", text).strip()
+    text = re.sub(r"\s+", " ", text).strip()
+    return text or "未命名问题"
+
+
 def slugify(value: str) -> str:
     cleaned = re.sub(r"[^a-zA-Z0-9]+", "-", value.strip().lower()).strip("-")
     return cleaned or "item"

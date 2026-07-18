@@ -8,9 +8,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ..app_protocol import AUTO_PROMOTION_FORMATS, ensure_layout
 from ..execution.history import append_runtime_history
 from ..input_router import is_obsidian_open_link
+from ..protocol.runtime_config import AUTO_PROMOTION_FORMATS
+from ..protocol.scaffold import ensure_layout
 from ..state.constants import DEFAULT_PROTOCOL
 from ..state.manifest import load_manifest
 from ..utils.hash import compiled_source_sha, sha256_bytes, sha256_file
@@ -117,7 +118,7 @@ def sync_manifest_with_raw(root: Path) -> dict[str, Any]:
         known_paths.add(stored_path)
         changed = True
     if changed:
-        from ..app_protocol import save_manifest
+        from ..state.manifest import save_manifest
 
         save_manifest(root, manifest)
     return manifest
@@ -186,7 +187,7 @@ def ingest_source(root: Path, source: str, title: str | None = None) -> dict[str
         "imported_at": imported_at,
     }
     manifest["entries"].append(entry)
-    from ..app_protocol import save_manifest
+    from ..state.manifest import save_manifest
 
     save_manifest(root, manifest)
     append_runtime_history(
@@ -373,7 +374,7 @@ def render_curated_asset_sections(
     section_overrides: dict[str, list[str]] | None = None,
 ) -> list[str]:
     sections: list[str] = []
-    from ..app_protocol import CURATED_ASSET_SECTION_ORDER
+    from ..protocol.templates import CURATED_ASSET_SECTION_ORDER
 
     for heading in CURATED_ASSET_SECTION_ORDER:
         if heading == "Review History":
@@ -820,4 +821,43 @@ def load_source_page_context(root: Path, relative: str) -> dict[str, str]:
         "summary": summary,
         "status": "placeholder" if summary == "- Pending LLM summary." else "ready",
         "last_compiled_at": str(frontmatter.get("last_compiled_at") or ""),
+    }
+
+
+def source_ids_for_citations(root: Path, entries: list[dict[str, Any]], markdown: str) -> list[str]:
+    _by_id, path_to_entry_id = entry_lookup_maps(entries)
+    return entry_ids_from_paths(path_to_entry_id, extract_provenance_paths(root, markdown))
+
+
+def scan_material_reference_state(
+    root: Path,
+    entries: list[dict[str, Any]],
+) -> dict[str, Any]:
+    _by_id, path_to_entry_id = entry_lookup_maps(entries)
+    citation_count_by_entry: dict[str, int] = {}
+    supports_judgment_ids: dict[str, set[str]] = {}
+    active_judgment_ids: set[str] = set()
+
+    for relative in ("wiki/derived", "wiki/decisions", "wiki/judgments"):
+        directory = root / relative
+        if not directory.exists():
+            continue
+        for path in sorted(directory.glob("*.md")):
+            content = path.read_text(encoding="utf-8", errors="replace")
+            cited_entry_ids = entry_ids_from_paths(path_to_entry_id, extract_provenance_paths(root, content))
+            for entry_id in cited_entry_ids:
+                citation_count_by_entry[entry_id] = citation_count_by_entry.get(entry_id, 0) + 1
+            if relative != "wiki/judgments":
+                continue
+            frontmatter = parse_frontmatter(content)
+            judgment_id = str(frontmatter.get("id") or path.stem)
+            if str(frontmatter.get("status") or "") != "rejected":
+                active_judgment_ids.add(judgment_id)
+            for entry_id in cited_entry_ids:
+                supports_judgment_ids.setdefault(entry_id, set()).add(judgment_id)
+
+    return {
+        "citation_count_by_entry": citation_count_by_entry,
+        "supports_judgment_ids": {entry_id: sorted(ids) for entry_id, ids in supports_judgment_ids.items()},
+        "active_judgment_ids": sorted(active_judgment_ids),
     }

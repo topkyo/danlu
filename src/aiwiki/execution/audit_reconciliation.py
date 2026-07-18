@@ -13,12 +13,12 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-from ..app_state_paths import execution_receipt_history_path
 from ..utils.hash import sha256_bytes
 from ..utils.io import runtime_write_lock
 from ..utils.path import relative_path
 from ..utils.time import utc_now
 from .audit_preview import AUDIT_STREAM_PATH, _existing_audit_event_ids, append_audit
+from .paths import execution_receipt_history_path
 
 RECONCILIATION_SOURCE_STREAM = "audit_reconciliation"
 RECONCILIATION_EVENT_TYPE = "receipt_false_success_detected"

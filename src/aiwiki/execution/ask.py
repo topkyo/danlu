@@ -28,47 +28,37 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..app_lifecycle import (
-    curated_page_template,
-    default_curated_status,
-    refresh_knowledge_lifecycle_state,
-)
-from ..app_memory_query import record_query_route_telemetry
-from ..app_protocol import (
-    ensure_layout,
-    load_protocol_state,
-    protocol_paths,
-    resolve_protocol,
-    schedule_review_windows,
-)
-from ..app_queries import (
-    build_ask_used_refs,
-    compound_rank_boosts,
-    human_query_title,
-    rank_sources,
-    ranked_compound_page_paths,
-    render_report,
-    wiki_requires_compile,
-)
-from ..app_routing import (
+from ..app_shell import build_shell_summary, write_shell_summary
+from ..compile import compile_wiki
+from ..compile.content_step import wiki_requires_compile
+from ..compile.ranking import compound_rank_boosts, rank_sources, ranked_compound_page_paths
+from ..content.archive import active_archived_material_ids, load_archive_candidates_state, load_material_routing_state
+from ..content.io import sync_manifest_with_raw
+from ..content.material import (
     active_corpus_bridge_evidence_ids,
+    load_active_corpora_state,
+    load_material_state,
     refresh_material_state,
     upsert_active_corpus,
 )
-from ..app_shell import build_shell_summary, write_shell_summary
-from ..app_state_paths import output_candidates_state_path
-from ..compile import compile_wiki
-from ..content.archive import active_archived_material_ids, load_archive_candidates_state, load_material_routing_state
-from ..content.io import sync_manifest_with_raw
-from ..content.material import load_active_corpora_state, load_material_state
 from ..input_router import is_obsidian_open_link
-from ..memory.graph import build_machine_memory_query
+from ..lifecycle.knowledge import refresh_knowledge_lifecycle_state
+from ..lifecycle.status import default_curated_status
+from ..lifecycle.templates import curated_page_template
+from ..memory.graph_query import build_machine_memory_query
 from ..memory.state import load_machine_memory
 from ..notify import notify_report_generated
+from ..planner.state import record_query_route_telemetry
+from ..protocol.descriptors import protocol_paths
+from ..protocol.review_windows import schedule_review_windows
+from ..protocol.scaffold import ensure_layout
+from ..protocol.state import load_protocol_state, resolve_protocol
 from ..render.paths import append_wiki_log
+from ..render.views import build_ask_used_refs, render_report
 from ..state.manifest import load_manifest
+from ..state.paths import output_candidates_state_path
 from ..utils.hash import question_signature
-from ..utils.io import _restore_file_bytes, _snapshot_file_bytes, runtime_write_operation
+from ..utils.io import _restore_file_bytes, _snapshot_file_bytes, atomic_write_text, runtime_write_operation
 from ..utils.markdown import (
     build_citation_snapshots,
     extract_provenance_paths,
@@ -78,7 +68,7 @@ from ..utils.markdown import (
     upsert_markdown_section,
 )
 from ..utils.path import next_available_stem, relative_path
-from ..utils.text import slugify
+from ..utils.text import human_query_title, slugify
 from .candidates import load_output_candidates_state, upsert_output_candidate
 from .history import append_runtime_history, load_runtime_history
 from .receipts import write_execution_receipt
@@ -364,7 +354,7 @@ def _append_graph_anchor_section(destination: Path, *, anchors: list[str], memor
             lines.append(f"- `{anchor}`")
     body = destination.read_text(encoding="utf-8", errors="replace")
     body = upsert_markdown_section(body, "关系图谱锚点", "\n".join(lines))
-    destination.write_text(body.rstrip() + "\n", encoding="utf-8")
+    atomic_write_text(destination, body.rstrip() + "\n")
 
 
 def apply_graph_anchors_to_artifact(destination: Path, *, anchors: list[str], memory: dict[str, Any]) -> None:
@@ -470,7 +460,7 @@ def ask_question(
     )
 
     destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_text(content, encoding="utf-8")
+    atomic_write_text(destination, content)
     artifact_ref = relative_path(root, destination)
     bridge_evidence_ids = active_corpus_bridge_evidence_ids(
         machine_query,
@@ -778,8 +768,8 @@ def file_back(
             root=root,
         )
     stripped = strip_frontmatter(original).strip()
-    from aiwiki.app_protocol import protocol_judgment_extra_fields
     from aiwiki.lifecycle.templates import curated_frontmatter_hints
+    from aiwiki.protocol.library import protocol_judgment_extra_fields
 
     frontmatter_payload: dict[str, Any] = {
         "id": entry_id,
@@ -826,13 +816,15 @@ def file_back(
     destination_snapshot = _snapshot_file_bytes(destination)
     output_candidates_snapshot = _snapshot_file_bytes(output_candidates_state_path(root))
     wiki_log_snapshot = _snapshot_file_bytes(root / "wiki" / "indexes" / "log.md")
-    destination.write_text(payload, encoding="utf-8")
+    atomic_write_text(destination, payload)
     try:
         candidate_state = load_output_candidates_state(root)
         for candidate in candidate_state.get("candidates", []):
             if candidate.get("artifact_ref") == artifact_ref:
-                # Keep wiki/derived/ as the alchemy provenance anchor. Judgment/decision
-                # file-backs are parallel review sinks and must not overwrite promoted_to.
+                # wiki/judgments/ is the W8-sanctioned alchemy provenance anchor
+                # (promote_candidate via wiki/derived was removed). Judgment
+                # file-backs set promoted_to to wiki/judgments/; alchemy accepts
+                # both wiki/derived/ (legacy) and wiki/judgments/ as elixir sources.
                 promoted_to = relative_path(root, destination)
                 if kind in {"judgment", "decision"}:
                     existing = str(candidate.get("promoted_to") or "").strip()

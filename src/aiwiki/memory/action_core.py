@@ -12,13 +12,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ..app_protocol import (
-    LOW_RISK_APPLYABLE_ACTION_KINDS,
-    RESOLVABLE_MONITOR_ACTION_KINDS,
-    action_focus_score,
-    load_protocol_state,
-)
-from ..app_state_paths import manual_link_state_path
 from ..content.concepts import (
     concept_source_pages,
     normalize_concept_hardness,
@@ -30,6 +23,9 @@ from ..content.io import (
 )
 from ..content.memory import concept_summary_is_placeholder
 from ..execution.policy import execution_band_label, execution_policy_profile
+from ..protocol.focus_scoring import action_focus_score
+from ..protocol.runtime_config import LOW_RISK_APPLYABLE_ACTION_KINDS, RESOLVABLE_MONITOR_ACTION_KINDS
+from ..protocol.state import load_protocol_state
 from ..render.paths import (
     execution_bundle_path,
     execution_bundles_dir,
@@ -41,6 +37,7 @@ from ..utils.markdown import build_citation_snapshots, parse_frontmatter
 from ..utils.path import relative_path
 from ..utils.text import slugify
 from .action_state import load_machine_memory_action_state
+from .paths import manual_link_state_path
 
 
 def machine_memory_source_input_signature(
@@ -84,7 +81,8 @@ def machine_memory_concept_input_signature(root: Path, record: dict[str, Any]) -
 
 
 def collect_machine_memory_actions(root: Path) -> list[dict[str, Any]]:
-    from ..app_lifecycle import action_needs_review, evaluate_page_aging
+    from ..lifecycle.aging import evaluate_page_aging
+    from ..lifecycle.status import action_needs_review
 
     state = load_machine_memory_action_state(root)
     actions = [dict(action) for action in state.get("actions", []) if isinstance(action, dict)]
@@ -238,7 +236,7 @@ def validate_low_risk_action_targets(root: Path, action: dict[str, Any]) -> tupl
 
 
 def describe_machine_memory_action(action: dict[str, Any], *, root: Path | None = None) -> dict[str, Any]:
-    from ..app_protocol import PENDING_ACTION_STATUSES
+    from ..protocol.runtime_config import PENDING_ACTION_STATUSES
 
     kind = str(action.get("kind") or "")
     status = str(action.get("status") or "proposed")
@@ -334,7 +332,7 @@ def remove_stale_generated_execution_bundle_files(root: Path, active_action_ids:
             continue
         path.unlink()
         removed += 1
-    from ..app_execution import rotate_execution_dry_runs
+    from ..execution.receipts import rotate_execution_dry_runs
 
     rotate_execution_dry_runs(directory)
     return removed

@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
+
+from ..state.constants import DEFAULT_PROTOCOL
 
 PROTOCOL_ELIXIR_REVIEW_DAYS: dict[str, int] = {
     "general": 90,
@@ -300,3 +303,65 @@ JUDGMENT_QUERY_MARKERS = (
     "走向",
     "可能性",
 )
+
+
+def protocol_output_guidance(root: Path, protocol: str, output_format: str) -> tuple[str, ...]:
+    from .runtime_schema import default_protocol_runtime_schema, load_protocol_runtime_schema
+
+    default_guidance = default_protocol_runtime_schema(DEFAULT_PROTOCOL).get("output_guidance", {})
+    protocol_guidance = load_protocol_runtime_schema(root, protocol).get("output_guidance", default_guidance)
+    if not isinstance(default_guidance, dict):
+        default_guidance = {}
+    if not isinstance(protocol_guidance, dict):
+        protocol_guidance = default_guidance
+    return tuple(protocol_guidance.get(output_format, default_guidance.get(output_format, ())))
+
+
+def protocol_execution_policy_rule(root: Path, protocol: str, action_kind: str) -> dict[str, Any]:
+    from .runtime_schema import default_protocol_runtime_schema, load_protocol_runtime_schema
+
+    default_rules = (
+        default_protocol_runtime_schema(DEFAULT_PROTOCOL).get("execution_policy", {}).get("accepted_rules", {})
+    )
+    protocol_rules = load_protocol_runtime_schema(root, protocol).get("execution_policy", {}).get("accepted_rules", {})
+    rule = protocol_rules.get(action_kind) or default_rules.get(action_kind) or {}
+    if not isinstance(rule, dict):
+        return {}
+    return {
+        "decision": str(rule.get("decision") or "review"),
+        "execution_policy": str(rule.get("execution_policy") or "manual-repair"),
+        "execution_band": str(rule.get("execution_band") or "manual-repair"),
+        "capabilities": [str(item) for item in rule.get("capabilities", []) if isinstance(item, str) and item],
+        "policy_summary": str(rule.get("policy_summary") or ""),
+    }
+
+
+def protocol_query_route_config(root: Path, protocol: str) -> dict[str, Any]:
+    from .runtime_schema import default_protocol_runtime_schema, load_protocol_runtime_schema
+
+    default_config = default_protocol_runtime_schema(DEFAULT_PROTOCOL).get("query_routes", {})
+    protocol_config = load_protocol_runtime_schema(root, protocol).get("query_routes", default_config)
+    if not isinstance(default_config, dict):
+        default_config = {}
+    if not isinstance(protocol_config, dict):
+        protocol_config = default_config
+    return {
+        "default_strategy": str(
+            protocol_config.get("default_strategy") or default_config.get("default_strategy") or "concept-first"
+        ),
+        "strategy_order": [
+            str(item)
+            for item in protocol_config.get("strategy_order", default_config.get("strategy_order", []))
+            if isinstance(item, str) and item
+        ],
+        "source_markers": [
+            str(item)
+            for item in protocol_config.get("source_markers", default_config.get("source_markers", []))
+            if isinstance(item, str) and item
+        ],
+        "graph_markers": [
+            str(item)
+            for item in protocol_config.get("graph_markers", default_config.get("graph_markers", []))
+            if isinstance(item, str) and item
+        ],
+    }

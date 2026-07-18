@@ -10,7 +10,6 @@ from pathlib import Path
 
 from ..app_linting.core import lint_wiki
 from ..app_shell import build_shell_summary, rewrite_followup_payload_for_paths
-from ..app_vault import bootstrap_new_vault, sync_product_shell_plugin
 from ..compile.pipeline import compile_wiki
 from ..drop import drop_image, drop_note, drop_pdf, drop_repo, drop_url
 from ..execution.ask import (
@@ -33,6 +32,8 @@ from ..runner.alchemy import (
 from ..runner.automation import watch_inbox
 from ..runner.clients import llm_probe, llm_status
 from ..runner.workflows import run_ask, run_ask_resume, run_ask_submit, run_nightly
+from ..vault.bootstrap import bootstrap_new_vault
+from ..vault.plugin import sync_product_shell_plugin
 from .dispatch_helpers import (
     _emit_legacy_drop_deprecation_warning,
     _flatten_model_retry_args,

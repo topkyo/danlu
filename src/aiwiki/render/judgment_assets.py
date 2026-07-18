@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..app_protocol import protocol_title
+from ..protocol.descriptors import protocol_title
 from ..state.constants import DEFAULT_PROTOCOL
 from ..utils.markdown import parse_frontmatter
 from .views import judgment_asset_summary, render_curated_page_summary

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from .. import app_memory_query as _memory_query
 from ..state.constants import DEFAULT_PROTOCOL
+from .query_routes import build_machine_memory_adjacency as _build_adjacency
 
 
 def build_machine_memory_health(memory: dict[str, Any]) -> dict[str, Any]:
@@ -91,7 +91,7 @@ def build_machine_memory_health(memory: dict[str, Any]) -> dict[str, Any]:
     ]
     hub_sources.sort(key=lambda item: (-item["concept_count"], item["title"].lower()))
 
-    adjacency = _memory_query.build_machine_memory_adjacency(memory)
+    adjacency = _build_adjacency(memory)
 
     visited: set[str] = set()
     component_sizes: list[int] = []

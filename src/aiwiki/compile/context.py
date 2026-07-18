@@ -6,11 +6,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ..app_protocol import ensure_layout, load_protocol_state
-from ..app_state_paths import machine_memory_state_path
 from ..content.io import sync_manifest_with_raw
+from ..protocol.scaffold import ensure_layout
+from ..protocol.state import load_protocol_state
 from ..state.io import load_json_document_strict
 from ..state.manifest import load_manifest
+from ..state.paths import machine_memory_state_path
 from ..utils.io import (
     write_if_changed_ignoring_timestamps,
     write_json_document_if_changed_ignoring_generated_timestamps,

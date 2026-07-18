@@ -35,24 +35,26 @@ import json
 from pathlib import Path
 from typing import Any
 
-from ..app_lifecycle import refresh_knowledge_lifecycle_state
-from ..app_protocol import ensure_layout
-from ..app_state_paths import (
-    execution_receipt_history_path,
-    knowledge_lifecycle_override_state_path,
-    knowledge_lifecycle_state_path,
-    runtime_history_path,
-)
 from ..content.io import sync_manifest_with_raw
 from ..content.material import load_active_corpora_state
-from ..lifecycle.knowledge import ensure_knowledge_lifecycle_override_state, save_knowledge_lifecycle_override_state
+from ..lifecycle.knowledge import (
+    ensure_knowledge_lifecycle_override_state,
+    refresh_knowledge_lifecycle_state,
+    save_knowledge_lifecycle_override_state,
+)
+from ..lifecycle.paths import (
+    knowledge_lifecycle_override_state_path,
+    knowledge_lifecycle_state_path,
+)
 from ..memory.state import load_machine_memory
+from ..protocol.scaffold import ensure_layout
 from ..render.paths import append_wiki_log
 from ..utils.hash import sha256_bytes
 from ..utils.io import _restore_snapshots, _snapshot_file_bytes, runtime_write_operation
 from ..utils.path import relative_path
 from .audit_preview import AUDIT_STREAM_PATH
 from .history import append_runtime_history
+from .paths import execution_receipt_history_path, runtime_history_path
 from .receipts import write_execution_receipt
 
 

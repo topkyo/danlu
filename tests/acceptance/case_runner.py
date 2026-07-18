@@ -81,12 +81,12 @@ def _copy_case_and_fix_clock_from(  # pragma: no cover - exercised by explicit p
     # host-env sensitive — clear it so the kill switch never silently skews goldens.
     monkeypatch.delenv("AIWIKI_DISABLE_AUTOMATION", raising=False)
     monkeypatch.setattr("aiwiki.runner.receipts.datetime", _FixedDateTime)
-    monkeypatch.setattr("aiwiki.app_execution.datetime", _FixedDateTime)
+    monkeypatch.setattr("aiwiki.execution.receipts.datetime", _FixedDateTime)
     monkeypatch.setattr("aiwiki.execution.alchemy.datetime", _FixedDateTime)
     monkeypatch.setattr("aiwiki.execution.audit_preview.datetime", _FixedDateTime)
     monkeypatch.setattr("aiwiki.memory.action_core.datetime", _FixedDateTime)
     monkeypatch.setattr("aiwiki.app_linting.datetime", _FixedDateTime)
-    monkeypatch.setattr("aiwiki.app_queries.datetime", _FixedDateTime)
+    monkeypatch.setattr("aiwiki.utils.text.datetime", _FixedDateTime)
     uuids = itertools.count(1)
     monkeypatch.setattr("aiwiki.signals.collector.uuid.uuid4", lambda: uuid.UUID(int=next(uuids)))
     return case, vault

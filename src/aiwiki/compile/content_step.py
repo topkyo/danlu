@@ -3,30 +3,97 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
+from typing import Any
 
-from ..app_lifecycle import collect_curated_pages
-from ..app_queries import concept_page_requires_compile, source_page_requires_compile
-from ..app_state_paths import concept_build_state_path, judgment_assets_path
 from ..content.concepts import (
     build_concept_records,
     concept_render_signature,
+    concept_source_pages,
     render_concept_page,
     render_concepts_index,
     render_sources_index,
 )
 from ..content.io import render_source_page_with_state
+from ..lifecycle.status import collect_curated_pages
 from ..render.judgment_assets import render_judgment_assets
-from ..render.paths import append_wiki_log, ensure_wiki_log, remove_stale_generated_concept_pages_detailed
+from ..render.paths import (
+    append_wiki_log,
+    ensure_wiki_log,
+    judgment_assets_path,
+    remove_stale_generated_concept_pages_detailed,
+)
 from ..render.views import (
     render_curated_index,
     render_master_index,
 )
+from ..utils.hash import compiled_source_sha
 from ..utils.io import write_if_changed, write_json_document_if_changed_ignoring_generated_timestamps
-from ..utils.markdown import read_text_preview
+from ..utils.markdown import parse_frontmatter, read_text_preview
 from .build import default_concept_build_state
 from .context import CompileContext
+from .paths import concept_build_state_path
 
 logger = logging.getLogger(__name__)
+
+
+def source_page_is_stale(root: Path, entry: dict[str, Any]) -> bool:
+    page = root / "wiki" / "sources" / f"{entry['id']}.md"
+    if not page.exists():
+        return True
+    return compiled_source_sha(page.read_text(encoding="utf-8", errors="replace")) != entry["sha256"]
+
+
+def source_page_requires_compile(root: Path, entry: dict[str, Any], concepts: list[str]) -> bool:
+    page = root / "wiki" / "sources" / f"{entry['id']}.md"
+    if not page.exists():
+        return True
+    content = page.read_text(encoding="utf-8", errors="replace")
+    if compiled_source_sha(content) != entry["sha256"]:
+        return True
+    frontmatter = parse_frontmatter(content)
+    if str(frontmatter.get("source_updated_at") or "") != str(
+        entry.get("updated_at") or entry.get("imported_at") or ""
+    ):
+        return True
+    existing_concepts = frontmatter.get("concepts", [])
+    if not isinstance(existing_concepts, list):
+        existing_concepts = []
+    normalized_existing = [str(label) for label in existing_concepts if str(label)]
+    normalized_target = [str(label) for label in concepts if str(label)]
+    return normalized_existing != normalized_target
+
+
+def concept_page_requires_compile(root: Path, record: dict[str, Any]) -> bool:
+    page = root / "wiki" / "concepts" / f"{record['slug']}.md"
+    if not page.exists():
+        return True
+    content = page.read_text(encoding="utf-8", errors="replace")
+    frontmatter = parse_frontmatter(content)
+    existing_source_pages = frontmatter.get("source_pages", [])
+    if not isinstance(existing_source_pages, list):
+        existing_source_pages = []
+    normalized_existing = [str(path) for path in existing_source_pages if str(path)]
+    normalized_target = concept_source_pages(record)
+    if normalized_existing != normalized_target:
+        return True
+    if str(frontmatter.get("source_signature") or "") != record["source_signature"]:
+        return True
+    render_signature = str(record.get("render_signature") or concept_render_signature(root, record))
+    return str(frontmatter.get("render_signature") or "") != render_signature
+
+
+def wiki_requires_compile(root: Path, entries: list[dict[str, Any]]) -> bool:
+    if not entries:
+        return False
+    if not (root / "wiki" / "indexes" / "index.md").exists():
+        return True
+    if not (root / "wiki" / "indexes" / "review-queue.md").exists():
+        return True
+    if any(source_page_is_stale(root, entry) for entry in entries):
+        return True
+    concept_dir = root / "wiki" / "concepts"
+    return not any(concept_dir.glob("*.md"))
 
 
 def compile_content_phase(context: CompileContext) -> None:

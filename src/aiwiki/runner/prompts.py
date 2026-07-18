@@ -7,10 +7,11 @@ import re
 from pathlib import Path
 from typing import Any
 
-from aiwiki.app_protocol import CONCEPT_HARDNESS_LEVELS, load_protocol_state
 from aiwiki.config import LLMConfig
 from aiwiki.content.io import preserved_section
 from aiwiki.content.memory import concept_summary_is_placeholder
+from aiwiki.protocol.runtime_config import CONCEPT_HARDNESS_LEVELS
+from aiwiki.protocol.state import load_protocol_state
 from aiwiki.runner.interfaces import SupportsComplete
 from aiwiki.utils.markdown import (
     TEXT_EXTENSIONS,

@@ -31,21 +31,17 @@ import re
 from pathlib import Path
 from typing import Any
 
-from ..app_execution import write_execution_dry_run_document
-from ..app_lifecycle import rewrite_proposal_needs_review
-from ..app_memory_query import concept_page_snapshot
-from ..app_protocol import REWRITE_PROPOSAL_STATUSES, ensure_layout
-from ..app_state_paths import (
-    concept_rewrite_state_path,
-    execution_receipt_history_path,
-    rewrite_dry_run_path,
-    runtime_history_path,
-)
 from ..compile.pipeline import compile_wiki
+from ..content.concepts import concept_page_snapshot
 from ..content.io import preserved_section
 from ..content.rewrite import load_concept_rewrite_state, save_concept_rewrite_state
+from ..execution.receipts import write_execution_dry_run_document
+from ..lifecycle.status import rewrite_proposal_needs_review
 from ..memory.execution_surfaces import concept_rewrite_proposal_digest
+from ..memory.paths import concept_rewrite_state_path
 from ..memory.state import load_machine_memory
+from ..protocol.runtime_config import REWRITE_PROPOSAL_STATUSES
+from ..protocol.scaffold import ensure_layout
 from ..render.paths import append_wiki_log
 from ..utils.hash import sha256_bytes
 from ..utils.io import _restore_snapshots, _snapshot_file_bytes, atomic_write_text, runtime_write_operation
@@ -53,6 +49,11 @@ from ..utils.markdown import parse_frontmatter
 from ..utils.path import relative_path
 from .audit_preview import AUDIT_STREAM_PATH
 from .history import append_runtime_history
+from .paths import (
+    execution_receipt_history_path,
+    rewrite_dry_run_path,
+    runtime_history_path,
+)
 from .receipts import write_execution_receipt
 from .repair_plan import (
     _validate_rewrite_candidate_markdown,

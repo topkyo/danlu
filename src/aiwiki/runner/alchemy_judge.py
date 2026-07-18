@@ -6,10 +6,9 @@ import json
 from pathlib import Path
 from typing import Any, Callable
 
-from aiwiki.app_execution import append_execution_receipt_history
-from aiwiki.app_state_paths import execution_receipt_history_path
-from aiwiki.execution.history import append_runtime_history
+from aiwiki.execution.history import append_execution_receipt_history, append_runtime_history
 from aiwiki.execution.l3_proposals import STAGING_JUDGE_PROPOSAL_DIR
+from aiwiki.execution.paths import execution_receipt_history_path
 from aiwiki.render.paths import execution_receipt_path
 from aiwiki.runner import alchemy_materialize as materialize
 from aiwiki.runner import alchemy_support as support

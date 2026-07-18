@@ -18,119 +18,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from ..app_execution import (
-    append_execution_receipt_history,
-    build_execution_bundle,
-    build_execution_receipt,
-    build_material_archive_receipt,
-    execution_bundle_digest,
-    load_execution_bundle,
-    write_execution_bundle_document,
-)
-from ..app_lifecycle import (
-    action_needs_review,
-    build_knowledge_lifecycle_document,
-    collect_aging_signals,
-    collect_curated_pages,
-    curated_page_template,
-    curated_page_transition_profile,
-    default_curated_status,
-    display_action_status,
-    display_curated_status,
-    display_knowledge_lifecycle_state,
-    display_rewrite_proposal_status,
-    evaluate_page_aging,
-    frontmatter_string_list,
-    judgment_lifecycle_profile,
-    knowledge_lifecycle_governance_summary,
-    refresh_knowledge_lifecycle_state,
-    render_knowledge_lifecycle_entry_summary,
-    review_queue,
-    rewrite_proposal_needs_review,
-    valid_curated_statuses,
-)
-from ..app_memory_query import (
-    concept_page_snapshot,
-    record_query_route_telemetry,
-)
-from ..app_protocol import (
-    ACTION_STATUSES,
-    AGENT_PACK_LIBRARY,
-    AUTO_PROMOTION_MIN_OCCURRENCES,
-    CONCEPT_HARDNESS_LEVELS,
-    CURATED_ASSET_SECTION_ORDER,
-    DECISION_STATUSES,
-    JUDGMENT_STATUSES,
-    LOW_RISK_APPLYABLE_ACTION_KINDS,
-    PENDING_ACTION_STATUSES,
-    PROTOCOL_LIBRARY,
-    REWRITE_PROPOSAL_STATUSES,
-    concept_focus_score,
-    ensure_layout,
-    entry_focus_score,
-    load_protocol_state,
-    protocol_output_guidance,
-    protocol_paths,
-    protocol_runtime_schema_path,
-    protocol_runtime_summary,
-    protocol_state_path,
-    protocol_title,
-    resolve_protocol,
-    schedule_review_windows,
-)
-from ..app_routing import (
-    active_corpus_bridge_evidence_ids,
-    build_material_state_documents,
-    reconcile_active_corpora_state,
-    refresh_material_state,
-    upsert_active_corpus,
-)
-from ..app_shell import build_shell_summary, write_shell_summary
-from ..app_state_paths import (
-    active_corpora_state_path,
-    agent_pack_path,
-    agent_workbench_path,
-    aging_report_path,
-    archive_candidates_state_path,
-    cognitive_history_path,
-    compile_state_path,
-    concept_build_state_path,
-    concept_quality_path,
-    concept_rewrite_index_path,
-    concept_rewrite_state_path,
-    domain_pilot_build_state_path,
-    execution_audit_html_path,
-    execution_audit_path,
-    execution_policy_log_path,
-    furnace_center_html_path,
-    graph_health_report_path,
-    judgment_assets_path,
-    knowledge_lifecycle_override_state_path,
-    knowledge_lifecycle_state_path,
-    machine_memory_action_state_path,
-    machine_memory_actions_path,
-    machine_memory_build_state_path,
-    machine_memory_drift_report_path,
-    machine_memory_graph_html_path,
-    machine_memory_graph_path,
-    machine_memory_history_path,
-    machine_memory_repair_plan_path,
-    machine_memory_state_path,
-    machine_memory_topology_path,
-    material_archive_action_id,
-    material_routing_state_path,
-    material_state_path,
-    nightly_health_state_path,
-    output_pack_build_state_path,
-    output_packs_index_path,
-    planner_state_path,
-    product_shell_html_path,
-    query_route_telemetry_path,
-    ranking_build_state_path,
-    repair_backlog_path,
-    review_center_html_path,
-    shell_summary_path,
-)
+from ..app_shell.meta import write_shell_summary
+from ..app_shell.summary import build_shell_summary
 from ..compile.build import (
     default_concept_build_state,
     default_domain_pilot_build_state,
@@ -138,6 +27,13 @@ from ..compile.build import (
     default_output_pack_build_state,
     default_ranking_build_state,
     load_ranking_build_state,
+)
+from ..compile.paths import (
+    concept_build_state_path,
+    domain_pilot_build_state_path,
+    machine_memory_build_state_path,
+    output_pack_build_state_path,
+    ranking_build_state_path,
 )
 from ..compile.state import save_compile_state
 from ..config import LLMConfig
@@ -152,6 +48,7 @@ from ..content.archive import (
 from ..content.concepts import (
     build_concept_quality,
     build_concept_records,
+    concept_page_snapshot,
     concept_render_signature,
     concept_source_pages,
     entry_concept_terms,
@@ -181,24 +78,46 @@ from ..content.io import (
     sync_manifest_with_raw,
 )
 from ..content.material import (
+    active_corpus_bridge_evidence_ids,
+    build_material_state_documents,
     load_active_corpora_state,
     load_manual_link_state,
     load_material_state,
+    reconcile_active_corpora_state,
+    refresh_material_state,
     save_manual_link_state,
+    upsert_active_corpus,
 )
 from ..content.memory import (
     concept_summary_is_placeholder,
     remove_stale_generated_markdown_files,
 )
 from ..content.outputs import classify_recurring_output_kind
+from ..content.paths import (
+    active_corpora_state_path,
+    archive_candidates_state_path,
+    material_routing_state_path,
+)
 from ..content.rewrite import load_concept_rewrite_state, save_concept_rewrite_state
-from ..execution.history import append_runtime_history
+from ..execution.history import append_execution_receipt_history, append_runtime_history
 from ..execution.lifecycle import concept_lifecycle_entry, concept_page_path
 from ..execution.patch_plan import build_page_patch_plan
+from ..execution.paths import (
+    execution_policy_log_path,
+    material_archive_action_id,
+)
 from ..execution.policy import (
     append_execution_policy_decisions,
     execution_policy_decision_record,
     load_execution_receipt_history_strict,
+)
+from ..execution.receipts import (
+    build_execution_bundle,
+    build_execution_receipt,
+    build_material_archive_receipt,
+    execution_bundle_digest,
+    load_execution_bundle,
+    write_execution_bundle_document,
 )
 from ..execution.repair_plan import (
     _validate_rewrite_candidate_markdown,
@@ -207,11 +126,36 @@ from ..execution.repair_plan import (
     rewrite_proposal_candidate_is_current,
     rewrite_proposal_is_apply_ready,
 )
+from ..lifecycle.aging import collect_aging_signals, evaluate_page_aging
 from ..lifecycle.knowledge import (
+    build_knowledge_lifecycle_document,
+    display_knowledge_lifecycle_state,
     ensure_knowledge_lifecycle_override_state,
+    judgment_lifecycle_profile,
+    knowledge_lifecycle_governance_summary,
     load_knowledge_lifecycle_state,
+    refresh_knowledge_lifecycle_state,
+    render_knowledge_lifecycle_entry_summary,
     save_knowledge_lifecycle_override_state,
 )
+from ..lifecycle.paths import (
+    knowledge_lifecycle_override_state_path,
+    knowledge_lifecycle_state_path,
+    nightly_health_state_path,
+)
+from ..lifecycle.status import (
+    action_needs_review,
+    collect_curated_pages,
+    curated_page_transition_profile,
+    default_curated_status,
+    display_action_status,
+    display_curated_status,
+    display_rewrite_proposal_status,
+    review_queue,
+    rewrite_proposal_needs_review,
+    valid_curated_statuses,
+)
+from ..lifecycle.templates import curated_page_template
 from ..memory.action_core import (
     action_supports_low_risk_apply,
     placeholder_concept_slugs,
@@ -241,15 +185,20 @@ from ..memory.execution_surfaces import (
     render_execution_audit_html,
     render_execution_proposal_page,
 )
-from ..memory.graph import (
+from ..memory.graph_builder import build_machine_memory_graph
+from ..memory.graph_query import build_machine_memory_query
+from ..memory.graph_render import render_machine_memory_graph_html
+from ..memory.graph_transition import (
     append_machine_memory_history,
-    build_machine_memory_query,
-    render_machine_memory_graph_html,
     summarize_machine_memory_transition,
 )
-from ..memory.graph_builder import build_machine_memory_graph
 from ..memory.health import build_machine_memory_health
 from ..memory.judgment_assets import attach_judgment_assets_to_machine_memory
+from ..memory.paths import (
+    concept_rewrite_state_path,
+    machine_memory_action_state_path,
+    machine_memory_history_path,
+)
 from ..memory.state import load_machine_memory
 from ..memory.status import (
     render_drift_report,
@@ -259,7 +208,27 @@ from ..memory.status import (
     render_machine_memory_repair_plan,
 )
 from ..memory.topology import render_machine_memory_topology
-from ..planner.state import load_planner_state, save_planner_state
+from ..planner.paths import planner_state_path, query_route_telemetry_path
+from ..planner.state import load_planner_state, record_query_route_telemetry, save_planner_state
+from ..protocol.descriptors import AGENT_PACK_LIBRARY, protocol_paths, protocol_title
+from ..protocol.focus_scoring import concept_focus_score, entry_focus_score
+from ..protocol.library import PROTOCOL_LIBRARY
+from ..protocol.review_windows import schedule_review_windows
+from ..protocol.runtime_config import (
+    ACTION_STATUSES,
+    AUTO_PROMOTION_MIN_OCCURRENCES,
+    CONCEPT_HARDNESS_LEVELS,
+    DECISION_STATUSES,
+    JUDGMENT_STATUSES,
+    LOW_RISK_APPLYABLE_ACTION_KINDS,
+    PENDING_ACTION_STATUSES,
+    REWRITE_PROPOSAL_STATUSES,
+    protocol_output_guidance,
+)
+from ..protocol.runtime_schema import protocol_runtime_schema_path, protocol_runtime_summary
+from ..protocol.scaffold import ensure_layout
+from ..protocol.state import load_protocol_state, protocol_state_path, resolve_protocol
+from ..protocol.templates import CURATED_ASSET_SECTION_ORDER
 from ..render.cognitive_history import render_cognitive_history
 from ..render.compile_status import render_compile_status
 from ..render.furnace_center import (
@@ -273,14 +242,35 @@ from ..render.packs import (
     render_output_packs_index,
 )
 from ..render.paths import (
+    agent_workbench_path,
+    aging_report_path,
     append_wiki_log,
+    cognitive_history_path,
+    concept_quality_path,
+    concept_rewrite_index_path,
     decision_memos_dir,
     ensure_wiki_log,
+    execution_audit_html_path,
+    execution_audit_path,
     execution_bundle_path,
     execution_proposal_path,
     execution_receipt_path,
+    furnace_center_html_path,
+    graph_health_report_path,
+    judgment_assets_path,
+    machine_memory_actions_path,
+    machine_memory_drift_report_path,
+    machine_memory_graph_html_path,
+    machine_memory_graph_path,
+    machine_memory_repair_plan_path,
+    machine_memory_topology_path,
+    output_packs_index_path,
+    product_shell_html_path,
     remove_stale_generated_concept_pages,
+    repair_backlog_path,
+    review_center_html_path,
     review_packs_dir,
+    shell_summary_path,
     sop_drafts_dir,
 )
 from ..render.pilots import (
@@ -307,6 +297,12 @@ from ..state.constants import (
 )
 from ..state.io import CorruptStateError, load_json_document, load_json_document_strict
 from ..state.manifest import load_manifest
+from ..state.paths import (
+    agent_pack_path,
+    compile_state_path,
+    machine_memory_state_path,
+    material_state_path,
+)
 from ..utils.hash import compiled_source_sha, question_signature, sha256_bytes
 from ..utils.io import (
     runtime_write_operation,
@@ -318,6 +314,7 @@ from ..utils.markdown import (
     analyze_citation_snapshots,
     build_citation_snapshots,
     extract_provenance_paths,
+    frontmatter_string_list,
     parse_frontmatter,
     read_text_preview,
     render_frontmatter,

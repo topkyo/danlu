@@ -8,7 +8,7 @@ from typing import Any
 
 from ..content.io import find_promoted_curated_page
 from ..content.outputs import normalize_query_signature
-from ..execution.alchemy import ELIXIR_DIR, list_promoted_outputs_for_corpus
+from ..execution.alchemy_helpers import ELIXIR_DIR, list_promoted_outputs_for_corpus
 from ..utils.hash import question_signature
 from ..utils.markdown import parse_frontmatter
 
