@@ -23,7 +23,7 @@ from ..execution.receipts import (
     find_latest_elixir_promotion_receipt,
 )
 from ..utils.hash import sha256_bytes
-from ..utils.io import _restore_file_bytes, _snapshot_file_bytes
+from ..utils.io import _restore_file_bytes, _snapshot_file_bytes, atomic_write_text
 from ..utils.path import next_available_stem
 from ..utils.text import slugify
 from ..utils.time import utc_now  # noqa: F401
@@ -133,7 +133,8 @@ def start_elixir(
     if settled_path.exists() or candidate_path.exists():
         raise FileExistsError(f"elixir already exists: {elixir_id}")
     now = utc_now()
-    candidate_path.write_text(
+    atomic_write_text(
+        candidate_path,
         _scaffold_elixir_markdown(
             elixir_id=elixir_id,
             protocol=protocol_name,
@@ -146,7 +147,6 @@ def start_elixir(
             updated_at=now,
             body=_seed_elixir_body_from_sources(root, topic=topic, source_outputs=source_outputs),
         ),
-        encoding="utf-8",
     )
     _validate_state_for_path(root, "draft", candidate_path)
     return {

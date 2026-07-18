@@ -14,7 +14,7 @@ raw → compile → wiki → ask → output → file-back → review
 
 - **raw**：你扔进去的原料（网页、PDF、图片、repo、会议纪要、随笔）。
 - **compile**：炼丹炉把原料整理成结构化的 source page、concept、provenance。
-- **wiki**：炼化后的知识沉淀，分为 `wiki/sources/`（来源层）和 `wiki/derived/`、judgments、decisions（派生层）。
+- **wiki**：炼化后的知识沉淀，分为 `wiki/sources/`（来源层）与派生层（`wiki/judgments/` 等）；产品回流默认写 judgment。`wiki/derived/` 若存在多为历史/legacy 锚点，不是现行 `file-back` 目标。
 - **ask**：你向炉子提问，生成一篇自由 Markdown 报告（`output/reports/*.md`）；LLM 按问题组织内容，不再强制六段骨架或多 format 分叉。
 - **output**：产出物，包括报告、仪表盘、审计 receipt。
 - **file-back**：把高价值结论写回 wiki，形成可积累的判断资产。
@@ -82,8 +82,9 @@ Product Shell 适合日常快速投料和查看状态。复杂治理操作建议
 这会生成：
 
 - `wiki/sources/`：每条原料对应的来源页，保留 provenance 和原文索引。
-- `wiki/derived/`：抽取的概念、关系、摘要。
-- `output/control/`：状态摘要、review queue、lint 报告。
+- `wiki/concepts/` 等：compile 派生概念与关系（人读索引）。
+- `wiki/judgments/`：`file-back` 回流的判断页（金丹可锚定）。
+- `output/control/`：状态摘要、review queue 等控制面（lint 报告在 `.aiwiki/lint/`）。
 
 定时维护（watcher / nightly / `run-nightly`）只做确定性 `compile` + `lint` + nightly health 写入；LLM 仅通过 `run-ask` 等显式入口参与。
 

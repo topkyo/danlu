@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
+from ..utils.io import atomic_write_text
 from ..utils.text import slugify
 
 RUN_NOTES_GENERATED_BY = "aiwiki-run-notes"
@@ -40,7 +41,7 @@ def write_run_notes_frontmatter(path: Path, *, run_id: str, run_notes_ref: str =
     insertions = [f'run_id: "{run_id}"']
     if not has_frontmatter or close_idx is None:
         synthesized = ["---", *insertions, "---", *lines]
-        path.write_text("\n".join(synthesized).rstrip() + "\n", encoding="utf-8")
+        atomic_write_text(path, "\n".join(synthesized).rstrip() + "\n")
         return
     filtered = lines[:1] + [
         line for line in lines[1:close_idx] if not line.startswith("run_id:") and not line.startswith("run_notes_path:")
@@ -50,7 +51,7 @@ def write_run_notes_frontmatter(path: Path, *, run_id: str, run_notes_ref: str =
     filtered.extend(lines[close_idx + 1 :])
     for offset, line in enumerate(insertions):
         filtered.insert(new_close_idx + offset, line)
-    path.write_text("\n".join(filtered).rstrip() + "\n", encoding="utf-8")
+    atomic_write_text(path, "\n".join(filtered).rstrip() + "\n")
 
 
 def write_run_notes(

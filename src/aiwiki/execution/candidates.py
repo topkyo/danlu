@@ -11,7 +11,7 @@ from ..render.paths import append_wiki_log
 from ..state.collections import normalize_versioned_record_list_state
 from ..state.io import load_json_document, save_json_document
 from ..state.paths import output_candidates_state_path
-from ..utils.io import runtime_write_operation
+from ..utils.io import atomic_write_text, runtime_write_operation
 from ..utils.time import utc_now
 
 
@@ -132,7 +132,7 @@ def write_candidate_frontmatter(
             header.append(f'corpus_id: "{corpus_id}"')
         header.append("---")
         synthesized = header + lines
-        path.write_text("\n".join(synthesized).rstrip() + "\n", encoding="utf-8")
+        atomic_write_text(path, "\n".join(synthesized).rstrip() + "\n")
         return
     filtered = lines[:1] + [
         line
@@ -147,7 +147,7 @@ def write_candidate_frontmatter(
         insertions.append(f'corpus_id: "{corpus_id}"')
     for offset, line in enumerate(insertions):
         filtered.insert(new_close_idx + offset, line)
-    path.write_text("\n".join(filtered).rstrip() + "\n", encoding="utf-8")
+    atomic_write_text(path, "\n".join(filtered).rstrip() + "\n")
 
 
 def _write_frontmatter_string_list(
@@ -177,7 +177,7 @@ def _write_frontmatter_string_list(
     if not has_frontmatter or close_idx is None:
         header = ["---", *block, "---"]
         synthesized = header + lines
-        path.write_text("\n".join(synthesized).rstrip() + "\n", encoding="utf-8")
+        atomic_write_text(path, "\n".join(synthesized).rstrip() + "\n")
         return
     filtered: list[str] = lines[:1]
     skip_list_items = False
@@ -194,7 +194,7 @@ def _write_frontmatter_string_list(
     filtered.extend(lines[close_idx + 1 :])
     for offset, line in enumerate(block):
         filtered.insert(new_close_idx + offset, line)
-    path.write_text("\n".join(filtered).rstrip() + "\n", encoding="utf-8")
+    atomic_write_text(path, "\n".join(filtered).rstrip() + "\n")
 
 
 def write_graph_anchor_frontmatter(path: Path, *, anchors: list[str], force: bool = False) -> None:

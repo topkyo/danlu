@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from aiwiki.runner.local_stats import OUTPUT_OBSIDIAN_CSSCLASS, OUTPUT_REPORT_LEAF_CSSCLASS
+from aiwiki.utils.io import atomic_write_text
 from aiwiki.utils.markdown import parse_frontmatter, render_frontmatter, strip_frontmatter
 
 _REPORT_SKELETON_REFERENCE_HEADINGS = {"## 参考"}
@@ -61,7 +62,7 @@ def _ensure_output_cssclass(target: Path) -> None:
                 break
     if not has_frontmatter or close_idx is None:
         updated = render_frontmatter({"cssclasses": [OUTPUT_OBSIDIAN_CSSCLASS]}).splitlines() + lines
-        target.write_text("\n".join(updated).rstrip() + "\n", encoding="utf-8")
+        atomic_write_text(target, "\n".join(updated).rstrip() + "\n")
         return
     current = parse_frontmatter(original)
     raw_classes = current.get("cssclasses", [])
@@ -79,7 +80,7 @@ def _ensure_output_cssclass(target: Path) -> None:
     header = _drop_frontmatter_keys(lines[1:close_idx], {"cssclasses"})
     css_lines = _runtime_provenance_field_lines({"cssclasses": classes})
     updated_lines = [lines[0], *header, *css_lines, lines[close_idx], *lines[close_idx + 1 :]]
-    target.write_text("\n".join(updated_lines).rstrip() + "\n", encoding="utf-8")
+    atomic_write_text(target, "\n".join(updated_lines).rstrip() + "\n")
 
 
 def _restore_run_ask_provenance_frontmatter(
@@ -137,7 +138,7 @@ def _restore_run_ask_provenance_frontmatter(
     else:
         header = _drop_frontmatter_keys(lines[1:close_idx], keys)
         updated_lines = [lines[0], *header, *restored_lines, lines[close_idx], *lines[close_idx + 1 :]]
-    target.write_text("\n".join(updated_lines).rstrip() + "\n", encoding="utf-8")
+    atomic_write_text(target, "\n".join(updated_lines).rstrip() + "\n")
 
 
 def _strip_report_skeleton_reference_hints(markdown: str) -> str:

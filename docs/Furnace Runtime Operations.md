@@ -244,7 +244,7 @@ journalctl --user -u aiwiki-nightly.service --since "1 minute ago"
 |----------|------|------|
 | execution receipt | `.aiwiki/state/execution-receipts/*.json` + `.aiwiki/state/execution-receipts.jsonl` | 保留；回滚依赖 |
 | planner-log | `.aiwiki/state/planner-log.jsonl` | 保留；rollback marker 追加 |
-| LLM receipt | `.aiwiki/logs/llm-receipts.jsonl` | 保留；`llm-telemetry` 只读聚合 |
+| LLM receipt | `.aiwiki/logs/llm-receipts.jsonl` | 保留；只读聚合走 `llm_telemetry.aggregate_llm_telemetry()` library + `llm-check` / acceptance（CLI `llm-telemetry`/`backend-telemetry` 已删） |
 | LLM raw response | receipt 内 `raw_response_path` | 按路径引用；清理需显式 operator 策略 |
 | maturity gate | `output/control/maturity-gate/run-*.json` | 保留；自然日去重 summarize |
 

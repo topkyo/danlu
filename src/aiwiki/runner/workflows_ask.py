@@ -75,7 +75,7 @@ from aiwiki.runner.workflows_ask_status import (
     _mark_run_ask_background_artifact_submitted,
     _run_ask_failure_llm_status,
 )
-from aiwiki.utils.io import _restore_file_bytes, _snapshot_file_bytes, runtime_write_operation
+from aiwiki.utils.io import _restore_file_bytes, _snapshot_file_bytes, atomic_write_text, runtime_write_operation
 from aiwiki.utils.path import relative_path
 from aiwiki.utils.time import utc_now
 
@@ -323,7 +323,7 @@ def _complete_run_ask_artifact(
 
     assert result is not None
     target_snapshot = _snapshot_file_bytes(target)
-    target.write_text(updated, encoding="utf-8")
+    atomic_write_text(target, updated)
     artifact_ref = str(artifact.get("path") or "")
     run_id = str(artifact.get("run_id") or run_id_for_artifact(artifact_ref))
     planned_receipt_path = _planned_run_ask_output_receipt_ref(root, artifact_ref=artifact_ref, run_id=run_id)

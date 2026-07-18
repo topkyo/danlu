@@ -316,7 +316,7 @@ learning 不允许自动改 `src/aiwiki/**`，不允许自动改 schema 核心�
 - **独立生命周期**：与 judgment 的状态机完全分离。
   - 候选平面：`.aiwiki/staging/elixirs/`（未通过人工 promote；当前 draft / distilling / candidate / tombstone 主路径）
   - 当前持久平面：`wiki/elixirs/`（当前最小链路由 `alchemy-promote` 产生 `settled`）
-- **Provenance 强制**：目标 schema 要求每个金丹携带 `derived_from`、`judgment_refs`、`counter_evidence`、`confidence_level` 和 `corpus_id`；当前最小实现已强制 `derived_from` 与 corpus provenance，并校验必须包含底层 `wiki/derived/` 源条目。
+- **Provenance 强制**：目标 schema 要求每个金丹携带 `derived_from`、`judgment_refs`、`counter_evidence`、`confidence_level` 和 `corpus_id`；当前最小实现已强制 `derived_from` 与 corpus provenance，并校验必须至少锚定一条底层 `wiki/derived/` **或** `wiki/judgments/` 源条目（产品回流默认 `file-back` → judgment；`wiki/derived/` 无现行 runtime writer，仅作 legacy/只读锚点）。
 
 存储决策（本轮最终结论）：
 

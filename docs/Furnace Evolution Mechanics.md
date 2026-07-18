@@ -468,12 +468,12 @@ promoted_at: null
 ### 7.4 DAG 约束
 
 - 金丹引用链（`elixir_refs`）**必须**构成有向无环图。
-- 新金丹**不得**只依赖旧金丹的结论自举——必须同时锚定至少一条 `wiki/derived/` 的底层证据；如需引用 `raw/` / `wiki/sources/` / `wiki/judgments/` 原始证据，应先经 `aiwiki promote` 注册为 corpus candidate 并产出 derived 后再锚定。
-- 当前 `alchemy-distill / alchemy-finalize / alchemy-promote` 已校验金丹 DAG、自引用、路径穿越和底层 `wiki/derived/` 锚定。
+- 新金丹**不得**只依赖旧金丹的结论自举——必须同时锚定至少一条 `wiki/derived/` **或** `wiki/judgments/` 底层证据。产品路径：`file-back`（judgment-only）→ 审阅确认 → 金丹 `derived_from` 引用该 judgment；历史 `wiki/derived/` 页仍可作锚点，但 **无现行 runtime writer**（旧 `promote` → derived 路径已移除）。
+- 当前 `alchemy-distill / alchemy-finalize / alchemy-promote` 已校验金丹 DAG、自引用、路径穿越和底层 `wiki/derived/` / `wiki/judgments/` 锚定。
 
 ### 7.5 Counter-evidence 强制
 
-- `M2.2` `alchemy-finalize` 只执行结构性校验（provenance / DAG / `wiki/derived/` anchor / 路径穿越），不强制 `counter_evidence` 非空；校验失败必须保持 candidate 文件不变，不得半写成 `candidate` 状态。
+- `M2.2` `alchemy-finalize` 只执行结构性校验（provenance / DAG / `wiki/derived|judgments` anchor / 路径穿越），不强制 `counter_evidence` 非空；校验失败必须保持 candidate 文件不变，不得半写成 `candidate` 状态。
 - 目标 promote gate 中 `counter_evidence` 字段**不得为空**。
 - 若真的没有反证，显式写 `counter_evidence: [NONE_FOUND]` 并记录 `confidence_level: low`。
 - `M2.3` promote gate 强制规则：`counter_evidence` 必须存在且非空；`[NONE_FOUND]` 视为“显式声明无反证”，允许 promote。
@@ -517,20 +517,20 @@ aiwiki ask "结合新 paper 重新评估权衡" --corpus corpus-vla-2026q2
 ### 8.2 阶段 2：Distillation（凝丹）
 
 ```bash
-aiwiki promote output/reports/query-20260424-example.md
-# → 当前：把 output candidate promote 到 wiki/derived/，供金丹引用
+aiwiki file-back output/reports/query-20260424-example.md
+# → 当前：judgment-only 回流到 wiki/judgments/，供金丹 derived_from 锚定
 
 aiwiki alchemy-start corpus-vla-2026q2 --topic "VLA 机器人架构"
-# → 当前：从该 corpus 下已 promoted 的 wiki/derived/ 输出生成 .aiwiki/staging/elixirs/<elixir-id>.md，state=draft
+# → 当前：从该 corpus 下已锚定的 wiki/judgments/（或 legacy wiki/derived/）生成 .aiwiki/staging/elixirs/<elixir-id>.md，state=draft
 
 aiwiki alchemy-distill <elixir-id> --question "延迟约束如何改变架构权衡？"
 # → 当前：在 .aiwiki/staging/elixirs/ 上推进 iteration，保留 provenance，state=distilling
 
 aiwiki alchemy-promote --elixir-id <elixir-id>
-# → 当前：校验 gate（含 counter_evidence）与 DAG / wiki/derived/ 锚定后写入 settled
+# → 当前：校验 gate（含 counter_evidence）与 DAG / wiki/derived|judgments 锚定后写入 settled
 ```
 
-**当前验收准则**：能从已 promoted output 生成 elixir，能多轮 distill，能 finalize+promote，并拒绝空 provenance、自引用、路径穿越和 DAG 环路。
+**当前验收准则**：能从已 file-back 的 judgment（或 legacy derived）生成 elixir，能多轮 distill，能 finalize+promote，并拒绝空 provenance、自引用、路径穿越和 DAG 环路。
 
 **目标验收准则**：能成功生成 candidate elixir 文件并走完 promote / demote / revert 生命周期；每一步可审计。
 
@@ -672,12 +672,11 @@ L3 proposal **只允许**写入以下文件：
 | `aiwiki compile` / `aiwiki lint` / `aiwiki nightly` | 当前 operator：确定性 compile / lint / nightly health | `wiki/`、`wiki/indexes/`、`.aiwiki/lint/` 等 |
 | `aiwiki run-nightly` | 当前 operator：确定性 compile + lint + nightly health（W8：无 agent-loop / signals / debt LLM 消化） | receipt / runtime history / `.aiwiki/state/` |
 | `aiwiki run-ask "<q>"` | 当前 operator：LLM 报告主入口 | `output/reports/*.md` + LLM receipt |
-| `aiwiki file-back <artifact>` | 当前 operator：**judgment-only** 回流 wiki（`--kind derived|decision` 已删） | `wiki/judgments/` 等 + provenance |
+| `aiwiki file-back <artifact>` | 当前 operator：**judgment-only** 回流 wiki（`--kind derived|decision` 已删）；金丹底层锚点的主产品路径 | `wiki/judgments/` + provenance |
 | `aiwiki review-page <path> --status <transition>` | 当前 operator：单页薄审阅三态（`pending-review` / `confirmed` / `discarded`；无 `--batch`/`--next`/`--all-pending`） | target page + review queue |
 | `aiwiki ask "<q>" --corpus <id>` | 当前：绑定或创建 corpus turn；追加 output_refs | `output/reports/*.md` + `.aiwiki/state/output-candidates.json` + `.aiwiki/state/active-corpora.json` |
-| `aiwiki promote <artifact_ref>` | 当前：output candidate → `wiki/derived/` | `wiki/derived/` + candidate state |
-| `aiwiki demote <artifact_ref>` | 当前：demote output candidate | `.aiwiki/state/output-candidates.json` |
-| `aiwiki alchemy-start <corpus-id> --topic <topic>` | 当前：从该 corpus 的已 promoted output 创建 draft elixir | `.aiwiki/staging/elixirs/` |
+| ~~`aiwiki promote` / `demote`（candidate→derived）~~ | **已移除**（W3/W8）：勿再文档化为产品入口；金丹锚点走 file-back → `wiki/judgments/` | — |
+| `aiwiki alchemy-start <corpus-id> --topic <topic>` | 当前：从该 corpus 已锚定的 judgments（或 legacy derived）创建 draft elixir | `.aiwiki/staging/elixirs/` |
 | `aiwiki alchemy-distill <elixir-id> --question <q>` | 当前：推进 draft/distilling elixir iteration | `.aiwiki/staging/elixirs/` |
 | `aiwiki alchemy-promote --elixir-id <elixir-id>` | 当前：candidate promote 为 settled | `wiki/elixirs/` + `.aiwiki/staging/elixirs/` tombstone + receipts |
 | `aiwiki alchemy legacy-migration --dry-run` | 当前：只读盘点 legacy settled elixir 的 candidate tombstone 状态 | 读 `wiki/elixirs/` + `.aiwiki/staging/elixirs/` |

@@ -13,7 +13,7 @@ related_docs:
 
 > **文档状态（2026-05-20）**：本文件保留金丹终局 thesis 与历史设计动机；**当前 runtime 行为以** [Furnace Agent Architecture.md](./Furnace%20Agent%20Architecture.md) **与** [Furnace Evolution Mechanics.md](./Furnace%20Evolution%20Mechanics.md) **为准**。CLI 已实现 `alchemy-start/distill/finalize/promote` 最小链路，不等同于本文全部愿景已落地。
 
-> **当前实现校准（2026-05-26）**：金丹最小主链路已经实现并有 acceptance 覆盖：`.aiwiki/staging/elixirs/` 候选平面、`wiki/elixirs/` settled 平面、DAG/provenance gate、promote/revert/demote receipt，以及 Stage-3 “新丹引用旧丹 + wiki/derived anchor + trace up” 复利验证。本文剩余愿景主要指 LLM-backed semantic distillation、更高自治的金丹演化和长期自然运行 proof，不应再把基础金丹机制理解为纯计划态。
+> **当前实现校准（2026-07-18）**：金丹最小主链路已实现并有 acceptance 覆盖：`.aiwiki/staging/elixirs/` 候选平面、`wiki/elixirs/` settled 平面、DAG/provenance gate、promote/revert/demote receipt；底层锚点为 `wiki/judgments/`（产品 `file-back`）或 legacy `wiki/derived/`。本文剩余愿景主要指 LLM-backed semantic distillation、更高自治的金丹演化和长期自然运行 proof，不应再把基础金丹机制理解为纯计划态。
 
 ## 背景与设计动机 (Why)
 
@@ -90,7 +90,7 @@ aiwiki alchemy-start <corpus-id> --topic "新主题" --include-elixir <old-elixi
 
 1. **半自动反哺 (Q1)**
    - 所有的产出（无论是多轮问答的 output 还是提纯后的 elixir candidate）默认只进入 `.aiwiki/staging/` 候选区。
-   - **绝不自动写入 wiki**。必须经过用户的人工 review 或 nightly process 的显式评估后，通过 `aiwiki promote` 才能正式进入 `wiki/` 目录。
+   - **绝不自动写入 wiki**。持久化必须经人工：产品路径为 `file-back` → `wiki/judgments/`（薄审阅），金丹路径为 `alchemy-promote` → `wiki/elixirs/`。旧 `aiwiki promote`（candidate→`wiki/derived/`）已移除。
    - nightly 的角色从“自动晋升者”降级为“候选区管理员”（负责老化、降级、淘汰 candidate，将值得关注的候选推给人工）。
 
 2. **自我进化边界 (Q2)**
@@ -111,14 +111,14 @@ aiwiki alchemy-start <corpus-id> --topic "新主题" --include-elixir <old-elixi
 - **验收标准**：至少成功生成一个 `elixir` 文件，包含完整的 provenance；并且能够正确走完 promote / demote / revert 的完整生命周期（借鉴 concept_rewrite proposal 的状态机）。
 
 ### 阶段 3：复利 (Compounding)
-- **目标**：金丹之间实现合规引用（DAG + `wiki/derived/` 锚定），Ask 默认提升 settled elixir / confirmed judgment 权重。
+- **目标**：金丹之间实现合规引用（DAG + `wiki/derived/` **或** `wiki/judgments/` 锚定），Ask 默认提升 settled elixir / confirmed judgment 权重。
 - **验收标准**：新生成的金丹能够引用旧金丹，且机制保证不会形成无限自循环的死锁；`used_refs` 与 `compound_suggest` 进入 report / Today 主 feed。
 
 ## 核心风险与缓解策略
 
 1. **运行态与知识层混淆**
    - *风险*：高频迭代时的状态数据污染了长期知识库。
-   - *缓解*：`active_corpus` 及其游标只存在于 `.aiwiki/state/` 中，`promote` 命令是跨越运行态与持久态的唯一合法桥梁。
+   - *缓解*：`active_corpus` 及其游标只存在于 `.aiwiki/state/` 中；跨越运行态与持久态的产品桥梁是 `file-back`（judgment）与 `alchemy-promote`（elixir），不是已删除的 `aiwiki promote`→derived。
 
 2. **LLM 幻觉污染 Wiki**
    - *风险*：LLM 生成看似合理实则谬误的“伪共识”。
@@ -127,7 +127,7 @@ aiwiki alchemy-start <corpus-id> --topic "新主题" --include-elixir <old-elixi
 3. **金丹自循环 (Circular Reference)**
    - *风险*：新丹引用旧丹，旧丹的推演基础已被证伪，导致“空中楼阁”式的知识坍塌。
    - *缓解*：引用链必须是严格的有向无环图 (DAG)；新丹的推导不能仅仅依靠旧丹的结论，必须继续锚定底层的 `raw/` 或 `wiki/` 原始证据作为支撑。
-   - *来源边界*：corpus candidate plane 由 `aiwiki promote` 维护；`file-back --kind derived` 是另一条独立路径，二者不互相注册。如需进入金丹链路，应先 promote 输出候选，再由 derived 锚定。
+   - *来源边界*：产品回流仅 `file-back`（judgment-only）→ `wiki/judgments/`；旧 `promote`→`wiki/derived/` 与 `file-back --kind derived` 已移除。金丹 `derived_from` 接受 `wiki/judgments/` 或 legacy `wiki/derived/` 锚点。
 
 4. **协议学习变隐式 Prompt 漂移**
    - *风险*：历史 learning 或过多 hint 导致 LLM 行为难以预测，破坏 deterministic baseline。

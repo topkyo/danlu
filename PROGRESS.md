@@ -14,6 +14,8 @@
 
 ## 当前动态
 
+- 2026-07-18 (**Active SoT sync + ask/atomic hot-path**)：Architecture / Evolution / Elixir / Runtime Ops / USER_GUIDE 对齐金丹锚点 `wiki/judgments|derived` 与 judgment-only file-back；execution/runner ask 热路径续扫 `write_text`→`atomic_write_text`。验证：`bash scripts/verify.sh scripts python-static acceptance`。
+
 - 2026-07-18 (**hub decomposition + LLM integration tests + pre-commit**)：用户显式覆盖 AGENTS.md 原「legacy hub 另一条搬迁线、本轮不动」定案，一次做干净三个 central hub 下沉 + 反向依赖消除。**app_utils.py**（1200 行/52 符号/89 文件引用）→ `utils/` 子包（io/security/markdown/text/hash/time/path/json_utils/audit）；**app_state.py**（1200 行/70 函数/60 文件引用）→ `state/` + owner 子包（compile/state、compile/build、content/material、content/archive、content/rewrite、execution/history、memory/action_state、memory/state、planner/state、lifecycle/knowledge 扩展）；**content/memory.py**（1350 行/39 函数/跨四域）→ `memory/action_core`（M）+ `execution/policy`（P）+ `execution/patch_plan`（T）+ `execution/repair_plan`（R），content/memory.py 缩为 2 个 A 域辅助函数；**反向依赖消除**：`compile/ranking.py` 迁入 10 个 ranking 函数，`app_compile.py` 587→18 行，消除 `app_queries` / `compile/runtime_step` / `execution/ask` 三处延迟导入。附加：LLM 执行层集成测试 38 条（`tests/test_llm_integration.py`，覆盖 LLMConfig.from_env / backend resolution / retry / timeout / 错误分类 / ModelFallbackClient / _mark_run_ask_artifact_degraded / 端到端状态机）；pre-commit hook（ruff check/format + 基础文件检查）；AGENTS.md L115 CLI 入口修复、trace.py 资产种类数修复、execution/{archive,lifecycle,ask,runtime_surfaces,concept_rewrite} stale docstring 修复；死代码 `dogfood_maturity.py` 删除。4 路并行 cross-review 通过（无 critical/major）。验证：`bash scripts/verify.sh all` PASS（24 acceptance + 168 Jest + ruff + static + cli-smoke + smoke）；62 pytest（38 LLM + 24 acceptance）PASS。commit `145276a`。
 
 - 2026-07-18 (**W9 hygiene close**)：Task 1 删除 `agent_loop`/`debt_autopilot` 与 orphan `run_compile`/`run_lint`；Task 2 P9 general-only + execution-center 产品面清理；Task 3 去掉 `today_snooze`/summary `agent_loop`、重命名 review-queue helper id、Shell i18n 僵尸键清理、Active docs/AGENTS 收尾。验证：`bash scripts/verify.sh all` PASS。
@@ -206,12 +208,13 @@
 |---|---|---|
 | P0 | Commercial go-live：真实邮箱、询价决策、商业 EULA | **done（草案）**：`topkyoxp@gmail.com` + `EULA.md`；正式法律签收仍 open |
 | P1 | 分发闭环：`pip install` 或 INSTALL 明确预览边界；版本与 tag 对齐 | **partial**：`pip install -e .` + v0.4.0；PyPI 正式发布待定 |
-| P1 | Jest hard-gate + env-coupled 测试隔离 | **done / moot**：Jest 180 hard-gate；env unit 已退 |
-| P1 | Alchemy materialize 等裸 `write_text` → `atomic_write_text` | **done** |
+| P1 | Jest hard-gate + env-coupled 测试隔离 | **done / moot**：Jest **168** hard-gate；env unit 已退 |
+| P1 | Alchemy materialize 等裸 `write_text` → `atomic_write_text` | **done**（ask/alchemy helpers；execution+runner ask 热路径续扫） |
 | P2 | Scorecard hub 行数刷新；PROGRESS 活跃 round 切档卫生 | 先前审计 PR 已处理 |
 | P2 | Demo Pack 截图/录屏资产（fixture + checklist 已交付） | checklist done；媒体可选待补 |
+| P2 | Active SoT 金丹锚点文档（derived-only → judgments\|derived） | **done 2026-07-18**：Architecture / Evolution / Elixir / Runtime Ops / USER_GUIDE |
 | 观测 | 14/30-day natural dogfood proof（不伪造 PASS） | Scorecard not-yet |
-| Out | hub 大拆、SaaS、全功能 iOS、用 AgentOS 9.05 冒充商业 9 分 | 禁止 |
+| Out | 再开 hub 大拆（已清零）、SaaS、全功能 iOS、用 AgentOS 9 冒充商业 9 分 | 禁止 |
 
 ## Round detail (chronological)
 

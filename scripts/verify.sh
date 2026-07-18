@@ -24,7 +24,7 @@ Targets:
   smoke                 Run lightweight aiwiki CLI smoke.
   python-static         Run Python lint and bytecode compile checks.
   acceptance            Run acceptance replay checks.
-  llm-integration       Run LLM integration tests (30 tests, mock backends).
+  llm-integration       Run LLM integration tests (38 tests, mock backends).
   cli-smoke             Check aiwiki CLI startup/help.
   product-shell-static  Run Product Shell JavaScript syntax checks.
   all                   Run static + smoke + acceptance (no pytest, no coverage). Default.

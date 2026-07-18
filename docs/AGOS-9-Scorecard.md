@@ -306,7 +306,7 @@ PYTHONPATH=src python3 -m pytest tests/test_acceptance_loop.py -k 'planner or si
 # [AOS-C8 frozen] PYTHONPATH=src python -m pytest tests/test_llm.py tests/test_config.py -q  (已退)
 PYTHONPATH=src python3 -m pytest tests/test_acceptance_loop.py -k 'backend_failure or replay' -q  # 当前 post-cleanup 等价
 # telemetry 聚合（library API，非 CLI）：llm_telemetry.aggregate_llm_telemetry(root)
-bash scripts/verify.sh llm-integration   # 30 条 LLM 集成测试（mock backends，2026-07-18 纳入 verify）
+bash scripts/verify.sh llm-integration   # 38 条 LLM 集成测试（mock backends，2026-07-18 纳入 verify）
 ```
 
 ### Fail gate（blocking if reintroduced）
@@ -314,7 +314,7 @@ bash scripts/verify.sh llm-integration   # 30 条 LLM 集成测试（mock backen
 - Telemetry 泄漏 API key 或完整 prompt
 - 隐藏 cross-backend fallback 回归
 
-### 当前状态：**PASS**（Local Eng **9.0** — LLM receipt 聚合 via `llm_telemetry.aggregate_llm_telemetry()` library + acceptance backend-failure/retry replay + `verify.sh llm-integration` 30 条 mock-backend 集成测试；CLI `llm-telemetry`/`backend-telemetry` 已于 W4 删除；无 hidden cross-backend fallback）
+### 当前状态：**PASS**（Local Eng **9.0** — LLM receipt 聚合 via `llm_telemetry.aggregate_llm_telemetry()` library + acceptance backend-failure/retry replay + `verify.sh llm-integration` 38 条 mock-backend 集成测试；CLI `llm-telemetry`/`backend-telemetry` 已于 W4 删除；无 hidden cross-backend fallback）
 
 ---
 
@@ -455,7 +455,7 @@ bash scripts/verify.sh scripts
 | 4 | Product Shell | `bash scripts/verify.sh product-shell-static`（Jest **168**） |
 | 5 | Acceptance replay | **24** tests — `bash scripts/run_acceptance.sh` |
 | 6 | CI | `.github/workflows/verify.yml` |
-| 7 | LLM telemetry | `llm_telemetry.aggregate_llm_telemetry()` library + `bash scripts/verify.sh llm-integration`（30 条 mock-backend）+ acceptance backend-failure replay（CLI `llm-telemetry`/`backend-telemetry` 已于 W4 surface-noise-cuts A15 删除） |
+| 7 | LLM telemetry | `llm_telemetry.aggregate_llm_telemetry()` library + `bash scripts/verify.sh llm-integration`（38 条 mock-backend）+ acceptance backend-failure replay（CLI `llm-telemetry`/`backend-telemetry` 已于 W4 surface-noise-cuts A15 删除） |
 | 8 | Docs consistency | `bash scripts/docs_consistency_check.sh` |
 
 ### Live Dogfood Gate — 不可宣称 live 9.0（not-yet）

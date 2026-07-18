@@ -94,7 +94,7 @@ def _mark_run_ask_background_artifact_submitted(target: Path, *, job_id: str, st
         }
     )
     body = strip_frontmatter(current)
-    target.write_text(render_frontmatter(frontmatter).rstrip() + "\n\n" + body.lstrip(), encoding="utf-8")
+    atomic_write_text(target, render_frontmatter(frontmatter).rstrip() + "\n\n" + body.lstrip())
 
 
 def _mark_run_ask_background_artifact_complete(target: Path, *, status: str, job_id: str = "") -> None:
@@ -104,4 +104,4 @@ def _mark_run_ask_background_artifact_complete(target: Path, *, status: str, job
         frontmatter["background_job_id"] = job_id
     frontmatter["background_status"] = status
     body = strip_frontmatter(current)
-    target.write_text(render_frontmatter(frontmatter).rstrip() + "\n\n" + body.lstrip(), encoding="utf-8")
+    atomic_write_text(target, render_frontmatter(frontmatter).rstrip() + "\n\n" + body.lstrip())
