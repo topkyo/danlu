@@ -309,10 +309,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     new Notice(this.t("Concept rewrite commands were removed in W3; use review-page on the concept page instead."));
   }
 
-  async runReviewActionTransition(actionId, status) {
-    new Notice(this.t("Machine-memory action commands were removed in W3; use review-page instead."));
-  }
-
   visibleReviewPageCandidates() {
     return this.reviewPageControlItems();
   }
@@ -657,18 +653,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     new Notice(this.t("Archive commands were removed in W3; inspect manifest pages manually."));
   }
 
-  openReviewActionModal(prefill = {}) {
-    this.openStructuredCommandModal(buildReviewActionModalSpec(this, prefill));
-  }
-
-  openApplyActionModal(prefill = {}) {
-    this.openStructuredCommandModal(buildApplyActionModalSpec(this, prefill));
-  }
-
-  openRevertActionModal(prefill = {}) {
-    this.openStructuredCommandModal(buildRevertActionModalSpec(this, prefill));
-  }
-
   openReviewPageContextPicker(options = this.visibleReviewPageCandidates()) {
     this.openContextAwareAction({
       title: this.t("Pick Review Page"),
@@ -685,40 +669,12 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     new Notice(this.t("Concept rewrite commands were removed in W3; use review-page on the concept page instead."));
   }
 
-  openReviewActionContextPicker(_options = this.visibleActionCandidates("review")) {
-    new Notice(this.t("Machine-memory action commands were removed in W3; use review-page instead."));
-  }
-
   openApplyArchiveContextPicker(_options = this.visibleArchiveCandidates("apply")) {
     new Notice(this.t("Archive commands were removed in W3; inspect manifest pages manually."));
   }
 
   openRevertArchiveContextPicker(_options = this.visibleArchiveCandidates("revert")) {
     new Notice(this.t("Archive commands were removed in W3; inspect manifest pages manually."));
-  }
-
-  openApplyActionContextPicker(options = this.visibleActionCandidates("apply")) {
-    this.openContextAwareAction({
-      title: this.t("Pick Apply Action"),
-      description: this.t("Prefer an explicit action control object before falling back to manual action id entry."),
-      keyName: "actionId",
-      options,
-      emptyNotice: this.t("No visible machine-memory action context is available; fell back to the manual form."),
-      onFallback: () => this.openApplyActionModal(),
-      onSubmit: (option) => this.openApplyActionModal({ actionId: option.actionId || option.value || "", bundle: option.bundlePath || "" }),
-    });
-  }
-
-  openRevertActionContextPicker(options = this.visibleActionCandidates("revert")) {
-    this.openContextAwareAction({
-      title: this.t("Pick Revert Action"),
-      description: this.t("Prefer an explicit action control object before falling back to manual action id entry."),
-      keyName: "actionId",
-      options,
-      emptyNotice: this.t("No visible machine-memory action context is available; fell back to the manual form."),
-      onFallback: () => this.openRevertActionModal(),
-      onSubmit: (option) => this.openRevertActionModal({ actionId: option.actionId || option.value || "" }),
-    });
   }
 
   openReviewPageTransitionPicker(control) {
@@ -744,10 +700,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   openReviewRewriteTransitionPicker(_control) {
     new Notice(this.t("Concept rewrite commands were removed in W3; use review-page on the concept page instead."));
-  }
-
-  openReviewActionTransitionPicker(_control) {
-    new Notice(this.t("Machine-memory action commands were removed in W3; use review-page instead."));
   }
 
   async openView(viewType, options = {}) {

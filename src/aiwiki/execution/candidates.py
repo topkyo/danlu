@@ -3,11 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from .. import app_utils as _app_utils
 from ..app_protocol import ensure_layout
-from ..app_state import load_output_candidates_state, remove_output_candidate, upsert_output_candidate
-from ..app_utils import parse_frontmatter
-from .ask import file_back
+from ..app_state import load_output_candidates_state, remove_output_candidate
 
 
 def _find_candidate(root: Path, artifact_ref: str) -> dict[str, Any]:
@@ -132,35 +129,11 @@ def write_machine_memory_anchor_frontmatter(path: Path, *, anchors: list[str]) -
 
 
 def promote_candidate(root: Path, artifact_ref: str) -> dict[str, Any]:
-    ensure_layout(root)
-    candidate = _find_candidate(root, artifact_ref)
-    artifact_path = root / artifact_ref
-    text = artifact_path.read_text(encoding="utf-8", errors="replace")
-    frontmatter = parse_frontmatter(text)
-    title = str(candidate.get("question") or frontmatter.get("title") or artifact_path.stem)
-    # 阶段 1：所有 promote 统一落到 wiki/derived/（contract SC4）。
-    # nightly 登记的 recurring_kind（decision/judgment）只作为元数据保留在 candidate 里，
-    # 真正分流到 wiki/decisions|judgments 是阶段 3 的 L2 协议沉淀能力。
-    kind = "derived"
-    write_candidate_frontmatter(artifact_path, candidate_state="promoted")
-    result = file_back(root, artifact_ref, title=title, kind=kind)
-    promoted_path = result["path"]
-    filed_at = _app_utils.utc_now()
-    upsert_output_candidate(
-        root,
-        artifact_ref=artifact_ref,
-        candidate_state="promoted",
-        created_at=str(candidate.get("created_at") or filed_at),
-        updated_at=filed_at,
-        format=str(candidate.get("format") or ""),
-        protocol=str(candidate.get("protocol") or result.get("protocol") or ""),
-        corpus_id=str(candidate.get("corpus_id") or ""),
-        question=str(candidate.get("question") or ""),
-        promoted_to=promoted_path,
-        promoted_at=filed_at,
-        promotion_origin=str(candidate.get("promotion_origin") or "manual"),
+    """Legacy candidate promote path removed (W8): use judgment-only file-back instead."""
+    _ = (root, artifact_ref)
+    raise ValueError(
+        "promote_candidate via wiki/derived file-back was removed; use aiwiki file-back <artifact> (judgment-only)."
     )
-    return {"artifact_ref": artifact_ref, "promoted_path": promoted_path, "status": "promoted"}
 
 
 def demote_candidate(root: Path, artifact_ref: str) -> dict[str, Any]:

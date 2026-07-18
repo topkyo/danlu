@@ -135,13 +135,7 @@ def _action_command(item: dict[str, object]) -> str:
 
 
 def _l3_command(item: dict[str, object]) -> str:
-    hints = item.get("command_hints")
-    if not isinstance(hints, dict):
-        return ""
-    for key in ("apply", "reject", "revert"):
-        command = hints.get(key)
-        if isinstance(command, str) and command.strip():
-            return command.strip()
+    _ = item
     return ""
 
 

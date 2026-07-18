@@ -107,7 +107,6 @@ def build_today_feed(summary: dict[str, Any], *, audience: FeedAudience = "prima
         entries.extend(_build_proposal_entries(summary))
         entries.extend(_build_elixir_entries(summary, today_date))
         entries.extend(_build_metric_alert_entries(summary))
-        entries.extend(_build_agent_loop_entries(summary, today_date))
         entries.extend(_build_action_entries(summary, audience=audience))
         entries.extend(_build_raw_input_entries(summary, today_date))
 
@@ -250,78 +249,6 @@ def _build_metric_alert_entries(summary: dict[str, Any]) -> list[FeedEntry]:
             )
         )
     return entries
-
-
-def _build_agent_loop_entries(summary: dict[str, Any], today_date: str) -> list[FeedEntry]:
-    nightly = summary.get("nightly")
-    if not isinstance(nightly, dict):
-        return []
-    agent_loop = nightly.get("agent_loop")
-    if not isinstance(agent_loop, dict):
-        return []
-    timestamp = str(agent_loop.get("generated_at") or nightly.get("generated_at") or "")
-    if _date_part(timestamp) != today_date:
-        return []
-    status = str(agent_loop.get("status") or "")
-    if status not in {"ok", "failed"}:
-        return []
-
-    if status == "failed":
-        summary_text = "今日维护预演失败，需要人工查看"
-    else:
-        signals = agent_loop.get("signals") if isinstance(agent_loop.get("signals"), dict) else {}
-        planner = agent_loop.get("planner") if isinstance(agent_loop.get("planner"), dict) else {}
-        execute = planner.get("execute") if isinstance(planner.get("execute"), dict) else {}
-        auto_preview = agent_loop.get("auto_preview") if isinstance(agent_loop.get("auto_preview"), dict) else {}
-        auto_apply = agent_loop.get("auto_apply") if isinstance(agent_loop.get("auto_apply"), dict) else {}
-        auto_adopt_l1 = agent_loop.get("auto_adopt_l1") if isinstance(agent_loop.get("auto_adopt_l1"), dict) else {}
-        auto_adopt_l2 = agent_loop.get("auto_adopt_l2") if isinstance(agent_loop.get("auto_adopt_l2"), dict) else {}
-        auto_adopt_judgments = agent_loop.get("auto_adopt_judgments") if isinstance(agent_loop.get("auto_adopt_judgments"), dict) else {}
-        # Planner decisions are derived from signals; don't double-count the same change in user-facing copy.
-        new_items = max(int(signals.get("new_count") or 0), int(execute.get("new_count") or 0))
-        applied_count = int(auto_apply.get("applied_count") or 0)
-        l1_adopted = sum(
-            item.get("count", 0) for item in auto_adopt_l1.get("items", [])
-            if isinstance(item, dict) and item.get("count", 0) > 0 and "error" not in item
-        )
-        l2_adopted = sum(
-            item.get("count", 0) for item in auto_adopt_l2.get("items", [])
-            if isinstance(item, dict) and item.get("count", 0) > 0 and "error" not in item
-        )
-        j_reviewed = int(auto_adopt_judgments.get("reviewed") or 0)
-        total_adopted = applied_count + l1_adopted + l2_adopted
-        if total_adopted > 0 or j_reviewed > 0:
-            parts = [f"今日发现 {new_items} 个新变化"]
-            if applied_count > 0:
-                parts.append(f"已静默执行 {applied_count} 条维护路径")
-            if l1_adopted > 0:
-                parts.append(f"已自动消化 {l1_adopted} 条 L1 候选")
-            if l2_adopted > 0:
-                parts.append(f"已自动处理 {l2_adopted} 条 L2 动作")
-            if j_reviewed > 0:
-                parts.append(f"LLM 已复核 {j_reviewed} 条判断")
-            summary_text = "，".join(parts)
-            title = "已自动维护"
-            target = "wiki/indexes/execution-audit.md"
-        else:
-            ready_count = int(auto_preview.get("ready_count") or 0)
-            if ready_count > 0:
-                summary_text = f"今日发现 {new_items} 个新变化，{ready_count} 条维护路径可人工确认"
-            else:
-                summary_text = "今日维护预演完成，暂不需要自动执行"
-            title = "预演下一步维护"
-            target = "wiki/indexes/repair-backlog.md"
-
-    return [
-        FeedEntry(
-            kind="automation",
-            title=title if status != "failed" else "预演下一步维护",
-            summary=summary_text,
-            target=target if status != "failed" else "wiki/indexes/repair-backlog.md",
-            timestamp=timestamp,
-            protocol=str(summary.get("active_protocol") or ""),
-        )
-    ]
 
 
 def _build_proposal_entries(summary: dict[str, Any]) -> list[FeedEntry]:

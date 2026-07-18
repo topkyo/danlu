@@ -86,24 +86,6 @@ test("review page modal spec keeps fields and submit args stable", async () => {
   });
 });
 
-test("apply action modal spec routes through removed-command notice hook", async () => {
-  const context = loadModalSpecContext();
-  const plugin = makePlugin();
-  const spec = context.buildApplyActionModalSpec(plugin, { actionId: "act-1", bundle: "output/actions/act-1.json", dryRun: true });
-
-  expect(spec.fields.map((field) => field.key)).toEqual(["action_id", "note", "bundle", "dry_run"]);
-  await spec.onSubmit({
-    action_id: "act-1",
-    note: "safe",
-    bundle: "output/actions/act-1.json",
-    dry_run: true,
-  });
-  expect(plugin.calls[0]).toEqual({
-    label: "apply-all-low-risk",
-    command: "notice",
-  });
-});
-
 test("file back modal submits judgment-only file-back args", async () => {
   const context = loadModalSpecContext();
   const plugin = makePlugin();

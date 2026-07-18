@@ -599,6 +599,7 @@ const ZH_TEXT = {
   "运行与历史": "运行与历史",
   "以下为运行诊断与历史": "以下为运行诊断与历史",
   "运行诊断 · 同步 {sync}": "运行诊断 · 同步 {sync}",
+  "最近运行 {n} 条 · 待审 {review}": "最近运行 {n} 条 · 待审 {review}",
   "最近运行 {n} 条 · 待审 {review} · 待执行 {execution}": "最近运行 {n} 条 · 待审 {review} · 待执行 {execution}",
   "未配置": "未配置",
   "正常": "正常",
@@ -2651,67 +2652,6 @@ function isMaintenanceCommandAction(target, reason) {
     " --next ",
   ];
   return maintenanceTokens.some((token) => targetText.includes(token));
-}
-
-function buildAgentLoopEntries(summary, todayDate) {
-  const nightly = summary.nightly;
-  if (!nightly || typeof nightly !== "object") return [];
-  const agentLoop = nightly.agent_loop;
-  if (!agentLoop || typeof agentLoop !== "object") return [];
-  const timestamp = String(agentLoop.generated_at || nightly.generated_at || "");
-  if (datePart(timestamp) !== todayDate) return [];
-  const status = String(agentLoop.status || "");
-  if (status !== "ok" && status !== "failed") return [];
-
-  let title = "预演下一步维护";
-  let summaryText = "今日维护预演完成，暂不需要自动执行";
-  let target = "wiki/indexes/repair-backlog.md";
-  let autoState = "idle";
-  if (status === "failed") {
-    summaryText = "今日维护预演失败，需要人工查看";
-    autoState = "attention";
-  } else {
-    const signals = agentLoop.signals && typeof agentLoop.signals === "object" ? agentLoop.signals : {};
-    const planner = agentLoop.planner && typeof agentLoop.planner === "object" ? agentLoop.planner : {};
-    const execute = planner.execute && typeof planner.execute === "object" ? planner.execute : {};
-    const autoPreview = agentLoop.auto_preview && typeof agentLoop.auto_preview === "object" ? agentLoop.auto_preview : {};
-    const autoApply = agentLoop.auto_apply && typeof agentLoop.auto_apply === "object" ? agentLoop.auto_apply : {};
-    const autoAdoptL1 = agentLoop.auto_adopt_l1 && typeof agentLoop.auto_adopt_l1 === "object" ? agentLoop.auto_adopt_l1 : {};
-    const autoAdoptL2 = agentLoop.auto_adopt_l2 && typeof agentLoop.auto_adopt_l2 === "object" ? agentLoop.auto_adopt_l2 : {};
-    const autoAdoptJ = agentLoop.auto_adopt_judgments && typeof agentLoop.auto_adopt_judgments === "object" ? agentLoop.auto_adopt_judgments : {};
-    // Planner decisions are derived from signals; don't double-count one change in user-facing copy.
-    const newItems = Math.max(asCount(signals.new_count), asCount(execute.new_count));
-    const appliedCount = asCount(autoApply.applied_count);
-    const readyCount = asCount(autoPreview.ready_count);
-    const l1Count = (Array.isArray(autoAdoptL1.items) ? autoAdoptL1.items : []).reduce(function(acc, item) { return acc + (typeof item.count === 'number' && item.count > 0 && !item.error ? item.count : 0); }, 0);
-    const l2Count = (Array.isArray(autoAdoptL2.items) ? autoAdoptL2.items : []).reduce(function(acc, item) { return acc + (typeof item.count === 'number' && item.count > 0 && !item.error ? item.count : 0); }, 0);
-    const jReviewed = typeof autoAdoptJ.reviewed === 'number' ? autoAdoptJ.reviewed : 0;
-    const totalAdopted = appliedCount + l1Count + l2Count;
-    if (totalAdopted > 0 || jReviewed > 0) {
-      var parts = ["今日发现 " + newItems + " 个新变化"];
-      if (appliedCount > 0) parts.push("已静默执行 " + appliedCount + " 条维护路径");
-      if (l1Count > 0) parts.push("已自动消化 " + l1Count + " 条 L1 候选");
-      if (l2Count > 0) parts.push("已自动处理 " + l2Count + " 条 L2 动作");
-      if (jReviewed > 0) parts.push("LLM 已复核 " + jReviewed + " 条判断");
-      title = "已自动维护";
-      summaryText = parts.join("，");
-      target = "wiki/indexes/execution-audit.md";
-      autoState = "ok";
-    } else if (readyCount > 0) {
-      summaryText = `今日发现 ${newItems} 个新变化，${readyCount} 条维护路径可人工确认`;
-      autoState = "pending";
-    }
-  }
-
-  return [{
-    kind: "automation",
-    title,
-    summary: summaryText,
-    target,
-    timestamp,
-    protocol: String(summary.active_protocol || ""),
-    autoState: autoState,
-  }];
 }
 
 // Helpers
@@ -7165,67 +7105,6 @@ function buildRevertArchiveModalSpec(plugin, prefill = {}) {
   };
 }
 
-function buildReviewActionModalSpec(plugin, prefill = {}) {
-  return {
-    title: plugin.t("Review Action"),
-    description: plugin.t("Advance a machine-memory repair action through the explicit action workflow."),
-    fields: [
-      { key: "action_id", label: plugin.t("Action id"), required: true, placeholder: plugin.t("machine-memory action id"), initialValue: prefill.actionId || "" },
-      { key: "status", label: plugin.t("Status"), required: true, placeholder: plugin.t("accepted / rejected / ready ..."), initialValue: prefill.status || "" },
-      { key: "note", label: plugin.t("Note"), kind: "textarea", rows: 4, placeholder: plugin.t("Optional action review note"), initialValue: prefill.note || "" },
-    ],
-    onSubmit: async (values) => {
-      if (typeof plugin.runReviewActionTransition === "function") {
-        await plugin.runReviewActionTransition(values.action_id, values.status);
-        return;
-      }
-      noticeRemovedCommand(
-        plugin,
-        "Machine-memory action commands were removed in W3; use review-page instead."
-      );
-    },
-  };
-}
-
-function buildApplyActionModalSpec(plugin, prefill = {}) {
-  return {
-    title: plugin.t("Apply Action"),
-    description: plugin.t("Apply an accepted low-risk machine-memory repair action."),
-    fields: [
-      { key: "action_id", label: plugin.t("Action id"), required: true, placeholder: plugin.t("machine-memory action id"), initialValue: prefill.actionId || "" },
-      { key: "note", label: plugin.t("Note"), kind: "textarea", rows: 4, placeholder: plugin.t("Optional apply note"), initialValue: prefill.note || "" },
-      { key: "bundle", label: plugin.t("Bundle path"), placeholder: plugin.t("Optional execution bundle path"), initialValue: prefill.bundle || "" },
-      { key: "dry_run", label: plugin.t("Dry run"), kind: "toggle", initialValue: Boolean(prefill.dryRun) },
-    ],
-    onSubmit: async (values) => {
-      if (typeof plugin.runApplyAllAcceptedLowRiskCommand === "function") {
-        await plugin.runApplyAllAcceptedLowRiskCommand();
-        return;
-      }
-      new Notice(plugin.t("Batch review was removed in W4; use review-page for explicit page transitions."));
-    },
-  };
-}
-
-function buildRevertActionModalSpec(plugin, prefill = {}) {
-  return {
-    title: plugin.t("Revert Action"),
-    description: plugin.t("Revert the latest low-risk safe apply for a machine-memory action."),
-    fields: [
-      { key: "action_id", label: plugin.t("Action id"), required: true, placeholder: plugin.t("machine-memory action id"), initialValue: prefill.actionId || "" },
-      { key: "note", label: plugin.t("Note"), kind: "textarea", rows: 4, placeholder: plugin.t("Optional revert note"), initialValue: prefill.note || "" },
-    ],
-    onSubmit: async (values) => {
-      const args = [values.action_id];
-      appendOptionalArg(args, "--note", values.note);
-      noticeRemovedCommand(
-        plugin,
-        "Machine-memory action commands were removed in W3; use review-page instead."
-      );
-    },
-  };
-}
-
 // --- src/run_state.js ---
 
 // Pure run-record and run-log helpers for Product Shell command execution.
@@ -9158,10 +9037,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     new Notice(this.t("Concept rewrite commands were removed in W3; use review-page on the concept page instead."));
   }
 
-  async runReviewActionTransition(actionId, status) {
-    new Notice(this.t("Machine-memory action commands were removed in W3; use review-page instead."));
-  }
-
   visibleReviewPageCandidates() {
     return this.reviewPageControlItems();
   }
@@ -9506,18 +9381,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     new Notice(this.t("Archive commands were removed in W3; inspect manifest pages manually."));
   }
 
-  openReviewActionModal(prefill = {}) {
-    this.openStructuredCommandModal(buildReviewActionModalSpec(this, prefill));
-  }
-
-  openApplyActionModal(prefill = {}) {
-    this.openStructuredCommandModal(buildApplyActionModalSpec(this, prefill));
-  }
-
-  openRevertActionModal(prefill = {}) {
-    this.openStructuredCommandModal(buildRevertActionModalSpec(this, prefill));
-  }
-
   openReviewPageContextPicker(options = this.visibleReviewPageCandidates()) {
     this.openContextAwareAction({
       title: this.t("Pick Review Page"),
@@ -9534,40 +9397,12 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     new Notice(this.t("Concept rewrite commands were removed in W3; use review-page on the concept page instead."));
   }
 
-  openReviewActionContextPicker(_options = this.visibleActionCandidates("review")) {
-    new Notice(this.t("Machine-memory action commands were removed in W3; use review-page instead."));
-  }
-
   openApplyArchiveContextPicker(_options = this.visibleArchiveCandidates("apply")) {
     new Notice(this.t("Archive commands were removed in W3; inspect manifest pages manually."));
   }
 
   openRevertArchiveContextPicker(_options = this.visibleArchiveCandidates("revert")) {
     new Notice(this.t("Archive commands were removed in W3; inspect manifest pages manually."));
-  }
-
-  openApplyActionContextPicker(options = this.visibleActionCandidates("apply")) {
-    this.openContextAwareAction({
-      title: this.t("Pick Apply Action"),
-      description: this.t("Prefer an explicit action control object before falling back to manual action id entry."),
-      keyName: "actionId",
-      options,
-      emptyNotice: this.t("No visible machine-memory action context is available; fell back to the manual form."),
-      onFallback: () => this.openApplyActionModal(),
-      onSubmit: (option) => this.openApplyActionModal({ actionId: option.actionId || option.value || "", bundle: option.bundlePath || "" }),
-    });
-  }
-
-  openRevertActionContextPicker(options = this.visibleActionCandidates("revert")) {
-    this.openContextAwareAction({
-      title: this.t("Pick Revert Action"),
-      description: this.t("Prefer an explicit action control object before falling back to manual action id entry."),
-      keyName: "actionId",
-      options,
-      emptyNotice: this.t("No visible machine-memory action context is available; fell back to the manual form."),
-      onFallback: () => this.openRevertActionModal(),
-      onSubmit: (option) => this.openRevertActionModal({ actionId: option.actionId || option.value || "" }),
-    });
   }
 
   openReviewPageTransitionPicker(control) {
@@ -9593,10 +9428,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   openReviewRewriteTransitionPicker(_control) {
     new Notice(this.t("Concept rewrite commands were removed in W3; use review-page on the concept page instead."));
-  }
-
-  openReviewActionTransitionPicker(_control) {
-    new Notice(this.t("Machine-memory action commands were removed in W3; use review-page instead."));
   }
 
   async openView(viewType, options = {}) {

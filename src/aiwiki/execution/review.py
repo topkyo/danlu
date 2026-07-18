@@ -130,7 +130,7 @@ def review_page(
     if kind == "derived":
         raise ValueError(
             f"Page kind 'derived' is the machine-memory terminal layer and is not subject to review-page workflow. "
-            f"To enter review, run file-back --kind judgment or file-back --kind decision instead. "
+            f"To enter review, run aiwiki file-back <artifact> to write wiki/judgments/. "
             f"(page: {target})"
         )
     if kind not in {"decision", "judgment"}:

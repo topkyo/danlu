@@ -219,14 +219,6 @@ def l3_proposal_control_object(proposal: dict[str, Any]) -> dict[str, Any]:
     can_apply = state == "candidate" and (patch_kind == "metadata_only" or review_state == "human_accepted")
     can_revert = state == "accepted" and bool(last_receipt_path)
     needs_attention = state in {"candidate", "stale", "revert_conflict"}
-    command_hints: dict[str, str] = {}
-    if can_reject:
-        command_hints["accept"] = f"PYTHONPATH=src python3 -m aiwiki.cli --root . review proposal {proposal_id} --status accepted"
-        command_hints["reject"] = f"PYTHONPATH=src python3 -m aiwiki.cli --root . review proposal {proposal_id} --status rejected"
-    if can_apply:
-        command_hints["apply"] = f"PYTHONPATH=src python3 -m aiwiki.cli --root . apply {proposal_id}"
-    if can_revert:
-        command_hints["revert"] = f"PYTHONPATH=src python3 -m aiwiki.cli --root . revert {last_receipt_path}"
     return {
         "proposal_id": proposal_id,
         "kind": kind,
@@ -248,7 +240,7 @@ def l3_proposal_control_object(proposal: dict[str, Any]) -> dict[str, Any]:
         "can_apply": can_apply,
         "can_revert": can_revert,
         "needs_attention": needs_attention,
-        "command_hints": command_hints,
+        "command_hints": {},
     }
 
 def rewrite_control_object(root: Path, proposal: dict[str, Any]) -> dict[str, Any] | None:

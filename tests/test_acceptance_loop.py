@@ -621,6 +621,53 @@ def test_universal_input_routing(  # pragma: no cover - explicit pytest acceptan
     assert bare_history[-1]["material"] == "note"
     assert typed_history[-1]["material"] == "note"
 
+    auto_process = bare_payload.get("auto_process")
+    assert isinstance(auto_process, dict), bare_payload
+    assert "signal_pipeline" not in auto_process, auto_process
+    assert auto_process.get("deterministic_only") is True
+    assert auto_process.get("llm_used") is False
+
+
+def test_file_back_rejects_non_judgment_kind(  # pragma: no cover - explicit pytest acceptance gate
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """W8: product file-back accepts judgment only."""
+    from aiwiki.execution.ask import file_back
+
+    _, vault = _copy_case_and_fix_clock_from("M6.2", "case_universal_input", tmp_path, monkeypatch)
+    report_ref = "output/reports/w8-derived-block.md"
+    report_path = vault / report_ref
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text("# blocked\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="judgment only"):
+        file_back(vault, report_ref, kind="derived")
+    with pytest.raises(ValueError, match="judgment only"):
+        file_back(vault, report_ref, kind="decision")
+
+
+def test_l3_proposal_controls_emit_no_dead_command_hints(  # pragma: no cover - explicit pytest acceptance gate
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from aiwiki.app_shell.controls import l3_proposal_control_object
+
+    proposal = {
+        "proposal_id": "prop-w8",
+        "kind": "metadata_only",
+        "state": "candidate",
+        "target_file": "wiki/judgments/sample.md",
+        "proposal_path": "output/proposals/prop-w8.json",
+        "last_receipt_path": "output/control/execution-receipts/sample.json",
+        "patch": {"kind": "metadata_only"},
+        "review_state": "human_accepted",
+    }
+    control = l3_proposal_control_object(proposal)
+    hints = control.get("command_hints")
+    assert hints == {}
+    serialized = json.dumps(hints)
+    for dead_token in (" review proposal ", " apply ", " revert "):
+        assert dead_token not in f" {serialized} "
+
 
 def test_today_feed_contract(  # pragma: no cover - explicit pytest acceptance gate
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

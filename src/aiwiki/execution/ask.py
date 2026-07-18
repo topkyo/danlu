@@ -7,9 +7,9 @@ Owns the two query-facing execution surfaces previously defined inline in
   concepts, render the requested output artifact, update active corpus,
   runtime history, query-route telemetry, material state, knowledge
   lifecycle, shell summary, and wiki log.
-- ``file_back``: import a derived / decision / judgment artifact from
-  ``output/`` back into the curated ``wiki/`` tree with frontmatter,
-  citations, review schedule, and wiki log entry; recompiles at the end.
+- ``file_back``: import a judgment artifact from ``output/`` back into
+  ``wiki/judgments/`` with frontmatter, citations, review schedule, and wiki
+  log entry; recompiles at the end. Product CLI accepts judgment only.
 
 These functions stay importable as ``aiwiki.app_compile.ask_question`` and
 ``aiwiki.app_compile.file_back`` through the PEP 562 compat seam at the
@@ -99,9 +99,8 @@ from .run_notes import run_id_for_artifact, write_run_notes, write_run_notes_fro
 NEXT_STEP_HINTS = {
     "derived": (
         "wiki/derived 是机器记忆终态层；不进入 review-page 工作流。"
-        "如需人工审阅，请用 file-back --kind judgment 或 --kind decision。"
-        "如需进入金丹链路（alchemy-start），请先用 aiwiki promote <output_ref> 注册 corpus candidate；"
-        "file-back --kind derived 不写 corpus candidate plane。"
+        "如需人工审阅，请用 aiwiki file-back <artifact> 写入 wiki/judgments/。"
+        "如需进入金丹链路（alchemy-start），请先用 aiwiki promote <output_ref> 注册 corpus candidate。"
     ),
     "judgment": (
         "next: aiwiki review-page {path} "
@@ -752,7 +751,7 @@ def file_back(
     root: Path,
     artifact: str,
     title: str | None = None,
-    kind: str = "derived",
+    kind: str = "judgment",
     protocol: str | None = None,
 ) -> dict[str, Any]:
     from .. import app_utils as _app_utils
@@ -766,8 +765,10 @@ def file_back(
         raise FileNotFoundError(f"Artifact not found: {artifact}")
     if artifact_path.suffix.lower() not in {".md", ".markdown", ".txt"}:
         raise ValueError("Only markdown or text artifacts can be filed back in the MVP.")
-    if kind not in {"derived", "decision", "judgment"}:
-        raise ValueError(f"Unsupported filed-back kind: {kind}")
+    if kind != "judgment":
+        raise ValueError(
+            "file-back accepts judgment only; derived and decision kinds were removed from the product CLI."
+        )
 
     filed_at = _app_utils.utc_now()
     artifact_ref = relative_path(root, artifact_path) if artifact_path.is_relative_to(root_resolved) else str(artifact_path)
