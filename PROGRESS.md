@@ -14,6 +14,8 @@
 
 ## 当前动态
 
+- 2026-07-18 (W1 single-protocol runtime)：物理收敛为单 runtime `general` only——删除 `schema/protocols/{investing,research,product,ops}`、CLI `protocol-set/status` 与 `protocol-learn-*`、ask `--protocol`/`--load-learnings`、Product Shell 协议选择器；非 `general` state 一次性 coerce 并重写 `.aiwiki/state/protocol.json`。Active docs（USER_GUIDE / DEVELOPER / Evolution / Architecture）与 acceptance fixtures 已同步。验证：`bash scripts/docs_consistency_check.sh` PASS；`bash scripts/verify.sh all` PASS。
+
 - 2026-07-18 (freeform ask markdown-only)：Ask 契约收敛为单一自由 Markdown 报告（`output/reports/*.md`）；硬删 note/slides/figure/decision-memo/sop ask format 与 `--direct`（零兼容、无 alias）；去掉六段 Required Sections 与 `_validate_report_sections`；Product Shell Today 打开报告 / 审阅 / snooze 按钮接线修复；acceptance `prompt_hash` 刷新。`drop note` 投料与 judgment 派生 packs 未动。验证：`bash scripts/verify.sh all` PASS（18 acceptance + Product Shell Jest）。
 
 - 2026-07-18 (self-reach 续炼收口)：file-back 保留 derived `promoted_to`（`ask.py`）；dogfood settled 金丹 2、judgments 6 confirmed；acceptance +1 `test_file_back_judgment_preserves_derived_promoted_to`（18 passed）。成色 B+。
