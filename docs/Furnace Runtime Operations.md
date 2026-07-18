@@ -26,16 +26,17 @@ related_docs:
 | 进程 | 类型 | 频率 | LLM 调用 | 自愈 |
 |---|---|---|---|---|
 | `aiwiki-watch.service` | 长驻 daemon | 每 5 秒 inbox 扫描 | **否**（默认 `--deterministic-only`）| `Restart=always` |
-| `aiwiki-nightly.timer` → `aiwiki-nightly.service` | 定时 oneshot | 每天 00:00 | **是**（默认 full local furnace profile）| `Persistent=true` 错过补跑 |
-| 用户/agent 显式 `run-ask` / `run-nightly` | 手动 worker | 按需 | 是 | 无（手动调用） |
+| `aiwiki-nightly.timer` → `aiwiki-nightly.service` | 定时 oneshot | 每天 00:00 | **否**（默认 deterministic `compile` + `lint` + agent-loop；debt_autopilot 仅 inventory/preview，W7 不调 LLM `run_compile`）| `Persistent=true` 错过补跑 |
+| 用户/agent 显式 `run-ask` | 手动 worker | 按需 | **是**（产品 LLM 主入口） | 无（手动调用） |
+| 用户/agent 显式 `run-nightly` | 手动 worker | 按需 | **否**（同 nightly timer：确定性维护链） | 无（手动调用） |
 
 > 2026-07-15 清理：原 `aiwiki-dogfood-maturity.timer` 行已删除（属于历史验证 harness，本轮 scripts + systemd 一并删除 `install_user_service.sh` 的 `AIWIKI_INSTALL_DOGFOOD_MATURITY` 分支）。如升级机器上的旧 unit，自动 cleanup 由 `scripts/install_user_service.sh` / `uninstall_user_service.sh` 兜底。
 
 **含义**：炼丹炉在用户睡觉时也在工作，但工作内容受三条硬约束：
 
 - **deterministic-only watcher**：watcher 默认不主动调 LLM；只跑 deterministic compile / lint，确保 raw → wiki 的最低可用流水线长期 alive
-- **nightly 五层炼化**：runtime policy 缺省 `autonomy_profile=agentic`，nightly 默认执行 L0/L1/L2/L3/Judgment 和 heavy semantic 非核心自动化；env / policy 可按层缩窄，但所有变更必须 receipt/audit/revert；核心 prompt/policy/schema 写回仍 proposal-only；fallback 仍默认关闭
-- **LLM 隔离到受控入口**：要让 LLM 介入，必须走 `run-ask` 等显式命令；watcher / nightly 不会偷跑 LLM compile/lint
+- **nightly 确定性炼化 + 可选自治层**：timer 默认跑 deterministic `compile` + `lint` + agent-loop 维护；`AIWIKI_NIGHTLY_AUTO_*` 写入型 flag 在新安装 env 默认 `0`，operator 显式 opt-in 后才启用 L1/L2/judgment review 等 LLM 或 apply 路径；核心 prompt/policy/schema 写回仍 proposal-only
+- **LLM 隔离到受控入口**：产品 LLM 主路径是 `run-ask`；watcher / nightly **不会**偷跑 LLM `run-compile` / `run-lint`（W6/W7）
 - **single writer**：任意时刻只允许一个 writer（watcher / nightly / 手动 CLI / Obsidian Plugin）持有 `runtime.lock`
 
 ---
@@ -128,7 +129,7 @@ aiwiki run-nightly --compile-limit N    ← deterministic compile + lint + agent
 - `AIWIKI_NIGHTLY_AUTO_ADOPT_L2=1` —— **L2 结构层自动采纳**：overloaded-concept split 自动 accept + apply。systemd installer 默认写 `0`。
 - `AIWIKI_NIGHTLY_AUTO_ADOPT_L3=1` —— **L3 策略层自动采纳**：自动登记 `metadata_only` candidate，核心 prompt/policy/schema 写回仍必须显式 human accept + 手动 `apply` + hash gate。systemd installer 默认写 `0`。
 - `AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS=1` —— **判断层自动复核**：LLM-powered counter-evidence review，读取反证来源页生成 upheld/weakened/refuted 结论，并写标准 execution receipt、history、audit。systemd installer 默认写 `0`。
-- `AIWIKI_NIGHTLY_AUTO_APPLY_HEAVY_SEMANTIC=1` —— **heavy semantic phase 自动 apply**：signal pipeline 会执行 heavy `review/distill/propose` 的 receipt-backed 非核心 apply，核心写回继续走 proposal/human gate。systemd installer 默认写 `0`。
+- `AIWIKI_NIGHTLY_AUTO_ADOPT_HEAVY_SEMANTIC=1` — **（W3 已删 AgentOS lane）** 历史 env；当前无对应 CLI/apply 面，保留键仅作 compat no-op
 - `AIWIKI_NIGHTLY_AUTO_ADOPT_CORE_L3=1` —— **核心 L3 写回授权**：默认关闭；当前仍不允许无人值守改核心 prompt/policy/schema，仅作为未来显式 contract flag
 
 这些 env 是显式覆盖层；缺省值来自 `.aiwiki/state/autonomy-policy.json`，文件缺失或 `AIWIKI_AUTONOMY_PROFILE=agentic` 覆盖时 runtime profile 允许维护、治理、judgment review、metadata-only L3 和 heavy semantic 非核心自动化，但核心 L3 写回默认关闭。systemd installer 为防止安装即写入，把上述写入型 auto env 默认落为 `0`；operator 要无人值守写入时必须在 env 文件中显式改成 `1`。`AIWIKI_DISABLE_AUTOMATION=1` 是全局 kill switch；policy 损坏时 fail-closed。预算字段 `max_l3_apply_per_run` 与 `judgment_review_limit` 分别限制单次 nightly 的 L3 apply 数和 judgment review 数。
@@ -171,20 +172,21 @@ systemctl --user disable --now aiwiki-watch.service aiwiki-nightly.timer
 
 ## 3. 受控 LLM-backed worker 入口
 
-watcher 不调 LLM，那 LLM 在哪发生？三条路径：
+watcher 与 nightly timer 默认不调 LLM。LLM 在产品面的默认发生点：
 
-| 入口 | 触发方式 | 持锁 | 用途 |
-|---|---|---|---|
-| `aiwiki compile` | 手动 / watcher / nightly | 是 | 确定性 compile：manifest → wiki sources/indexes |
-| `aiwiki lint` | 手动 / nightly | 是 | 确定性 lint + repair backlog |
-| `aiwiki run-ask "<question>" --format report` | 手动 / agent 调用 | 是 | LLM-backed reasoning：生成 query report |
-| `aiwiki run-nightly` | nightly timer 触发 | 是 | 确定性 compile + lint + agent-loop 维护 |
-| `aiwiki nightly` | 手动 / timer | 是 | 确定性 compile + lint + nightly health |
+| 入口 | 触发方式 | 持锁 | LLM | 用途 |
+|---|---|---|---|---|
+| `aiwiki compile` | 手动 / watcher / nightly | 是 | 否 | 确定性 compile：manifest → wiki sources/indexes |
+| `aiwiki lint` | 手动 / nightly | 是 | 否 | 确定性 lint + repair backlog |
+| `aiwiki run-nightly` / `aiwiki nightly` | timer / 手动 | 是 | 否 | 确定性 compile + lint + agent-loop 维护 |
+| `aiwiki run-ask "<question>" --format report` | 手动 / agent 调用 | 是 | **是** | LLM-backed reasoning：生成 query report |
 
-所有 `run-*` 路径都：
+`run-ask` 路径会：
 - 先做 `preflight_check_backend`（4-state probe），结果记入 receipt 的 `backend_compat` 字段
 - 写 LLM receipt（`.aiwiki/logs/llm-receipts.jsonl`）+ runtime history + universal audit
 - 失败时：受 P4-2 raw response observability 保护，失败原因和 raw stdout 都可在 receipt 里追到
+
+可选 nightly 自治层（`AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS=1` 等）在 operator 显式开启时可能调用 LLM 做 judgment review；这不改变默认 timer 的 deterministic baseline。
 
 ---
 

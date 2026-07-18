@@ -93,7 +93,7 @@ LLM enrichment 仍然是炼丹炉主路径，但放在受控 worker 入口：`ru
 治理债的目标是自动消化，符合炼丹炉"人只看异常"的设计哲学。分层按**影响范围 × 可逆性**定义：
 
 - **维护层**：compile / lint / nightly / 陈旧状态清理 / 派生索引 refresh — 只读或可逆的操作，可通过 `AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT=1` 显式开启自动落盘；新安装的 systemd nightly env 默认写 `0`，避免安装即开始写入型自治。
-- **债务自消化层**：source summary backlog / weak concepts / rewrite candidates / judgment metadata debt / machine-memory actions — 统一进入 `debt-autopilot`，由 owner-state collector 只把 policy 分类为 `non_core_semantic` 的项目计入 `llm_owned_non_core`，再交给 `run_compile` LLM 内容消化、current rewrite apply、safe action apply、revert 或 compensating receipt；L3 metadata/governance debt 不能伪装成 `llm_owned_non_core`。Product Shell 只能展示 debt-autopilot 的结果，不参与无人值守 apply 判定；单项 LLM timeout 只能记为该 debt 失败，不能阻塞整个队列。
+- **债务自消化层**：source summary backlog / weak concepts / rewrite candidates / judgment metadata debt / machine-memory actions — 统一进入 `debt-autopilot` inventory；nightly 路径仅 preview/inventory（W7 不在 `run-nightly` 调 LLM `run_compile` / `run_lint` 做内容消化）。显式 operator dry-run apply 与 safe action apply 仍走 receipt 链；L3 metadata/governance debt 不能伪装成 `llm_owned_non_core`。Product Shell 只能展示 debt-autopilot 的结果，不参与无人值守 apply 判定。
 - **治理层**：concept backlog / revisit / source-concept links / concept splits — 结构性变更，可逆且有 receipt；通过 `AIWIKI_NIGHTLY_AUTO_ADOPT_L1=1` + `AIWIKI_NIGHTLY_AUTO_ADOPT_L2=1` 显式开启无人值守采纳。
 - **判断层**：counter-evidence / judgment review — LLM 驱动的语义复核，自动分析反证、写出审阅结论；judgment page、标准 execution receipt、execution history、audit stream 必须可互证，写失败回滚。通过 `AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS=1` 显式开启。
 - **策略层**：L3 proposal / prompt 变更 / schema 变更 — 非核心/metadata-only 学习默认由 agentic nightly 登记和消化；写回核心 prompt/policy/schema 前必须 `review proposal <id> --status accepted` 人工确认，再手动 `apply <proposal-id>` hash-gated 写 receipt。`AIWIKI_NIGHTLY_AUTO_ADOPT_CORE_L3=0` 是核心自改红线，不允许无人值守改核心 prompt/policy/schema。
@@ -208,7 +208,7 @@ app_memory_query.py        query helpers owner
 
 execution/                 execution bundles / receipts / apply / revert / audit owner
 app_execution.py           receipt / bundle assembly compat entry
-runner/                    run-compile / run-ask / nightly / watch / alchemy workflows
+runner/                    run-ask / nightly / watch / alchemy min-chain 等 high-level 编排
 runner/alchemy.py          deferred residual hotspot
 planner/                   dry-run / log / safe primitive policy
 signals/                   review / repair / aging / escalation 信号源

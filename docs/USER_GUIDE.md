@@ -104,23 +104,31 @@ Ask 只产出 `output/reports/*.md` 自由 Markdown 报告（CLI 仅接受 `--fo
 
 ### 第 4 步：回流
 
-看到值得长期保留的结论，把它写回 wiki：
+看到值得长期保留的结论，把它写回 wiki（默认写 judgment 页，进入薄审阅流程）：
 
 ```bash
 ./scripts/aiwiki-launcher.sh advanced file-back output/reports/xxx.md
+# 等价于 --kind judgment（默认）；derived/decision 需显式 --kind
 ```
 
-file-back 会把结论整理成 judgment、decision 或 derived page，并保留来源链路。
+file-back 默认 `--kind judgment`，会把结论整理成 judgment page 并保留来源链路；decision / derived 需显式指定 kind。
 
 ### 第 5 步：复盘与金丹
 
-周期结束后，回头看判断是否正确：
+周期结束后，回头看判断是否正确。审阅状态机已收敛为薄三态：**待审** / **已确认** / **废弃**（CLI 可用 transition token `pending-review` / `confirmed` / `discarded`，或 canonical status）：
 
 ```bash
-# 审阅某页
-./scripts/aiwiki-launcher.sh advanced review-page wiki/judgments/xxx.md --status approved --note "..."
+# 确认 judgment（薄 transition → confirmed）
+./scripts/aiwiki-launcher.sh advanced review-page wiki/judgments/xxx.md --status confirmed --note "..."
 
-# 每晚自动巡检
+# 废弃
+./scripts/aiwiki-launcher.sh advanced review-page wiki/judgments/xxx.md --status discarded --note "..."
+```
+
+沉淀下来的 reusable thesis 会变成 `wiki/elixirs/` 中的金丹，供下一轮研究引用：
+
+```bash
+# 每晚自动巡检（确定性 compile + lint）
 ./scripts/aiwiki-launcher.sh advanced nightly
 
 # 启动 / 蒸馏 / 定稿金丹（跨周期 reusable thesis）
@@ -128,8 +136,6 @@ file-back 会把结论整理成 judgment、decision 或 derived page，并保留
 ./scripts/aiwiki-launcher.sh advanced alchemy-distill --help
 ./scripts/aiwiki-launcher.sh advanced alchemy-finalize --help
 ```
-
-沉淀下来的 reusable thesis 会变成 `wiki/elixirs/` 中的金丹，供下一轮研究引用。
 
 ## 单 runtime 协议
 
