@@ -89,7 +89,7 @@ function buildReviewPageModalSpec(plugin, prefill = {}) {
         key: "status",
         label: plugin.t("Status"),
         required: true,
-        placeholder: plugin.t("approved / confirmed / needs-revision ..."),
+        placeholder: plugin.t("confirmed / discarded / pending-review"),
         initialValue: prefill.status || "",
       },
       {

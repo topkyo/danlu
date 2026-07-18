@@ -294,8 +294,26 @@ function sumNumericValues(values) {
   }, 0);
 }
 
+function thinCuratedStatusGroup(status) {
+  const normalized = String(status || "").trim();
+  if (["proposed", "needs-revisit", "tentative", "tracking"].includes(normalized)) {
+    return "pending-review";
+  }
+  if (["approved", "confirmed"].includes(normalized)) {
+    return "confirmed";
+  }
+  if (["superseded", "rejected"].includes(normalized)) {
+    return "discarded";
+  }
+  return normalized;
+}
+
 function displayCuratedStatus(status, locale = DEFAULT_LOCALE) {
-  return t(locale, CURATED_STATUS_LABELS[String(status || "").trim()] || String(status || "unknown"));
+  const thin = thinCuratedStatusGroup(status);
+  const label = THIN_CURATED_STATUS_LABELS[thin]
+    || CURATED_STATUS_LABELS[String(status || "").trim()]
+    || String(status || "unknown");
+  return t(locale, label);
 }
 
 function displayActionStatus(status, locale = DEFAULT_LOCALE) {

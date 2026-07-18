@@ -209,8 +209,8 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
     file_back_parser.add_argument(
         "--kind",
         choices=("derived", "decision", "judgment"),
-        default="derived",
-        help="Filed-back page kind. Note: 'derived' is terminal (no review) and separate from the corpus candidate plane; 'decision' and 'judgment' enter the review-page workflow.",
+        default="judgment",
+        help="Filed-back page kind. Default judgment enters review-page workflow; derived is terminal (no review); decision also enters review-page workflow.",
     )
 
     alchemy_start_parser = subparsers.add_parser("alchemy-start", help="Start a new elixir from a corpus.")

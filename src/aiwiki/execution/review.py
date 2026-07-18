@@ -61,6 +61,7 @@ from ..content.io import (
     entry_lookup_maps,
     review_history_entries,
 )
+from ..lifecycle.status import resolve_thin_review_transition
 from ..lifecycle.templates import (
     curated_frontmatter_hints,
     curated_structured_value_is_placeholder,
@@ -137,6 +138,8 @@ def review_page(
             "Only decision or judgment pages can enter the review workflow; "
             "expected one of: ('decision', 'judgment')"
         )
+    current_status = str(frontmatter.get("status") or "")
+    status = resolve_thin_review_transition(kind, current_status, status)
     valid_statuses = valid_curated_statuses(kind)
     if status not in valid_statuses:
         raise ValueError(

@@ -577,6 +577,7 @@ const ZH_TEXT = {
   "output/reports/....md": "output/reports/....md",
   "Optional filed-back title": "可选回填标题",
   "wiki/decisions/... or wiki/judgments/...": "wiki/decisions/... 或 wiki/judgments/...",
+  "confirmed / discarded / pending-review": "confirmed / discarded / pending-review",
   "approved / confirmed / needs-revision ...": "approved / confirmed / needs-revision ...",
   "accepted / rejected / needs-revision ...": "accepted / rejected / needs-revision ...",
   "accepted / rejected / ready ...": "accepted / rejected / ready ...",
@@ -842,6 +843,16 @@ const ZH_TEXT = {
   stdout: "标准输出",
   stderr: "错误输出",
   error: "错误",
+};
+const THIN_CURATED_STATUS_LABELS = {
+  "pending-review": "待审",
+  confirmed: "已确认",
+  discarded: "废弃",
+};
+const THIN_REVIEW_TRANSITION_LABELS = {
+  "pending-review": "待审",
+  confirmed: "已确认",
+  discarded: "废弃",
 };
 const CURATED_STATUS_LABELS = {
   proposed: "Proposed",

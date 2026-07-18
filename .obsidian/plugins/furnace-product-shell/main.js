@@ -769,6 +769,7 @@ const ZH_TEXT = {
   "output/reports/....md": "output/reports/....md",
   "Optional filed-back title": "可选回填标题",
   "wiki/decisions/... or wiki/judgments/...": "wiki/decisions/... 或 wiki/judgments/...",
+  "confirmed / discarded / pending-review": "confirmed / discarded / pending-review",
   "approved / confirmed / needs-revision ...": "approved / confirmed / needs-revision ...",
   "accepted / rejected / needs-revision ...": "accepted / rejected / needs-revision ...",
   "accepted / rejected / ready ...": "accepted / rejected / ready ...",
@@ -1034,6 +1035,16 @@ const ZH_TEXT = {
   stdout: "标准输出",
   stderr: "错误输出",
   error: "错误",
+};
+const THIN_CURATED_STATUS_LABELS = {
+  "pending-review": "待审",
+  confirmed: "已确认",
+  discarded: "废弃",
+};
+const THIN_REVIEW_TRANSITION_LABELS = {
+  "pending-review": "待审",
+  confirmed: "已确认",
+  discarded: "废弃",
 };
 const CURATED_STATUS_LABELS = {
   proposed: "Proposed",
@@ -1370,8 +1381,26 @@ function sumNumericValues(values) {
   }, 0);
 }
 
+function thinCuratedStatusGroup(status) {
+  const normalized = String(status || "").trim();
+  if (["proposed", "needs-revisit", "tentative", "tracking"].includes(normalized)) {
+    return "pending-review";
+  }
+  if (["approved", "confirmed"].includes(normalized)) {
+    return "confirmed";
+  }
+  if (["superseded", "rejected"].includes(normalized)) {
+    return "discarded";
+  }
+  return normalized;
+}
+
 function displayCuratedStatus(status, locale = DEFAULT_LOCALE) {
-  return t(locale, CURATED_STATUS_LABELS[String(status || "").trim()] || String(status || "unknown"));
+  const thin = thinCuratedStatusGroup(status);
+  const label = THIN_CURATED_STATUS_LABELS[thin]
+    || CURATED_STATUS_LABELS[String(status || "").trim()]
+    || String(status || "unknown");
+  return t(locale, label);
 }
 
 function displayActionStatus(status, locale = DEFAULT_LOCALE) {
@@ -6997,6 +7026,10 @@ function reviewKindLabel(plugin, kind, count = 1) {
 
 function transitionLabel(plugin, controlType, transition) {
   if (controlType === "page") {
+    const thin = THIN_REVIEW_TRANSITION_LABELS[String(transition || "").trim()];
+    if (thin) {
+      return plugin.t(thin);
+    }
     return displayCuratedStatus(transition, plugin.locale());
   }
   if (controlType === "rewrite") {
@@ -7407,7 +7440,7 @@ function buildReviewPageModalSpec(plugin, prefill = {}) {
         key: "status",
         label: plugin.t("Status"),
         required: true,
-        placeholder: plugin.t("approved / confirmed / needs-revision ..."),
+        placeholder: plugin.t("confirmed / discarded / pending-review"),
         initialValue: prefill.status || "",
       },
       {
