@@ -37,6 +37,7 @@ def machine_memory_digest(memory: dict[str, Any]) -> str:
         "source_nodes": memory.get("source_nodes", []),
         "concept_nodes": memory.get("concept_nodes", []),
         "judgment_nodes": memory.get("judgment_nodes", []),
+        "elixir_nodes": memory.get("elixir_nodes", []),
         "edges": memory.get("edges", {}),
         "citation_map": memory.get("citation_map", []),
         "term_index": memory.get("term_index", {}),

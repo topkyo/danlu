@@ -1251,7 +1251,20 @@ def _build_machine_memory_query_json(
 
     direct_source_scores: dict[str, int] = {}
     direct_concept_scores: dict[str, int] = {}
+    direct_judgment_scores: dict[str, int] = {}
+    direct_elixir_scores: dict[str, int] = {}
     matched_terms: list[str] = []
+
+    confirmed_judgment_nodes = {
+        str(node.get("page_id") or ""): node
+        for node in memory.get("judgment_nodes", [])
+        if isinstance(node, dict) and str(node.get("kind") or "") == "judgment" and str(node.get("status") or "") == "confirmed" and node.get("page_id")
+    }
+    elixir_nodes = {
+        str(node.get("elixir_id") or ""): node
+        for node in memory.get("elixir_nodes", [])
+        if isinstance(node, dict) and node.get("elixir_id")
+    }
 
     source_to_concepts: dict[str, set[str]] = {}
     concept_to_sources: dict[str, set[str]] = {}
@@ -1283,6 +1296,12 @@ def _build_machine_memory_query_json(
         for concept_slug in payload.get("concept_slugs", []):
             if concept_slug in concept_nodes:
                 direct_concept_scores[concept_slug] = direct_concept_scores.get(concept_slug, 0) + 4
+        for page_id in payload.get("judgment_page_ids", []):
+            if page_id in confirmed_judgment_nodes:
+                direct_judgment_scores[page_id] = direct_judgment_scores.get(page_id, 0) + 5
+        for elixir_id in payload.get("elixir_ids", []):
+            if elixir_id in elixir_nodes:
+                direct_elixir_scores[elixir_id] = direct_elixir_scores.get(elixir_id, 0) + 6
 
     route_strategy = select_machine_memory_query_strategy(
         question,
@@ -1295,6 +1314,8 @@ def _build_machine_memory_query_json(
 
     expanded_source_scores = dict(direct_source_scores)
     expanded_concept_scores = dict(direct_concept_scores)
+    expanded_judgment_scores = dict(direct_judgment_scores)
+    expanded_elixir_scores = dict(direct_elixir_scores)
     supporting_edges: set[tuple[str, str, str]] = set()
 
     for source_id in list(direct_source_scores):
@@ -1341,6 +1362,42 @@ def _build_machine_memory_query_json(
             elif edge["type"] == "RELATED_CONCEPT":
                 supporting_edges.add(("RELATED_CONCEPT", edge["left"], edge["right"]))
 
+    for source_id in list(expanded_source_scores):
+        for edge in edges.get("source_to_judgment", []):
+            page_id = str(edge.get("page_id") or "")
+            if str(edge.get("source_id") or "") != source_id or page_id not in confirmed_judgment_nodes:
+                continue
+            expanded_judgment_scores[page_id] = expanded_judgment_scores.get(page_id, 0) + 3
+            supporting_edges.add(("SUPPORTS_JUDGMENT", source_id, page_id))
+
+    for page_id in list(expanded_judgment_scores):
+        for edge in edges.get("judgment_to_judgment", []):
+            related_id = ""
+            if str(edge.get("from") or "") == page_id:
+                related_id = str(edge.get("to") or "")
+            elif str(edge.get("to") or "") == page_id:
+                related_id = str(edge.get("from") or "")
+            if related_id and related_id in confirmed_judgment_nodes:
+                expanded_judgment_scores[related_id] = expanded_judgment_scores.get(related_id, 0) + 1
+                supporting_edges.add(("JUDGMENT_RELATED", page_id, related_id))
+
+    for edge in edges.get("elixir_derived_from", []):
+        elixir_id = str(edge.get("elixir_id") or "")
+        from_kind = str(edge.get("from_kind") or "")
+        from_id = str(edge.get("from_id") or "")
+        if not elixir_id or elixir_id not in elixir_nodes:
+            continue
+        if from_kind == "source" and from_id not in expanded_source_scores:
+            continue
+        if from_kind == "judgment" and from_id not in expanded_judgment_scores:
+            continue
+        if from_kind == "elixir" and from_id not in expanded_elixir_scores:
+            continue
+        if from_kind not in {"source", "judgment", "elixir"}:
+            continue
+        expanded_elixir_scores[elixir_id] = expanded_elixir_scores.get(elixir_id, 0) + 3
+        supporting_edges.add(("ELIXIR_DERIVED_FROM", from_id, elixir_id))
+
     source_rank_records = [
         machine_memory_source_runtime_record(
             source_id,
@@ -1375,6 +1432,26 @@ def _build_machine_memory_query_json(
             expanded_concept_scores.items(),
             key=lambda item: (-item[1], concept_nodes.get(item[0], {}).get("title", item[0]).lower()),
         )[:8]
+    ]
+    ranked_judgment_ids = [
+        page_id
+        for page_id, _score in sorted(
+            expanded_judgment_scores.items(),
+            key=lambda item: (
+                -item[1],
+                -int(confirmed_judgment_nodes.get(item[0], {}).get("asset_score", 0) or 0),
+                confirmed_judgment_nodes.get(item[0], {}).get("title", item[0]).lower(),
+            ),
+        )[:8]
+        if page_id in confirmed_judgment_nodes
+    ]
+    ranked_elixir_ids = [
+        elixir_id
+        for elixir_id, _score in sorted(
+            expanded_elixir_scores.items(),
+            key=lambda item: (-item[1], elixir_nodes.get(item[0], {}).get("title", item[0]).lower()),
+        )[:8]
+        if elixir_id in elixir_nodes
     ]
     bridge_concept_slugs = [
         slug for slug in ranked_concept_slugs if slug in set(health.get("bridge_concept_slugs", []))
@@ -1426,6 +1503,24 @@ def _build_machine_memory_query_json(
         }
         for concept_slug in ranked_concept_slugs
         if concept_slug in concept_nodes
+    ]
+    query_subgraph_judgments = [
+        {
+            "page_id": page_id,
+            "title": confirmed_judgment_nodes[page_id]["title"],
+            "path": confirmed_judgment_nodes[page_id]["path"],
+        }
+        for page_id in ranked_judgment_ids
+        if page_id in confirmed_judgment_nodes
+    ]
+    query_subgraph_elixirs = [
+        {
+            "elixir_id": elixir_id,
+            "title": elixir_nodes[elixir_id]["title"],
+            "path": elixir_nodes[elixir_id]["path"],
+        }
+        for elixir_id in ranked_elixir_ids
+        if elixir_id in elixir_nodes
     ]
     query_subgraph_edges = [
         {"type": edge_type, "left": left, "right": right}
@@ -1542,6 +1637,8 @@ def _build_machine_memory_query_json(
         "matched_terms": matched_terms[:8],
         "ranked_source_ids": ranked_source_ids[:5],
         "ranked_concept_slugs": ranked_concept_slugs[:5],
+        "ranked_judgment_ids": ranked_judgment_ids[:5],
+        "ranked_elixir_ids": ranked_elixir_ids[:5],
         "touched_component_ids": touched_component_ids[:5],
         "planner_next_action_id": str(planner_next_action.get("action_id") or ""),
     }
@@ -1550,6 +1647,8 @@ def _build_machine_memory_query_json(
         "matched_terms": matched_terms,
         "direct_source_ids": sorted(direct_source_scores),
         "direct_concept_slugs": sorted(direct_concept_scores),
+        "direct_judgment_ids": sorted(direct_judgment_scores),
+        "direct_elixir_ids": sorted(direct_elixir_scores),
         "time_focus": time_focus,
         "time_focus_markers": list(time_focus_state.get("markers", []) or []),
         "route_config": dict(route_strategy.get("config") or {}),
@@ -1559,6 +1658,8 @@ def _build_machine_memory_query_json(
         "matched_graph_markers": list(route_strategy.get("matched_graph_markers", []) or []),
         "ranked_source_ids": ranked_source_ids,
         "ranked_concept_slugs": ranked_concept_slugs,
+        "ranked_judgment_ids": ranked_judgment_ids,
+        "ranked_elixir_ids": ranked_elixir_ids,
         "protocol_shard_source_ids": protocol_shard_source_ids,
         "time_shard_source_ids": time_shard_source_ids,
         "archive_recall_hints": archive_recall_hints,
@@ -1577,6 +1678,8 @@ def _build_machine_memory_query_json(
         "query_subgraph": {
             "sources": query_subgraph_sources,
             "concepts": query_subgraph_concepts,
+            "judgments": query_subgraph_judgments,
+            "elixirs": query_subgraph_elixirs,
             "edges": query_subgraph_edges,
         },
     }
