@@ -37,6 +37,7 @@ updated_at: 2026-07-15
 | [W2 Compounding Rank + Suggest plan](<./plans/2026-07-18-w2-compounding-rank-suggest.md>) | **已完成**：ranking / `used_refs` / 稀缺 `compound_suggest` + Today CTA（2026-07-18） |
 | [W3 Governance Side-Cuts plan](<./plans/2026-07-18-w3-governance-side-cuts.md>) | **已完成**：删除 AgentOS governance CLI；保留 alchemy min-chain / compile / lint / ask / review-page（2026-07-18） |
 | [W6 Compounding Gap Close plan](<./plans/2026-07-18-w6-compounding-gap-close.md>) | **已完成**：query cache elixir、锁 LLM compile/lint 侧门、Shell dead hooks + Today 收窄、Active docs 收尾（2026-07-18） |
+| [W8 Final AgentOS Residual Close plan](<./plans/2026-07-18-w8-final-agentos-close.md>) | **已完成**：nightly=compile+lint only、drop 默认 auto、judgment-only file-back、无 batch review、Today-only Shell、live-only capabilities（2026-07-18） |
 
 > Commercial Grade Cleanup Plan 2026-07 已归档（`executed-reviewed-pass`），见下方 Archived。
 > Investing Demo Pack（`delivered-fixture`）与 RuntimeClient Mobile Companion（`implemented-slice`）已交付规格，见下方 Delivered specs；残留 go-to-market 工作并入上表 Go-Live 计划。

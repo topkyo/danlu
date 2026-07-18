@@ -84,16 +84,16 @@ scripts/uninstall_launchd_service.sh
 
 常驻 `watch` 的默认职责是稳定入炉：发现 `raw/inbox` 变化后跑 deterministic compile / lint，保留 provenance、source page、concept graph 和 review queue 的最低可用状态。它默认不 inline 阻塞跑 LLM；如果确实要让 watcher 同步执行 LLM compile，可以显式设置 `AIWIKI_WATCH_DETERMINISTIC_ONLY=0`，但这会增加 single-writer lock 占用，不作为默认推荐。
 
-LLM enrichment 仍然是炼丹炉主路径，但放在受控 worker 入口：`run-ask`、`run-nightly` 和 nightly timer。W3 已删除 `run-compile` / `run-lint` 与 AgentOS governance CLI（`review-action`、`apply-action`、`signals-*`、`planner-log-*`、`alchemy auto/lane` 等）；保留 `compile` / `lint` / `nightly` 确定性链路与 `alchemy-start/distill/finalize/promote/revert/demote`。
+LLM enrichment 仍然是炼丹炉主路径，但放在受控 worker 入口：`run-ask`（以及 operator 显式调用的 alchemy / review 等）。W3 已删除 `run-compile` / `run-lint` 与 AgentOS governance CLI；W8 产品 `run-nightly` / nightly timer / drop-auto 只做 deterministic `compile` + `lint`（无 agent-loop / signals / debt LLM 消化）。保留 `compile` / `lint` / `nightly` 确定性链路与 `alchemy-start/distill/finalize/promote/revert/demote`。
 
-默认 unattended 路径按“**等待投料 → 炼丹 → 产出 → 回馈 → 受控学习**”运行：watcher 负责等待投料和最低可用 compile；nightly 负责每天炼化、巡检、修复、回馈和学习；产物写到 `wiki/`、`output/`、receipt / audit；所有会改写系统行为的学习都必须保留 receipt、可审计、可回滚，不允许覆盖 `raw/` 或隐式切 backend。
+默认 unattended 路径按“**等待投料 → 炼丹 → 产出 → 回馈 → 受控学习**”运行：watcher 负责等待投料和最低可用 compile；成功 `drop` 默认触发 deterministic compile+lint；nightly 负责每天确定性炼化与健康写入；产物写到 `wiki/`、`output/`、receipt / audit；所有会改写系统行为的学习都必须保留 receipt、可审计、可回滚，不允许覆盖 `raw/` 或隐式切 backend。
 
 图谱分两种视图，不要混用。**证据关系图**（Obsidian 侧边栏 Graph）是用户默认视图：只展示报告、来源、原料笔记与可选判断（`output/reports` → `wiki/sources` → `raw/inbox`），打开 Graph 即可，**不需要手动筛选**；默认隐藏未解析链接与孤儿节点，且不含 `raw/assets` / 概念 / 金丹 / derived / indexes。`compile` / 打开 vault 会自动恢复 `.obsidian/graph.json`。**机器记忆图谱**（`output/graph/machine-memory.html`）供维护与深挖：含 `source / concept / judgment / elixir(金丹)` 等完整关系。说明见 [wiki/indexes/README.md](../wiki/indexes/README.md)（indexes 由 compile 生成）。
 
-治理债的目标是自动消化，符合炼丹炉"人只看异常"的设计哲学。分层按**影响范围 × 可逆性**定义：
+治理债的目标是自动消化，符合炼丹炉"人只看异常"的设计哲学。分层按**影响范围 × 可逆性**定义（**W8 产品路径**：nightly / drop-auto / watch 只跑 deterministic compile+lint；下列 auto-adopt 层为历史 operator 契约，**不**再由产品 nightly 驱动）：
 
-- **维护层**：compile / lint / nightly / 陈旧状态清理 / 派生索引 refresh — 只读或可逆的操作，可通过 `AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT=1` 显式开启自动落盘；新安装的 systemd nightly env 默认写 `0`，避免安装即开始写入型自治。
-- **债务自消化层**：source summary backlog / weak concepts / rewrite candidates / judgment metadata debt / machine-memory actions — 统一进入 `debt-autopilot` inventory；nightly 路径仅 preview/inventory（W7 不在 `run-nightly` 调 LLM `run_compile` / `run_lint` 做内容消化）。显式 operator dry-run apply 与 safe action apply 仍走 receipt 链；L3 metadata/governance debt 不能伪装成 `llm_owned_non_core`。Product Shell 只能展示 debt-autopilot 的结果，不参与无人值守 apply 判定。
+- **维护层**：compile / lint / nightly / 陈旧状态清理 / 派生索引 refresh — 只读或可逆的操作；产品 nightly 固定跑此层。
+- **债务自消化层**：source summary backlog / weak concepts / rewrite candidates / judgment metadata debt / machine-memory actions — 内部模块与 acceptance helper 仍可 inventory/preview；**产品 nightly 不再调用** debt_autopilot LLM 消化或 agent-loop。
 - **治理层**：concept backlog / revisit / source-concept links / concept splits — 结构性变更，可逆且有 receipt；通过 `AIWIKI_NIGHTLY_AUTO_ADOPT_L1=1` + `AIWIKI_NIGHTLY_AUTO_ADOPT_L2=1` 显式开启无人值守采纳。
 - **判断层**：counter-evidence / judgment review — LLM 驱动的语义复核，自动分析反证、写出审阅结论；judgment page、标准 execution receipt、execution history、audit stream 必须可互证，写失败回滚。通过 `AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS=1` 显式开启。
 - **策略层**：L3 proposal / prompt 变更 / schema 变更 — 非核心/metadata-only 学习默认由 agentic nightly 登记和消化；写回核心 prompt/policy/schema 前必须 `review proposal <id> --status accepted` 人工确认，再手动 `apply <proposal-id>` hash-gated 写 receipt。`AIWIKI_NIGHTLY_AUTO_ADOPT_CORE_L3=0` 是核心自改红线，不允许无人值守改核心 prompt/policy/schema。

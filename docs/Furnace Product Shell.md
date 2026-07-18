@@ -26,7 +26,7 @@ updated_at: "2026-07-15"
 
 - **一个输入端**：首屏只给用户一个 Universal Input；URL、文件拖拽、文本笔记和问题都从这里进入。
 - **一个输出端**：首屏只呈现 Today Feed 中可交付的输出、需要确认的事项和非降级活动，不把运行态流水线当成用户目标。
-- **其他全部隐藏**：System Status / LLM Health / Review Center / Execution Center / Repair Backlog / Recent Runs 等运维、状态、监控入口全部收纳到 Advanced / 更多工具抽屉。
+- **其他全部隐藏**：System Status / LLM Health / Repair Backlog / Recent Runs 等运维、状态、监控入口全部收纳到 Advanced / 更多工具抽屉（W8：Review Center / Execution Center / Recent Runs **已从 Product Shell 视图注册移除**，Today-only）。
 - **用户心智最小化**：任何 UI 层新增卡片、按钮、状态或通知，都必须证明它没有扩大用户需要理解的概念数量。
 - **通知只服务输出端**：外部 webhook 通知（飞书 / 企业微信）只提醒"有新报告需要看"，不把后台调度细节推给用户。
 - **Advanced / 更多工具不是删除**：高级视图仍保留给操作者排障和治理，只是不占据默认首屏。
@@ -39,7 +39,7 @@ updated_at: "2026-07-15"
 ## 1. Executive Summary
 
 - **核心范式 Gap**：旧 UI 是面向运维的"全量 Dashboard"，充斥系统状态、健康度、全量历史等；而用户需求是"极简输入端 + 输出端 + 外部 IM 通知提醒"，二者存在根本冲突。
-- **当前方案**：采用 **Today Feed + Universal Input** 的默认面，配合 **飞书 / 企业微信 webhook 外部通知**。Advanced 默认隐藏，仅作为 operator diagnostics/history/Review Center/Execution Center 入口。
+- **当前方案**：采用 **Today Feed + Universal Input** 的默认面，配合 **飞书 / 企业微信 webhook 外部通知**。Advanced 默认隐藏，仅作为 operator diagnostics/history 入口（W8：无 Review/Execution/Runs 视图注册）。
 - **Furnace Product Shell M-PS.1 milestone candidate 实施代价估算**：
   - 修改/重写核心视图渲染相关文件（`plugin.js`, `render.js`, `views.js`, `styles.css`），新增 0 个文件（复用现有结构）。
   - 风险级别：**M (Medium)**，主要风险在于 Obsidian 视图注册兼容性与状态迁移。
@@ -48,9 +48,10 @@ updated_at: "2026-07-15"
 
 **用户不需要关心但占据首屏的元素（需降级/折叠）**：
 - System status / LLM health / Graph Health（纯运维指标）
-- Review Center / Execution Center（过程监控）
 - Repair Backlog（非核心日常行动）
-- Recent Runs（全量流水线历史）
+
+**W8 已从 Product Shell 移除的 AgentOS 视图（不可从 command palette 复活）**：
+- Review Center / Execution Center / Recent Runs
 
 **用户实际需要但被淹没/藏得深的元素（需提升）**：
 - Today Feed 入口（当前可能与各类卡片混杂）
@@ -89,7 +90,7 @@ updated_at: "2026-07-15"
 - **TodayFeed**：默认输出端，只展示可交付输出、确认项和非降级活动。
 - **UniversalInput**：默认输入端，统一 URL / PDF / Markdown / repo / question。
 - **ReportCard** (借鉴 Notion)：清晰的 block 卡片，带标题和状态小徽章，注重阅读舒缓感；未读项做轻量视觉区分（加粗 / 左侧圆点）。
-- **AdvancedDrawer**：仅在 `showAdvancedCommands` 启用后出现，收纳 diagnostics/history、Recent Runs、Review Center、Execution Center 和 refresh。
+- **AdvancedDrawer**：仅在 `showAdvancedCommands` 启用后出现，收纳 diagnostics/history 与 refresh（W8：不含 Review/Execution/Runs 视图）。
 - **Notifier**（非 UI 组件，运行态侧 / sidecar）：飞书 + 企业微信 webhook 推送抽象，订阅"新报告生成"事件。
 
 ### 状态机
@@ -231,7 +232,7 @@ M-PS.1 实施后，Product Shell 仍只作为 surface / trigger 运行；Notifie
 - **Deterministic baseline**：UI 重写不改变 backend / model selection；Notifier 只接 report-generated hook，成功无审计副作用，失败仅追加 `notify_failed` audit，不改变 report generation exit code。
 - **Backend 显式手动选择**：UI 不做 hidden backend routing；backend / model 切换仍由操作者显式选择。
 - **Review-apply-revert-audit**：Advanced 抽屉中的治理入口继续走既有可审计、可回滚路径。
-- **Advanced 抽屉不删除能力**：System Status / LLM Health / Review Center / Execution Center / Repair Backlog / Recent Runs 都不会被删除，只是从首屏降级。
+- **Advanced 抽屉不删除 CLI 能力**：System Status / LLM Health / Repair Backlog 等 operator 面仍可通过 CLI / wiki indexes 访问；W8 起 Product Shell **不再注册** Review Center / Execution Center / Recent Runs 视图。
 - **同步审查要求**：当 `docs/Furnace Agent Architecture.md` §3 的不变量发生变化时，本文档必须同步审查。
 
 ## 12. UX Follow-up Status（2026-04-29）
