@@ -665,8 +665,15 @@ L3 proposal **只允许**写入以下文件：
 
 ## 11. CLI Semantics Summary
 
+> **Operator CLI 边界（2026-07-18，W3/W6/W7）**：当前 `advanced` 面保留 `compile` / `lint` / `nightly` / `run-nightly` / `run-ask*` / `file-back` / `review-page` / `watch` 与金丹 `alchemy-start|distill|finalize|promote|revert|demote`。W3 已物理删除 AgentOS 膨胀面（`signals-*` / `planner-log-*` / `audit-*` / `alchemy auto|heavy|light|lane` / L3 apply-revert 链 / `apply-action|review-action|apply-rewrite|apply-archive` 等）；W6/W7 禁止 watch / nightly / drop-auto 走 LLM `run-compile` / `run-lint`。下表「当前 operator」只列仍注册命令；§11.1 保留目标契约中的已删 CLI 供历史追溯，**不得**当产品教学入口。
+
 | 命令 | 语义 | 写目标 |
 |---|---|---|
+| `aiwiki compile` / `aiwiki lint` / `aiwiki nightly` | 当前 operator：确定性 compile / lint / nightly health | `wiki/`、`wiki/indexes/`、`.aiwiki/lint/` 等 |
+| `aiwiki run-nightly` | 当前 operator：确定性 compile + lint + agent-loop 维护；debt_autopilot 在 nightly 仅 inventory/preview（W7 不调 LLM `run_compile`） | receipt / runtime history / `.aiwiki/state/` |
+| `aiwiki run-ask "<q>"` | 当前 operator：LLM 报告主入口 | `output/reports/*.md` + LLM receipt |
+| `aiwiki file-back <artifact>` | 当前 operator：默认 `--kind judgment` 回流 wiki | `wiki/judgments/` 等 + provenance |
+| `aiwiki review-page <path> --status <transition>` | 当前 operator：薄审阅三态（`pending-review` / `confirmed` / `discarded` 或 canonical status） | target page + review queue |
 | `aiwiki ask "<q>" --corpus <id>` | 当前：绑定或创建 corpus turn；追加 output_refs | `output/reports/*.md` + `.aiwiki/state/output-candidates.json` + `.aiwiki/state/active-corpora.json` |
 | `aiwiki promote <artifact_ref>` | 当前：output candidate → `wiki/derived/` | `wiki/derived/` + candidate state |
 | `aiwiki demote <artifact_ref>` | 当前：demote output candidate | `.aiwiki/state/output-candidates.json` |
@@ -676,27 +683,11 @@ L3 proposal **只允许**写入以下文件：
 | `aiwiki alchemy legacy-migration --dry-run` | 当前：只读盘点 legacy settled elixir 的 candidate tombstone 状态 | 读 `wiki/elixirs/` + `.aiwiki/staging/elixirs/` |
 | `aiwiki alchemy legacy-migration --apply` | 当前：显式为缺失 tombstone 的 legacy settled elixir 创建 candidate tombstone，并写 receipt / audit；不改 settled source，不做 cleanup | `.aiwiki/staging/elixirs/` + execution receipt |
 | `aiwiki alchemy superseded-cleanup --dry-run` | 当前：只读盘点 superseded tombstone 的清理候选和阻塞原因；不删除 | 读 `.aiwiki/staging/elixirs/` + `wiki/elixirs/` |
-| `aiwiki alchemy superseded-cleanup --apply` | 当前：显式删除支持清理的 superseded candidate tombstone，并写 receipt / audit；不改 settled source，不删除阻塞项 | `.aiwiki/staging/elixirs/` + execution receipt |
-| `aiwiki signals-list/show` / `aiwiki planner-log-list` | 当前：只读 inspection；`--since` 必须为 ISO datetime，`--limit` 必须大于 0 | 读 `.aiwiki/state/signals.jsonl` / `.aiwiki/state/planner-log.jsonl` |
-| `aiwiki planner-log-rollback --dry-run\|--apply` | 当前：预览或显式追加 rollback marker；planner-log 本体保持 append-only，不删除不重写 | 读 `.aiwiki/state/planner-log.jsonl`；写 `.aiwiki/state/planner-log-rollback.jsonl` |
-| `aiwiki audit-preview --dry-run` | 当前：只读预览分散审计来源归一化后的目标 audit stream 记录；不写 `audit.jsonl` | 读 execution receipts / LLM receipts / runtime history |
-| `aiwiki audit-backfill --apply` | 当前：显式 append-only backfill 缺失的 universal audit records；按 `audit_event_id` 幂等跳过已有记录 | `.aiwiki/state/audit.jsonl` |
-| `aiwiki alchemy heavy <scope> --dry-run` / `aiwiki alchemy light <scope> --dry-run` | 当前：只读 preview lane scope、primitive plan、预算、锁结果和 deferred primitive metadata；不 execute | 读 `.aiwiki/state/planner-log.jsonl` + `.aiwiki/state/signals.jsonl` |
-| `aiwiki alchemy judge <scope> --dry-run\|--apply\|--propose`; `aiwiki alchemy judge-proposal <proposal> --apply` | 当前：dry-run preview heavy dirty scope 内的 judgment refresh candidates；direct apply 只给已有 judgment/decision refs 写 managed refresh marker；`--propose` 只给已有 refs 写 semantic refresh proposal-preview artifacts；`judge-proposal --apply` 只 apply `state=accepted` 且 `before_hash` 匹配的 proposal accepted block；写路径都写 receipt/runtime-history/universal-audit；不调用 LLM、不由 runtime 生成 judgment 结论、不改变 status/confidence/review lifecycle、不创建 scope-only 页面、不进入 lane/auto | 读 `.aiwiki/state/planner-log.jsonl` + `.aiwiki/state/signals.jsonl`；direct apply 写 `wiki/judgments/` 或 `wiki/decisions/` existing refs 与 receipt/audit；propose 写 `.aiwiki/staging/proposals/judge/` 与 receipt/audit；accepted proposal apply 写 target managed section 与 proposal state |
-| `aiwiki alchemy distill <scope> --dry-run\|--apply` | 当前：dry-run preview heavy dirty scope 内的 elixir refresh candidates；direct apply 仅刷新已有 `elixir_refs` 对应的 candidate plane 文件并写 receipt/runtime-history/universal-audit；不调用 LLM、不创建新 elixir、不 finalize/promote、不写 `wiki/elixirs/` | 读 `.aiwiki/state/planner-log.jsonl` + `.aiwiki/state/signals.jsonl`；apply 写 `.aiwiki/staging/elixirs/` 与 receipt/audit |
-| `aiwiki alchemy review <scope> --dry-run\|--apply` | 当前：dry-run 只读 preview heavy dirty scope 内的 review enqueue candidates；apply 显式写 review queue managed section 并写 receipt/runtime-history/universal-audit；不调用 LLM | 读 `.aiwiki/state/planner-log.jsonl` + `.aiwiki/state/signals.jsonl`；apply 写 `wiki/indexes/review-queue.md` 与 receipt/audit |
-| `aiwiki alchemy propose <scope> --dry-run\|--apply` | 当前：dry-run 只读 preview heavy dirty scope 内的 proposal opportunities；apply 只写 L3 prompt proposal plane/state，并写 proposal-generation receipt/runtime-history/universal-audit；不调用 LLM、不写 prompt/policy 目标文件、不自动 accept、不消费 `generate-proposal` decisions | 读 `.aiwiki/state/planner-log.jsonl` + `.aiwiki/state/signals.jsonl`；apply 写 `.aiwiki/staging/proposals/prompt/`、`.aiwiki/state/l3-proposals.json` 与 receipt/audit |
-| `aiwiki alchemy heavy|light <scope> --apply --action-id <id>` | 当前：仅在 dry-run plan 非空时，显式桥接到既有 receipted low-risk action batch apply；不执行 receipt-less lane 序列 | `apply_machine_memory_actions_batch` receipts |
-| `aiwiki alchemy heavy|light <scope> --apply --primitive compile|lint|nightly` / `aiwiki alchemy heavy <scope> --apply --primitive review\|distill\|propose` | 当前：执行已支持 primitives 并写 lane primitive execution receipt；`review` 复用 direct scoped review apply 写 review queue managed section；`distill` 复用 direct scoped distill apply 写 elixir candidate plane；`propose` 复用 direct scoped propose apply 写 L3 proposal plane；receipt 顶层携带 planner `trace_id/trace_ids` 与 execution receipt history audit metadata；不调用 LLM-backed `run-*` | `.aiwiki/state/execution-receipts/` + `.aiwiki/state/execution-receipts.jsonl`；`review` 另写 `wiki/indexes/review-queue.md`；`distill` 另写 `.aiwiki/staging/elixirs/`；`propose` 另写 `.aiwiki/staging/proposals/prompt/` + `.aiwiki/state/l3-proposals.json` |
-| `aiwiki alchemy auto --dry-run\|--apply` | 当前：显式消费 `mode=execute` planner decisions，默认只调度已有 apply-supported deterministic lane primitives；`--lane heavy --primitive review\|distill\|propose` 可 opt-in 调度 review/distill/propose；不消费 observe-only decisions | lane primitive receipts + runtime history |
-| `aiwiki l3-proposal-create --kind prompt_proposal\|policy_proposal ...` | 当前：手工/fixture 创建 L3 proposal；只写 proposal 平面和 state，不写目标文件 | `.aiwiki/staging/proposals/prompt\|policy/` + `.aiwiki/state/l3-proposals.json` |
-| `aiwiki l3-proposal-generate --dry-run\|--apply` | 当前：从 execute-mode `generate-proposal` planner decisions deterministic 创建 prompt proposal 候选；observe-only candidates 只会被标为 blocked；不写目标文件、不调用 LLM、不自动 accept。scoped dirty preview 的 proposal candidate generation 由 `alchemy propose --apply` 承接 | `.aiwiki/staging/proposals/prompt/` + `.aiwiki/state/l3-proposals.json` |
-| `aiwiki review proposals` | 当前：查看 L3 proposal 队列 | 读 only |
-| `aiwiki review proposal-generation` | 当前：只读预览 planner-log 中的 `generate-proposal` candidates，标明 execute-mode eligible 与 observe-only blocked 状态；不写 `_proposals` 或 state | 读 `.aiwiki/state/planner-log.jsonl` |
-| `aiwiki shell-status` | 当前：在 `review_controls.l3_proposals` 暴露 L3 proposal review controls 与 command hints | 读 `.aiwiki/state/l3-proposals.json` |
-| `aiwiki review proposal <proposal-id> --status accepted\|rejected` | 当前：人工 accept/reject L3 proposal；只更新 proposal state/page，不写目标文件，不生成 apply receipt | `.aiwiki/staging/proposals/prompt\|policy/` + `.aiwiki/state/l3-proposals.json` |
-| `aiwiki apply <proposal-id>` | 当前：仅对 `human_accepted` full_replace 或 `metadata_only` proposal 执行；`before_hash` mismatch 时转 `stale` 并拒绝半写 | `prompts/*.md` 或 `schema/policies/*` + execution receipt；metadata_only 不改目标文件 |
-| `aiwiki revert <receipt-id>` | 当前：按 L3 apply receipt 回滚；`after_hash` mismatch 时生成 `human_merge_required` hint，不覆盖目标文件 | 恢复 target 文件或写 `.aiwiki/staging/proposals/*/*-revert-hint.md` |
+| `aiwiki alchemy superseded-cleanup --apply` | 当前：显式删除支持 cleanup 的 superseded candidate tombstone，并写 receipt / audit；不改 settled source，不删除阻塞项 | `.aiwiki/staging/elixirs/` + execution receipt |
+
+### 11.1 W3 已退役 CLI（目标契约保留，非当前 operator）
+
+W3 已从 runtime 物理删除下列命令；state 文件（如 `.aiwiki/state/signals.jsonl`、`.aiwiki/state/planner-log.jsonl`）仍可只读存在，但**没有**对应 CLI：`signals-list/show/replay`、`planner-log-list/replay/rollback`、`audit-preview/backfill`、`alchemy heavy|light|auto|lane`、`alchemy judge|judge-proposal`、`alchemy review|distill|propose`（scoped lane 变体）、`l3-proposal-create/generate`、`review proposals|proposal-generation|proposal`、`apply/revert <proposal-id>`（L3 写回链）、`apply-action/review-action`、`apply-rewrite/revert-rewrite`、`apply-archive/revert-archive`、`run-compile` / `run-lint`（LLM 语义 compile/lint）。Active docs 与 Product Shell hint 不得再引用上述命令字符串。
 
 ## 12. Audit, Revert, and Backward Compatibility
 
@@ -709,7 +700,7 @@ L3 proposal **只允许**写入以下文件：
 - elixir promotion / demotion / supersede（candidate promote chain）
 - L3 proposal manual create / generate candidate / reject / accept / revert（当前已有 manual baseline 与 execute-mode automatic candidate generation baseline）
 
-当前审计仍以分散日志为源：execution receipts、LLM receipts、runtime history 等分别承担各自领域的审计语义。`aiwiki audit-preview --dry-run` 可只读预览这些来源归一化后的目标 audit record（含 source stream/ref、event type、trace、subject、revert_supported）。`aiwiki audit-backfill --apply` 可显式把缺失记录 append 到 `.aiwiki/state/audit.jsonl`，并按稳定 `audit_event_id` 幂等跳过已存在记录。M5.9 起，`append_execution_receipt_history` 在写 execution receipt history 后会直接 append 对应 universal audit record；M5.10 起，`append_runtime_history` 在写 runtime history 后也会直接 append 对应 universal audit record；M5.11 起，LLM receipt log 写入后也会直接 append 对应 universal audit record。
+当前审计仍以分散日志为源：execution receipts、LLM receipts、runtime history 等分别承担各自领域的审计语义；direct append 已写入 universal audit 的记录由 backfill 幂等跳过。目标契约中的 `audit-preview` / `audit-backfill` CLI 已在 W3 删除；operator 直接查 `.aiwiki/state/execution-receipts.jsonl`、`.aiwiki/logs/llm-receipts.jsonl` 与 `.aiwiki/state/runtime-history.jsonl`。M5.9 起，`append_execution_receipt_history` 在写 execution receipt history 后会直接 append 对应 universal audit record；M5.10 起，`append_runtime_history` 在写 runtime history 后也会直接 append 对应 universal audit record；M5.11 起，LLM receipt log 写入后也会直接 append 对应 universal audit record。
 
 ### 12.2 Revert 适用范围
 
@@ -722,12 +713,12 @@ revert **不可以**：
 
 - 回滚 `raw/` 的历史事实
 - 回滚 audit entry 本身
-- 回滚 planner 决策日志本体（当前 `planner-log-rollback --apply` 只追加独立 marker stream；不删除、不重写 append-only log）
+- 回滚 planner 决策日志本体（`planner-log-rollback` CLI 已在 W3 删除；历史 marker stream 若存在仍只追加、不重写 append-only log）
 
 ### 12.3 向后兼容
 
-- 既有 `compile / lint / nightly` 与 scoped apply/revert CLI（如 `apply-rewrite / revert-rewrite`、`apply-action / revert-action`、`apply-archive / revert-archive`）**不变**，仍作为 operator-visible primitives。
-- 本文档引入的新机制都是**叠加**在现有 primitives 之上的调度与 proposal 层。
+- 当前 operator primitives：`compile` / `lint` / `nightly` / `run-nightly` / `run-ask*` / `file-back` / `review-page` / `watch` 与金丹最小链；W3 已删 scoped governance CLI（`apply-rewrite` / `apply-action` / `apply-archive` 等）与 AgentOS 膨胀面，不得再当默认 teaching。
+- signal / planner / heavy-light lane 章节描述**目标契约**；已落地 subset 与 W3/W6/W7 裁剪后的 CLI 以 `docs/DEVELOPER.md` 与 `PROGRESS.md` 为准。
 
 ### 12.4 9+ Rollout Gate Matrix
 

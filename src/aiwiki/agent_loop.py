@@ -78,7 +78,8 @@ def run_nightly_agent_loop(
         l2_result = _build_auto_adopt_l2(root) if auto_adopt_l2 else None
         l3_result = _build_auto_adopt_l3(root) if auto_adopt_l3 else None
         j_result = _build_auto_adopt_judgments(root) if auto_adopt_judgments else None
-        debt_result = _build_debt_autopilot(root, apply=apply_light)
+        # Nightly debt autopilot is inventory-only: never LLM run_compile/run_lint via content digestion.
+        debt_result = _build_debt_autopilot(root)
     except Exception as exc:  # noqa: BLE001 - preview failure must be surfaced in nightly state
         return {
             **base,
@@ -364,11 +365,11 @@ def _build_auto_adopt_judgments(root: Path) -> dict[str, Any]:
         return {"level": "Judgment", "applied": False, "error": str(exc), "error_type": type(exc).__name__, "degraded": True}
 
 
-def _build_debt_autopilot(root: Path, *, apply: bool) -> dict[str, Any]:
+def _build_debt_autopilot(root: Path) -> dict[str, Any]:
     from .debt_autopilot import run_debt_autopilot
 
     try:
-        return run_debt_autopilot(root, apply=apply)
+        return run_debt_autopilot(root, apply=False)
     except Exception as exc:
         return {
             "operation": "debt-autopilot",

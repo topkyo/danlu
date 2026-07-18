@@ -57,31 +57,31 @@ Elixir 的头部需要包含最小化的生命周期与血缘标记：
 
 炼化流程本质上是：**用户提主题 → 挂载资料与 LLM 反复迭代 → 候选区评估 → 最终凝丹与晋升**。
 
-标准的 CLI 命令序列如下：
+标准的 CLI 命令序列如下（单 runtime `general`；`protocol-learn-*` 与多协议切换已在 W1 删除）：
 
 ```bash
 # 1. 开启炼化主题，初始化 active_corpus
-aiwiki alchemy start "主题"
+aiwiki alchemy-start <corpus-id> --topic "主题"
 
-# 2. 多轮迭代（自动串联前轮 output/elixir）
+# 2. 多轮迭代（自动串联前轮 output）
 aiwiki ask "首问" --corpus <id>
 aiwiki ask "追问1" --corpus <id>
 aiwiki ask "追问2" --corpus <id>
 
 # 3. 中途评估与资料补充
-aiwiki review candidates --corpus <id>
-aiwiki drop-url <url> 
+aiwiki drop-url <url>
 aiwiki drop-pdf <file>
 aiwiki ask "补料后重炼" --corpus <id>
 
 # 4. 显式凝丹（生成 elixir candidate）
-aiwiki alchemy distill <id>
+aiwiki alchemy-distill <elixir-id> --question "..."
 
-# 5. 人工确认与晋升（入库 wiki/elixirs/）
-aiwiki promote <elixir-id>
+# 5. 定稿与晋升（入库 wiki/elixirs/）
+aiwiki alchemy-finalize <elixir-id>
+aiwiki alchemy-promote --elixir-id <elixir-id>
 
 # 6. 跨周期复利（新丹引用旧丹）
-aiwiki ask "新主题" --elixir <old-elixir-id>
+aiwiki alchemy-start <corpus-id> --topic "新主题" --include-elixir <old-elixir-id>
 ```
 
 ## 进化与反哺机制 (Evolution & Feedback)
@@ -95,7 +95,7 @@ aiwiki ask "新主题" --elixir <old-elixir-id>
 
 2. **自我进化边界 (Q2)**
    - **L1 知识自维护**：复用现有的 wiki 内部链接维护、摘要更新与冲突检测。
-   - **L2 协议/Prompt 沉淀**：用户的 review 和纠正信号将被总结并沉淀到 `wiki/protocol-learnings/` 目录。后续相似主题的任务可以显式加载这些 learnings（作为 hint）。**系统绝不会自动修改底层的 schema 或系统级 prompt**，防止隐式漂移。
+   - **L2 协议/Prompt 沉淀（W1 已退役 protocol-learning）**：历史 `wiki/protocol-learnings/` 只读；新经验改走显式 wiki 写回或 L3 prompt/policy proposal（人工 accept 后 hash-gated apply）。**系统不会自动修改底层 schema 或系统级 prompt**。
    - **L3 炉子能力自升级**：明确不在范围。保持代码/框架的决定论（deterministic baseline），不引入自我改写逻辑代码的危险机制。
 
 ## 演进路线图 (Roadmap)
@@ -110,9 +110,9 @@ aiwiki ask "新主题" --elixir <old-elixir-id>
 - **目标**：从 candidate 链条中显式执行 `distill` 并 `promote` 出长期资产。
 - **验收标准**：至少成功生成一个 `elixir` 文件，包含完整的 provenance；并且能够正确走完 promote / demote / revert 的完整生命周期（借鉴 concept_rewrite proposal 的状态机）。
 
-### 阶段 3：L2 复利 (Compounding)
-- **目标**：协议学习机制生效，金丹之间实现合规的引用。
-- **验收标准**：同协议的 `ask` 能够显式加载 `protocol-learnings`；新生成的金丹能够引用旧金丹，且机制保证不会形成无限自循环的死锁。
+### 阶段 3：复利 (Compounding)
+- **目标**：金丹之间实现合规引用（DAG + `wiki/derived/` 锚定），Ask 默认提升 settled elixir / confirmed judgment 权重。
+- **验收标准**：新生成的金丹能够引用旧金丹，且机制保证不会形成无限自循环的死锁；`used_refs` 与 `compound_suggest` 进入 report / Today 主 feed。
 
 ## 核心风险与缓解策略
 
@@ -130,8 +130,8 @@ aiwiki ask "新主题" --elixir <old-elixir-id>
    - *来源边界*：corpus candidate plane 由 `aiwiki promote` 维护；`file-back --kind derived` 是另一条独立路径，二者不互相注册。如需进入金丹链路，应先 promote 输出候选，再由 derived 锚定。
 
 4. **协议学习变隐式 Prompt 漂移**
-   - *风险*：过多的 learning 积累导致 LLM 行为难以预测，破坏 deterministic baseline。
-   - *缓解*：只在 `wiki/protocol-learnings/` 记录经验，绝对不自动更新核心 schema 或系统 prompt；协议经验的采用必须是条件触发或显式挂载的。
+   - *风险*：历史 learning 或过多 hint 导致 LLM 行为难以预测，破坏 deterministic baseline。
+   - *缓解*：W1 已删除 protocol-learning 注入；经验只经显式 proposal / wiki 写回，不自动更新核心 schema 或系统 prompt。
 
 5. **候选区堆积失控**
    - *风险*：由于半自动机制，`.aiwiki/staging/` 中积累大量无人过问的废弃物。
@@ -145,4 +145,4 @@ aiwiki ask "新主题" --elixir <old-elixir-id>
 
 ---
 
-**TL;DR**: 金丹 (Elixir) 是炼丹炉基于单点事实层与半自动候选机制，将多轮人机交互提纯为长期复利资产的最终形态，它归属于 `wiki/elixirs/` 并驱动 L2 级别的系统进化。
+**TL;DR**: 金丹 (Elixir) 是炼丹炉基于单点事实层与半自动候选机制，将多轮人机交互提纯为长期复利资产的最终形态，它归属于 `wiki/elixirs/` 并驱动 Ask 复利与显式审阅写回，而非隐式 protocol-learning。

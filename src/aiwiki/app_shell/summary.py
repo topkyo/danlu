@@ -396,7 +396,6 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
     )
     compound_actions = shell_compound_suggest_actions(compound_suggest)
     suggested_next_actions = compound_actions + shell_suggested_next_actions(
-        planner_state=planner_state,
         review_controls=review_controls,
         execution_controls=execution_controls,
     )
@@ -478,6 +477,31 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
         suggested_next_actions=suggested_next_actions,
     )
     return summary
+
+
+_DEAD_SUGGESTED_CLI_TOKENS = (
+    " apply-action ",
+    " review-action ",
+    " apply-archive ",
+    " apply-rewrite ",
+    " review-rewrite ",
+    " --all-pending",
+    " --batch ",
+)
+
+
+def _filter_live_suggested_next_actions(actions: object) -> list[dict[str, Any]]:
+    if not isinstance(actions, list):
+        return []
+    live: list[dict[str, Any]] = []
+    for item in actions:
+        if not isinstance(item, dict):
+            continue
+        command = f" {str(item.get('command') or '').strip()} "
+        if any(token in command for token in _DEAD_SUGGESTED_CLI_TOKENS):
+            continue
+        live.append(dict(item))
+    return live
 
 
 def thin_shell_summary_for_persist(summary: ShellSummary) -> ShellSummary:
@@ -574,9 +598,9 @@ def thin_shell_summary_for_persist(summary: ShellSummary) -> ShellSummary:
         "compound_suggest": dict(summary.get("compound_suggest", {}))
         if isinstance(summary.get("compound_suggest"), dict)
         else {},
-        "suggested_next_actions": list(summary.get("suggested_next_actions", []))
-        if isinstance(summary.get("suggested_next_actions"), list)
-        else [],
+        "suggested_next_actions": _filter_live_suggested_next_actions(
+            summary.get("suggested_next_actions")
+        ),
         "recent_outputs": list(summary.get("recent_outputs", []))
         if isinstance(summary.get("recent_outputs"), list)
         else [],

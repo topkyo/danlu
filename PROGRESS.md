@@ -14,6 +14,8 @@
 
 ## 当前动态
 
+- 2026-07-18 (**W7 residual AgentOS close**)：Task 1 nightly debt_autopilot 不再调 LLM `run_compile`；Task 2 shell-summary / suggested_next_actions 去掉 deleted governance CLI hint；Task 3 Active docs C53/P9 收尾（Evolution/Elixir/DEVELOPER/Product Shell/USER_GUIDE/Runtime Ops 与 W6/W7 对齐）。验证：`bash scripts/verify.sh all` PASS。
+
 - 2026-07-18 (**W6 compounding gap close**)：Task 1 query cache 持久化 elixir nodes + hash 失效；Task 2 锁死 watch/nightly/drop-auto 的 LLM `run-compile`/`run-lint` 侧门（保留确定性 `compile`/`lint`）；Task 3 Shell 去掉 deleted governance CLI hooks、Today 主 feed 收窄为 reports + 稀缺 `compound_suggest`；Task 4 Active docs C53/P9 收尾（单 runtime 协议、去掉 `run-compile` 产品教学、commercial 矩阵同步）。验证：`bash scripts/verify.sh all` PASS。
 
 - 2026-07-18 (**W2–W5 compounding 波完成**)：W1 单协议 runtime；W2 Ask 复利 rank + `used_refs` + `compound_suggest`；W3 governance CLI 侧切；W4 非核心 CLI/Shell/HTML 控制台噪声；W5 review 三态 / file-back 默认 judgment / Shell Today-first / shell-summary 瘦身 / graph-index 遥测页停写 / LLM 产品默认 `opencode-api/deepseek-v4-pro` 文档锁定（B44，代码保留其它 backend escape hatch）。验证：`bash scripts/verify.sh all` PASS。

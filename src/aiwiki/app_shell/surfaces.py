@@ -90,7 +90,6 @@ from ..render.views import (
     judgment_asset_shell_record,
     judgment_asset_summary,
 )
-from .controls import rewrite_followup_action
 from .helpers import (
     LLM_PRIMARY_HEALTH_EVENTS,
     _build_llm_rerun_command,
@@ -477,17 +476,11 @@ _BATCH_HINT_MAX = 3
 
 
 def _collect_batch_hints(
-    review_controls: dict[str, Any],
     execution_controls: dict[str, Any],
     *,
     threshold: int = _BATCH_HINT_THRESHOLD,
 ) -> list[dict[str, Any]]:
-    """Surface batch-review / batch-apply commands when ≥threshold same-kind candidates queue up.
-
-    Only emits already-existing CLI surfaces (`review-page --all-pending`,
-    `review-action --all-pending --kind <kind>`, `apply-action --all-accepted-low-risk`);
-    never invents new flags or mutates state.
-    """
+    """Surface operator review-queue hints when ≥threshold same-kind mm actions queue up."""
 
     hints: list[dict[str, Any]] = []
     seen_commands: set[str] = set()
@@ -508,32 +501,10 @@ def _collect_batch_hints(
             }
         )
 
-    pages_by_kind: dict[str, int] = {}
-    for page in review_controls.get("pages", []) or []:
-        if not isinstance(page, dict):
-            continue
-        page_kind = str(page.get("kind") or "").strip()
-        if not page_kind:
-            continue
-        pages_by_kind[page_kind] = pages_by_kind.get(page_kind, 0) + 1
-
-    if sum(pages_by_kind.values()) >= threshold:
-        kind_label = "/".join(sorted(pages_by_kind)) or "page"
-        emit(
-            "batch-review",
-            f"批量审阅 {sum(pages_by_kind.values())} 个待审 {kind_label} 页",
-            "PYTHONPATH=src python3 -m aiwiki.cli --root . review-page --all-pending",
-            f"batch-hint:review-page:{kind_label}",
-            sum(pages_by_kind.values()),
-        )
-
     actions_by_kind: dict[str, int] = {}
-    can_apply_total = 0
     for action in execution_controls.get("actions", []) or []:
         if not isinstance(action, dict):
             continue
-        if action.get("can_apply"):
-            can_apply_total += 1
         if str(action.get("status") or "") != "proposed":
             continue
         if str(action.get("execution_band") or "") != "review-first":
@@ -593,7 +564,6 @@ def shell_compound_suggest_actions(compound_suggest: dict[str, Any]) -> list[dic
 
 def shell_suggested_next_actions(
     *,
-    planner_state: dict[str, Any],
     review_controls: dict[str, Any],
     execution_controls: dict[str, Any],
 ) -> list[dict[str, Any]]:
@@ -624,19 +594,6 @@ def shell_suggested_next_actions(
             action.update(details)
         actions.append(action)
 
-    next_action = planner_state.get("next_action", {}) if isinstance(planner_state, dict) else {}
-    if isinstance(next_action, dict):
-        action_id = str(next_action.get("action_id") or "")
-        title = str(next_action.get("title") or action_id)
-        if action_id and title:
-            add_action(
-                "planner",
-                title,
-                str(next_action.get("command_hint") or f"PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {action_id} --dry-run"),
-                str((next_action.get("target_paths") or [""])[0]),
-                "planner-next-action",
-            )
-
     for page in review_controls.get("pages", [])[:4]:
         if not isinstance(page, dict):
             continue
@@ -653,53 +610,7 @@ def shell_suggested_next_actions(
             ",".join(str(item) for item in page.get("reasons", [])[:2]) or "review-needed",
         )
 
-    for proposal in review_controls.get("rewrite_proposals", [])[:4]:
-        if not isinstance(proposal, dict):
-            continue
-        action = rewrite_followup_action(proposal)
-        if action is None:
-            continue
-        add_action(
-            str(action.get("kind") or "review-rewrite"),
-            str(action.get("title") or action.get("slug") or "rewrite-proposal"),
-            str(action.get("command") or ""),
-            str(action.get("path") or ""),
-            str(action.get("reason") or "rewrite-review-needed"),
-            details=action,
-        )
-
-    for action in execution_controls.get("actions", [])[:4]:
-        if not isinstance(action, dict) or not action.get("can_apply"):
-            continue
-        action_id = str(action.get("action_id") or "")
-        if not action_id:
-            continue
-        add_action(
-            "apply-action",
-            str(action.get("title") or action_id),
-            str(
-                action.get("command_hint")
-                or f"PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {action_id} --dry-run"
-            ),
-            str(action.get("primary_path") or ""),
-            "safe-apply-ready",
-        )
-
-    for archive in execution_controls.get("archives", [])[:2]:
-        if not isinstance(archive, dict) or not archive.get("can_apply"):
-            continue
-        entry_id = str(archive.get("entry_id") or "")
-        if not entry_id:
-            continue
-        add_action(
-            "archive",
-            str(archive.get("title") or entry_id),
-            f"PYTHONPATH=src python3 -m aiwiki.cli --root . apply-archive {entry_id} --dry-run",
-            str(archive.get("source_path") or ""),
-            "archive-ready",
-        )
-
-    batch_hints = _collect_batch_hints(review_controls, execution_controls)
+    batch_hints = _collect_batch_hints(execution_controls)
     deduped: list[dict[str, Any]] = []
     hint_commands = {hint["command"] for hint in batch_hints}
     for action in actions:
