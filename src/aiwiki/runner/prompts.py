@@ -25,7 +25,6 @@ ASK_INDEX_PAGES_BASE = (
     "wiki/indexes/index.md",
     "wiki/indexes/sources.md",
     "wiki/indexes/concepts.md",
-    "wiki/indexes/concept-quality.md",
     "wiki/indexes/machine-memory.md",
     "schema/index.md",
     "schema/protocols/index.md",
@@ -714,10 +713,6 @@ def _build_lint_prompt(root: Path, deterministic_report: str, prompt_profile: st
         "wiki/indexes/concepts.md",
         "wiki/indexes/compile-status.md",
         "wiki/indexes/machine-memory.md",
-        "wiki/indexes/machine-memory-topology.md",
-        "wiki/indexes/machine-memory-actions.md",
-        "wiki/indexes/graph-health.md",
-        "wiki/indexes/drift-report.md",
     )
     omitted_indexes = 0
     for index, relative in enumerate(index_pages):

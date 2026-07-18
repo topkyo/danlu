@@ -14,6 +14,14 @@
 
 ## 当前动态
 
+- 2026-07-18 (**W2–W5 compounding 波完成**)：W1 单协议 runtime；W2 Ask 复利 rank + `used_refs` + `compound_suggest`；W3 governance CLI 侧切；W4 非核心 CLI/Shell/HTML 控制台噪声；W5 review 三态 / file-back 默认 judgment / Shell Today-first / shell-summary 瘦身 / graph-index 遥测页停写 / LLM 产品默认 `opencode-api/deepseek-v4-pro` 文档锁定（B44，代码保留其它 backend escape hatch）。验证：`bash scripts/verify.sh all` PASS。
+
+- 2026-07-18 (W5 thinning Task 3)：compile 停写 machine-memory 拓扑/动作/修复计划、execution-center/audit、认知历史、aging、drift、graph-health、concept-quality、rewrite 索引等批量遥测页（A36）；保留 graph JSON/HTML、machine-memory 最小索引与 review-queue；Active docs B44 product lock（INSTALL / DEVELOPER / Runtime Ops）。验证：`bash scripts/verify.sh all` PASS。
+
+- 2026-07-18 (W5 thinning Task 2)：Shell Today-first；`shell-summary.json` 收缩为 Today/报告/compound_suggest 所需字段（B48/B49）；Review/Execution/Runs 视图降级为非主入口。验证：`bash scripts/verify.sh product-shell-static python-static` PASS。
+
+- 2026-07-18 (W5 thinning Task 1)：Review 状态机收敛为待审/已确认/废弃（B41）；file-back CLI+Shell 默认 kind=judgment（B46）。验证：`bash scripts/verify.sh python-static product-shell-static` PASS。
+
 - 2026-07-18 (W4 surface noise Task 3)：停写 agent workbench / derived agent packs / output-pack auto factory / execution & excess control HTML 控制台（A30/A31/A39）；`layout` 独立入口删除（A29 THIN→`new-vault` / compile 隐式 ensure_layout）；lint 不再要求上述退役面；command_hint / batch hint 去掉 `batch-review`；Active docs C51/C53 与 acceptance fixtures 同步。验证：`bash scripts/verify.sh all` PASS。
 
 - 2026-07-18 (W3 governance side-cuts)：按 spec W3 ADOPT 列表删除 AgentOS governance CLI 与膨胀面——L3 apply/revert、rewrite/repair/archive、candidate promote/demote、`review-action`/`apply-action`、`signals-*`/`planner-log-*`/`audit-*`、`run-compile`/`run-lint`、`alchemy auto/lane/heavy/light` CLI；保留 `alchemy-start/distill/finalize/promote/revert/demote`、`watch`、`compile`、`lint`、`nightly`、`ask`/`run-ask*`、`file-back`、`review-page`、`trace`、`llm-check`。Acceptance 改 function-level observe setup + lane apply helper；Product Shell batch hint 改 `batch-review`；Active docs 同步。验证：`bash scripts/verify.sh all` PASS。

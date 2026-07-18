@@ -16,8 +16,8 @@ B41 review → 待审/已确认/废弃, B44 product-lock single LLM default (don
 
 **Depends on:** none
 
-- [ ] Collapse review transitions to minimal set; default file-back kind judgment in CLI+Shell
-- [ ] **Verify:** `bash scripts/verify.sh python-static product-shell-static`
+- [x] Collapse review transitions to minimal set; default file-back kind judgment in CLI+Shell
+- [x] **Verify:** `bash scripts/verify.sh python-static product-shell-static`
 
 **Commit:** `feat(review): thin statuses; default file-back judgment`
 
@@ -27,9 +27,9 @@ B41 review → 待审/已确认/废弃, B44 product-lock single LLM default (don
 
 **Depends on:** Task 1
 
-- [ ] Deprioritize/hide Review/Execution/Runs as primary; shrink summary fields to Today/reports/compound_suggest needs
-- [ ] Rebuild main.js
-- [ ] **Verify:** `bash scripts/verify.sh product-shell-static python-static`
+- [x] Deprioritize/hide Review/Execution/Runs as primary; shrink summary fields to Today/reports/compound_suggest needs
+- [x] Rebuild main.js
+- [x] **Verify:** `bash scripts/verify.sh product-shell-static python-static`
 
 **Commit:** `feat(shell): Today-first; shrink shell-summary`
 
@@ -39,9 +39,9 @@ B41 review → 待审/已确认/废弃, B44 product-lock single LLM default (don
 
 **Depends on:** Task 2
 
-- [ ] Reduce index/graph HTML spam; document single default backend; `bash scripts/verify.sh all`
-- [ ] PROGRESS W2–W5 complete note
-- [ ] **Verify:** all PASS
+- [x] Reduce index/graph HTML spam; document single default backend; `bash scripts/verify.sh all`
+- [x] PROGRESS W2–W5 complete note
+- [x] **Verify:** all PASS
 
 **Commit:** `docs+thin: W5 compounding thinning pass`
 

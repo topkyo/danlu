@@ -104,6 +104,8 @@ runtime policy 缺省采用 `autonomy_profile=agentic`：未写 `.aiwiki/state/a
 
 ## LLM 后端
 
+**产品默认（B44 product lock）：** 炼丹炉产品面只锁定 `opencode-api/deepseek-v4-pro` 一条主路由；Shell、CLI 与安装脚本均以此为准，runtime **不会**自动 cross-backend fallback。`deepseek-api`、`openai-api`、`anthropic-api` 仍作为开发者 escape hatch 保留，需显式设置 `AIWIKI_LLM_BACKEND` 切换。
+
 支持：
 - API provider：`deepseek-api`、`opencode-api`、`openai-api`、`anthropic-api`
 

@@ -104,9 +104,15 @@ cd /path/to/your-vault
 当前支持的后端：
 
 - `deepseek-api`
-- `opencode-api`（默认主路由，模型 `deepseek-v4-pro`）
+- `opencode-api`（**产品默认**主路由，模型 `deepseek-v4-pro`）
 - `openai-api`（兼容 OpenAI 协议）
 - `anthropic-api`
+
+### 产品默认 LLM 路由（product lock）
+
+炼丹炉产品面只锁定一条默认 LLM 路由：`opencode-api` + `deepseek-v4-pro`。Product Shell、CLI、`llm-check` 与 systemd/launchd 安装脚本均以此为准；**不会**在 `run-ask` / nightly 中自动 fallback 到其他 backend。
+
+`deepseek-api`、`openai-api`、`anthropic-api` 仍作为开发者/专家 escape hatch 保留在代码中，需显式设置 `AIWIKI_LLM_BACKEND` 切换；这不属于默认产品路径。
 
 最简配置示例：
 

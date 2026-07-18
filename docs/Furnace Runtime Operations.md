@@ -203,9 +203,11 @@ watcher 不调 LLM，那 LLM 在哪发生？三条路径：
 
 ## 4. LLM Backend 选择策略
 
+**产品默认（B44 product lock）：** 对外产品与 Shell/CLI 主路径只承诺 `opencode-api/deepseek-v4-pro`；其它 backend 为专家 escape hatch，需显式 env 切换，runtime 不做隐式 cross-backend routing。
+
 | Backend | 状态 | 用途 |
 |---|---|---|
-| **opencode-api/deepseek-v4-pro** | compatible ✓ | 默认 primary（systemd env 默认） |
+| **opencode-api/deepseek-v4-pro** | compatible ✓ | **产品默认** primary（systemd env 默认） |
 | **deepseek-api/deepseek-v4-pro** | supported | 直接 DeepSeek API key route |
 | **openai-api/gpt-4.1-mini** | supported | OpenAI / OpenAI-compatible API route |
 | **anthropic-api/claude-sonnet-4-20250514** | supported | Claude API route |

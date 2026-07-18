@@ -31,8 +31,8 @@ drop (unified), today, advanced (thin), watch, compile, lint, ask*, file-back, r
 
 **Depends on:** Task 1
 
-- [ ] Thin Advanced drawer; remove buttons for deleted commands; rebuild main.js
-- [ ] **Verify:** `bash scripts/verify.sh product-shell-static`
+- [x] Thin Advanced drawer; remove buttons for deleted commands; rebuild main.js
+- [x] **Verify:** `bash scripts/verify.sh product-shell-static`
 
 **Commit:** `fix(shell): thin Advanced; drop dead command UI`
 
