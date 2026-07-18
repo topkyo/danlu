@@ -171,10 +171,90 @@ def _json_stdout(payload: object) -> bytes:  # pragma: no cover - exercised by e
     return (json.dumps(payload, sort_keys=True, ensure_ascii=False) + "\n").encode("utf-8")
 
 
+def _observe_signal_counts(result: dict) -> dict:  # pragma: no cover - exercised by explicit pytest acceptance gate
+    return {
+        "status": str(result.get("status") or ""),
+        "path": str(result.get("signals_path") or ".aiwiki/state/signals.jsonl"),
+        "scanned_count": int(result.get("scanned_count") or 0),
+        "new_count": int(result.get("new_count") or 0),
+        "duplicate_count": int(result.get("duplicate_count") or 0),
+        "unmapped_count": int(result.get("unmapped_count") or 0),
+        "invalid_count": int(result.get("invalid_count") or 0),
+        "emitted_by_kind": dict(result.get("emitted_by_kind") or {}),
+    }
+
+
+def _observe_planner_counts(result: dict) -> dict:  # pragma: no cover - exercised by explicit pytest acceptance gate
+    return {
+        "status": str(result.get("status") or ""),
+        "path": str(result.get("log_path") or ".aiwiki/state/planner-log.jsonl"),
+        "scanned_count": int(result.get("scanned_count") or 0),
+        "new_count": int(result.get("new_count") or 0),
+        "duplicate_count": int(result.get("duplicate_count") or 0),
+        "invalid_count": int(result.get("invalid_count") or 0),
+        "emitted_by_decision": dict(result.get("emitted_by_decision") or {}),
+    }
+
+
+def _build_alchemy_auto_preview(  # pragma: no cover - exercised by explicit pytest acceptance gate
+    vault: Path,
+    *,
+    scope: str = "all",
+    lanes: tuple[str, ...] = ("heavy", "light"),
+) -> dict:
+    from aiwiki.planner import preview_alchemy_lane
+    from aiwiki.runner.alchemy_support import auto_primitives_for_lane, auto_skip_reason
+
+    lane_results: list[dict] = []
+    skipped: list[dict[str, str]] = []
+    ready_count = 0
+    for lane in lanes:
+        plan = preview_alchemy_lane(
+            vault,
+            lane=lane,
+            scope=scope,
+            decision_mode="execute",
+            allow_current_writer_lock=True,
+        )
+        selected_primitives = auto_primitives_for_lane(lane, plan, requested_primitives=[])
+        reason = auto_skip_reason(plan, selected_primitives)
+        status = "skipped" if reason else "ready"
+        if reason:
+            skipped.append({"lane": lane, "reason": reason})
+        else:
+            ready_count += 1
+        lane_results.append(
+            {
+                "lane": lane,
+                "status": status,
+                "reason": reason,
+                "plan_status": str(plan.get("status") or ""),
+                "selected_count": int(plan.get("selected_count") or 0),
+                "selected_primitives": selected_primitives,
+                "budget_exceeded": bool(plan.get("budget", {}).get("exceeded"))
+                if isinstance(plan.get("budget"), dict)
+                else False,
+            }
+        )
+    return {
+        "status": "preview",
+        "mode": "dry_run",
+        "dry_run": True,
+        "side_effects_allowed": False,
+        "scope": scope,
+        "decision_mode": "execute",
+        "lanes": list(lanes),
+        "ready_count": ready_count,
+        "skipped_count": len(skipped),
+        "skipped": skipped,
+        "lane_results": lane_results,
+    }
+
+
 def _run_observe_setup(vault: Path) -> tuple[bytes, bytes, bytes]:  # pragma: no cover - exercised by explicit pytest acceptance gate
     """Function-level setup replacing deleted signals/planner/alchemy-auto CLI."""
 
-    from aiwiki.agent_loop import run_nightly_agent_loop_preview
+    from aiwiki.app_utils import utc_now
     from aiwiki.planner import write_planner_log
     from aiwiki.signals import collect_signals
 
@@ -183,11 +263,32 @@ def _run_observe_setup(vault: Path) -> tuple[bytes, bytes, bytes]:  # pragma: no
         sources=["runtime_history", "llm_receipt"],
         trace_id=TRACE_ID,
     )
-    planner_result = write_planner_log(vault, mode="execute")
-    preview_result = run_nightly_agent_loop_preview(vault)
+    planner_execute = write_planner_log(vault, mode="execute")
+
+    preview_signals = collect_signals(
+        vault,
+        sources=["runtime_history", "llm_receipt"],
+        trace_id=TRACE_ID,
+    )
+    planner_observe = write_planner_log(vault, mode="observe_only")
+    planner_execute_preview = write_planner_log(vault, mode="execute")
+    preview_result = {
+        "status": "ok",
+        "generated_at": utc_now(),
+        "mode": "observe_and_dry_run",
+        "dry_run": True,
+        "side_effects_allowed": False,
+        "scope": "all",
+        "signals": _observe_signal_counts(preview_signals),
+        "planner": {
+            "observe": _observe_planner_counts(planner_observe),
+            "execute": _observe_planner_counts(planner_execute_preview),
+        },
+        "auto_preview": _build_alchemy_auto_preview(vault),
+    }
     return (
         _json_stdout(signals_result),
-        _json_stdout(planner_result),
+        _json_stdout(planner_execute),
         _json_stdout(preview_result),
     )
 
