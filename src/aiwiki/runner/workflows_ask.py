@@ -1,18 +1,15 @@
-"""LLM-backed ask workflows: run-ask, background jobs, direct ask."""
+"""LLM-backed ask workflows: run-ask and background jobs."""
 
 from __future__ import annotations
 
-import json
 import logging
 import os
-import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from aiwiki.app_protocol import ensure_layout
-from aiwiki.app_queries import human_query_title
 from aiwiki.app_state import load_machine_memory, load_manifest
 from aiwiki.app_state import run_notes_path as run_notes_file_path
 from aiwiki.app_utils import (
@@ -26,10 +23,8 @@ from aiwiki.app_utils import (
     runtime_write_operation,
     slugify,
     strip_frontmatter,
-    tokenize,
     utc_now,
 )
-from aiwiki.execution.ask import _output_artifact_seed
 from aiwiki.execution.receipts import write_execution_receipt
 from aiwiki.execution.run_notes import run_id_for_artifact, write_run_notes, write_run_notes_frontmatter
 from aiwiki.input_router import is_obsidian_open_link
@@ -902,41 +897,6 @@ def _mark_run_ask_background_artifact_complete(target: Path, *, status: str, job
     body = strip_frontmatter(current)
     target.write_text(render_frontmatter(frontmatter).rstrip() + "\n\n" + body.lstrip(), encoding="utf-8")
 
-def _direct_ask_artifact_markdown(
-    *,
-    artifact_id: str,
-    question: str,
-    protocol: str,
-    created_at: str,
-    answer: str,
-    backend: str,
-    model: str,
-    source_files: list[str] | None = None,
-    used_context_refs: list[str] | None = None,
-    context_budget: str = "",
-) -> str:
-    title = human_query_title(question)
-    frontmatter = {
-        "id": artifact_id,
-        "kind": "output",
-        "format": "note",
-        "cssclasses": [OUTPUT_OBSIDIAN_CSSCLASS],
-        "query": question,
-        "protocol": protocol,
-        "generated_by": "aiwiki-run-ask-direct",
-        "created_at": created_at,
-        "delivery_mode": "llm-direct",
-        "llm_backend": backend,
-        "llm_model": model,
-    }
-    if source_files:
-        frontmatter["source_files"] = list(source_files)
-    if used_context_refs:
-        frontmatter["used_context_refs"] = list(used_context_refs)
-    if context_budget:
-        frontmatter["context_budget"] = context_budget
-    return render_frontmatter(frontmatter) + f"\n# {title}\n\n## 回答\n\n{answer.strip()}\n"
-
 def _write_run_ask_output_receipt(
     root: Path,
     *,
@@ -982,13 +942,6 @@ def _planned_run_ask_output_receipt_ref(root: Path, *, artifact_ref: str, run_id
     seed = slugify(f"run-ask-{seed_target}") or slugify("run-ask") or "execution-receipt"
     action_id = next_available_stem(receipt_dir, seed, suffix=".json")
     return relative_path(root, receipt_dir / f"{action_id}.json")
-
-def _direct_ask_system_prompt() -> str:
-    return (
-        "你是炼丹炉的直接问答助手。用中文简洁回答用户问题。"
-        "不要编造本地仓库、文件或隐藏系统状态；如果问题询问你是什么模型，"
-        "说明你是当前配置的外部 LLM 后端返回的回答，并可提及具体模型取决于运行配置。"
-    )
 
 def _quoted_report_reference_paths(question: str) -> list[str]:
     return extract_report_reference_paths(question)
@@ -1038,37 +991,6 @@ def _quoted_report_material_refs(root: Path, question: str) -> list[str]:
 
 def _clean_report_reference_question(question: str) -> str:
     return clean_report_reference_question(question)
-
-def _direct_answer_validation_error(answer: str) -> str:
-    text = str(answer or "").strip()
-    if not text:
-        return "LLM returned an empty direct answer."
-    lowered = text.lower()
-    if "_llm:" in lowered:
-        return "LLM returned a deterministic template marker instead of an answer."
-    if "请用 2–5 段自然语言直接回答" in text or "请用 2-5 段自然语言直接回答" in text:
-        return "LLM returned the note-answer instruction template instead of an answer."
-    if lowered.startswith("---") and "generated_by: aiwiki-ask" in lowered:
-        return "LLM returned an aiwiki deterministic artifact template instead of an answer."
-    return ""
-
-def _is_simple_direct_ask(question: str, output_format: str, direct: bool) -> bool:
-    if output_format != "note":
-        return False
-    text = str(question or "").strip()
-    if not text:
-        return False
-    if any(marker in text for marker in ("raw/", "wiki/", "output/", ".aiwiki/", "材料路径供系统路由使用", "本次投喂材料路径")):
-        return False
-    if direct:
-        return True
-    return len(text) <= 240
-
-def _is_material_hint_note_ask(question: str, output_format: str) -> bool:
-    if output_format != "note":
-        return False
-    text = str(question or "")
-    return any(marker in text for marker in ("材料路径供系统路由使用", "本次投喂材料路径"))
 
 def _material_hint_paths(question: str) -> list[str]:
     text = str(question or "")
@@ -1125,22 +1047,6 @@ def _read_material_context(root: Path, refs: list[str], *, max_chars: int = 6000
         "context_budget": {"explicit_material_refs": len(refs), "max_chars": max_chars},
     }
 
-def _read_material_context_snippets(root: Path, refs: list[str], *, max_chars: int = 6000) -> str:
-    return str(_read_material_context(root, refs, max_chars=max_chars).get("text") or "")
-
-def _question_terms(question: str) -> set[str]:
-    text = _clean_report_reference_question(question).lower()
-    terms = set(tokenize(text))
-    for chunk in re.findall(r"[\u4e00-\u9fff]{2,}", text):
-        if len(chunk) <= 8:
-            terms.add(chunk)
-        for size in range(2, min(6, len(chunk)) + 1):
-            for index in range(0, len(chunk) - size + 1):
-                term = chunk[index : index + size]
-                if term not in {"当前", "哪些", "多少", "一下", "关系", "相关"}:
-                    terms.add(term)
-    return {term for term in terms if len(term) >= 2}
-
 def _context_kind_for_path(relative: str) -> str:
     if relative.startswith("wiki/elixirs/"):
         return "elixir"
@@ -1158,25 +1064,6 @@ def _context_kind_for_path(relative: str) -> str:
         return "raw-material"
     return "material"
 
-def _context_priority_for_kind(kind: str) -> int:
-    return {
-        "elixir": 0,
-        "judgment": 1,
-        "decision": 1,
-        "source": 2,
-        "concept": 3,
-    }.get(kind, 4)
-
-def _material_context_ref_records(refs: list[str]) -> list[dict[str, Any]]:
-    return [
-        {
-            "path": ref,
-            "kind": _context_kind_for_path(ref),
-            "selection_reason": "explicit-material-ref",
-        }
-        for ref in refs
-    ]
-
 def _context_ref_paths(records: list[dict[str, Any]]) -> list[str]:
     paths: list[str] = []
     for record in records:
@@ -1184,78 +1071,6 @@ def _context_ref_paths(records: list[dict[str, Any]]) -> list[str]:
         if path and path not in paths:
             paths.append(path)
     return paths
-
-def _collect_vault_knowledge_context(
-    root: Path,
-    question: str,
-    *,
-    max_refs: int = 6,
-    max_chars: int = 9000,
-) -> dict[str, Any]:
-    terms = _question_terms(question)
-    if not terms:
-        return {"text": "", "used_context_refs": [], "context_budget": {"max_refs": max_refs, "max_chars": max_chars}}
-    search_roots = [root / "wiki" / name for name in ("sources", "judgments", "decisions", "concepts", "elixirs")]
-    scored: list[tuple[int, int, str, str, str]] = []
-    for directory in search_roots:
-        if not directory.exists():
-            continue
-        for path in sorted(directory.glob("*.md")):
-            try:
-                relative = relative_path(root, path)
-            except ValueError:
-                continue
-            text = strip_frontmatter(path.read_text(encoding="utf-8", errors="replace")).strip()
-            if not text:
-                continue
-            haystack = f"{relative}\n{text}".lower()
-            score = sum(haystack.count(term.lower()) for term in terms)
-            if score <= 0:
-                continue
-            kind = _context_kind_for_path(relative)
-            scored.append((_context_priority_for_kind(kind), -score, relative, kind, text))
-    scored.sort(key=lambda item: (item[0], item[1], item[2]))
-    snippets: list[str] = []
-    used_context_refs: list[dict[str, Any]] = []
-    remaining = max_chars
-    for _priority, negative_score, relative, kind, text in scored[:max_refs]:
-        if remaining <= 0:
-            break
-        excerpt = text[:remaining]
-        snippets.append(f"## {relative}\n\n{excerpt}")
-        used_context_refs.append(
-            {
-                "path": relative,
-                "kind": kind,
-                "score": abs(negative_score),
-                "excerpt_chars": len(excerpt),
-                "selection_reason": "vault-context-rank",
-            }
-        )
-        remaining -= len(excerpt)
-    context = "\n\n".join(snippets).strip()
-    if context and any(marker in _clean_report_reference_question(question) for marker in ("联网", "网上", "web", "搜索", "调研")):
-        context = (
-            "## runtime-note\n\n当前 runtime 未配置实时联网检索结果；以下是本地 vault 可访问的知识摘录。"
-            "回答时不要声称已联网，只能基于这些本地材料给出分析，并明确联网缺口。\n\n"
-            + context
-        )
-    return {
-        "text": context,
-        "used_context_refs": used_context_refs,
-        "context_budget": {"max_refs": max_refs, "max_chars": max_chars},
-    }
-
-def _material_direct_system_prompt() -> str:
-    return (
-        "你是炼丹炉的材料问答助手。用户会给出一个问题和已经抽取成文本的材料摘录。"
-        "请优先依据材料回答，用中文给出直接结论和关键依据；如果材料不足，明确说明不足。"
-        "不要编造未在材料中出现的事实。材料可能来自用户引用的报告、投料文件，或 runtime 自动检索到的本地 vault 页面。"
-    )
-
-def _material_direct_user_prompt(question: str, context: str) -> str:
-    title = human_query_title(question)
-    return f"用户问题：{title}\n\n材料摘录：\n{context}"
 
 def _strip_run_notes_prompt_fields(markdown: str) -> str:
     lines = str(markdown or "").splitlines()
@@ -1294,7 +1109,6 @@ def run_ask(
     output_format: str,
     protocol: str | None = None,
     client: SupportsComplete | None = None,
-    direct: bool = False,
     lean: bool = False,
     timeout_seconds: int | None = None,
     no_cache: bool = False,
@@ -1307,252 +1121,13 @@ def run_ask(
         raise ValueError("run-ask timeout_seconds must be greater than 0.")
     effective_timeout_seconds = _effective_run_ask_timeout(output_format, timeout_seconds)
     backend_compat: dict[str, Any] = {}
-
-    def _stamped_record(base_event: dict[str, Any], llm_audit: dict[str, Any], **kwargs: Any) -> None:
-        if backend_compat:
-            base_event = dict(base_event)
-            base_event["backend_compat"] = dict(backend_compat)
-        record_llm_attempt(root, base_event, llm_audit, **kwargs)
-
-    material_refs = _material_hint_paths(question)
-    material_refs.extend(_quoted_report_material_refs(root, question))
-    material_refs = list(dict.fromkeys(material_refs))
-    material_context_payload = _read_material_context(root, material_refs) if material_refs else {}
-    material_context = str(material_context_payload.get("text") or "")
-    used_context_refs = [
-        record
-        for record in material_context_payload.get("used_context_refs", [])
-        if isinstance(record, dict)
-    ]
-    raw_material_budget = material_context_payload.get("context_budget")
-    context_budget: dict[str, Any] = (
-        dict(raw_material_budget) if isinstance(raw_material_budget, dict) else {"explicit_material_refs": len(material_refs)}
-    )
     if client is None:
         from aiwiki.runner.preflight import preflight_check_backend
 
         backend_compat = preflight_check_backend(root)
-    direct_mode = _is_simple_direct_ask(question, output_format, direct) or (output_format == "note" and bool(material_context))
-    if direct_mode and output_format == "note" and not material_context:
-        vault_context = _collect_vault_knowledge_context(root, question)
-        material_context = str(vault_context.get("text") or "")
-        used_context_refs = [
-            record
-            for record in vault_context.get("used_context_refs", [])
-            if isinstance(record, dict)
-        ]
-        raw_budget = vault_context.get("context_budget")
-        context_budget = dict(raw_budget) if isinstance(raw_budget, dict) else {}
-    if direct_mode:
-        effective_client = client or create_client(root, timeout_seconds=effective_timeout_seconds)
-        backend_requested = _client_backend_requested(effective_client)
-        model_selected = _client_selected_model_name(effective_client)
-        effective_timeout_seconds = getattr(getattr(effective_client, "config", None), "timeout_seconds", timeout_seconds)
-        started = time.monotonic()
-        result: CompletionResult | None = None
-        fallback_stages: list[str] = []
-        fallback_reason = ""
-        system_prompt = _material_direct_system_prompt() if material_context else _direct_ask_system_prompt()
-        user_prompt = (
-            _material_direct_user_prompt(_clean_report_reference_question(question), material_context)
-            if material_context
-            else _clean_report_reference_question(question)
-        )
-        try:
-            while True:
-                try:
-                    result = effective_client.complete(system_prompt, user_prompt)
-                    normalized_answer = _normalize_markdown(result.text)
-                    validation_error = _direct_answer_validation_error(normalized_answer)
-                    if validation_error:
-                        raise LLMError(validation_error)
-                except LLMError as exc:
-                    fallback_stage = _fallback_to_next_model_with_stage(effective_client, "run-ask-direct", exc)
-                    if fallback_stage:
-                        fallback_reason = str(exc)
-                        _append_fallback_stage(fallback_stages, fallback_stage)
-                        continue
-                    raise
-                break
-        except Exception as exc:
-            duration_ms = int((time.monotonic() - started) * 1000)
-            from aiwiki.app_protocol import resolve_protocol
-
-            active_protocol = resolve_protocol(root, protocol)
-            backend_effective = _client_backend_name(effective_client)
-            model_final = _client_model_name(effective_client)
-            failed_audit = {
-                "backend_requested": backend_requested,
-                "backend_effective": backend_effective,
-                "model_selected": model_selected,
-                "model_final": model_final,
-                "fallback_stage": _fallback_stage_label(fallback_stages),
-                "fallback_reason": fallback_reason or str(exc),
-                "contract_validated": False,
-                "delivery_mode": "llm-failed",
-            }
-            _stamped_record(
-                {
-                    "event": "run-ask-direct",
-                    "target": "",
-                    "question": question,
-                    "format": "note",
-                    "protocol": active_protocol,
-                    "duration_ms": duration_ms,
-                    "timeout_seconds": effective_timeout_seconds,
-                    "no_cache": no_cache,
-                    "material_refs": material_refs,
-                    "used_context_refs": used_context_refs,
-                    "context_budget": context_budget,
-                },
-                failed_audit,
-                status="failed",
-                error=str(exc),
-                response_id=getattr(result, "response_id", "") if result is not None else "",
-                usage=getattr(result, "usage", {}) if result is not None else {},
-                raw_response_path=_raw_response_path(root, result, exc),
-                error_class=_receipt_error_class(exc),
-            )
-            raise
-        assert result is not None
-        ensure_layout(root)
-        from aiwiki.app_protocol import resolve_protocol
-
-        active_protocol = resolve_protocol(root, protocol)
-        directory = root / "output" / "reports"
-        directory.mkdir(parents=True, exist_ok=True)
-        artifact_seed = _output_artifact_seed(_clean_report_reference_question(question), "note")
-        artifact_id = next_available_stem(directory, artifact_seed)
-        destination = directory / f"{artifact_id}.md"
-        artifact_ref = relative_path(root, destination)
-        backend_effective = _client_backend_name(effective_client)
-        model_final = _client_model_name(effective_client)
-        used_context_paths = _context_ref_paths(used_context_refs)
-        source_files = list(dict.fromkeys(used_context_paths))
-        content = _direct_ask_artifact_markdown(
-            artifact_id=artifact_id,
-            question=_clean_report_reference_question(question),
-            protocol=active_protocol,
-            created_at=utc_now(),
-            answer=normalized_answer,
-            backend=backend_effective,
-            model=model_final,
-            source_files=source_files,
-            used_context_refs=used_context_paths,
-            context_budget=json.dumps(context_budget, ensure_ascii=False, sort_keys=True),
-        )
-        destination_snapshot = _snapshot_file_bytes(destination)
-        destination.write_text(content, encoding="utf-8")
-        run_id = run_id_for_artifact(artifact_ref)
-        planned_receipt_path = _planned_run_ask_output_receipt_ref(root, artifact_ref=artifact_ref, run_id=run_id)
-        notes_path = run_notes_file_path(root, run_id)
-        notes_snapshot = _snapshot_file_bytes(notes_path)
-        fallback_stage_label = _fallback_stage_label(fallback_stages)
-        llm_audit = {
-            "backend_requested": backend_requested,
-            "backend_effective": backend_effective,
-            "model_selected": model_selected,
-            "model_final": model_final,
-            "fallback_stage": fallback_stage_label,
-            "fallback_reason": fallback_reason,
-            "contract_validated": True,
-            "delivery_mode": "llm-direct",
-        }
-        try:
-            _stamped_record(
-                {
-                    "event": "run-ask-direct",
-                    "target": artifact_ref,
-                    "question": question,
-                    "format": "note",
-                    "protocol": active_protocol,
-                    "duration_ms": int((time.monotonic() - started) * 1000),
-                    "timeout_seconds": effective_timeout_seconds,
-                    "no_cache": no_cache,
-                    "material_refs": material_refs,
-                    "used_context_refs": used_context_refs,
-                    "context_budget": context_budget,
-                },
-                llm_audit,
-                status="success",
-                response_id=result.response_id,
-                usage=result.usage,
-                raw_response_path=_raw_response_path(root, result),
-            )
-            run_notes = write_run_notes(
-                root,
-                run_id=run_id,
-                status="llm-direct-complete",
-                question=question,
-                output_format="note",
-                protocol=active_protocol,
-                output_path=artifact_ref,
-                receipt_path=planned_receipt_path,
-                backend=backend_effective,
-                model=model_final,
-                fallback_stage=fallback_stage_label,
-                stages=[
-                    "Detected a simple note/material question and used the lightweight direct-answer LLM path.",
-                    f"Selected {len(used_context_refs)} auditable context references for the direct prompt.",
-                    "Recorded LLM receipt metadata for audit and recovery.",
-                    "Recorded authoritative execution receipt for the output artifact.",
-                ],
-                context_refs=used_context_paths,
-            )
-            write_run_notes_frontmatter(
-                destination,
-                run_id=run_notes["run_id"],
-                run_notes_ref=run_notes["run_notes_path"],
-            )
-            _ensure_output_cssclass(destination)
-            _write_run_ask_output_receipt(
-                root,
-                generated_by="aiwiki-run-ask-direct",
-                artifact_ref=artifact_ref,
-                run_id=run_id,
-                question=question,
-                output_format="note",
-                protocol=active_protocol,
-                delivery_mode="llm-direct",
-                run_ask_path="direct-note",
-                extra={
-                    "backend_effective": backend_effective,
-                    "model_final": model_final,
-                    "fallback_stage": fallback_stage_label,
-                    "response_id": result.response_id,
-                    "usage": result.usage,
-                    "material_refs": material_refs,
-                    "used_context_refs": used_context_refs,
-                    "context_budget": context_budget,
-                },
-            )
-        except Exception:
-            _restore_file_bytes(destination, destination_snapshot)
-            _restore_file_bytes(notes_path, notes_snapshot)
-            raise
-        return {
-            "path": artifact_ref,
-            "format": "note",
-            "protocol": active_protocol,
-            "question": question,
-            "status": "success",
-            "delivery_mode": "llm-direct",
-            "backend_requested": backend_requested,
-            "backend_effective": backend_effective,
-            "model_selected": model_selected,
-            "model_final": model_final,
-            "fallback_stage": fallback_stage_label,
-            "fallback_reason": fallback_reason,
-            "timeout_seconds": effective_timeout_seconds,
-            "run_id": run_notes["run_id"],
-            "run_notes_path": run_notes["run_notes_path"],
-            "no_cache": no_cache,
-            "contract_validated": True,
-            "material_refs": material_refs,
-            "used_context_refs": used_context_refs,
-            "context_budget": context_budget,
-        }
-
+    material_refs = _material_hint_paths(question)
+    material_refs.extend(_quoted_report_material_refs(root, question))
+    material_refs = list(dict.fromkeys(material_refs))
     clean_question = _clean_report_reference_question(question) if material_refs else question
     ask_kwargs = {"protocol": protocol, "no_cache": no_cache, "write_graph_anchors": False, "notify": False}
     if corpus_id_override is not None:
@@ -1560,7 +1135,6 @@ def run_ask(
     artifact = ask_question(root, clean_question, output_format, **ask_kwargs)
     if material_refs:
         artifact["material_refs"] = material_refs
-        artifact["material_context"] = material_context
     return _complete_run_ask_artifact(
         root,
         artifact=artifact,

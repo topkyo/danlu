@@ -46,12 +46,7 @@ from ..app_protocol import (
 from ..app_queries import (
     human_query_title,
     rank_sources,
-    render_decision_memo_query,
-    render_figure_brief,
-    render_note_answer,
     render_report,
-    render_slides,
-    render_sop_query,
     wiki_requires_compile,
 )
 from ..app_routing import (
@@ -117,13 +112,6 @@ NEXT_STEP_HINTS = {
 }
 
 READABLE_FILENAME_MAX_CHARS = 72
-OUTPUT_FORMAT_FILENAME_SUFFIXES = {
-    "decision-memo": "decision-memo",
-    "sop": "sop",
-    "slides": "slides",
-    "figure": "figure",
-    "note": "note",
-}
 
 
 def _readable_filename_stem(label: str, *, fallback: str, max_chars: int = READABLE_FILENAME_MAX_CHARS) -> str:
@@ -146,12 +134,9 @@ def _readable_filename_stem(label: str, *, fallback: str, max_chars: int = READA
 
 
 def _output_artifact_seed(question: str, output_format: str) -> str:
-    fallback = OUTPUT_FORMAT_FILENAME_SUFFIXES.get(output_format, output_format or "output")
-    stem = _readable_filename_stem(human_query_title(question), fallback=fallback)
-    suffix = OUTPUT_FORMAT_FILENAME_SUFFIXES.get(output_format)
-    if suffix:
-        return f"{stem}-{suffix}"
-    return stem
+    if output_format != "report":
+        raise ValueError(f"Unsupported format: {output_format}")
+    return _readable_filename_stem(human_query_title(question), fallback="report")
 
 
 def _file_back_entry_seed(kind: str, title: str) -> str:
@@ -483,65 +468,21 @@ def ask_question(
     created_at = _app_utils.utc_now()
     artifact_seed = _output_artifact_seed(question, output_format)
 
-    if output_format == "report":
-        directory = root / "output" / "reports"
-        artifact_id = next_available_stem(directory, artifact_seed)
-        destination = directory / f"{artifact_id}.md"
-        content = render_report(root, question, ranked, ranked_concepts, machine_query, protocol_state, created_at, artifact_id)
-    elif output_format == "decision-memo":
-        directory = root / "output" / "reports"
-        artifact_id = next_available_stem(directory, artifact_seed)
-        destination = directory / f"{artifact_id}.md"
-        content = render_decision_memo_query(
-            root,
-            question,
-            ranked,
-            ranked_concepts,
-            machine_query,
-            protocol_state,
-            created_at,
-            artifact_id,
-        )
-    elif output_format == "sop":
-        directory = root / "output" / "reports"
-        artifact_id = next_available_stem(directory, artifact_seed)
-        destination = directory / f"{artifact_id}.md"
-        content = render_sop_query(
-            root,
-            question,
-            ranked,
-            ranked_concepts,
-            machine_query,
-            protocol_state,
-            created_at,
-            artifact_id,
-        )
-    elif output_format == "note":
-        directory = root / "output" / "reports"
-        artifact_id = next_available_stem(directory, artifact_seed)
-        destination = directory / f"{artifact_id}.md"
-        content = render_note_answer(
-            root,
-            question,
-            ranked,
-            ranked_concepts,
-            machine_query,
-            protocol_state,
-            created_at,
-            artifact_id,
-        )
-    elif output_format == "slides":
-        directory = root / "output" / "slides"
-        artifact_id = next_available_stem(directory, artifact_seed)
-        destination = directory / f"{artifact_id}.md"
-        content = render_slides(root, question, ranked, ranked_concepts, machine_query, protocol_state, created_at, artifact_id)
-    elif output_format == "figure":
-        directory = root / "output" / "figures"
-        artifact_id = next_available_stem(directory, artifact_seed)
-        destination = directory / f"{artifact_id}.md"
-        content = render_figure_brief(root, question, ranked, ranked_concepts, machine_query, protocol_state, created_at, artifact_id)
-    else:
+    if output_format != "report":
         raise ValueError(f"Unsupported format: {output_format}")
+    directory = root / "output" / "reports"
+    artifact_id = next_available_stem(directory, artifact_seed)
+    destination = directory / f"{artifact_id}.md"
+    content = render_report(
+        root,
+        question,
+        ranked,
+        ranked_concepts,
+        machine_query,
+        protocol_state,
+        created_at,
+        artifact_id,
+    )
 
     if load_protocol_learnings:
         learnings = load_learnings_for_protocol(root, active_protocol)

@@ -323,7 +323,6 @@ def _handle_ask_family(args: argparse.Namespace, root: Path) -> tuple[object, st
     if args.handler_command == "run-ask":
         ask_kwargs = {
             "protocol": args.protocol,
-            "direct": args.direct,
             "lean": args.lean,
             "timeout_seconds": args.timeout,
             "no_cache": args.no_cache,

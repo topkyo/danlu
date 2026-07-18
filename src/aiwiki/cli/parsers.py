@@ -363,7 +363,7 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
     run_ask_parser.add_argument("question", help="Research question to answer.")
     run_ask_parser.add_argument(
         "--format",
-        choices=("report", "decision-memo", "sop", "slides", "figure", "note"),
+        choices=("report",),
         default="report",
         help="Output artifact format.",
     )
@@ -377,11 +377,6 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
         "--lean",
         action="store_true",
         help="Start with a smaller prompt profile for stability instead of waiting for timeout retry.",
-    )
-    run_ask_parser.add_argument(
-        "--direct",
-        action="store_true",
-        help="Use a lightweight direct-answer LLM path for simple note questions without loading wiki context.",
     )
     run_ask_parser.add_argument(
         "--timeout",
@@ -1310,7 +1305,7 @@ def _configure_ask_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("question", help="Research question to package.")
     parser.add_argument(
         "--format",
-        choices=("report", "decision-memo", "sop", "slides", "figure", "note"),
+        choices=("report",),
         default="report",
         help="Output artifact format.",
     )

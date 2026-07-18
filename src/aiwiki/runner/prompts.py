@@ -878,14 +878,14 @@ def _extract_related_concept_slugs(markdown: str) -> list[str]:
 
 def _validate_output_markdown(markdown: str, output_format: str, source_ids: list[str]) -> None:
     del source_ids
-    if output_format in {"report", "decision-memo", "sop", "figure", "note"}:
-        frontmatter = parse_frontmatter(markdown)
-        if not frontmatter:
-            raise RuntimeError("Ask response is missing frontmatter.")
-    if output_format == "report":
-        if not strip_frontmatter(markdown).strip():
-            raise RuntimeError("Ask response body is empty.")
-        _reject_unfilled_llm_placeholders(markdown)
+    if output_format != "report":
+        raise RuntimeError(f"Unsupported ask output format: {output_format}")
+    frontmatter = parse_frontmatter(markdown)
+    if not frontmatter:
+        raise RuntimeError("Ask response is missing frontmatter.")
+    if not strip_frontmatter(markdown).strip():
+        raise RuntimeError("Ask response body is empty.")
+    _reject_unfilled_llm_placeholders(markdown)
 
 
 def _reject_unfilled_llm_placeholders(markdown: str) -> None:
