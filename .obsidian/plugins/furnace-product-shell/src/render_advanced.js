@@ -87,22 +87,40 @@ function buildStatusSectionSummary(plugin) {
   });
 }
 
-// R91: 运行与历史 section 摘要 — 最近运行数 + review/execution 待办
+// R91: 运行与历史 section 摘要 — 最近运行数 + review 待办
 function buildHistorySectionSummary(plugin) {
   const counts = advancedDrawerCounts(plugin);
-  return plugin.t("最近运行 {n} 条 · 待审 {review} · 待执行 {execution}", {
+  return plugin.t("最近运行 {n} 条 · 待审 {review}", {
     n: counts.runs,
     review: counts.review,
-    execution: counts.execution,
   });
 }
 
-// R91: 运行与历史 section 主体 — operator views 仅保留命令面板入口
+// R91: 运行与历史 section 主体 — inline plugin run history only
 function renderHistorySectionBody(plugin, container) {
   container.createDiv({
     cls: "furnace-shell-panel-note",
-    text: plugin.t("Review, Execution, and Recent Runs are available from the command palette when advanced commands are enabled."),
+    text: plugin.t("Recent plugin-triggered runs are listed here when available."),
   });
+
+  const runs = plugin.pluginState && Array.isArray(plugin.pluginState.recentRuns) ? plugin.pluginState.recentRuns : [];
+  const section = container.createDiv({ cls: "furnace-advanced-section-run-history" });
+  section.createEl("h4", { text: plugin.t("Latest plugin runs") });
+  if (!runs.length) {
+    section.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No recent plugin runs.") });
+  } else {
+    const list = section.createEl("ul", { cls: "furnace-shell-list" });
+    runs.slice(0, 5).forEach(function (record) {
+      const item = list.createEl("li");
+      const label = record.command || record.label || plugin.t("command");
+      const status = record.status || "unknown";
+      item.createEl("strong", { text: label });
+      item.createDiv({
+        cls: "furnace-shell-meta",
+        text: plugin.t(status) + " | " + (record.finishedAt || record.startedAt || ""),
+      });
+    });
+  }
 
   // 最近 LLM 运行摘要（若有）
   try {
@@ -129,14 +147,7 @@ function renderHistorySectionBody(plugin, container) {
 function advancedDrawerCounts(plugin) {
   const summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : {};
   const review = sumNumericValues(summary.review_backlog_counts || {});
-  const executionControls = summary.execution_controls && typeof summary.execution_controls === "object" ? summary.execution_controls : {};
-  const actionCount = Array.isArray(executionControls.actions)
-    ? executionControls.actions.filter((action) => action && typeof action === "object" && (action.can_apply || action.can_review || action.can_revert)).length
-    : 0;
-  const archiveCount = Array.isArray(executionControls.archives)
-    ? executionControls.archives.filter((entry) => entry && typeof entry === "object" && (entry.can_apply || entry.can_revert)).length
-    : 0;
   const runs = plugin.pluginState && Array.isArray(plugin.pluginState.recentRuns) ? plugin.pluginState.recentRuns.length : 0;
-  return { review, execution: actionCount + archiveCount, runs };
+  return { review, runs };
 }
 

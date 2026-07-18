@@ -20,9 +20,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     }
 
     this.registerView(VIEW_TYPE_FURNACE_CENTER, (leaf) => new FurnaceCenterView(leaf, this));
-    this.registerView(VIEW_TYPE_RECENT_RUNS, (leaf) => new RecentRunsView(leaf, this));
-    this.registerView(VIEW_TYPE_REVIEW_CENTER, (leaf) => new ReviewCenterView(leaf, this));
-    this.registerView(VIEW_TYPE_EXECUTION_CENTER, (leaf) => new ExecutionCenterView(leaf, this));
     this.addSettingTab(new FurnaceProductShellSettingTab(this.app, this));
 
     this.addRibbonIcon("flask-conical", this.t("Open Furnace"), () => {
@@ -87,29 +84,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     if (!this.settings.showAdvancedCommands) {
       return;
     }
-    // EP-005: kept for backward compatibility — these views can still be opened individually,
-    // but Furnace Center now also surfaces a unified activity timeline.
-    this.addCommand({
-      id: "open-recent-runs",
-      name: this.t("Open Recent Runs"),
-      callback: () => {
-        this.runUiAction(() => this.openRecentRunsView(), this.t("Open Recent Runs"));
-      },
-    });
-    this.addCommand({
-      id: "open-review-center",
-      name: this.t("Open Review Center"),
-      callback: () => {
-        this.runUiAction(() => this.openReviewCenterView(), this.t("Open Review Center"));
-      },
-    });
-    this.addCommand({
-      id: "open-execution-center",
-      name: this.t("Open Execution Center"),
-      callback: () => {
-        this.runUiAction(() => this.openExecutionCenterView(), this.t("Open Execution Center"));
-      },
-    });
     this.addCommand({
       id: "refresh-furnace-shell",
       name: this.t("Refresh Furnace Shell"),
@@ -475,7 +449,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async runTodaySnoozeCommand(target, days = 1) {
-    new Notice(this.t("Today snooze was removed in W4; open Review Center or handle the item directly."));
+    new Notice(this.t("Today snooze was removed in W4; handle the item directly from Today."));
   }
 
   async runShellSearchCommand(query, limit = 8) {
@@ -791,18 +765,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     await this.openView(VIEW_TYPE_FURNACE_CENTER, { preferMain: true });
   }
 
-  async openRecentRunsView() {
-    await this.openView(VIEW_TYPE_RECENT_RUNS);
-  }
-
-  async openReviewCenterView() {
-    await this.openView(VIEW_TYPE_REVIEW_CENTER);
-  }
-
-  async openExecutionCenterView() {
-    await this.openView(VIEW_TYPE_EXECUTION_CENTER);
-  }
-
   async openWorkspacePath(relativePath) {
     return openProductShellWorkspacePath(this, relativePath);
   }
@@ -871,18 +833,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   renderFurnaceCenter(contentEl) {
     renderFurnaceCenter(this, contentEl);
-  }
-
-  renderRecentRuns(contentEl) {
-    renderRecentRuns(this, contentEl);
-  }
-
-  renderReviewCenter(contentEl) {
-    renderReviewCenter(this, contentEl);
-  }
-
-  renderExecutionCenter(contentEl) {
-    renderExecutionCenter(this, contentEl);
   }
 
   refreshOpenViews() {

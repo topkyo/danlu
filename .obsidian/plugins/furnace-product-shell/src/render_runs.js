@@ -1,44 +1,4 @@
-// Simplified Recent Runs — only latest runs with basic status.
-// renderRunDetail / renderRunTimeline helpers kept for cross-module use.
-
-function renderRecentRuns(plugin, contentEl) {
-  contentEl.empty();
-  contentEl.addClass("furnace-shell-view");
-  contentEl.createEl("h2", { text: plugin.t("Recent Runs") });
-
-  if (!plugin.repoState.valid) {
-    contentEl.createDiv({
-      cls: "furnace-shell-empty",
-      text: plugin.t("Vault runtime unavailable. Missing scaffold or launcher: {missing}", {
-        missing: plugin.repoState.missingPaths.join(", "),
-      }),
-    });
-    return;
-  }
-
-  plugin.renderActionButtons(contentEl, [
-    { label: "Refresh", cta: true, onClick: async () => plugin.refreshShellSummaryCommand() },
-    { label: "Furnace Center", onClick: async () => plugin.openFurnaceCenterView() },
-  ]);
-
-  var section = contentEl.createDiv({ cls: "furnace-shell-section" });
-  section.createEl("h3", { text: plugin.t("最近运行") });
-
-  if (!plugin.pluginState.recentRuns.length) {
-    section.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No plugin-triggered commands yet.") });
-    return;
-  }
-
-  var list = section.createEl("ul", { cls: "furnace-shell-list" });
-  plugin.pluginState.recentRuns.slice(0, 5).forEach(function (record) {
-    var item = list.createEl("li");
-    var label = record.command || record.label || plugin.t("command");
-    var status = record.status || "unknown";
-    var metaText = plugin.t(status) + " | " + (record.finishedAt || "");
-    item.createEl("strong", { text: label });
-    item.createDiv({ cls: "furnace-shell-meta", text: metaText });
-  });
-}
+// Run detail / timeline helpers for advanced history and run logs.
 
 function runStatusClass(status) {
   if (status === "success") return "furnace-shell-status-ok";
@@ -176,11 +136,6 @@ function renderRunDetail(plugin, container, record, options) {
   if (!compact && record.logPath) {
     var logButton = actions.createEl("button", { text: plugin.t("Open log") });
     logButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.openWorkspacePath(record.logPath); }, "Open log: " + record.logPath); });
-  }
-
-  if (options.includeOpenRecentRuns) {
-    var recentRunsButton = actions.createEl("button", { text: plugin.t("Open Recent Runs") });
-    recentRunsButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.openRecentRunsView(); }, "Open Recent Runs"); });
   }
 
   return detail;

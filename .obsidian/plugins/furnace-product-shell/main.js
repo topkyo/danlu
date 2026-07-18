@@ -194,9 +194,6 @@ if (typeof module !== "undefined") {
 
 const PLUGIN_ID = "furnace-product-shell";
 const VIEW_TYPE_FURNACE_CENTER = "furnace-product-shell-furnace-center";
-const VIEW_TYPE_RECENT_RUNS = "furnace-product-shell-recent-runs";
-const VIEW_TYPE_REVIEW_CENTER = "furnace-product-shell-review-center";
-const VIEW_TYPE_EXECUTION_CENTER = "furnace-product-shell-execution-center";
 const SHELL_SUMMARY_PATH = "output/control/shell-summary.json";
 const DEFAULT_PROTOCOLS = ["general"];
 const DEFAULT_LOCALE = "zh";
@@ -243,9 +240,10 @@ const ZH_TEXT = {
   "Recent runs limit": "最近运行保留数",
   "How many plugin-triggered runs to keep in the Product Shell.": "Product Shell 中保留多少条插件触发的运行记录。",
   "Show advanced commands": "显示高级命令",
-  "Register diagnostics, history, Review Center, and Execution Center commands in the command palette. Reload Obsidian after changing this toggle.": "是否把诊断、历史、Review Center 与 Execution Center 命令注册到命令面板中。修改后需要重载 Obsidian。",
+  "Register the Refresh Furnace Shell command in the command palette. Reload Obsidian after changing this toggle.": "是否把「刷新炼丹炉 Shell」命令注册到命令面板中。修改后需要重载 Obsidian。",
   "Advanced command visibility refreshes after reloading Obsidian.": "高级命令可见性会在重载 Obsidian 后刷新。",
-  "Review, Execution, and Recent Runs are available from the command palette when advanced commands are enabled.": "Review / Execution / Recent Runs 仅在开启高级命令后，从命令面板打开。",
+  "Today snooze was removed in W4; handle the item directly from Today.": "Today 延后已在 W4 移除；请直接在 Today 里处理该项。",
+  "Recent plugin-triggered runs are listed here when available.": "此处列出插件触发的最近运行记录（如有）。",
   "Full runtime is Desktop-only. iPad/iOS Obsidian can only be a future companion; it cannot run the local launcher, Python CLI, or full ingest/review flow.": "全功能 runtime 仅支持 Desktop。iPad/iOS Obsidian 未来只能作为 companion，不能运行本地 launcher、Python CLI 或完整投料/复审流程。",
   "LLM backend": "LLM 后端",
   "Select the LLM provider used by compile / run-ask / run-nightly. Common providers are listed first; advanced entries are for local CLI sessions or custom OpenAI-compatible endpoints.": "选择 compile / run-ask / run-nightly 使用的 LLM API provider。",
@@ -3384,102 +3382,6 @@ class FurnaceCenterView extends ItemView {
   }
 }
 
-class RecentRunsView extends ItemView {
-  constructor(leaf, plugin) {
-    super(leaf);
-    this.plugin = plugin;
-  }
-
-  getViewType() {
-    return VIEW_TYPE_RECENT_RUNS;
-  }
-
-  getDisplayText() {
-    return this.plugin.t("Recent Runs");
-  }
-
-  getIcon() {
-    return "history";
-  }
-
-  async onOpen() {
-    this.plugin.registerOpenView(this);
-    this.render();
-  }
-
-  async onClose() {
-    this.plugin.unregisterOpenView(this);
-  }
-
-  render() {
-    this.plugin.renderRecentRuns(this.contentEl);
-  }
-}
-
-class ReviewCenterView extends ItemView {
-  constructor(leaf, plugin) {
-    super(leaf);
-    this.plugin = plugin;
-  }
-
-  getViewType() {
-    return VIEW_TYPE_REVIEW_CENTER;
-  }
-
-  getDisplayText() {
-    return this.plugin.t("Review Center");
-  }
-
-  getIcon() {
-    return "clipboard-check";
-  }
-
-  async onOpen() {
-    this.plugin.registerOpenView(this);
-    this.render();
-  }
-
-  async onClose() {
-    this.plugin.unregisterOpenView(this);
-  }
-
-  render() {
-    this.plugin.renderReviewCenter(this.contentEl);
-  }
-}
-
-class ExecutionCenterView extends ItemView {
-  constructor(leaf, plugin) {
-    super(leaf);
-    this.plugin = plugin;
-  }
-
-  getViewType() {
-    return VIEW_TYPE_EXECUTION_CENTER;
-  }
-
-  getDisplayText() {
-    return this.plugin.t("Execution Center");
-  }
-
-  getIcon() {
-    return "play-circle";
-  }
-
-  async onOpen() {
-    this.plugin.registerOpenView(this);
-    this.render();
-  }
-
-  async onClose() {
-    this.plugin.unregisterOpenView(this);
-  }
-
-  render() {
-    this.plugin.renderExecutionCenter(this.contentEl);
-  }
-}
-
 // --- src/state/repo-state.js ---
 
 // State: repo detection and validation.
@@ -4024,7 +3926,7 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName(t("Show advanced commands"))
-      .setDesc(t("Register diagnostics, history, Review Center, and Execution Center commands in the command palette. Reload Obsidian after changing this toggle."))
+      .setDesc(t("Register the Refresh Furnace Shell command in the command palette. Reload Obsidian after changing this toggle."))
       .addToggle((toggle) =>
         toggle.setValue(Boolean(this.plugin.settings.showAdvancedCommands)).onChange(async (value) => {
           this.plugin.settings.showAdvancedCommands = Boolean(value);
@@ -6056,22 +5958,40 @@ function buildStatusSectionSummary(plugin) {
   });
 }
 
-// R91: 运行与历史 section 摘要 — 最近运行数 + review/execution 待办
+// R91: 运行与历史 section 摘要 — 最近运行数 + review 待办
 function buildHistorySectionSummary(plugin) {
   const counts = advancedDrawerCounts(plugin);
-  return plugin.t("最近运行 {n} 条 · 待审 {review} · 待执行 {execution}", {
+  return plugin.t("最近运行 {n} 条 · 待审 {review}", {
     n: counts.runs,
     review: counts.review,
-    execution: counts.execution,
   });
 }
 
-// R91: 运行与历史 section 主体 — operator views 仅保留命令面板入口
+// R91: 运行与历史 section 主体 — inline plugin run history only
 function renderHistorySectionBody(plugin, container) {
   container.createDiv({
     cls: "furnace-shell-panel-note",
-    text: plugin.t("Review, Execution, and Recent Runs are available from the command palette when advanced commands are enabled."),
+    text: plugin.t("Recent plugin-triggered runs are listed here when available."),
   });
+
+  const runs = plugin.pluginState && Array.isArray(plugin.pluginState.recentRuns) ? plugin.pluginState.recentRuns : [];
+  const section = container.createDiv({ cls: "furnace-advanced-section-run-history" });
+  section.createEl("h4", { text: plugin.t("Latest plugin runs") });
+  if (!runs.length) {
+    section.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No recent plugin runs.") });
+  } else {
+    const list = section.createEl("ul", { cls: "furnace-shell-list" });
+    runs.slice(0, 5).forEach(function (record) {
+      const item = list.createEl("li");
+      const label = record.command || record.label || plugin.t("command");
+      const status = record.status || "unknown";
+      item.createEl("strong", { text: label });
+      item.createDiv({
+        cls: "furnace-shell-meta",
+        text: plugin.t(status) + " | " + (record.finishedAt || record.startedAt || ""),
+      });
+    });
+  }
 
   // 最近 LLM 运行摘要（若有）
   try {
@@ -6098,61 +6018,14 @@ function renderHistorySectionBody(plugin, container) {
 function advancedDrawerCounts(plugin) {
   const summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : {};
   const review = sumNumericValues(summary.review_backlog_counts || {});
-  const executionControls = summary.execution_controls && typeof summary.execution_controls === "object" ? summary.execution_controls : {};
-  const actionCount = Array.isArray(executionControls.actions)
-    ? executionControls.actions.filter((action) => action && typeof action === "object" && (action.can_apply || action.can_review || action.can_revert)).length
-    : 0;
-  const archiveCount = Array.isArray(executionControls.archives)
-    ? executionControls.archives.filter((entry) => entry && typeof entry === "object" && (entry.can_apply || entry.can_revert)).length
-    : 0;
   const runs = plugin.pluginState && Array.isArray(plugin.pluginState.recentRuns) ? plugin.pluginState.recentRuns.length : 0;
-  return { review, execution: actionCount + archiveCount, runs };
+  return { review, runs };
 }
 
 
 // --- src/render_runs.js ---
 
-// Simplified Recent Runs — only latest runs with basic status.
-// renderRunDetail / renderRunTimeline helpers kept for cross-module use.
-
-function renderRecentRuns(plugin, contentEl) {
-  contentEl.empty();
-  contentEl.addClass("furnace-shell-view");
-  contentEl.createEl("h2", { text: plugin.t("Recent Runs") });
-
-  if (!plugin.repoState.valid) {
-    contentEl.createDiv({
-      cls: "furnace-shell-empty",
-      text: plugin.t("Vault runtime unavailable. Missing scaffold or launcher: {missing}", {
-        missing: plugin.repoState.missingPaths.join(", "),
-      }),
-    });
-    return;
-  }
-
-  plugin.renderActionButtons(contentEl, [
-    { label: "Refresh", cta: true, onClick: async () => plugin.refreshShellSummaryCommand() },
-    { label: "Furnace Center", onClick: async () => plugin.openFurnaceCenterView() },
-  ]);
-
-  var section = contentEl.createDiv({ cls: "furnace-shell-section" });
-  section.createEl("h3", { text: plugin.t("最近运行") });
-
-  if (!plugin.pluginState.recentRuns.length) {
-    section.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No plugin-triggered commands yet.") });
-    return;
-  }
-
-  var list = section.createEl("ul", { cls: "furnace-shell-list" });
-  plugin.pluginState.recentRuns.slice(0, 5).forEach(function (record) {
-    var item = list.createEl("li");
-    var label = record.command || record.label || plugin.t("command");
-    var status = record.status || "unknown";
-    var metaText = plugin.t(status) + " | " + (record.finishedAt || "");
-    item.createEl("strong", { text: label });
-    item.createDiv({ cls: "furnace-shell-meta", text: metaText });
-  });
-}
+// Run detail / timeline helpers for advanced history and run logs.
 
 function runStatusClass(status) {
   if (status === "success") return "furnace-shell-status-ok";
@@ -6292,11 +6165,6 @@ function renderRunDetail(plugin, container, record, options) {
     logButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.openWorkspacePath(record.logPath); }, "Open log: " + record.logPath); });
   }
 
-  if (options.includeOpenRecentRuns) {
-    var recentRunsButton = actions.createEl("button", { text: plugin.t("Open Recent Runs") });
-    recentRunsButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.openRecentRunsView(); }, "Open Recent Runs"); });
-  }
-
   return detail;
 }
 
@@ -6329,152 +6197,6 @@ function renderFurnaceCenter(plugin, contentEl) {
 
   // 3. Conversation Composer — keep it at the bottom of the shell surface.
   renderUniversalInput(plugin, contentEl);
-}
-
-// --- src/render_review.js ---
-
-// Simplified Review Center — only key summary and next action.
-
-function renderReviewCenter(plugin, contentEl) {
-  contentEl.empty();
-  contentEl.addClass("furnace-shell-view");
-  contentEl.createEl("h2", { text: plugin.t("Review Center") });
-
-  if (!plugin.repoState.valid) {
-    contentEl.createDiv({
-      cls: "furnace-shell-empty",
-      text: plugin.t("Vault runtime unavailable. Missing scaffold or launcher: {missing}", {
-        missing: plugin.repoState.missingPaths.join(", "),
-      }),
-    });
-    return;
-  }
-
-  plugin.renderActionButtons(contentEl, [
-    { label: "Refresh", cta: true, onClick: async () => plugin.refreshShellSummaryCommand() },
-    { label: "Furnace Center", onClick: async () => plugin.openFurnaceCenterView() },
-  ]);
-
-  if (!plugin.shellSummary) {
-    contentEl.createDiv({
-      cls: "furnace-shell-empty",
-      text: plugin.t("数据还没准备好。先点上方刷新，或等当前任务跑完。"),
-    });
-    return;
-  }
-
-  var review = plugin.shellSummary.review_backlog_counts || {};
-  var summaryRow = contentEl.createDiv({ cls: "furnace-shell-section" });
-  summaryRow.createEl("h3", { text: plugin.t("审阅概况") });
-  var stats = summaryRow.createDiv({ cls: "furnace-shell-meta" });
-  stats.setText(
-    plugin.t("待决策") + ": " + (review.pending_decisions || 0) +
-    "  |  " + plugin.t("待判断") + ": " + (review.pending_judgments || 0)
-  );
-
-  var nextReview = plugin.nextReviewCandidate();
-  if (nextReview) {
-    var nextSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-    nextSection.createEl("h3", { text: plugin.t("下一个审阅") });
-    var nextCard = nextSection.createDiv({ cls: "furnace-shell-card" });
-    nextCard.createEl("strong", { text: nextReview.label || nextReview.pagePath || plugin.t("review-page") });
-    nextCard.createDiv({ cls: "furnace-shell-meta", text: nextReview.description || "" });
-    var actions = nextCard.createDiv({ cls: "furnace-shell-inline-actions" });
-    var openBtn = actions.createEl("button", { text: plugin.t("Open page") });
-    openBtn.addEventListener("click", function () {
-      plugin.runUiAction(function () { return plugin.openWorkspacePath(nextReview.pagePath); }, "Open review page: " + nextReview.pagePath);
-    });
-    plugin.preferredTransitionOptions("page", nextReview).forEach(function (transition) {
-      var btn = actions.createEl("button", { text: transition.label });
-      btn.addEventListener("click", function () {
-        plugin.runUiAction(function () { return plugin.runReviewPageTransition(nextReview.pagePath, transition.value); }, "Next review: " + nextReview.pagePath + " -> " + transition.value);
-      });
-    });
-  } else {
-    contentEl.createDiv({ cls: "furnace-shell-empty", text: plugin.t("当前没有待审阅项。") });
-  }
-
-  // Quick link to full review markdown page
-  var links = plugin.shellSummary.links || {};
-  if (links.review_center_markdown) {
-    var linkDiv = contentEl.createDiv({ cls: "furnace-shell-section" });
-    var linkBtn = linkDiv.createEl("button", { text: plugin.t("查看完整审阅页") });
-    linkBtn.addEventListener("click", function () {
-      plugin.runUiAction(function () { return plugin.openWorkspacePath(links.review_center_markdown); }, "Open review markdown");
-    });
-  }
-}
-
-// --- src/render_execution.js ---
-
-// Simplified Execution Center — only key summary and recent activity.
-
-function renderExecutionCenter(plugin, contentEl) {
-  contentEl.empty();
-  contentEl.addClass("furnace-shell-view");
-  contentEl.createEl("h2", { text: plugin.t("Execution Center") });
-
-  if (!plugin.repoState.valid) {
-    contentEl.createDiv({
-      cls: "furnace-shell-empty",
-      text: plugin.t("Repo-local runtime unavailable. Missing: {missing}", {
-        missing: plugin.repoState.missingPaths.join(", "),
-      }),
-    });
-    return;
-  }
-
-  plugin.renderActionButtons(contentEl, [
-    { label: "Refresh", cta: true, onClick: async () => plugin.refreshShellSummaryCommand() },
-    { label: "Furnace Center", onClick: async () => plugin.openFurnaceCenterView() },
-  ]);
-
-  if (!plugin.shellSummary) {
-    contentEl.createDiv({
-      cls: "furnace-shell-empty",
-      text: plugin.t("数据还没准备好。先点上方刷新，或等当前任务跑完。"),
-    });
-    return;
-  }
-
-  // Summary stats only
-  var receipts = Array.isArray(plugin.shellSummary.recent_receipts) ? plugin.shellSummary.recent_receipts : [];
-  var actionControls = plugin.executionControlList("actions");
-  var pendingActions = actionControls.filter(function (a) { return a && a.can_apply; }).length;
-
-  var summaryRow = contentEl.createDiv({ cls: "furnace-shell-section" });
-  summaryRow.createEl("h3", { text: plugin.t("执行概况") });
-  var stats = summaryRow.createDiv({ cls: "furnace-shell-meta" });
-  stats.setText(
-    plugin.t("待执行动作") + ": " + pendingActions + "  |  " + plugin.t("最近运行记录") + ": " + receipts.length
-  );
-
-  // Recent activity: last 3 receipts
-  if (receipts.length) {
-    var recentSection = contentEl.createDiv({ cls: "furnace-shell-section" });
-    recentSection.createEl("h3", { text: plugin.t("最近活动") });
-    var list = recentSection.createEl("ul", { cls: "furnace-shell-list" });
-    receipts.slice(0, 3).forEach(function (entry) {
-      var item = list.createEl("li");
-      item.createEl("strong", { text: entry.title || entry.event_type || plugin.t("operation") });
-      item.createDiv({
-        cls: "furnace-shell-meta",
-        text: (entry.status || "") + " | " + (entry.occurred_at || ""),
-      });
-    });
-  } else {
-    contentEl.createDiv({ cls: "furnace-shell-empty", text: plugin.t("暂无最近运行记录。") });
-  }
-
-  // Quick link to full execution page
-  var links = plugin.shellSummary.links || {};
-  if (links.execution_center_markdown) {
-    var linkDiv = contentEl.createDiv({ cls: "furnace-shell-section" });
-    var linkBtn = linkDiv.createEl("button", { text: plugin.t("查看完整执行页") });
-    linkBtn.addEventListener("click", function () {
-      plugin.runUiAction(function () { return plugin.openWorkspacePath(links.execution_center_markdown); }, "Open execution markdown");
-    });
-  }
 }
 
 // --- src/plugin_helpers.js ---
@@ -9147,9 +8869,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     }
 
     this.registerView(VIEW_TYPE_FURNACE_CENTER, (leaf) => new FurnaceCenterView(leaf, this));
-    this.registerView(VIEW_TYPE_RECENT_RUNS, (leaf) => new RecentRunsView(leaf, this));
-    this.registerView(VIEW_TYPE_REVIEW_CENTER, (leaf) => new ReviewCenterView(leaf, this));
-    this.registerView(VIEW_TYPE_EXECUTION_CENTER, (leaf) => new ExecutionCenterView(leaf, this));
     this.addSettingTab(new FurnaceProductShellSettingTab(this.app, this));
 
     this.addRibbonIcon("flask-conical", this.t("Open Furnace"), () => {
@@ -9214,29 +8933,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     if (!this.settings.showAdvancedCommands) {
       return;
     }
-    // EP-005: kept for backward compatibility — these views can still be opened individually,
-    // but Furnace Center now also surfaces a unified activity timeline.
-    this.addCommand({
-      id: "open-recent-runs",
-      name: this.t("Open Recent Runs"),
-      callback: () => {
-        this.runUiAction(() => this.openRecentRunsView(), this.t("Open Recent Runs"));
-      },
-    });
-    this.addCommand({
-      id: "open-review-center",
-      name: this.t("Open Review Center"),
-      callback: () => {
-        this.runUiAction(() => this.openReviewCenterView(), this.t("Open Review Center"));
-      },
-    });
-    this.addCommand({
-      id: "open-execution-center",
-      name: this.t("Open Execution Center"),
-      callback: () => {
-        this.runUiAction(() => this.openExecutionCenterView(), this.t("Open Execution Center"));
-      },
-    });
     this.addCommand({
       id: "refresh-furnace-shell",
       name: this.t("Refresh Furnace Shell"),
@@ -9602,7 +9298,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async runTodaySnoozeCommand(target, days = 1) {
-    new Notice(this.t("Today snooze was removed in W4; open Review Center or handle the item directly."));
+    new Notice(this.t("Today snooze was removed in W4; handle the item directly from Today."));
   }
 
   async runShellSearchCommand(query, limit = 8) {
@@ -9918,18 +9614,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     await this.openView(VIEW_TYPE_FURNACE_CENTER, { preferMain: true });
   }
 
-  async openRecentRunsView() {
-    await this.openView(VIEW_TYPE_RECENT_RUNS);
-  }
-
-  async openReviewCenterView() {
-    await this.openView(VIEW_TYPE_REVIEW_CENTER);
-  }
-
-  async openExecutionCenterView() {
-    await this.openView(VIEW_TYPE_EXECUTION_CENTER);
-  }
-
   async openWorkspacePath(relativePath) {
     return openProductShellWorkspacePath(this, relativePath);
   }
@@ -9998,18 +9682,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   renderFurnaceCenter(contentEl) {
     renderFurnaceCenter(this, contentEl);
-  }
-
-  renderRecentRuns(contentEl) {
-    renderRecentRuns(this, contentEl);
-  }
-
-  renderReviewCenter(contentEl) {
-    renderReviewCenter(this, contentEl);
-  }
-
-  renderExecutionCenter(contentEl) {
-    renderExecutionCenter(this, contentEl);
   }
 
   refreshOpenViews() {

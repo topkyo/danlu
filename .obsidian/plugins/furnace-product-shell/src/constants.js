@@ -2,9 +2,6 @@
 
 const PLUGIN_ID = "furnace-product-shell";
 const VIEW_TYPE_FURNACE_CENTER = "furnace-product-shell-furnace-center";
-const VIEW_TYPE_RECENT_RUNS = "furnace-product-shell-recent-runs";
-const VIEW_TYPE_REVIEW_CENTER = "furnace-product-shell-review-center";
-const VIEW_TYPE_EXECUTION_CENTER = "furnace-product-shell-execution-center";
 const SHELL_SUMMARY_PATH = "output/control/shell-summary.json";
 const DEFAULT_PROTOCOLS = ["general"];
 const DEFAULT_LOCALE = "zh";
@@ -51,9 +48,10 @@ const ZH_TEXT = {
   "Recent runs limit": "最近运行保留数",
   "How many plugin-triggered runs to keep in the Product Shell.": "Product Shell 中保留多少条插件触发的运行记录。",
   "Show advanced commands": "显示高级命令",
-  "Register diagnostics, history, Review Center, and Execution Center commands in the command palette. Reload Obsidian after changing this toggle.": "是否把诊断、历史、Review Center 与 Execution Center 命令注册到命令面板中。修改后需要重载 Obsidian。",
+  "Register the Refresh Furnace Shell command in the command palette. Reload Obsidian after changing this toggle.": "是否把「刷新炼丹炉 Shell」命令注册到命令面板中。修改后需要重载 Obsidian。",
   "Advanced command visibility refreshes after reloading Obsidian.": "高级命令可见性会在重载 Obsidian 后刷新。",
-  "Review, Execution, and Recent Runs are available from the command palette when advanced commands are enabled.": "Review / Execution / Recent Runs 仅在开启高级命令后，从命令面板打开。",
+  "Today snooze was removed in W4; handle the item directly from Today.": "Today 延后已在 W4 移除；请直接在 Today 里处理该项。",
+  "Recent plugin-triggered runs are listed here when available.": "此处列出插件触发的最近运行记录（如有）。",
   "Full runtime is Desktop-only. iPad/iOS Obsidian can only be a future companion; it cannot run the local launcher, Python CLI, or full ingest/review flow.": "全功能 runtime 仅支持 Desktop。iPad/iOS Obsidian 未来只能作为 companion，不能运行本地 launcher、Python CLI 或完整投料/复审流程。",
   "LLM backend": "LLM 后端",
   "Select the LLM provider used by compile / run-ask / run-nightly. Common providers are listed first; advanced entries are for local CLI sessions or custom OpenAI-compatible endpoints.": "选择 compile / run-ask / run-nightly 使用的 LLM API provider。",
@@ -409,6 +407,7 @@ const ZH_TEXT = {
   "运行与历史": "运行与历史",
   "以下为运行诊断与历史": "以下为运行诊断与历史",
   "运行诊断 · 同步 {sync}": "运行诊断 · 同步 {sync}",
+  "最近运行 {n} 条 · 待审 {review}": "最近运行 {n} 条 · 待审 {review}",
   "最近运行 {n} 条 · 待审 {review} · 待执行 {execution}": "最近运行 {n} 条 · 待审 {review} · 待执行 {execution}",
   "未配置": "未配置",
   "正常": "正常",

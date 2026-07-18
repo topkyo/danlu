@@ -3,23 +3,25 @@
 const fs = require("fs");
 const path = require("path");
 
-test("plugin view, ribbon, and backward-compat command registration stays locked", () => {
+test("plugin view, ribbon, and command registration stays Today-only", () => {
   const pluginSrc = fs.readFileSync(
     path.resolve(__dirname, "../../plugin.js"),
     "utf8"
   );
 
-  expect(pluginSrc.match(/registerView\s*\(/g) || []).toHaveLength(4);
+  expect(pluginSrc.match(/registerView\s*\(/g) || []).toHaveLength(1);
   expect(pluginSrc.match(/addRibbonIcon\s*\(/g) || []).toHaveLength(1);
-  expect(pluginSrc.match(/addCommand\s*\(/g) || []).toHaveLength(5);
+  expect(pluginSrc.match(/addCommand\s*\(/g) || []).toHaveLength(2);
   expect(pluginSrc).toMatch(/"open-furnace-center"/);
-  expect(pluginSrc).toMatch(/"open-recent-runs"/);
-  expect(pluginSrc).toMatch(/"open-review-center"/);
-  expect(pluginSrc).toMatch(/"open-execution-center"/);
-  expect(pluginSrc).toMatch(/EP-005: kept for backward compatibility/);
+  expect(pluginSrc).not.toMatch(/"open-recent-runs"/);
+  expect(pluginSrc).not.toMatch(/"open-review-center"/);
+  expect(pluginSrc).not.toMatch(/"open-execution-center"/);
+  expect(pluginSrc).not.toMatch(/RecentRunsView/);
+  expect(pluginSrc).not.toMatch(/ReviewCenterView/);
+  expect(pluginSrc).not.toMatch(/ExecutionCenterView/);
 });
 
-test("advanced command palette stays limited to operator surfaces", () => {
+test("advanced command palette stays limited to shell refresh", () => {
   const pluginSrc = fs.readFileSync(
     path.resolve(__dirname, "../../plugin.js"),
     "utf8"
@@ -28,15 +30,11 @@ test("advanced command palette stays limited to operator surfaces", () => {
   const end = pluginSrc.indexOf("registerOpenView(view)", start);
   const body = pluginSrc.slice(start, end);
 
+  expect(body).toMatch(/id: "refresh-furnace-shell"/);
   for (const commandId of [
     "open-recent-runs",
     "open-review-center",
     "open-execution-center",
-    "refresh-furnace-shell",
-  ]) {
-    expect(body).toMatch(new RegExp(`id: "${commandId}"`));
-  }
-  for (const commandId of [
     "run-nightly",
     "set-protocol",
     "file-back",
@@ -83,7 +81,7 @@ test("default furnace center keeps Advanced out of the primary shell path", () =
   expect(renderHomeSrc).toMatch(/showAdvancedCommands[\s\S]+renderAdvancedDrawer\(plugin, contentEl\)/);
 });
 
-test("advanced drawer only exposes diagnostics and history surfaces", () => {
+test("advanced drawer only exposes diagnostics and inline history", () => {
   const renderAdvancedSrc = fs.readFileSync(
     path.resolve(__dirname, "../../render_advanced.js"),
     "utf8"
@@ -95,7 +93,9 @@ test("advanced drawer only exposes diagnostics and history surfaces", () => {
   expect(renderAdvancedSrc).not.toMatch(/openExecutionCenterView/);
   expect(renderAdvancedSrc).not.toMatch(/openReviewCenterView/);
   expect(renderAdvancedSrc).not.toMatch(/openRecentRunsView/);
+  expect(renderAdvancedSrc).not.toMatch(/execution_controls/);
   expect(renderAdvancedSrc).toMatch(/renderHistorySectionBody/);
+  expect(renderAdvancedSrc).toMatch(/pluginState\.recentRuns/);
 });
 
 test("digest panel exposes shell recovery commands when available", () => {
