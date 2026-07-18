@@ -290,6 +290,7 @@ class ShellSummary(TypedDict, total=False):
     dashboard: dict[str, Any]
     search_results: dict[str, Any]
     suggested_next_actions: list[dict[str, Any]]
+    compound_suggest: dict[str, Any]
     drift_warnings: list[dict[str, Any]]
     rewrite_followup_actions: list[dict[str, Any]]
     recent_outputs: list[dict[str, Any]]

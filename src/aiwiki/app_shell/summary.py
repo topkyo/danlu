@@ -87,6 +87,7 @@ from ..render.views import (
     judgment_asset_shell_record,
     judgment_asset_summary,
 )
+from .compound_suggest import build_compound_suggest
 from .controls import (
     rewrite_followup_actions_for_controls,
     shell_execution_controls,
@@ -100,6 +101,7 @@ from .meta import (
     shell_protocol_state,
 )
 from .surfaces import (
+    shell_compound_suggest_actions,
     shell_dashboard,
     shell_drift_warnings,
     shell_latest_llm_run,
@@ -385,7 +387,15 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
     counter_evidence_pages = _counter_evidence_pages_from_memory(counter_evidence_scan)
     metrics_history_delta = _build_metrics_history_delta(root, generated_at)
     planner_log_preview = _build_planner_log_preview(root)
-    suggested_next_actions = shell_suggested_next_actions(
+    compound_suggest = build_compound_suggest(
+        root,
+        memory=memory,
+        recent_outputs=recent_outputs,
+        route_telemetry=route_telemetry,
+        counter_evidence_pages=counter_evidence_pages,
+    )
+    compound_actions = shell_compound_suggest_actions(compound_suggest)
+    suggested_next_actions = compound_actions + shell_suggested_next_actions(
         planner_state=planner_state,
         review_controls=review_controls,
         execution_controls=execution_controls,
@@ -453,6 +463,7 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
         "counter_evidence_pages": counter_evidence_pages,
         "metrics_history_delta": metrics_history_delta,
         "planner_log_preview": planner_log_preview,
+        "compound_suggest": compound_suggest,
         "suggested_next_actions": suggested_next_actions,
         "today_snooze": load_today_snooze_state(root),
         "nightly": _build_nightly_summary(root, nightly_state),

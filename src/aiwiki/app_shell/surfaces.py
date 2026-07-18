@@ -568,6 +568,38 @@ def _collect_batch_hints(
     return hints[:_BATCH_HINT_MAX]
 
 
+def shell_compound_suggest_actions(compound_suggest: dict[str, Any]) -> list[dict[str, Any]]:
+    """Map scarce compound_suggest items into suggested_next_actions entries."""
+
+    if not isinstance(compound_suggest, dict):
+        return []
+    actions: list[dict[str, Any]] = []
+    seen_commands: set[str] = set()
+    for item in compound_suggest.get("items", []) or []:
+        if not isinstance(item, dict):
+            continue
+        command = str(item.get("command") or "").strip()
+        title = str(item.get("title") or item.get("report_title") or "").strip()
+        report_path = str(item.get("report_path") or "").strip()
+        if not command or not title or command in seen_commands:
+            continue
+        seen_commands.add(command)
+        actions.append(
+            {
+                "kind": "compound-suggest",
+                "title": title,
+                "command": command,
+                "path": report_path,
+                "reason": str(item.get("reason") or item.get("signal") or "compound-suggest"),
+                "action": str(item.get("action") or ""),
+                "signal": str(item.get("signal") or ""),
+                "linked_refs": list(item.get("linked_refs") or []),
+                "corpus_id": str(item.get("corpus_id") or ""),
+            }
+        )
+    return actions
+
+
 def shell_suggested_next_actions(
     *,
     planner_state: dict[str, Any],
