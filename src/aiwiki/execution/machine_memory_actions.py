@@ -924,7 +924,7 @@ def apply_machine_memory_action(
         else root / str(proposal.get("bundle_path") or ""),
         root,
     )
-    if not selected_bundle_path.exists():
+    if not selected_bundle_path.is_file():
         raise FileNotFoundError(
             f"Execution bundle not found: {relative_path(root, selected_bundle_path)}. Run compile or apply-action --dry-run first."
         )

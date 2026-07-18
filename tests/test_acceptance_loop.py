@@ -646,6 +646,46 @@ def test_file_back_rejects_non_judgment_kind(  # pragma: no cover - explicit pyt
         file_back(vault, report_ref, kind="decision")
 
 
+def test_file_back_rejects_path_outside_vault(tmp_path: Path) -> None:
+    """Vault path safety: file_back must reject artifacts outside the workspace root."""
+    from aiwiki.app_utils import PathOutsideWorkspaceError
+    from aiwiki.execution.ask import file_back
+
+    vault = tmp_path / "vault"
+    outside = tmp_path / "outside-report.md"
+    outside.write_text("# outside\n", encoding="utf-8")
+
+    with pytest.raises((PathOutsideWorkspaceError, ValueError)):
+        file_back(vault, str(outside))
+
+
+def test_review_page_rejects_path_outside_vault(tmp_path: Path) -> None:
+    """Vault path safety: review_page must reject targets outside the workspace root."""
+    from aiwiki.app_utils import PathOutsideWorkspaceError
+    from aiwiki.execution.review import review_page
+
+    vault = tmp_path / "vault"
+    outside = tmp_path / "outside-judgment.md"
+    outside.write_text("---\nkind: judgment\n---\n\n# outside\n", encoding="utf-8")
+
+    with pytest.raises((PathOutsideWorkspaceError, ValueError)):
+        review_page(vault, str(outside), "accepted")
+
+
+def test_file_back_accepts_path_inside_vault(tmp_path: Path) -> None:
+    """Vault path safety: relative artifact paths inside the vault remain valid."""
+    from aiwiki.execution.ask import file_back
+
+    vault = tmp_path / "vault"
+    report_ref = "output/reports/inside.md"
+    report_path = vault / report_ref
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text("---\nprotocol: general\n---\n\n# inside\n", encoding="utf-8")
+
+    result = file_back(vault, report_ref)
+    assert str(result.get("path") or "").startswith("wiki/judgments/")
+
+
 def test_l3_proposal_controls_emit_no_dead_command_hints(  # pragma: no cover - explicit pytest acceptance gate
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
