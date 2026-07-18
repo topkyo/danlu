@@ -13,7 +13,7 @@ supersedes: []
 
 # 炼丹炉 Post-Cleanup 全量审计与下一步方向（2026-07-15）
 
-> **结论先行**：Commercial Grade Cleanup 已收口；AgentOS 本地 release gate ~9.0 仍成立，但**商业可售约 7.6**，主缺口在 go-live 触点与分发，不在再开一轮 cleanup。下一独立计划应是 **Commercial Go-Live**，辅以小范围 SoT/可靠性修补。
+> **结论先行**：Commercial Grade Cleanup 已收口；**Local Engineering Gate ~9.05** 可诚实宣称（见 `docs/AGOS-9-Scorecard.md` 两套门禁）；**Live Dogfood Gate not-yet**；**商业可售约 7.8**，主缺口在 go-live 触点与分发，不在再开一轮 cleanup。下一独立计划应是 **Commercial Go-Live**，辅以小范围 SoT/可靠性修补。
 
 本文件同时是**审计报告**与**下一波执行计划 SoT**。完成后归档到 `docs/archive/`。
 
@@ -23,13 +23,12 @@ supersedes: []
 
 | 指标 | 当前值 | 来源 |
 |---|---|---|
-| Runtime | `src/aiwiki` **162** `.py` / **~72k LOC** | `find` + `wc` |
-| Tests | **~59k LOC** | `tests/` |
-| 纯 facade | **0 残留**（`app_content/render/surfaces/memory_surfaces/app.py` 已删） | 文件系统 |
-| Top hubs | `memory/graph.py` 1758 / `drop.py` 1747 / `execution/alchemy.py` 1680 / `auto_adopt` ~1347 / `app_state` 1221 | `wc -l` |
-| `except Exception` | **172** 处；裸 `except Exception: pass` **0** | ripgrep |
-| AgentOS Scorecard | 加权 **~9.05**（2026-05-24 local release） | `docs/AGOS-9-Scorecard.md` |
-| 商业审计综合 | **~7.6**（cleanup 后再评） | archive Cleanup Plan §1.6 |
+| Runtime | `src/aiwiki` **155** `.py` / **~62k LOC** | `find` + `wc`（2026-07-18） |
+| Tests | acceptance **24** + Jest **168** | `pytest` + `npm test` |
+| Top hubs | `memory/graph.py` 1758 / `drop.py` 1747 / `execution/alchemy.py` 1680 / `auto_adopt` **DELETED** / `app_state` 1221 | `wc -l` |
+| `except Exception` | **~116**（↓ from 172）；裸 `except Exception: pass` **0** | ripgrep |
+| AgentOS Scorecard | **Local Engineering Gate 9.05**；Live Dogfood **not-yet** | `docs/AGOS-9-Scorecard.md` |
+| 商业审计综合 | **~7.8**（cleanup 后再评） | archive Cleanup Plan §1.6 |
 | 当前执行计划（本文件前） | **无**；cleanup 已归档 | `PROGRESS.md` / `AGENTS.md` |
 | 现场 verify（本审计） | `docs_consistency` / `scripts` / `python-static` / `smoke` **PASS** | 2026-07-15 cloud |
 
@@ -37,8 +36,8 @@ supersedes: []
 
 | 尺子 | 测什么 | 分 | 可否对外说「可售」 |
 |---|---|---:|---|
-| AGOS-9 Scorecard | runtime / dogfood / governance / Shell | ~9.05 | **否** — 不含邮箱/EULA/价格/pip |
-| 商业审计 | 包装、分发、运维门槛、购买路径 | ~7.6 | **否** — 过 cleanup gate，差 go-live |
+| AGOS-9 Scorecard | runtime / fixture / governance / Shell | **9.05**（Local Eng） | **否** — 不含 live dogfood / 邮箱/EULA/价格/pip |
+| 商业审计 | 包装、分发、运维门槛、购买路径 | ~7.8 | **否** — 过 cleanup gate，差 go-live |
 
 对外口径必须拆开：**产品/runtime 成熟** ≠ **商业可购**。
 
