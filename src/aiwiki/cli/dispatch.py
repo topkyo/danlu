@@ -41,45 +41,17 @@ from ..execution.runtime_surfaces import (
     nightly_health,
     shell_status,
 )
-from ..planner import write_planner_log
 from ..runner.alchemy import (
-    run_alchemy_auto,
     run_alchemy_demote,
     run_alchemy_distill,
-    run_alchemy_distill_apply,
-    run_alchemy_distill_preview,
     run_alchemy_finalize,
-    run_alchemy_judge_apply,
-    run_alchemy_judge_preview,
-    run_alchemy_judge_proposal_apply,
-    run_alchemy_judge_propose,
-    run_alchemy_lane_apply,
-    run_alchemy_lane_dry_run,
-    run_alchemy_legacy_migration_apply,
-    run_alchemy_legacy_migration_preview,
     run_alchemy_promote,
-    run_alchemy_propose_apply,
-    run_alchemy_propose_preview,
     run_alchemy_revert,
-    run_alchemy_review_apply,
-    run_alchemy_review_preview,
     run_alchemy_start,
-    run_alchemy_superseded_cleanup_apply,
-    run_alchemy_superseded_cleanup_preview,
 )
 from ..runner.automation import auto_process_once, watch_inbox
 from ..runner.clients import llm_probe, llm_status
-from ..runner.commands import (
-    run_audit_backfill,
-    run_audit_preview,
-    run_planner_log_list,
-    run_planner_log_rollback,
-    run_planner_log_rollback_preview,
-    run_signals_list,
-    run_signals_show,
-)
-from ..runner.workflows import run_ask, run_ask_resume, run_ask_submit, run_compile, run_lint, run_nightly
-from ..signals import collect_signals
+from ..runner.workflows import run_ask, run_ask_resume, run_ask_submit, run_nightly
 from ..today_feed import FeedEntry, build_today_feed
 from ..vault_queue import drain_vault_queue
 from .dispatch_helpers import (
@@ -93,18 +65,13 @@ from .dispatch_helpers import (
     _flatten_model_fallback_args,
     _flatten_model_retry_args,
     _format_feed_entry_line,
-    _format_planner_decision_summary_line,
     _format_review_next_surface,
-    _format_signal_show_text,
-    _format_signal_summary_line,
     _handle_batch_review_alias,
     _handle_review_next,
-    _latest_run_compile_summary,
     _maybe_auto_process,
     _metric_to_dict,
     _page_review_item,
     _pending_review_pages,
-    _print_run_compile_fail_fast_breadcrumb,
     _ready_actions_batch_helper,
     _render_metrics_text,
     _render_today_text,
@@ -207,14 +174,6 @@ def _handle_compile_family(args: argparse.Namespace, root: Path) -> tuple[object
         proposal_paths = [str(path or "") for path in rewrite_state.get("proposal_paths", []) if str(path or "")]
         if proposal_paths:
             result = {**result, **rewrite_followup_payload_for_paths(root, proposal_paths)}
-        return _out(result)
-    if args.handler_command == "run-compile":
-        try:
-            result = run_compile(root, limit=args.limit, paths=getattr(args, "paths", None))
-        except Exception:
-            _print_run_compile_fail_fast_breadcrumb(_latest_run_compile_summary(root))
-            raise
-        _print_run_compile_fail_fast_breadcrumb(result)
         return _out(result)
     if args.handler_command == "file-back":
         result = file_back(root, args.artifact, title=args.title, kind=args.kind)
@@ -356,81 +315,7 @@ def _handle_alchemy(args: argparse.Namespace, root: Path) -> tuple[object, str |
     if args.handler_command == "alchemy-demote":
         path = run_alchemy_demote(root, elixir_id=args.elixir_id, note=args.note)
         return _out({"elixir_id": args.elixir_id, "path": str(path.relative_to(root))})
-    if args.handler_command == "alchemy":
-        return _handle_alchemy_lane(args, root)
     raise ValueError(f"Unsupported command: {args.handler_command}")
-
-
-def _handle_alchemy_lane(args: argparse.Namespace, root: Path) -> tuple[object, str | None]:
-    if args.alchemy_lane == "legacy-migration":
-        result = run_alchemy_legacy_migration_preview(root, limit=args.limit) if args.dry_run else run_alchemy_legacy_migration_apply(root, limit=args.limit, note=args.note)
-    elif args.alchemy_lane == "judge":
-        if args.apply:
-            result = run_alchemy_judge_apply(root, scope=args.scope, planner_log_path=args.planner_log_path, signals_path=args.signals_path, max_signals=args.max_signals, max_pages=args.max_pages, max_tokens=args.max_tokens, limit=args.limit, note=args.note)
-        elif args.propose:
-            result = run_alchemy_judge_propose(root, scope=args.scope, planner_log_path=args.planner_log_path, signals_path=args.signals_path, max_signals=args.max_signals, max_pages=args.max_pages, max_tokens=args.max_tokens, limit=args.limit, note=args.note)
-        else:
-            result = run_alchemy_judge_preview(root, scope=args.scope, planner_log_path=args.planner_log_path, signals_path=args.signals_path, max_signals=args.max_signals, max_pages=args.max_pages, max_tokens=args.max_tokens, limit=args.limit)
-    elif args.alchemy_lane == "judge-proposal":
-        result = run_alchemy_judge_proposal_apply(root, args.proposal, note=args.note)
-    elif args.alchemy_lane == "distill":
-        if args.apply:
-            result = run_alchemy_distill_apply(root, scope=args.scope, planner_log_path=args.planner_log_path, signals_path=args.signals_path, max_signals=args.max_signals, max_pages=args.max_pages, max_tokens=args.max_tokens, limit=args.limit, note=args.note)
-        else:
-            result = run_alchemy_distill_preview(root, scope=args.scope, planner_log_path=args.planner_log_path, signals_path=args.signals_path, max_signals=args.max_signals, max_pages=args.max_pages, max_tokens=args.max_tokens, limit=args.limit)
-    elif args.alchemy_lane == "review":
-        if args.apply:
-            result = run_alchemy_review_apply(root, scope=args.scope, planner_log_path=args.planner_log_path, signals_path=args.signals_path, max_signals=args.max_signals, max_pages=args.max_pages, max_tokens=args.max_tokens, limit=args.limit, note=args.note)
-        else:
-            result = run_alchemy_review_preview(root, scope=args.scope, planner_log_path=args.planner_log_path, signals_path=args.signals_path, max_signals=args.max_signals, max_pages=args.max_pages, max_tokens=args.max_tokens, limit=args.limit)
-    elif args.alchemy_lane == "propose":
-        if args.apply:
-            result = run_alchemy_propose_apply(root, scope=args.scope, planner_log_path=args.planner_log_path, signals_path=args.signals_path, max_signals=args.max_signals, max_pages=args.max_pages, max_tokens=args.max_tokens, limit=args.limit, note=args.note)
-        else:
-            result = run_alchemy_propose_preview(root, scope=args.scope, planner_log_path=args.planner_log_path, signals_path=args.signals_path, max_signals=args.max_signals, max_pages=args.max_pages, max_tokens=args.max_tokens, limit=args.limit)
-    elif args.alchemy_lane == "auto":
-        result = run_alchemy_auto(root, apply=args.apply, lanes=args.lane or None, scope=args.scope, primitives=args.primitive or None, note=args.note, planner_log_path=args.planner_log_path, signals_path=args.signals_path, max_signals=args.max_signals, max_pages=args.max_pages, max_tokens=args.max_tokens)
-    elif args.alchemy_lane == "superseded-cleanup":
-        result = run_alchemy_superseded_cleanup_preview(root, limit=args.limit) if args.dry_run else run_alchemy_superseded_cleanup_apply(root, limit=args.limit, note=args.note)
-    else:
-        if args.dry_run == args.apply:
-            raise ValueError("alchemy heavy/light requires exactly one of --dry-run or --apply")
-        lane_kwargs = {"lane": args.alchemy_lane, "scope": args.scope, "planner_log_path": args.planner_log_path, "signals_path": args.signals_path, "max_signals": args.max_signals, "max_pages": args.max_pages, "max_tokens": args.max_tokens}
-        result = run_alchemy_lane_dry_run(root, **lane_kwargs) if args.dry_run else run_alchemy_lane_apply(root, action_ids=args.action_id, primitives=args.primitive, note=args.note, **lane_kwargs)
-    return _out(result)
-
-
-def _handle_signals_planner_audit(args: argparse.Namespace, root: Path) -> tuple[object, str | None]:
-    text_output = None
-    if args.handler_command == "signals-list":
-        result = run_signals_list(root, kind=args.kind, trace_id=args.trace_id, since=args.since, limit=args.limit)
-        if not args.json:
-            text_output = "\n".join(_format_signal_summary_line(item) for item in result) or "(no signals)"
-    elif args.handler_command == "signals-show":
-        result = run_signals_show(root, args.signal_id)
-        if result.get("status") == "not_found":
-            raise ValueError(f"signal not found: {args.signal_id}")
-        if not args.json:
-            signal = result.get("signal")
-            planner_decisions = result.get("planner_decisions")
-            if not isinstance(signal, dict) or not isinstance(planner_decisions, list):
-                raise ValueError("Invalid runner payload for signals-show.")
-            text_output = _format_signal_show_text(signal, planner_decisions)
-    elif args.handler_command == "planner-log-list":
-        result = run_planner_log_list(root, decision=args.decision, signal_id=args.signal_id, trace_id=args.trace_id, since=args.since, limit=args.limit)
-        if not args.json:
-            text_output = "\n".join(_format_planner_decision_summary_line(item) for item in result) or "(no planner decisions)"
-    elif args.handler_command == "planner-log-rollback":
-        result = run_planner_log_rollback_preview(root, signal_id=args.signal_id, trace_id=args.trace_id, limit=args.limit) if args.dry_run else run_planner_log_rollback(root, signal_id=args.signal_id, trace_id=args.trace_id, limit=args.limit, apply=True)
-    elif args.handler_command == "audit-preview":
-        if not args.dry_run:
-            raise ValueError("audit-preview requires --dry-run")
-        result = run_audit_preview(root, limit=args.limit)
-    elif args.handler_command == "audit-backfill":
-        result = run_audit_backfill(root, limit=args.limit, apply=args.apply)
-    else:
-        raise ValueError(f"Unsupported command: {args.handler_command}")
-    return _out(result, text_output)
 
 
 def _handle_review_lifecycle(args: argparse.Namespace, root: Path) -> tuple[object, str | None]:
@@ -449,16 +334,10 @@ def _handle_review_lifecycle(args: argparse.Namespace, root: Path) -> tuple[obje
 def _handle_runtime_workflows(args: argparse.Namespace, root: Path) -> tuple[object, str | None]:
     if args.handler_command == "lint":
         result = lint_wiki(root)
-    elif args.handler_command == "run-lint":
-        result = run_lint(root)
     elif args.handler_command == "nightly":
         result = nightly_health(root)
     elif args.handler_command == "run-nightly":
         result = run_nightly(root, compile_limit=args.compile_limit, semantic_lint=not args.no_semantic_lint)
-    elif args.handler_command == "signals-replay":
-        result = collect_signals(root, sources=args.source, trace_id=args.trace_id)
-    elif args.handler_command == "planner-log-replay":
-        result = write_planner_log(root, signals_path=args.signals_path, mode="execute" if args.execute else "observe_only")
     else:
         raise ValueError(f"Unsupported command: {args.handler_command}")
     return _out(result)
@@ -514,7 +393,6 @@ _DROP_HANDLERS = {
 
 _COMPILE_PROTOCOL_HANDLERS = {
     "compile": _handle_compile_family,
-    "run-compile": _handle_compile_family,
     "file-back": _handle_compile_family,
 }
 
@@ -548,16 +426,6 @@ _ALCHEMY_HANDLERS = {
     "alchemy-promote": _handle_alchemy,
     "alchemy-revert": _handle_alchemy,
     "alchemy-demote": _handle_alchemy,
-    "alchemy": _handle_alchemy,
-}
-
-_SIGNALS_PLANNER_AUDIT_HANDLERS = {
-    "signals-list": _handle_signals_planner_audit,
-    "signals-show": _handle_signals_planner_audit,
-    "planner-log-list": _handle_signals_planner_audit,
-    "planner-log-rollback": _handle_signals_planner_audit,
-    "audit-preview": _handle_signals_planner_audit,
-    "audit-backfill": _handle_signals_planner_audit,
 }
 
 _REVIEW_LIFECYCLE_HANDLERS = {
@@ -568,11 +436,8 @@ _REVIEW_LIFECYCLE_HANDLERS = {
 
 _RUNTIME_WORKFLOW_HANDLERS = {
     "lint": _handle_runtime_workflows,
-    "run-lint": _handle_runtime_workflows,
     "nightly": _handle_runtime_workflows,
     "run-nightly": _handle_runtime_workflows,
-    "signals-replay": _handle_runtime_workflows,
-    "planner-log-replay": _handle_runtime_workflows,
 }
 
 _OPS_HANDLERS = {
@@ -591,7 +456,6 @@ _HANDLERS = {
     **_LIVE_SURFACE_HANDLERS,
     **_ASK_HANDLERS,
     **_ALCHEMY_HANDLERS,
-    **_SIGNALS_PLANNER_AUDIT_HANDLERS,
     **_REVIEW_LIFECYCLE_HANDLERS,
     **_RUNTIME_WORKFLOW_HANDLERS,
     **_OPS_HANDLERS,
