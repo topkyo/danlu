@@ -245,6 +245,7 @@ const ZH_TEXT = {
   "Show advanced commands": "显示高级命令",
   "Register diagnostics, history, Review Center, and Execution Center commands in the command palette. Reload Obsidian after changing this toggle.": "是否把诊断、历史、Review Center 与 Execution Center 命令注册到命令面板中。修改后需要重载 Obsidian。",
   "Advanced command visibility refreshes after reloading Obsidian.": "高级命令可见性会在重载 Obsidian 后刷新。",
+  "Review, Execution, and Recent Runs are available from the command palette when advanced commands are enabled.": "Review / Execution / Recent Runs 仅在开启高级命令后，从命令面板打开。",
   "Full runtime is Desktop-only. iPad/iOS Obsidian can only be a future companion; it cannot run the local launcher, Python CLI, or full ingest/review flow.": "全功能 runtime 仅支持 Desktop。iPad/iOS Obsidian 未来只能作为 companion，不能运行本地 launcher、Python CLI 或完整投料/复审流程。",
   "LLM backend": "LLM 后端",
   "Select the LLM provider used by compile / run-ask / run-nightly. Common providers are listed first; advanced entries are for local CLI sessions or custom OpenAI-compatible endpoints.": "选择 compile / run-ask / run-nightly 使用的 LLM API provider。",
@@ -593,7 +594,7 @@ const ZH_TEXT = {
   "未刷新": "未刷新",
   "刚刚": "刚刚",
   "已打开输出汇总（找不到具体报告路径）": "已打开输出汇总（找不到具体报告路径）",
-  "已打开运行记录（找不到具体回执路径）": "已打开运行记录（找不到具体回执路径）",
+  "已回到 Today（找不到具体回执路径）": "已回到 Today（找不到具体回执路径）",
   "无法打开目标，可能尚未生成": "无法打开目标，可能尚未生成",
   // R91 Advanced 抽屉子 section
   "系统状态": "系统状态",
@@ -3941,7 +3942,9 @@ function renderConfirmationCard(plugin, cardEl, entry) {
       text: plugin.t("Review"),
     });
     reviewBtn.addEventListener("click", () => {
-      plugin.openReviewCenterView();
+      if (typeof plugin.openReviewNextTransitionPicker === "function") {
+        plugin.openReviewNextTransitionPicker();
+      }
     });
 
   }
@@ -4544,7 +4547,6 @@ function renderStatusPanel(plugin, container) {
   }
   plugin.renderInlineButtons(panel, [
     { label: "Refresh Furnace Shell", onClick: async () => plugin.refreshShellSummaryCommand() },
-    { label: "Open Recent Runs", kind: "ghost", onClick: async () => plugin.openRecentRunsView() },
   ]);
 }
 
@@ -5439,7 +5441,7 @@ function renderPendingSubmissionsGroup(plugin, section) {
       });
       const actions = aiBubble.createDiv({ cls: "furnace-bubble-actions" });
       const openBtn = actions.createEl("button", { cls: "mod-cta furnace-pending-exception-btn", text: plugin.t("打开异常队列") });
-      openBtn.addEventListener("click", async () => plugin.openReviewCenterView());
+      openBtn.addEventListener("click", async () => plugin.openReviewNextTransitionPicker());
       const dismissBtn = actions.createEl("button", { text: plugin.t("Dismiss") });
       dismissBtn.addEventListener("click", () => plugin.removePendingSubmission(entry.id));
     } else if (entry.status === "received" || entry.status === "running") {
@@ -5669,9 +5671,9 @@ function todayFeedActions(plugin, entry) {
   if (isReviewTarget(target)) {
     return [
       {
-        label: "Open Review",
-        description: `Open review surface: ${target}`,
-        onClick: async () => plugin.openReviewCenterView(),
+        label: "Review",
+        description: `Review next item for: ${target}`,
+        onClick: async () => plugin.openReviewNextTransitionPicker(),
       },
     ];
   }
@@ -6071,39 +6073,12 @@ function buildHistorySectionSummary(plugin) {
   });
 }
 
-// R91: 运行与历史 section 主体 — 入口按钮 + 最近 LLM 运行摘要
+// R91: 运行与历史 section 主体 — operator views 仅保留命令面板入口
 function renderHistorySectionBody(plugin, container) {
-  const buttons = [
-    {
-      key: "open-recent-runs",
-      label: plugin.t("Open Recent Runs"),
-      onClick: () => {
-        try {
-          plugin.openRecentRunsView();
-        } catch (error) {
-          // surface via Notice if available
-        }
-      },
-    },
-    {
-      key: "open-review-center",
-      label: plugin.t("Open Review Center"),
-      onClick: () => {
-        try {
-          plugin.openReviewCenterView();
-        } catch (error) {}
-      },
-    },
-  ];
-  if (typeof plugin.renderInlineButtons === "function") {
-    plugin.renderInlineButtons(container, buttons, "furnace-advanced-section-actions");
-  } else {
-    const row = container.createDiv({ cls: "furnace-advanced-section-actions" });
-    for (const btn of buttons) {
-      const el = row.createEl("button", { cls: "furnace-shell-button", text: btn.label });
-      el.addEventListener("click", btn.onClick);
-    }
-  }
+  container.createDiv({
+    cls: "furnace-shell-panel-note",
+    text: plugin.t("Review, Execution, and Recent Runs are available from the command palette when advanced commands are enabled."),
+  });
 
   // 最近 LLM 运行摘要（若有）
   try {
@@ -6958,7 +6933,7 @@ function openRewriteFollowupForRecord(plugin, record) {
     plugin.openReviewRewriteModal({ slug: rewriteSlugs[0] });
     return;
   }
-  plugin.runUiAction(() => plugin.openReviewCenterView(), plugin.t("Open Review Center"));
+  plugin.runUiAction(() => plugin.openReviewNextTransitionPicker(), plugin.t("Review Next Page"));
 }
 
 // --- src/control_items.js ---
@@ -8445,9 +8420,9 @@ async function openProductShellPendingDoneTarget(plugin, target, reconcilePath) 
       new Notice(plugin.t("已打开输出汇总（找不到具体报告路径）"));
       return;
     }
-    if (normalizedTarget === "receipts" && typeof plugin.openRecentRunsView === "function") {
-      await plugin.openRecentRunsView();
-      new Notice(plugin.t("已打开运行记录（找不到具体回执路径）"));
+    if (normalizedTarget === "receipts" && typeof plugin.openFurnaceCenterView === "function") {
+      await plugin.openFurnaceCenterView();
+      new Notice(plugin.t("已回到 Today（找不到具体回执路径）"));
       return;
     }
     if (typeof plugin.openHomeNote === "function") {

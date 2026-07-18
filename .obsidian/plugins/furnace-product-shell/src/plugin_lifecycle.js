@@ -121,9 +121,9 @@ async function openProductShellPendingDoneTarget(plugin, target, reconcilePath) 
       new Notice(plugin.t("已打开输出汇总（找不到具体报告路径）"));
       return;
     }
-    if (normalizedTarget === "receipts" && typeof plugin.openRecentRunsView === "function") {
-      await plugin.openRecentRunsView();
-      new Notice(plugin.t("已打开运行记录（找不到具体回执路径）"));
+    if (normalizedTarget === "receipts" && typeof plugin.openFurnaceCenterView === "function") {
+      await plugin.openFurnaceCenterView();
+      new Notice(plugin.t("已回到 Today（找不到具体回执路径）"));
       return;
     }
     if (typeof plugin.openHomeNote === "function") {

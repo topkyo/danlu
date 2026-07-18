@@ -311,7 +311,6 @@ function renderStatusPanel(plugin, container) {
   }
   plugin.renderInlineButtons(panel, [
     { label: "Refresh Furnace Shell", onClick: async () => plugin.refreshShellSummaryCommand() },
-    { label: "Open Recent Runs", kind: "ghost", onClick: async () => plugin.openRecentRunsView() },
   ]);
 }
 

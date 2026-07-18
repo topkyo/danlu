@@ -408,7 +408,7 @@ function renderPendingSubmissionsGroup(plugin, section) {
       });
       const actions = aiBubble.createDiv({ cls: "furnace-bubble-actions" });
       const openBtn = actions.createEl("button", { cls: "mod-cta furnace-pending-exception-btn", text: plugin.t("打开异常队列") });
-      openBtn.addEventListener("click", async () => plugin.openReviewCenterView());
+      openBtn.addEventListener("click", async () => plugin.openReviewNextTransitionPicker());
       const dismissBtn = actions.createEl("button", { text: plugin.t("Dismiss") });
       dismissBtn.addEventListener("click", () => plugin.removePendingSubmission(entry.id));
     } else if (entry.status === "received" || entry.status === "running") {
@@ -638,9 +638,9 @@ function todayFeedActions(plugin, entry) {
   if (isReviewTarget(target)) {
     return [
       {
-        label: "Open Review",
-        description: `Open review surface: ${target}`,
-        onClick: async () => plugin.openReviewCenterView(),
+        label: "Review",
+        description: `Review next item for: ${target}`,
+        onClick: async () => plugin.openReviewNextTransitionPicker(),
       },
     ];
   }

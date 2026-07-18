@@ -97,39 +97,12 @@ function buildHistorySectionSummary(plugin) {
   });
 }
 
-// R91: 运行与历史 section 主体 — 入口按钮 + 最近 LLM 运行摘要
+// R91: 运行与历史 section 主体 — operator views 仅保留命令面板入口
 function renderHistorySectionBody(plugin, container) {
-  const buttons = [
-    {
-      key: "open-recent-runs",
-      label: plugin.t("Open Recent Runs"),
-      onClick: () => {
-        try {
-          plugin.openRecentRunsView();
-        } catch (error) {
-          // surface via Notice if available
-        }
-      },
-    },
-    {
-      key: "open-review-center",
-      label: plugin.t("Open Review Center"),
-      onClick: () => {
-        try {
-          plugin.openReviewCenterView();
-        } catch (error) {}
-      },
-    },
-  ];
-  if (typeof plugin.renderInlineButtons === "function") {
-    plugin.renderInlineButtons(container, buttons, "furnace-advanced-section-actions");
-  } else {
-    const row = container.createDiv({ cls: "furnace-advanced-section-actions" });
-    for (const btn of buttons) {
-      const el = row.createEl("button", { cls: "furnace-shell-button", text: btn.label });
-      el.addEventListener("click", btn.onClick);
-    }
-  }
+  container.createDiv({
+    cls: "furnace-shell-panel-note",
+    text: plugin.t("Review, Execution, and Recent Runs are available from the command palette when advanced commands are enabled."),
+  });
 
   // 最近 LLM 运行摘要（若有）
   try {
