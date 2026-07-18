@@ -14,10 +14,9 @@ a small dot and stronger title weight, without Notice or Badge behavior.
 
 Universal Input owns URL/file/question routing. Legacy DropZone and start-guide surfaces are not part of the default shell.
 
-Advanced is gated by `showAdvancedCommands` and is limited to diagnostics/history,
-Recent Runs, Review Center, Execution Center, and refresh. Runtime write operations
-such as compile/nightly/protocol/apply/revert are not registered as Product Shell
-command-palette entries.
+Advanced is gated by `showAdvancedCommands` and is limited to diagnostics/history
+and refresh. Runtime write operations such as compile/nightly/protocol/apply/revert
+are not registered as Product Shell command-palette entries.
 
 Phase B preview: Feishu / WeCom webhook URLs will be configured in plugin settings,
 then bridged to the runtime through environment variables for report notifications.
@@ -39,7 +38,7 @@ then bridged to the runtime through environment variables for report notificatio
 | `modals.js` | All `Modal` subclasses |
 | `views.js` | All `ItemView` subclasses |
 | `settings.js` | `FurnaceProductShellSettingTab` |
-| `render_*` | Standalone render functions for Today, Universal Input, Advanced diagnostics, runs, review, and execution surfaces |
+| `render_*` | Standalone render functions for Today, Universal Input, Advanced diagnostics, runs, and home surfaces |
 | `plugin.js` | `FurnaceProductShellPlugin` class — lifecycle, state management, updates |
 
 ## Dependency order
@@ -55,7 +54,7 @@ The modules are concatenated in this order:
 7. `modals.js`
 8. `views.js`
 9. `settings.js`
-10. `render/cards.js`, `render_primitives.js`, `render_input.js`, `render_today.js`, `render_advanced.js`, `render_runs.js`, `render_home.js`, `render_review.js`, `render_execution.js`
+10. `render/cards.js`, `render_primitives.js`, `render_input.js`, `render_today.js`, `render_advanced.js`, `render_runs.js`, `render_home.js`
 11. `plugin_helpers.js`
 12. `rewrite_state.js`
 13. `control_items.js`

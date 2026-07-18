@@ -384,67 +384,6 @@ function isMaintenanceCommandAction(target, reason) {
   return maintenanceTokens.some((token) => targetText.includes(token));
 }
 
-function buildAgentLoopEntries(summary, todayDate) {
-  const nightly = summary.nightly;
-  if (!nightly || typeof nightly !== "object") return [];
-  const agentLoop = nightly.agent_loop;
-  if (!agentLoop || typeof agentLoop !== "object") return [];
-  const timestamp = String(agentLoop.generated_at || nightly.generated_at || "");
-  if (datePart(timestamp) !== todayDate) return [];
-  const status = String(agentLoop.status || "");
-  if (status !== "ok" && status !== "failed") return [];
-
-  let title = "预演下一步维护";
-  let summaryText = "今日维护预演完成，暂不需要自动执行";
-  let target = "wiki/indexes/repair-backlog.md";
-  let autoState = "idle";
-  if (status === "failed") {
-    summaryText = "今日维护预演失败，需要人工查看";
-    autoState = "attention";
-  } else {
-    const signals = agentLoop.signals && typeof agentLoop.signals === "object" ? agentLoop.signals : {};
-    const planner = agentLoop.planner && typeof agentLoop.planner === "object" ? agentLoop.planner : {};
-    const execute = planner.execute && typeof planner.execute === "object" ? planner.execute : {};
-    const autoPreview = agentLoop.auto_preview && typeof agentLoop.auto_preview === "object" ? agentLoop.auto_preview : {};
-    const autoApply = agentLoop.auto_apply && typeof agentLoop.auto_apply === "object" ? agentLoop.auto_apply : {};
-    const autoAdoptL1 = agentLoop.auto_adopt_l1 && typeof agentLoop.auto_adopt_l1 === "object" ? agentLoop.auto_adopt_l1 : {};
-    const autoAdoptL2 = agentLoop.auto_adopt_l2 && typeof agentLoop.auto_adopt_l2 === "object" ? agentLoop.auto_adopt_l2 : {};
-    const autoAdoptJ = agentLoop.auto_adopt_judgments && typeof agentLoop.auto_adopt_judgments === "object" ? agentLoop.auto_adopt_judgments : {};
-    // Planner decisions are derived from signals; don't double-count one change in user-facing copy.
-    const newItems = Math.max(asCount(signals.new_count), asCount(execute.new_count));
-    const appliedCount = asCount(autoApply.applied_count);
-    const readyCount = asCount(autoPreview.ready_count);
-    const l1Count = (Array.isArray(autoAdoptL1.items) ? autoAdoptL1.items : []).reduce(function(acc, item) { return acc + (typeof item.count === 'number' && item.count > 0 && !item.error ? item.count : 0); }, 0);
-    const l2Count = (Array.isArray(autoAdoptL2.items) ? autoAdoptL2.items : []).reduce(function(acc, item) { return acc + (typeof item.count === 'number' && item.count > 0 && !item.error ? item.count : 0); }, 0);
-    const jReviewed = typeof autoAdoptJ.reviewed === 'number' ? autoAdoptJ.reviewed : 0;
-    const totalAdopted = appliedCount + l1Count + l2Count;
-    if (totalAdopted > 0 || jReviewed > 0) {
-      var parts = ["今日发现 " + newItems + " 个新变化"];
-      if (appliedCount > 0) parts.push("已静默执行 " + appliedCount + " 条维护路径");
-      if (l1Count > 0) parts.push("已自动消化 " + l1Count + " 条 L1 候选");
-      if (l2Count > 0) parts.push("已自动处理 " + l2Count + " 条 L2 动作");
-      if (jReviewed > 0) parts.push("LLM 已复核 " + jReviewed + " 条判断");
-      title = "已自动维护";
-      summaryText = parts.join("，");
-      target = "wiki/indexes/execution-audit.md";
-      autoState = "ok";
-    } else if (readyCount > 0) {
-      summaryText = `今日发现 ${newItems} 个新变化，${readyCount} 条维护路径可人工确认`;
-      autoState = "pending";
-    }
-  }
-
-  return [{
-    kind: "automation",
-    title,
-    summary: summaryText,
-    target,
-    timestamp,
-    protocol: String(summary.active_protocol || ""),
-    autoState: autoState,
-  }];
-}
-
 // Helpers
 
 function todayDateOf(summary) {

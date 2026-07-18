@@ -17,7 +17,6 @@ from ..execution.ask import (
     ask_question,
     file_back,
 )
-from ..execution.machine_memory_batch import review_pages_batch
 from ..execution.review import review_page
 from ..execution.runtime_surfaces import (
     nightly_health,
@@ -38,7 +37,6 @@ from .dispatch_helpers import (
     _emit_legacy_drop_deprecation_warning,
     _flatten_model_retry_args,
     _maybe_auto_process,
-    _resolve_review_pages,
     metrics_command,
     review_queue_command,
     today_command,
@@ -114,7 +112,7 @@ def _handle_compile_family(args: argparse.Namespace, root: Path) -> tuple[object
             result = {**result, **rewrite_followup_payload_for_paths(root, proposal_paths)}
         return _out(result)
     if args.handler_command == "file-back":
-        result = file_back(root, args.artifact, title=args.title, kind=args.kind)
+        result = file_back(root, args.artifact, title=args.title, kind="judgment")
         if result.get("next_step_hint"):
             print(f"aiwiki: → {result['next_step_hint']}", file=sys.stderr)
         return _out(result)
@@ -202,8 +200,15 @@ def _handle_alchemy(args: argparse.Namespace, root: Path) -> tuple[object, str |
 
 def _handle_review_lifecycle(args: argparse.Namespace, root: Path) -> tuple[object, str | None]:
     if args.handler_command == "review-page":
-        review_pages = _resolve_review_pages(root, args.page, use_next=args.next, batch=args.batch, all_pending=args.all_pending)
-        result = review_pages_batch(root, review_pages, args.status, note=args.note, confidence=args.confidence) if len(review_pages) > 1 or args.batch or args.all_pending else review_page(root, review_pages[0], args.status, note=args.note, confidence=args.confidence)
+        if not args.page:
+            raise ValueError("Provide a review page path.")
+        result = review_page(
+            root,
+            args.page,
+            args.status,
+            note=args.note,
+            confidence=args.confidence,
+        )
     else:
         raise ValueError(f"Unsupported command: {args.handler_command}")
     return _out(result)

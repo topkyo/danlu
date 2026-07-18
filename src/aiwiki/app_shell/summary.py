@@ -485,6 +485,10 @@ _DEAD_SUGGESTED_CLI_TOKENS = (
     " apply-archive ",
     " apply-rewrite ",
     " review-rewrite ",
+    " run-compile ",
+    " run-lint ",
+    " protocol-set ",
+    " signals-",
     " --all-pending",
     " --batch ",
 )
@@ -505,21 +509,9 @@ def _filter_live_suggested_next_actions(actions: object) -> list[dict[str, Any]]
 
 
 def thin_shell_summary_for_persist(summary: ShellSummary) -> ShellSummary:
-    """Drop operator-only bulk from the on-disk Product Shell contract (B49)."""
+    """Persist only compounding-minimal fields for Product Shell Today (B49)."""
     if not isinstance(summary, dict):
         return {}
-
-    review_controls = summary.get("review_controls")
-    thin_review: dict[str, Any] = {}
-    if isinstance(review_controls, dict):
-        l3_proposals = review_controls.get("l3_proposals")
-        if isinstance(l3_proposals, list):
-            thin_review["l3_proposals"] = l3_proposals
-        pages = review_controls.get("pages")
-        if isinstance(pages, list):
-            thin_pages = [page for page in pages if isinstance(page, dict) and page.get("can_review")][:1]
-            if thin_pages:
-                thin_review["pages"] = thin_pages
 
     llm_status = summary.get("llm_status")
     thin_llm_status: dict[str, Any] = {}
@@ -537,6 +529,62 @@ def thin_shell_summary_for_persist(summary: ShellSummary) -> ShellSummary:
         ):
             if key in llm_status:
                 thin_llm_status[key] = llm_status[key]
+
+    llm_health = summary.get("llm_health")
+    thin_llm_health: dict[str, Any] = {}
+    if isinstance(llm_health, dict):
+        for key in (
+            "status",
+            "reason",
+            "backend",
+            "model",
+            "backend_requested",
+            "backend_effective",
+            "model_selected",
+            "model_final",
+            "checked_at",
+            "source",
+            "fallback_command",
+            "fallback_stage",
+            "fallback_reason",
+            "rerun_command",
+            "route_drift",
+            "route_drift_reason",
+            "log_path",
+            "result_path",
+            "receipt_path",
+        ):
+            if key in llm_health:
+                thin_llm_health[key] = llm_health[key]
+
+    latest_llm_run = summary.get("latest_llm_run")
+    thin_latest_llm_run: dict[str, Any] = {}
+    if isinstance(latest_llm_run, dict):
+        for key in (
+            "command",
+            "backend",
+            "backend_requested",
+            "backend_effective",
+            "model",
+            "model_selected",
+            "model_final",
+            "status",
+            "generated_at",
+            "checked_at",
+            "event",
+            "delivery_mode",
+            "error_summary",
+            "rerun_command",
+        ):
+            if key in latest_llm_run:
+                thin_latest_llm_run[key] = latest_llm_run[key]
+
+    latest_shell_sync_run = summary.get("latest_shell_sync_run")
+    thin_latest_shell_sync_run: dict[str, Any] = {}
+    if isinstance(latest_shell_sync_run, dict):
+        for key in ("status", "generated_at", "command", "message"):
+            if key in latest_shell_sync_run:
+                thin_latest_shell_sync_run[key] = latest_shell_sync_run[key]
 
     nightly = summary.get("nightly")
     thin_nightly: dict[str, Any] = {}
@@ -562,12 +610,21 @@ def thin_shell_summary_for_persist(summary: ShellSummary) -> ShellSummary:
     links = summary.get("links")
     thin_links: dict[str, str] = {}
     if isinstance(links, dict):
-        for key in ("summary_path", "review_center_markdown", "furnace_center_html"):
+        for key in ("summary_path", "furnace_center_html"):
             value = links.get(key)
             if value:
                 thin_links[key] = str(value)
 
-    return {
+    review_controls = summary.get("review_controls")
+    thin_review: dict[str, Any] = {}
+    if isinstance(review_controls, dict):
+        l3_proposals = review_controls.get("l3_proposals")
+        if isinstance(l3_proposals, list):
+            thin_l3 = [item for item in l3_proposals if isinstance(item, dict) and item.get("needs_attention")][:8]
+            if thin_l3:
+                thin_review["l3_proposals"] = thin_l3
+
+    persisted: ShellSummary = {
         "kind": str(summary.get("kind") or "product-shell-summary"),
         "contract_version": int(summary.get("contract_version") or 1),
         "generated_at": str(summary.get("generated_at") or ""),
@@ -575,20 +632,12 @@ def thin_shell_summary_for_persist(summary: ShellSummary) -> ShellSummary:
         "summary_path": str(summary.get("summary_path") or ""),
         "active_protocol": str(summary.get("active_protocol") or ""),
         "llm_status": thin_llm_status,
-        "latest_llm_run": dict(summary.get("latest_llm_run", {}))
-        if isinstance(summary.get("latest_llm_run"), dict)
-        else {},
-        "latest_shell_sync_run": dict(summary.get("latest_shell_sync_run", {}))
-        if isinstance(summary.get("latest_shell_sync_run"), dict)
-        else {},
-        "llm_health": dict(summary.get("llm_health", {})) if isinstance(summary.get("llm_health"), dict) else {},
-        "curated_page_roots": dict(summary.get("curated_page_roots", {}))
-        if isinstance(summary.get("curated_page_roots"), dict)
-        else {},
+        "latest_llm_run": thin_latest_llm_run,
+        "latest_shell_sync_run": thin_latest_shell_sync_run,
+        "llm_health": thin_llm_health,
         "review_backlog_counts": dict(summary.get("review_backlog_counts", {}))
         if isinstance(summary.get("review_backlog_counts"), dict)
         else {},
-        "review_controls": thin_review,
         "counter_evidence_pages": list(summary.get("counter_evidence_pages", []))
         if isinstance(summary.get("counter_evidence_pages"), list)
         else [],
@@ -613,10 +662,16 @@ def thin_shell_summary_for_persist(summary: ShellSummary) -> ShellSummary:
         "today_snooze": dict(summary.get("today_snooze", {}))
         if isinstance(summary.get("today_snooze"), dict)
         else {},
+        "metrics_history_delta": dict(summary.get("metrics_history_delta", {}))
+        if isinstance(summary.get("metrics_history_delta"), dict)
+        else {},
         "nightly": thin_nightly,
         "watcher": thin_watcher,
         "links": thin_links,
     }
+    if thin_review:
+        persisted["review_controls"] = thin_review
+    return persisted
 
 
 def _filter_shell_route_telemetry(route_telemetry: dict[str, Any]) -> dict[str, Any]:

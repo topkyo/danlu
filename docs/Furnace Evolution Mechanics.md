@@ -665,15 +665,15 @@ L3 proposal **只允许**写入以下文件：
 
 ## 11. CLI Semantics Summary
 
-> **Operator CLI 边界（2026-07-18，W3/W6/W7）**：当前 `advanced` 面保留 `compile` / `lint` / `nightly` / `run-nightly` / `run-ask*` / `file-back` / `review-page` / `watch` 与金丹 `alchemy-start|distill|finalize|promote|revert|demote`。W3 已物理删除 AgentOS 膨胀面（`signals-*` / `planner-log-*` / `audit-*` / `alchemy auto|heavy|light|lane` / L3 apply-revert 链 / `apply-action|review-action|apply-rewrite|apply-archive` 等）；W6/W7 禁止 watch / nightly / drop-auto 走 LLM `run-compile` / `run-lint`。下表「当前 operator」只列仍注册命令；§11.1 保留目标契约中的已删 CLI 供历史追溯，**不得**当产品教学入口。
+> **Operator CLI 边界（2026-07-18，W3/W8）**：当前 `advanced` 面保留 `compile` / `lint` / `nightly` / `run-nightly` / `run-ask*` / `file-back` / `review-page` / `watch` 与金丹 `alchemy-start|distill|finalize|promote|revert|demote`。W3 已物理删除 AgentOS 膨胀面（`signals-*` / `planner-log-*` / `audit-*` / `alchemy auto|heavy|light|lane` / L3 apply-revert 链 / `apply-action|review-action|apply-rewrite|apply-archive` 等）；W6/W8 禁止 watch / nightly / drop-auto 走 LLM `run-compile` / `run-lint`；W8 产品 `run-nightly` 仅 deterministic compile+lint（无 agent-loop / signal pipeline）。下表「当前 operator」只列仍注册命令；§11.1 保留目标契约中的已删 CLI 供历史追溯，**不得**当产品教学入口。
 
 | 命令 | 语义 | 写目标 |
 |---|---|---|
 | `aiwiki compile` / `aiwiki lint` / `aiwiki nightly` | 当前 operator：确定性 compile / lint / nightly health | `wiki/`、`wiki/indexes/`、`.aiwiki/lint/` 等 |
-| `aiwiki run-nightly` | 当前 operator：确定性 compile + lint + agent-loop 维护；debt_autopilot 在 nightly 仅 inventory/preview（W7 不调 LLM `run_compile`） | receipt / runtime history / `.aiwiki/state/` |
+| `aiwiki run-nightly` | 当前 operator：确定性 compile + lint + nightly health（W8：无 agent-loop / signals / debt LLM 消化） | receipt / runtime history / `.aiwiki/state/` |
 | `aiwiki run-ask "<q>"` | 当前 operator：LLM 报告主入口 | `output/reports/*.md` + LLM receipt |
-| `aiwiki file-back <artifact>` | 当前 operator：默认 `--kind judgment` 回流 wiki | `wiki/judgments/` 等 + provenance |
-| `aiwiki review-page <path> --status <transition>` | 当前 operator：薄审阅三态（`pending-review` / `confirmed` / `discarded` 或 canonical status） | target page + review queue |
+| `aiwiki file-back <artifact>` | 当前 operator：**judgment-only** 回流 wiki（`--kind derived|decision` 已删） | `wiki/judgments/` 等 + provenance |
+| `aiwiki review-page <path> --status <transition>` | 当前 operator：单页薄审阅三态（`pending-review` / `confirmed` / `discarded`；无 `--batch`/`--next`/`--all-pending`） | target page + review queue |
 | `aiwiki ask "<q>" --corpus <id>` | 当前：绑定或创建 corpus turn；追加 output_refs | `output/reports/*.md` + `.aiwiki/state/output-candidates.json` + `.aiwiki/state/active-corpora.json` |
 | `aiwiki promote <artifact_ref>` | 当前：output candidate → `wiki/derived/` | `wiki/derived/` + candidate state |
 | `aiwiki demote <artifact_ref>` | 当前：demote output candidate | `.aiwiki/state/output-candidates.json` |

@@ -44,12 +44,11 @@ def render_furnace_center_action_item(action: dict[str, Any]) -> str:
 def render_furnace_center_rewrite_item(proposal: dict[str, Any]) -> str:
     slug = html.escape(str(proposal.get("slug") or ""))
     target = html.escape(str(proposal.get("target_path") or f"wiki/concepts/{slug}.md"))
-    command = f"PYTHONPATH=src python3 -m aiwiki.cli --root . apply-rewrite {slug}"
     return (
         f"<li><strong><a href=\"../../wiki/rewrite-proposals/{slug}.md\">"
         f"{html.escape(str(proposal.get('title') or slug))}</a></strong>"
         f" <span class=\"item-meta\">{html.escape(display_rewrite_proposal_status(str(proposal.get('status') or 'proposed')))}</span>"
-        f"<div><code>{target}</code></div><div><code>{html.escape(command)}</code></div></li>"
+        f"<div><code>{target}</code></div></li>"
     )
 
 
@@ -140,7 +139,7 @@ def render_furnace_center(
     if judgment_review_actions:
         next_steps.append(f"先清理 `{min(len(judgment_review_actions), 5)}` 个 judgment review action。")
     if apply_ready_actions:
-        next_steps.append(f"先处理 `{len(apply_ready_actions)}` 个可直接 `apply-action` 的低风险动作。")
+        next_steps.append(f"先处理 `{len(apply_ready_actions)}` 个低风险 machine-memory 动作（见 review-queue）。")
     if apply_ready_rewrites:
         next_steps.append(f"应用 `{len(apply_ready_rewrites)}` 个已接受的 concept rewrite proposal。")
     if aging.get("escalated"):
@@ -194,7 +193,7 @@ def render_furnace_center(
         lines.append("### Apply-Ready Rewrites")
         for proposal in apply_ready_rewrites[:8]:
             lines.append(
-                f"- `{proposal['target_path']}` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-rewrite {proposal['slug']}`"
+                f"- `{proposal['target_path']}` | proposal `{proposal['slug']}`"
             )
     if execution_proposals:
         lines.append("")

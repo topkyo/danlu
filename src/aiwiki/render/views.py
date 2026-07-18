@@ -811,30 +811,13 @@ def furnace_quick_commands(
     apply_ready_actions: list[dict[str, Any]],
     apply_ready_rewrites: list[dict[str, Any]],
 ) -> list[str]:
+    _ = (apply_ready_actions, apply_ready_rewrites)
     commands = [
-        "PYTHONPATH=src python3 -m aiwiki.cli --root . protocol-status",
         f"PYTHONPATH=src python3 -m aiwiki.cli --root . ask \"对当前主题做协议化总结\" --format report --protocol {active_protocol}",
+        "PYTHONPATH=src python3 -m aiwiki.cli --root . compile",
         "PYTHONPATH=src python3 -m aiwiki.cli --root . nightly",
+        "PYTHONPATH=src python3 -m aiwiki.cli --root . review-queue --json",
     ]
-    if apply_ready_actions:
-        first_action = apply_ready_actions[0]
-        action_id = str(first_action.get("id") or "")
-        bundle_hint = str(first_action.get("bundle_path") or "")
-        if action_id:
-            commands.append(
-                f"PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {action_id} --dry-run"
-            )
-            if bundle_hint:
-                commands.append(
-                    f"PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {action_id} --bundle {bundle_hint}"
-                )
-    if apply_ready_rewrites:
-        first_rewrite = apply_ready_rewrites[0]
-        slug = str(first_rewrite.get("slug") or "")
-        if slug:
-            commands.append(
-                f"PYTHONPATH=src python3 -m aiwiki.cli --root . apply-rewrite {slug}"
-            )
     return commands[:6]
 
 

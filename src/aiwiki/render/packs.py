@@ -669,16 +669,16 @@ def build_output_pack_sop_drafts(
             f"- {proposal.get('summary', '检查目标页面并确认是否执行。')}",
             "",
             "## Step-by-Step",
-            f"1. 先跑 `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {action_id} --dry-run`。",
+            f"1. 先查看 review-queue / execution proposal `{action_id}`，确认 patch plan 与 bundle。",
         ]
         if bundle_path:
             lines.append(
-                f"2. 如果 dry-run 结果符合预期，再执行 `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {action_id} --bundle {bundle_path}`。"
+                f"2. 如果执行边界仍允许，再按 proposal 页面说明处理 bundle `{bundle_path}`。"
             )
         else:
             lines.append("2. 当前没有 bundle，先回到 execution proposal 页面确认执行边界。")
         lines.append(
-            f"3. 如需回滚，执行 `PYTHONPATH=src python3 -m aiwiki.cli --root . revert-action {action_id}`。"
+            "3. 如需回滚，查看 execution audit 中对应 receipt 与 revert 说明。"
         )
         lines.extend(["", "## Page-Level Patch Plan"])
         if not patch_plan:
@@ -782,13 +782,13 @@ def build_output_pack_sop_drafts(
             f"- Pattern frequency: `{pattern_frequency}`",
             "",
             "## Step-by-Step",
-            f"1. 先跑 `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {action_id} --dry-run`。",
+            f"1. 先查看 review-queue / machine-memory action `{action_id}`，确认 execution band 与 bundle。",
         ]
         if bundle_path:
             lines.extend(
                 [
-                    f"2. 如果执行 band 仍允许，再执行 `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {action_id} --bundle {bundle_path}`。",
-                    f"3. 必要时用 `PYTHONPATH=src python3 -m aiwiki.cli --root . revert-action {action_id}` 回滚。",
+                    f"2. 如果执行 band 仍允许，再按 execution proposal 处理 bundle `{bundle_path}`。",
+                    "3. 必要时按 execution audit receipt 说明回滚。",
                 ]
             )
             bundle_link = f"- [Execution Bundle](../../../{bundle_path})"

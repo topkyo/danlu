@@ -11,7 +11,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from aiwiki.app_compile_ops import promote_recurring_outputs
 from aiwiki.app_linting.core import lint_wiki
 from aiwiki.app_linting.nightly import write_nightly_health
 from aiwiki.app_protocol import ensure_layout
@@ -1181,16 +1180,13 @@ def run_nightly(
     root: Path,
     compile_limit: int = 5,
 ) -> dict[str, Any]:
-    """Deterministic compile + lint plus nightly maintenance (agent loop, signals)."""
+    """Deterministic compile + lint plus nightly health write."""
     ensure_layout(root)
     started = time.monotonic()
     compile_result: dict[str, Any] | None = None
     lint_result: dict[str, Any] | None = None
     try:
         compile_wiki_result = compile_wiki(root)
-        promotion_result = promote_recurring_outputs(root)
-        if promotion_result["count"]:
-            compile_wiki_result = compile_wiki(root)
         lint_wiki_result = lint_wiki(root)
         compile_result = {
             "compile": compile_wiki_result,
@@ -1204,14 +1200,12 @@ def run_nightly(
             "prompt_profile": "",
             "retry_prompt_profile": "",
         }
-        # contract EP-029 Step 3 §5: nightly auto-applies active -> stale, never demote/archive.
         llm_audit = _empty_llm_audit()
         llm_used = False
         state = write_nightly_health(
             root,
             compile_wiki_result,
             lint_wiki_result,
-            promotion_result=promotion_result,
             semantic_report="",
             llm_used=False,
             runtime_history_extra={
@@ -1220,7 +1214,6 @@ def run_nightly(
                 "llm_used": False,
             },
         )
-        from aiwiki.agent_loop import attach_agent_loop_to_nightly_state, run_nightly_agent_loop
 
         # R95.4: audit reconciliation gate (best-effort)
         try:
@@ -1231,38 +1224,7 @@ def run_nightly(
             print(f"[nightly] audit reconciliation failed: {recon_exc}", file=sys.stderr)
             reconciliation_result = {"status": "failed", "error": str(recon_exc)}
         state["audit_reconciliation"] = reconciliation_result
-        # Persist updated state so nightly health reflects reconciliation.
-        with runtime_write_lock(root):
-            atomic_write_text(
-                nightly_health_state_path(root),
-                json.dumps(state, indent=2, sort_keys=True) + "\n",
-            )
-
-        from aiwiki.autonomy_policy import nightly_autonomy_flags
-
-        autonomy_flags = nightly_autonomy_flags(root)
-        auto_apply_light = autonomy_flags["auto_apply_light"]
-        auto_adopt_l1 = autonomy_flags["auto_adopt_l1"]
-        auto_apply_heavy_semantic = autonomy_flags.get("auto_apply_heavy_semantic", False)
-        agent_loop = run_nightly_agent_loop(
-            root,
-            apply_light=auto_apply_light,
-            auto_adopt_l1=auto_adopt_l1,
-            auto_adopt_l2=False,
-            auto_adopt_l3=False,
-            auto_adopt_judgments=False,
-        )
-        from aiwiki.runner.signal_pipeline import run_signal_pipeline
-
-        signal_pipeline = run_signal_pipeline(
-            root,
-            apply_light=auto_apply_light,
-            apply_heavy_semantic=auto_apply_heavy_semantic,
-        )
-        run_status = _nightly_status_from_subsystems(agent_loop, signal_pipeline)
-        state = attach_agent_loop_to_nightly_state(root, state, agent_loop)
-        state["signal_pipeline"] = signal_pipeline
-        state["status"] = run_status
+        run_status = "success"
         with runtime_write_lock(root):
             atomic_write_text(
                 nightly_health_state_path(root),
@@ -1298,15 +1260,6 @@ def run_nightly(
                 "llm_used": llm_used,
                 "repair_backlog": state["repair_backlog"]["path"],
                 "state_path": relative_path(root, root / ".aiwiki" / "state" / "nightly-health.json"),
-                "agent_loop_status": str(state.get("agent_loop", {}).get("status") or ""),
-                "agent_loop_dry_run": bool(state.get("agent_loop", {}).get("dry_run", False)),
-                "agent_loop_auto_apply_light": auto_apply_light,
-                "agent_loop_auto_adopt_l1": auto_adopt_l1,
-                "agent_loop_auto_adopt_l2": False,
-                "agent_loop_auto_adopt_l3": False,
-                "agent_loop_auto_adopt_judgments": False,
-                "signal_pipeline_auto_apply_heavy_semantic": auto_apply_heavy_semantic,
-                "signal_pipeline_status": str(state.get("signal_pipeline", {}).get("status") or ""),
                 "duration_ms": int((time.monotonic() - started) * 1000),
             },
             llm_audit,
@@ -1330,8 +1283,6 @@ def run_nightly(
                 "delivery_mode": llm_audit.get("delivery_mode", ""),
                 "backend_effective": llm_audit.get("backend_effective", ""),
                 "model_final": llm_audit.get("model_final", ""),
-                "agent_loop_status": str(state.get("agent_loop", {}).get("status") or ""),
-                "signal_pipeline_status": str(state.get("signal_pipeline", {}).get("status") or ""),
                 "autonomy_domain": "maintenance",
                 "llm_governed": False,
                 "decision_confidence": "",
@@ -1344,9 +1295,6 @@ def run_nightly(
     return {
         "compile": compile_result,
         "lint": lint_result,
-        "promotions": promotion_result,
-        "agent_loop": state.get("agent_loop", {}),
-        "signal_pipeline": state.get("signal_pipeline", {}),
         "aging": state["aging"],
         "repair_backlog": state["repair_backlog"]["path"],
         "state_path": relative_path(root, root / ".aiwiki" / "state" / "nightly-health.json"),
@@ -1360,18 +1308,6 @@ def run_nightly(
         "primary_attempt_status": str(llm_audit.get("primary_attempt_status") or ""),
         "primary_error": str(llm_audit.get("primary_error") or ""),
     }
-
-
-def _nightly_status_from_subsystems(agent_loop: dict[str, Any], signal_pipeline: dict[str, Any]) -> str:
-    statuses = {
-        str(agent_loop.get("status") or ""),
-        str(signal_pipeline.get("status") or ""),
-    }
-    if statuses & {"failed", "error", "blocked"}:
-        return "failed"
-    if statuses & {"degraded"}:
-        return "degraded"
-    return "success"
 
 
 from aiwiki.runner.workflows_ask import (  # noqa: E402

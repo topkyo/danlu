@@ -69,9 +69,11 @@ Product Shell 适合日常快速投料和查看状态。复杂治理操作建议
 
 文本、Markdown、URL 抓取和 repo snapshot 会进入 `raw/inbox/`；PDF、image 原件会进入 `raw/assets/`。不要把二进制原件手动放进 `raw/inbox/`。
 
+成功投料后，runtime **默认**会跑一轮确定性 `compile` + `lint`（P8 投料即煅烧）；若只想入 raw 暂不炼化，加 `--no-auto`。
+
 ### 第 2 步：编译
 
-编译把原料炼成 wiki 结构：
+投料默认已触发 compile；需要手动全量重炼时再跑：
 
 ```bash
 ./scripts/aiwiki-launcher.sh advanced compile
@@ -83,11 +85,11 @@ Product Shell 适合日常快速投料和查看状态。复杂治理操作建议
 - `wiki/derived/`：抽取的概念、关系、摘要。
 - `output/control/`：状态摘要、review queue、lint 报告。
 
-定时维护（watcher / nightly）只做确定性 `compile` + `lint`；LLM 仅通过 `run-ask` 等显式入口参与。
+定时维护（watcher / nightly / `run-nightly`）只做确定性 `compile` + `lint` + nightly health 写入；LLM 仅通过 `run-ask` 等显式入口参与。
 
 ```bash
 ./scripts/aiwiki-launcher.sh advanced nightly
-# 或带 agent-loop 维护层的完整 nightly：
+# 与 timer 同语义：
 ./scripts/aiwiki-launcher.sh advanced run-nightly
 ```
 
@@ -108,10 +110,9 @@ Ask 只产出 `output/reports/*.md` 自由 Markdown 报告（CLI 仅接受 `--fo
 
 ```bash
 ./scripts/aiwiki-launcher.sh advanced file-back output/reports/xxx.md
-# 等价于 --kind judgment（默认）；derived/decision 需显式 --kind
 ```
 
-file-back 默认 `--kind judgment`，会把结论整理成 judgment page 并保留来源链路；decision / derived 需显式指定 kind。
+产品面 `file-back` **只写 judgment**（CLI 可省略 `--kind`，或显式 `--kind judgment`）；`--kind derived|decision` 已删除。
 
 ### 第 5 步：复盘与金丹
 
@@ -124,6 +125,8 @@ file-back 默认 `--kind judgment`，会把结论整理成 judgment page 并保�
 # 废弃
 ./scripts/aiwiki-launcher.sh advanced review-page wiki/judgments/xxx.md --status discarded --note "..."
 ```
+
+`review-page` 只支持单页薄三态；`--batch` / `--next` / `--all-pending` 等产品批量入口已删除。
 
 沉淀下来的 reusable thesis 会变成 `wiki/elixirs/` 中的金丹，供下一轮研究引用：
 

@@ -172,7 +172,7 @@ def _signal_label(*, multi_turn: bool, has_linked: bool, has_conflict: bool) -> 
 
 
 def _file_back_command(report_path: str) -> str:
-    return f"{_CLI_PREFIX} file-back {shlex.quote(report_path)} --kind judgment"
+    return f"{_CLI_PREFIX} file-back {shlex.quote(report_path)}"
 
 
 def _alchemy_start_command(*, corpus_id: str, topic: str) -> str:

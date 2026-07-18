@@ -35,7 +35,7 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName(t("Show advanced commands"))
-      .setDesc(t("Register diagnostics, history, Review Center, and Execution Center commands in the command palette. Reload Obsidian after changing this toggle."))
+      .setDesc(t("Register the Refresh Furnace Shell command in the command palette. Reload Obsidian after changing this toggle."))
       .addToggle((toggle) =>
         toggle.setValue(Boolean(this.plugin.settings.showAdvancedCommands)).onChange(async (value) => {
           this.plugin.settings.showAdvancedCommands = Boolean(value);

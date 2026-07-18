@@ -381,7 +381,7 @@ def render_protocols_dashboard(
         f"- 协议总数：`{len(state['available_protocols'])}`",
         f"- 状态文件：`{state['state_path']}`",
         f"- lifecycle concept backlog / retired：`{lifecycle_counts.get('concept_backlog', len(concept_backlog))}` / `{lifecycle_counts.get('retired_concepts', len(retired_concepts))}`",
-        "- 切换命令：`PYTHONPATH=src python3 -m aiwiki.cli --root . protocol-set <slug>`",
+        "- 协议切换已不在 CLI 暴露；当前 active protocol 见上方 slug。",
         "",
         "## 当前协议入口",
     ]
@@ -668,7 +668,7 @@ def build_agent_packs(
                 f"执行 receipt `{execution_audit.get('counts', {}).get('receipts', 0)}`",
             ]
             actions = [
-                f"对 `{action.get('id', '')}` 先做 `apply-action --dry-run`，再决定是否执行。"
+                f"对 `{action.get('id', '')}` 先查看 review-queue / execution proposal，再决定是否处理。"
                 for action in apply_ready_actions[:5]
             ]
             if revert_ready_actions:

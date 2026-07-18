@@ -20,7 +20,6 @@ from aiwiki.app_utils import (
 )
 from aiwiki.compile.pipeline import compile_wiki
 from aiwiki.runner.receipts import _append_log
-from aiwiki.runner.signal_pipeline import run_signal_pipeline
 
 
 def auto_process_once(
@@ -40,7 +39,6 @@ def auto_process_once(
             "semantic_report": "",
         }
         snapshot = inbox_snapshot(root)
-        signal_pipeline = run_signal_pipeline(root)
         result = {
             "processed_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
             "mode": "deterministic-only",
@@ -51,7 +49,6 @@ def auto_process_once(
             "llm_fallback": False,
             "compile": compile_result,
             "lint": lint_result,
-            "signal_pipeline": signal_pipeline,
             "inbox_snapshot": snapshot,
         }
         _write_automation_state(root, result)

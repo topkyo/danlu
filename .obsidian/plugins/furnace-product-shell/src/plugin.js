@@ -20,9 +20,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     }
 
     this.registerView(VIEW_TYPE_FURNACE_CENTER, (leaf) => new FurnaceCenterView(leaf, this));
-    this.registerView(VIEW_TYPE_RECENT_RUNS, (leaf) => new RecentRunsView(leaf, this));
-    this.registerView(VIEW_TYPE_REVIEW_CENTER, (leaf) => new ReviewCenterView(leaf, this));
-    this.registerView(VIEW_TYPE_EXECUTION_CENTER, (leaf) => new ExecutionCenterView(leaf, this));
     this.addSettingTab(new FurnaceProductShellSettingTab(this.app, this));
 
     this.addRibbonIcon("flask-conical", this.t("Open Furnace"), () => {
@@ -87,29 +84,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     if (!this.settings.showAdvancedCommands) {
       return;
     }
-    // EP-005: kept for backward compatibility — these views can still be opened individually,
-    // but Furnace Center now also surfaces a unified activity timeline.
-    this.addCommand({
-      id: "open-recent-runs",
-      name: this.t("Open Recent Runs"),
-      callback: () => {
-        this.runUiAction(() => this.openRecentRunsView(), this.t("Open Recent Runs"));
-      },
-    });
-    this.addCommand({
-      id: "open-review-center",
-      name: this.t("Open Review Center"),
-      callback: () => {
-        this.runUiAction(() => this.openReviewCenterView(), this.t("Open Review Center"));
-      },
-    });
-    this.addCommand({
-      id: "open-execution-center",
-      name: this.t("Open Execution Center"),
-      callback: () => {
-        this.runUiAction(() => this.openExecutionCenterView(), this.t("Open Execution Center"));
-      },
-    });
     this.addCommand({
       id: "refresh-furnace-shell",
       name: this.t("Refresh Furnace Shell"),
@@ -331,16 +305,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     await this.runCliAction(`Review Page: ${status}`, "review-page", [pagePath, "--status", status]);
   }
 
-  async runReviewPageBatchTransition(pagePaths, status, note = "", confidence = "") {
-    new Notice(this.t("Batch review was removed in W4; use review-page for explicit page transitions."));
-  }
-
   async runReviewRewriteTransition(slug, status) {
     new Notice(this.t("Concept rewrite commands were removed in W3; use review-page on the concept page instead."));
-  }
-
-  async runReviewActionTransition(actionId, status) {
-    new Notice(this.t("Machine-memory action commands were removed in W3; use review-page instead."));
   }
 
   visibleReviewPageCandidates() {
@@ -479,7 +445,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async runTodaySnoozeCommand(target, days = 1) {
-    new Notice(this.t("Today snooze was removed in W4; open Review Center or handle the item directly."));
+    new Notice(this.t("Today snooze was removed in W4; handle the item directly from Today."));
   }
 
   async runShellSearchCommand(query, limit = 8) {
@@ -646,7 +612,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       return;
     }
     const label = String(item.title || this.t("沉淀")).trim() || this.t("沉淀");
-    await this.runCliAction(label, "file-back", [reportPath, "--kind", "judgment"]);
+    await this.runCliAction(label, "file-back", [reportPath]);
   }
 
   openCompoundAlchemyStart(suggest) {
@@ -687,18 +653,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     new Notice(this.t("Archive commands were removed in W3; inspect manifest pages manually."));
   }
 
-  openReviewActionModal(prefill = {}) {
-    this.openStructuredCommandModal(buildReviewActionModalSpec(this, prefill));
-  }
-
-  openApplyActionModal(prefill = {}) {
-    this.openStructuredCommandModal(buildApplyActionModalSpec(this, prefill));
-  }
-
-  openRevertActionModal(prefill = {}) {
-    this.openStructuredCommandModal(buildRevertActionModalSpec(this, prefill));
-  }
-
   openReviewPageContextPicker(options = this.visibleReviewPageCandidates()) {
     this.openContextAwareAction({
       title: this.t("Pick Review Page"),
@@ -711,24 +665,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     });
   }
 
-  openReviewNextTransitionPicker() {
-    this.openReviewPageContextPicker();
-  }
-
-  openReviewPageBatchModal(_prefill = {}) {
-    new Notice(this.t("Batch review was removed in W4; use review-page for explicit page transitions."));
-  }
-
-  openReviewBatchSuggestionPicker() {
-    new Notice(this.t("Batch review was removed in W4; use review-page for explicit page transitions."));
-  }
-
   openReviewRewriteContextPicker(_options = this.visibleRewriteCandidates()) {
     new Notice(this.t("Concept rewrite commands were removed in W3; use review-page on the concept page instead."));
-  }
-
-  openReviewActionContextPicker(_options = this.visibleActionCandidates("review")) {
-    new Notice(this.t("Machine-memory action commands were removed in W3; use review-page instead."));
   }
 
   openApplyArchiveContextPicker(_options = this.visibleArchiveCandidates("apply")) {
@@ -737,30 +675,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   openRevertArchiveContextPicker(_options = this.visibleArchiveCandidates("revert")) {
     new Notice(this.t("Archive commands were removed in W3; inspect manifest pages manually."));
-  }
-
-  openApplyActionContextPicker(options = this.visibleActionCandidates("apply")) {
-    this.openContextAwareAction({
-      title: this.t("Pick Apply Action"),
-      description: this.t("Prefer an explicit action control object before falling back to manual action id entry."),
-      keyName: "actionId",
-      options,
-      emptyNotice: this.t("No visible machine-memory action context is available; fell back to the manual form."),
-      onFallback: () => this.openApplyActionModal(),
-      onSubmit: (option) => this.openApplyActionModal({ actionId: option.actionId || option.value || "", bundle: option.bundlePath || "" }),
-    });
-  }
-
-  openRevertActionContextPicker(options = this.visibleActionCandidates("revert")) {
-    this.openContextAwareAction({
-      title: this.t("Pick Revert Action"),
-      description: this.t("Prefer an explicit action control object before falling back to manual action id entry."),
-      keyName: "actionId",
-      options,
-      emptyNotice: this.t("No visible machine-memory action context is available; fell back to the manual form."),
-      onFallback: () => this.openRevertActionModal(),
-      onSubmit: (option) => this.openRevertActionModal({ actionId: option.actionId || option.value || "" }),
-    });
   }
 
   openReviewPageTransitionPicker(control) {
@@ -788,10 +702,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     new Notice(this.t("Concept rewrite commands were removed in W3; use review-page on the concept page instead."));
   }
 
-  openReviewActionTransitionPicker(_control) {
-    new Notice(this.t("Machine-memory action commands were removed in W3; use review-page instead."));
-  }
-
   async openView(viewType, options = {}) {
     let leaf = this.app.workspace.getLeavesOfType(viewType)[0];
     if (!leaf) {
@@ -805,18 +715,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   async openFurnaceCenterView() {
     await this.openView(VIEW_TYPE_FURNACE_CENTER, { preferMain: true });
-  }
-
-  async openRecentRunsView() {
-    await this.openView(VIEW_TYPE_RECENT_RUNS);
-  }
-
-  async openReviewCenterView() {
-    await this.openView(VIEW_TYPE_REVIEW_CENTER);
-  }
-
-  async openExecutionCenterView() {
-    await this.openView(VIEW_TYPE_EXECUTION_CENTER);
   }
 
   async openWorkspacePath(relativePath) {
@@ -887,18 +785,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   renderFurnaceCenter(contentEl) {
     renderFurnaceCenter(this, contentEl);
-  }
-
-  renderRecentRuns(contentEl) {
-    renderRecentRuns(this, contentEl);
-  }
-
-  renderReviewCenter(contentEl) {
-    renderReviewCenter(this, contentEl);
-  }
-
-  renderExecutionCenter(contentEl) {
-    renderExecutionCenter(this, contentEl);
   }
 
   refreshOpenViews() {

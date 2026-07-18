@@ -219,14 +219,6 @@ def l3_proposal_control_object(proposal: dict[str, Any]) -> dict[str, Any]:
     can_apply = state == "candidate" and (patch_kind == "metadata_only" or review_state == "human_accepted")
     can_revert = state == "accepted" and bool(last_receipt_path)
     needs_attention = state in {"candidate", "stale", "revert_conflict"}
-    command_hints: dict[str, str] = {}
-    if can_reject:
-        command_hints["accept"] = f"PYTHONPATH=src python3 -m aiwiki.cli --root . review proposal {proposal_id} --status accepted"
-        command_hints["reject"] = f"PYTHONPATH=src python3 -m aiwiki.cli --root . review proposal {proposal_id} --status rejected"
-    if can_apply:
-        command_hints["apply"] = f"PYTHONPATH=src python3 -m aiwiki.cli --root . apply {proposal_id}"
-    if can_revert:
-        command_hints["revert"] = f"PYTHONPATH=src python3 -m aiwiki.cli --root . revert {last_receipt_path}"
     return {
         "proposal_id": proposal_id,
         "kind": kind,
@@ -248,7 +240,7 @@ def l3_proposal_control_object(proposal: dict[str, Any]) -> dict[str, Any]:
         "can_apply": can_apply,
         "can_revert": can_revert,
         "needs_attention": needs_attention,
-        "command_hints": command_hints,
+        "command_hints": {},
     }
 
 def rewrite_control_object(root: Path, proposal: dict[str, Any]) -> dict[str, Any] | None:
@@ -348,23 +340,18 @@ def rewrite_followup_action(control: dict[str, Any]) -> dict[str, Any] | None:
         "can_apply": bool(control.get("can_apply")),
         "can_revert": bool(control.get("can_revert")),
     }
-    if bool(control.get("can_apply")):
+    if bool(control.get("can_apply")) or (
+        bool(control.get("can_review")) and bool(control.get("has_candidate_markdown"))
+    ):
         return {
             **base,
-            "kind": "apply-rewrite",
+            "kind": "rewrite-proposal",
             "title": title,
-            "command": f"PYTHONPATH=src python3 -m aiwiki.cli --root . apply-rewrite {slug} --dry-run",
+            "command": "PYTHONPATH=src python3 -m aiwiki.cli --root . review-queue --json",
             "path": proposal_path or target_path,
-            "reason": "rewrite-apply-ready",
-        }
-    if bool(control.get("can_review")) and bool(control.get("has_candidate_markdown")) and default_transition:
-        return {
-            **base,
-            "kind": "review-rewrite",
-            "title": title,
-            "command": f"PYTHONPATH=src python3 -m aiwiki.cli --root . review-rewrite {slug} --status {default_transition}",
-            "path": proposal_path or target_path,
-            "reason": "rewrite-review-needed" if bool(control.get("pending_review")) else f"rewrite-{status or 'review'}",
+            "reason": "rewrite-apply-ready" if bool(control.get("can_apply")) else (
+                "rewrite-review-needed" if bool(control.get("pending_review")) else f"rewrite-{status or 'review'}"
+            ),
             "transition": default_transition,
         }
     return None

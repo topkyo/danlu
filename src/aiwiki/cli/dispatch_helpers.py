@@ -130,32 +130,12 @@ def _review_page_command(item: dict[str, object]) -> str:
 
 
 def _action_command(item: dict[str, object]) -> str:
-    action_id = str(item.get("action_id") or item.get("id") or "").strip()
-    if not action_id:
-        return ""
-    if bool(item.get("can_apply")):
-        return f"PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {action_id} --dry-run"
-    if bool(item.get("can_review")):
-        transition = (
-            str(item.get("default_transition") or "").strip()
-            or _first_string(item.get("preferred_transitions"))
-            or _first_string(item.get("allowed_transitions"))
-        )
-        if transition:
-            return f"PYTHONPATH=src python3 -m aiwiki.cli --root . review-action {action_id} --status {transition}"
-    if bool(item.get("can_revert")):
-        return f"PYTHONPATH=src python3 -m aiwiki.cli --root . revert-action {action_id}"
-    return ""
+    _ = item
+    return "PYTHONPATH=src python3 -m aiwiki.cli --root . review-queue --bucket mm_actions --json"
 
 
 def _l3_command(item: dict[str, object]) -> str:
-    hints = item.get("command_hints")
-    if not isinstance(hints, dict):
-        return ""
-    for key in ("apply", "reject", "revert"):
-        command = hints.get(key)
-        if isinstance(command, str) and command.strip():
-            return command.strip()
+    _ = item
     return ""
 
 
@@ -199,17 +179,17 @@ def _ready_actions_batch_helper(items: list[dict[str, object]]) -> dict[str, obj
     if apply_count <= 1:
         return None
     return {
-        "id": "batch-apply-all-accepted-low-risk",
-        "title": f"批量预览 {apply_count} 条 accepted low-risk actions",
-        "summary": "batch-helper · dry-run first",
+        "id": "batch-review-ready-actions",
+        "title": f"查看 {apply_count} 条 accepted low-risk actions",
+        "summary": "batch-helper · review-queue",
         "target": "review:ready_actions",
         "timestamp": "",
         "protocol": "",
         "kind": "batch-helper",
         "status": "suggested",
-        "command": "PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action --all-accepted-low-risk --dry-run",
-        "can_review": False,
-        "can_apply": True,
+        "command": "PYTHONPATH=src python3 -m aiwiki.cli --root . review-queue --bucket ready_actions --json",
+        "can_review": True,
+        "can_apply": False,
     }
 
 
@@ -621,7 +601,7 @@ def _emit_legacy_drop_deprecation_warning(args: argparse.Namespace) -> None:
 
 
 def _maybe_auto_process(root: Path, result: dict[str, object], args: argparse.Namespace) -> dict[str, object]:
-    if not getattr(args, "auto", False):
+    if getattr(args, "no_auto", False):
         return result
     auto_result = auto_process_once(root)
     return {
@@ -644,46 +624,3 @@ def _build_parser() -> argparse.ArgumentParser:
     return build_parser()
 
 
-def _pending_review_pages(root: Path) -> list[str]:
-    summary = build_shell_summary(root)
-    review_controls = summary.get("review_controls", {})
-    if not isinstance(review_controls, dict):
-        review_controls = {}
-    pending: list[str] = []
-    for candidate in review_controls.get("pages", []):
-        if not isinstance(candidate, dict) or not candidate.get("can_review"):
-            continue
-        candidate_path = str(candidate.get("path") or "")
-        if candidate_path:
-            pending.append(candidate_path)
-    return pending
-
-
-def _resolve_review_pages(
-    root: Path,
-    page: str | None,
-    *,
-    use_next: bool,
-    batch: list[str] | None,
-    all_pending: bool,
-) -> list[str]:
-    selected_modes = int(bool(use_next)) + int(bool(batch)) + int(bool(all_pending))
-    if page and selected_modes:
-        raise ValueError("Use PAGE by itself, or choose exactly one of --next/--batch/--all-pending.")
-    if selected_modes > 1:
-        raise ValueError("Choose only one of --next, --batch, or --all-pending.")
-    if use_next:
-        pending = _pending_review_pages(root)
-        if not pending:
-            raise RuntimeError("No review page is ready for --next.")
-        return [pending[0]]
-    if batch:
-        return [item for item in batch if item.strip()]
-    if all_pending:
-        pending = _pending_review_pages(root)
-        if not pending:
-            raise RuntimeError("No review pages are currently pending.")
-        return pending
-    if page:
-        return [page]
-    raise ValueError("Provide a review page path or use --next/--batch/--all-pending.")

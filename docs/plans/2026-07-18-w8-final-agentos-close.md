@@ -30,11 +30,11 @@
 
 **Files:** `src/aiwiki/runner/workflows.py` (`run_nightly`), callers/docs of agent_loop on nightly; acceptance fixtures that expect agent_loop on nightly
 
-- [ ] `run_nightly` / `nightly` CLI path: **remove** `run_nightly_agent_loop`, `run_signal_pipeline`, and any alchemy auto/lane apply from this path
-- [ ] Remove or no-op `promote_recurring_outputs` from nightly if it enqueues AgentOS candidates (prefer remove from nightly)
-- [ ] Keep: `compile_wiki`, `lint_wiki`, `write_nightly_health` (deterministic fields only)
-- [ ] Update acceptance that assumed signals/planner on nightly
-- [ ] **Verify:** `bash scripts/verify.sh python-static cli-smoke acceptance`
+- [x] `run_nightly` / `nightly` CLI path: **remove** `run_nightly_agent_loop`, `run_signal_pipeline`, and any alchemy auto/lane apply from this path
+- [x] Remove or no-op `promote_recurring_outputs` from nightly if it enqueues AgentOS candidates (prefer remove from nightly)
+- [x] Keep: `compile_wiki`, `lint_wiki`, `write_nightly_health` (deterministic fields only)
+- [x] Update acceptance that assumed signals/planner on nightly
+- [x] **Verify:** `bash scripts/verify.sh python-static cli-smoke acceptance`
 
 **Commit:** `feat(cut): nightly is deterministic compile+lint only`
 
@@ -46,10 +46,10 @@
 
 **Files:** `app_shell/meta.py`, `app_shell/controls.py`, `app_shell/helpers.py`, `cli/dispatch_helpers.py`, `content`/`compile`/`render` generators that emit `apply-*` / `run-compile` / `protocol-set`, `memory/execution_surfaces.py`, `render/furnace_center.py` as needed
 
-- [ ] `shell_capabilities()` lists only commands that exist in parsers today
-- [ ] No product-facing generator writes `apply-action`, `review-action`, `apply-archive`, `apply-rewrite`, `review-rewrite`, `run-compile`, `run-lint`, `signals-*`, `protocol-set` as runnable commands
-- [ ] Operator `review-queue` JSON must not recommend deleted CLIs
-- [ ] **Verify:** `bash scripts/verify.sh python-static` + `rg` gate: zero matches of those tokens as command strings in `app_shell/` and `dispatch_helpers.py` (except dead-token filter lists / comments)
+- [x] `shell_capabilities()` lists only commands that exist in parsers today
+- [x] No product-facing generator writes `apply-action`, `review-action`, `apply-archive`, `apply-rewrite`, `review-rewrite`, `run-compile`, `run-lint`, `signals-*`, `protocol-set` as runnable commands
+- [x] Operator `review-queue` JSON must not recommend deleted CLIs
+- [x] **Verify:** `bash scripts/verify.sh python-static` + `rg` gate: zero matches of those tokens as command strings in `app_shell/` and `dispatch_helpers.py` (except dead-token filter lists / comments)
 
 **Commit:** `fix(shell): live-only capabilities; purge dead CLI generators`
 
@@ -61,10 +61,10 @@
 
 **Files:** `cli/parsers.py`, `cli/dispatch.py` / `dispatch_helpers.py`, `execution` file-back, Product Shell modal_specs/plugin for file-back & review-page batch
 
-- [ ] After successful `drop`, **default** run deterministic `auto_process_once` (compile+lint). Opt-out only if needed (`--no-auto`); remove confusing dual semantics
-- [ ] Delete `review-page` `--batch` / `--next` / `--all-pending` from parsers/dispatch/helpers; Shell batch/next stubs → gone (not Notice half-life if unused)
-- [ ] `file-back` accepts **only** `--kind judgment` (or drop `--kind` and hardcode judgment); remove derived/decision from CLI help and Shell modal
-- [ ] **Verify:** `bash scripts/verify.sh python-static cli-smoke product-shell-static`
+- [x] After successful `drop`, **default** run deterministic `auto_process_once` (compile+lint). Opt-out only if needed (`--no-auto`); remove confusing dual semantics
+- [x] Delete `review-page` `--batch` / `--next` / `--all-pending` from parsers/dispatch/helpers; Shell batch/next stubs → gone (not Notice half-life if unused)
+- [x] `file-back` accepts **only** `--kind judgment` (or drop `--kind` and hardcode judgment); remove derived/decision from CLI help and Shell modal
+- [x] **Verify:** `bash scripts/verify.sh python-static cli-smoke product-shell-static`
 
 **Commit:** `feat(product): drop auto-compile; judgment-only file-back; no review batch`
 
@@ -76,9 +76,9 @@
 
 **Files:** Product Shell view registration / plugin_lifecycle / constants; `app_shell/summary.py` thin persist; rebuild `main.js`
 
-- [ ] Unregister or permanently hide Review Center / Execution Center / Recent Runs views (no command-palette resurrection of AgentOS centers)
-- [ ] Persist `shell-summary.json` only compounding fields: status/sync health, today/reports, `compound_suggest`, `suggested_next_actions` (live-only), minimal llm_health if required by Shell — drop planner/execution_controls/dashboard/agent_loop/rewrite_followup from **persist**
-- [ ] **Verify:** `bash scripts/verify.sh product-shell-static python-static`
+- [x] Unregister or permanently hide Review Center / Execution Center / Recent Runs views (no command-palette resurrection of AgentOS centers)
+- [x] Persist `shell-summary.json` only compounding fields: status/sync health, today/reports, `compound_suggest`, `suggested_next_actions` (live-only), minimal llm_health if required by Shell — drop planner/execution_controls/dashboard/agent_loop/rewrite_followup from **persist**
+- [x] **Verify:** `bash scripts/verify.sh product-shell-static python-static`
 
 **Commit:** `feat(shell): Today-only views; minimal shell-summary persist`
 
@@ -90,16 +90,16 @@
 
 **Files:** Active docs, `PROGRESS.md`, this plan, acceptance fixtures, `docs/README.md`
 
-- [ ] Docs: nightly = compile+lint only; drop auto-compiles; file-back judgment-only; no batch review; no AgentOS capabilities marketing
-- [ ] Acceptance updated; `bash scripts/verify.sh all` PASS
-- [ ] Final residual gate (must be empty for product paths):
+- [x] Docs: nightly = compile+lint only; drop auto-compiles; file-back judgment-only; no batch review; no AgentOS capabilities marketing
+- [x] Acceptance updated; `bash scripts/verify.sh all` PASS
+- [x] Final residual gate (must be empty for product paths):
   ```bash
   # live parsers must not register deleted names
   rg -n "add_parser\\(\"(run-compile|run-lint|apply-action|protocol-set)" src/aiwiki/cli/parsers.py
   # nightly must not call agent_loop
   rg -n "run_nightly_agent_loop|run_signal_pipeline" src/aiwiki/runner/workflows.py
   ```
-- [ ] Check off all plan checkboxes
+- [x] Check off all plan checkboxes
 
 **Commit:** `docs+test: W8 final AgentOS residual close`
 
