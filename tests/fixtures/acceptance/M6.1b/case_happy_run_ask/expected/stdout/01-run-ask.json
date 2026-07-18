@@ -81,7 +81,7 @@
     "relevant_actions": [
       {
         "apply_ready": "false",
-        "command_hint": "PYTHONPATH=src python3 -m aiwiki.cli --root . batch-review action --kind connect-isolated-source --status accepted --note \"Accepted for manual repair.\"",
+        "command_hint": "PYTHONPATH=src python3 -m aiwiki.cli --root . review-queue --bucket mm_actions --json",
         "execution_policy": "triage",
         "focus_score": 0,
         "id": "isolated-source-source-a",

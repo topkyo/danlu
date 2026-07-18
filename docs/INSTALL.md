@@ -34,7 +34,7 @@ pip install -e ".[dev]" --break-system-packages   # 若无 PEP 668，可去掉 -
 
 **边界（诚实预览）**：
 
-- **可用**：在克隆仓库根执行 `pip install -e .`（或 `pip install .`）后，用 `aiwiki` 做 `new-vault` / `layout` / `compile` / `today` / `drop` 等 CLI。
+- **可用**：在克隆仓库根执行 `pip install -e .`（或 `pip install .`）后，用 `aiwiki` 做 `new-vault` / `advanced compile` / `today` / `drop` 等 CLI。
 - **仍依赖 checkout**：创建带 Product Shell 的 vault 需要本仓库里的 `.obsidian/plugins/furnace-product-shell/` 三件套；**尚未**发布到 PyPI 的 `pip install aiwiki` 一键包。
 - 版本与 CHANGELOG AgentOS gate 对齐为 **0.4.0**（见 `pyproject.toml` / `src/aiwiki/__init__.py`）。
 

@@ -794,11 +794,7 @@ def describe_machine_memory_action(action: dict[str, Any], *, root: Path | None 
     kind = str(action.get("kind") or "")
     status = str(action.get("status") or "proposed")
     active = bool(action.get("active", True))
-    review_prefix = (
-        f"PYTHONPATH=src python3 -m aiwiki.cli --root . batch-review action --kind {kind}"
-        if kind
-        else "PYTHONPATH=src python3 -m aiwiki.cli --root . review-queue --bucket mm_actions --json"
-    )
+    review_prefix = "PYTHONPATH=src python3 -m aiwiki.cli --root . review-queue --bucket mm_actions --json"
     kind_steps = {
         "add-source-concept-link": "检查来源页与概念页是否应补引用或反链。",
         "connect-isolated-source": "把孤立来源接入至少一个稳定概念。",
@@ -819,22 +815,19 @@ def describe_machine_memory_action(action: dict[str, Any], *, root: Path | None 
     if not active:
         next_step = "信号已消失；确认是否要作为已解决归档。"
         if status in PENDING_ACTION_STATUSES:
-            command_hint = f'{review_prefix} --status resolved --note "Signal disappeared after compile."'
+            command_hint = review_prefix
     elif status == "proposed":
-        command_hint = f'{review_prefix} --status accepted --note "Accepted for manual repair."'
+        command_hint = review_prefix
     elif status == "accepted":
         if action_supports_low_risk_apply(action_with_policy):
             next_step = "这是低风险动作；可以直接通过 safe execution layer 应用，再让 compile 收敛状态。"
-            command_hint = (
-                "PYTHONPATH=src python3 -m aiwiki.cli --root . batch-review apply-low-risk"
-                ' --dry-run --note "Applied accepted low-risk repair."'
-            )
+            command_hint = review_prefix
         else:
             next_step = f"{next_step} 完成后将动作标为 resolved。"
-            command_hint = f'{review_prefix} --status resolved --note "Repair completed."'
+            command_hint = review_prefix
     elif status == "deferred":
         next_step = "已确认但暂缓处理；准备恢复时改回 accepted。"
-        command_hint = f'{review_prefix} --status accepted --note "Resume deferred repair."'
+        command_hint = review_prefix
     elif status in {"resolved", "rejected"}:
         next_step = "保持关闭，除非修复策略改变。"
     return {

@@ -71,7 +71,6 @@ verify_cli_smoke() {
 verify_smoke() {
   local tmp
   tmp="$(mktemp -d)"
-  "$PYTHON" -m aiwiki.cli --root "$tmp" advanced layout 2>/dev/null
   "$PYTHON" -m aiwiki.cli --root "$tmp" drop markdown --title "smoke" --text "smoke test" 2>/dev/null
   "$PYTHON" -m aiwiki.cli --root "$tmp" advanced compile 2>/dev/null
   "$PYTHON" -m aiwiki.cli --root "$tmp" advanced lint 2>/dev/null

@@ -361,9 +361,7 @@ def _lint_layout_phase(context: _LintContext) -> None:
         "wiki/indexes/decisions.md": "Missing decisions index page.",
         "wiki/indexes/judgments.md": "Missing judgments index page.",
         "wiki/indexes/judgment-assets.md": "Missing judgment asset dashboard page.",
-        "wiki/indexes/agent-workbench.md": "Missing agent workbench page.",
         "wiki/indexes/cognitive-history.md": "Missing cognitive history page.",
-        "wiki/indexes/output-packs.md": "Missing output packs index page.",
         "wiki/indexes/rewrite-proposals.md": "Missing rewrite proposal index page.",
         "wiki/indexes/protocols.md": "Missing protocol dashboard page.",
         "wiki/indexes/furnace-center.md": "Missing furnace center page.",
@@ -425,37 +423,18 @@ def _lint_runtime_phase(context: _LintContext) -> None:
     context.judgment_pages = collect_curated_pages(context.root, "judgments", "judgment")
     if machine_memory_state_path(context.root).exists():
         context.pack_memory = load_machine_memory(context.root)
-    context.expected_output_packs = build_output_packs(
-        context.root,
-        context.decision_pages,
-        context.judgment_pages,
-        context.pack_memory,
-        context.protocol_state,
-        collect_recent_output_artifacts(context.root),
-        utc_now(),
-    )
 
     memory_state = machine_memory_state_path(context.root)
     graph_html = machine_memory_graph_html_path(context.root)
-    furnace_html = furnace_center_html_path(context.root)
-    execution_html = execution_center_html_path(context.root)
-    execution_audit_html = execution_audit_html_path(context.root)
     shell_summary = shell_summary_path(context.root)
     product_shell_html = product_shell_html_path(context.root)
     planner_state = planner_state_path(context.root)
     query_route_telemetry = query_route_telemetry_path(context.root)
     policy_history = execution_policy_log_path(context.root)
-    review_html = review_center_html_path(context.root)
     if context.manifest["entries"] and not memory_state.exists():
         context.add("error", memory_state, "Missing machine memory state file.")
     if context.manifest["entries"] and not graph_html.exists():
         context.add("error", graph_html, "Missing machine memory graph HTML view.")
-    if context.manifest["entries"] and not furnace_html.exists():
-        context.add("error", furnace_html, "Missing furnace center HTML view.")
-    if context.manifest["entries"] and not execution_html.exists():
-        context.add("error", execution_html, "Missing execution center HTML view.")
-    if context.manifest["entries"] and not execution_audit_html.exists():
-        context.add("error", execution_audit_html, "Missing execution audit HTML view.")
     if context.manifest["entries"] and not shell_summary.exists():
         context.add("error", shell_summary, "Missing shell summary JSON.")
     if context.manifest["entries"] and not product_shell_html.exists():
@@ -464,18 +443,6 @@ def _lint_runtime_phase(context: _LintContext) -> None:
         context.add("error", planner_state, "Missing planner state file.")
     if context.manifest["entries"] and not query_route_telemetry.exists():
         context.add("error", query_route_telemetry, "Missing query route telemetry file.")
-    if context.manifest["entries"] and not review_html.exists():
-        context.add("error", review_html, "Missing review center HTML view.")
-    for pack_group in ("review_packs", "decision_memos", "sop_drafts"):
-        for pack in context.expected_output_packs.get(pack_group, []):
-            pack_path = context.root / str(pack.get("path") or "")
-            if not pack_path.exists():
-                context.add("error", pack_path, f"Missing output pack `{pack_path.name}` for `{pack_group}`.")
-    if context.manifest["entries"]:
-        for pack in AGENT_PACK_LIBRARY:
-            pack_path = agent_pack_path(context.root, str(pack["role"]))
-            if not pack_path.exists():
-                context.add("error", pack_path, f"Missing agent pack for role `{pack['role']}`.")
     if memory_state.exists():
         try:
             memory = json.loads(memory_state.read_text(encoding="utf-8"))

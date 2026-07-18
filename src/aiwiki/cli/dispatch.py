@@ -9,7 +9,6 @@ import sys
 from pathlib import Path
 
 from ..app_linting.core import lint_wiki
-from ..app_protocol import ensure_layout
 from ..app_shell import build_shell_summary, rewrite_followup_payload_for_paths
 from ..app_vault import bootstrap_new_vault, sync_product_shell_plugin
 from ..compile.pipeline import compile_wiki
@@ -76,9 +75,6 @@ def _out(result: object, text_output: str | None = None) -> tuple[object, str | 
 
 
 def _handle_vault_admin(args: argparse.Namespace, root: Path) -> tuple[object, str | None]:
-    if args.handler_command == "layout":
-        ensure_layout(root)
-        return _out({"root": str(root), "status": "ok"})
     if args.handler_command == "new-vault":
         return _out(bootstrap_new_vault(root, Path(args.target).resolve(), force=args.force))
     if args.handler_command == "sync-product-shell":
@@ -242,7 +238,6 @@ def _handle_ops(args: argparse.Namespace, root: Path) -> tuple[object, str | Non
 
 
 _VAULT_ADMIN_HANDLERS = {
-    "layout": _handle_vault_admin,
     "new-vault": _handle_vault_admin,
     "sync-product-shell": _handle_vault_admin,
 }

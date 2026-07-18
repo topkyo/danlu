@@ -7,25 +7,10 @@ import json
 import sys
 from pathlib import Path
 
-from ..today_feed import FeedEntry, priority_for_kind
-
-
-def _dispatch_module():
-    return sys.modules["aiwiki.cli.dispatch"]
-
-
-class _DispatchProxy:
-    def __init__(self, name: str) -> None:
-        self._name = name
-
-    def __call__(self, *args, **kwargs):
-        return getattr(_dispatch_module(), self._name)(*args, **kwargs)
-
-
-build_shell_summary = _DispatchProxy("build_shell_summary")
-build_today_feed = _DispatchProxy("build_today_feed")
-auto_process_once = _DispatchProxy("auto_process_once")
-build_parser = _DispatchProxy("build_parser")
+from ..app_shell import build_shell_summary
+from ..runner.automation import auto_process_once
+from ..today_feed import FeedEntry, build_today_feed, priority_for_kind
+from .parsers import build_parser
 
 
 def _flatten_model_retry_args(values: list[str]) -> list[str]:
@@ -573,7 +558,7 @@ def _render_today_text(feed: list[FeedEntry], summary: dict[str, object]) -> str
         [
             "Advanced",
             "Run `aiwiki advanced ...` for system status, receipts, audit, repair, lanes, and debugging.",
-            "Run `aiwiki metrics` for knowledge compounding metrics.",
+            "Run `aiwiki advanced metrics` for knowledge compounding metrics.",
         ]
     )
     return "\n".join(lines)

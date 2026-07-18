@@ -29,7 +29,6 @@ LEGACY_TOP_LEVEL_COMMANDS = frozenset({
     "drop-repo",
     "drop-url",
     "file-back",
-    "layout",
     "lint",
     "llm-check",
     "metrics",

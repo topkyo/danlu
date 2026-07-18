@@ -20,7 +20,7 @@ related_docs:
 - `src/aiwiki/app_utils.py`：runtime write lock、hash、frontmatter、markdown / JSON helpers、`safe_fetch` 等底层 primitives。
 - `src/aiwiki/app_state.py`：**legacy central hub**，path / state / json-document primitives 的单点入口；改动半径大，需额外谨慎。
 - `src/aiwiki/app_protocol.py`：**legacy central hub**，layout、schema scaffolding、protocol runtime、review windows 和默认 runtime 规则。
-- `src/aiwiki/cli/`：CLI parser / dispatch / product-first command surface；普通入口固定为 `drop` / `today` / `metrics` / `advanced`，legacy top-level 命令只保留兼容。
+- `src/aiwiki/cli/`：CLI parser / dispatch / product-first command surface；普通入口固定为 `drop` / `today` / `advanced`；operator 命令（含 `metrics`）只注册在 `advanced` 下，旧顶层名靠 argv rewrite compat。
 - `src/aiwiki/drop.py`：`drop-url` / `drop-pdf` / `drop-image` / `drop-repo` / `drop-note` 的 raw materialization owner；用户入口推荐 `drop markdown`。
 - `src/aiwiki/compile/`：compile pipeline phase owner（content/runtime/output/persist）；`app_compile.py` 仍是 legacy orchestration hotspot，新逻辑优先下沉到 `compile/*` 或明确 owner module。
 - `src/aiwiki/content/`：source / concept / derived / memory output 的主要 owner。
@@ -46,9 +46,9 @@ related_docs:
 
 | Layer | Commands | Purpose |
 | --- | --- | --- |
-| `primary` | `drop`, `today`, `metrics`, `advanced` | 日常投料、今日简报、健康度，以及进入 operator 面。`drop` 下含 `url / pdf / image / repo / markdown`。 |
+| `primary` | `drop`, `today`, `advanced` | 日常投料、今日简报，以及进入 operator 面（compile / lint / metrics / review-page 等）。`drop` 下含 `url / pdf / image / repo / markdown`。 |
 | `advanced` | `aiwiki advanced ...` | 治理、编译、执行、审计、协议、LLM 和调试；完整列表见 `aiwiki advanced --help`。 |
-| `compat` | 旧顶层名（rewrite only） | 不在 argparse 顶层注册；`drop-*` → `drop <kind>`，其余 → `advanced <cmd>`。 |
+| `compat` | 旧顶层名（rewrite only） | 不在 argparse 顶层注册；`drop-*` → `drop <kind>`，其余 → `advanced <cmd>`（含 legacy `metrics` / `compile` 等）。 |
 
 ### 当前 P1-P5 稳定化清单（2026-05-24）
 
@@ -58,7 +58,7 @@ related_docs:
 | --- | --- | --- |
 | P1 Hub slimming | 继续用 seam map / owner map 约束大 hub；`runner/alchemy.py` 与 Product Shell `plugin.js` 保持 deferred residual hotspots。 | 不做 broad rewrite；每轮只削一个有测试的 owner seam。 |
 | P2 `run-ask` receipt matrix | 所有 `run-ask` success execution receipts 统一带 `receipt_matrix_version`、`run_ask_path`、`artifact_status`。 | LLM failure / degraded 仍不伪造 success execution receipt。 |
-| P3 CLI product-first | 顶层只注册 `drop` / `today` / `metrics` / `advanced`；旧顶层名靠 rewrite compat。 | 不删除 advanced 下的 operator 命令，避免破坏脚本与 dogfood。 |
+| P3 CLI product-first | 顶层只注册 `drop` / `today` / `advanced`；旧顶层名靠 rewrite compat。 | operator 命令仍在 `advanced` 下，避免破坏脚本与 dogfood。 |
 | P4 Planner phase proof | 新 planner-log record 写入 decision-derived `phase`；旧无 `phase` 的 v1 records 仍可 replay。 | `phase` 只是可复算调度标签，不直接触发 side effect。 |
 | P5 Long-run proof | 当前 release proof 是 3-day live window；14/30-day natural run 仍是后续观测目标。 | 不伪造尚未自然发生的长期窗口。 |
 

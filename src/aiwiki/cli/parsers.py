@@ -73,8 +73,6 @@ def _converge_default_help_surface(subparsers: argparse._SubParsersAction) -> No
 def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -> None:
     """Register operator/compat commands under the advanced drawer only."""
 
-    subparsers.add_parser("layout", help="Create the expected directory layout.")
-
     metrics_parser = subparsers.add_parser("metrics", help="炼丹炉知识复利指标")
     metrics_parser.add_argument("--json", action="store_true", help="JSON 输出")
     metrics_parser.add_argument(

@@ -14,6 +14,8 @@
 
 ## 当前动态
 
+- 2026-07-18 (W4 surface noise Task 3)：停写 agent workbench / derived agent packs / output-pack auto factory / execution & excess control HTML 控制台（A30/A31/A39）；`layout` 独立入口删除（A29 THIN→`new-vault` / compile 隐式 ensure_layout）；lint 不再要求上述退役面；command_hint / batch hint 去掉 `batch-review`；Active docs C51/C53 与 acceptance fixtures 同步。验证：`bash scripts/verify.sh all` PASS。
+
 - 2026-07-18 (W3 governance side-cuts)：按 spec W3 ADOPT 列表删除 AgentOS governance CLI 与膨胀面——L3 apply/revert、rewrite/repair/archive、candidate promote/demote、`review-action`/`apply-action`、`signals-*`/`planner-log-*`/`audit-*`、`run-compile`/`run-lint`、`alchemy auto/lane/heavy/light` CLI；保留 `alchemy-start/distill/finalize/promote/revert/demote`、`watch`、`compile`、`lint`、`nightly`、`ask`/`run-ask*`、`file-back`、`review-page`、`trace`、`llm-check`。Acceptance 改 function-level observe setup + lane apply helper；Product Shell batch hint 改 `batch-review`；Active docs 同步。验证：`bash scripts/verify.sh all` PASS。
 
 - 2026-07-18 (W2 compounding rank + suggest)：Ask 默认提升 confirmed judgment / settled elixir 选型权重；`used_refs` 写入 report frontmatter 与 receipt；`compound_suggest` 稀缺规则进 shell-summary（multi-turn + linked refs，max 3）；Today / report card CTA 接线。Acceptance 新增 `W2/case_compounding_rank_suggest`（`test_w2_compounding_rank_and_suggest_acceptance`）。验证：`bash scripts/verify.sh all` PASS。

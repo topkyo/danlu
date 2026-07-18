@@ -549,20 +549,11 @@ def _collect_batch_hints(
         if len(hints) >= _BATCH_HINT_MAX:
             break
         emit(
-            "batch-review",
-            f"批量审阅 {count} 个 {action_kind} 候选",
-            f"PYTHONPATH=src python3 -m aiwiki.cli --root . batch-review action --kind {action_kind} --status accepted --note \"Batch review {action_kind}\"",
-            f"batch-hint:batch-review:{action_kind}",
+            "review-queue",
+            f"查看 {count} 个 {action_kind} machine-memory 候选",
+            "PYTHONPATH=src python3 -m aiwiki.cli --root . review-queue --bucket mm_actions --json",
+            f"batch-hint:review-queue:{action_kind}",
             count,
-        )
-
-    if can_apply_total >= threshold and len(hints) < _BATCH_HINT_MAX:
-        emit(
-            "batch-apply",
-            f"批量预演 {can_apply_total} 个 low-risk apply",
-            "PYTHONPATH=src python3 -m aiwiki.cli --root . batch-review apply-low-risk --dry-run --note \"Batch apply low-risk repairs\"",
-            "batch-hint:batch-review:apply-low-risk",
-            can_apply_total,
         )
 
     return hints[:_BATCH_HINT_MAX]

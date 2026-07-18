@@ -794,7 +794,7 @@ def test_metrics_report(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None
     """M6.4 B4: aiwiki metrics 输出 7 条指标 + JSON 路径合法。"""
     _case, vault = _copy_case_and_fix_clock_from("M6.4", "case_metrics_report", tmp_path, monkeypatch)
 
-    out = _run_cli(vault, ["metrics"]).decode("utf-8")
+    out = _run_cli(vault, ["advanced", "metrics"]).decode("utf-8")
     assert "炼丹炉 Knowledge Compounding Metrics" in out
     keys = [
         "provenance_completeness",
@@ -808,7 +808,7 @@ def test_metrics_report(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None
     for key in keys:
         assert key in out, f"metric key missing: {key}"
 
-    out_json = _run_cli(vault, ["metrics", "--json"])
+    out_json = _run_cli(vault, ["advanced", "metrics", "--json"])
     parsed = json.loads(out_json)
     assert isinstance(parsed, list)
     assert len(parsed) == 7
