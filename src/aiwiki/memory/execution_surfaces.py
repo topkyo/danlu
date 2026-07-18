@@ -123,14 +123,10 @@ def render_execution_proposal_page(proposal: dict[str, Any], *, compiled_at: str
             )
             lines.append(f"  - {patch.get('summary', '检查相关页面并补充修复说明。')}")
     lines.extend(["", "## Commands"])
-    if proposal.get("bundle_path"):
-        lines.append(
-            f"- Suggested apply: `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {proposal.get('action_id', '')} --bundle {proposal.get('bundle_path', '')}`"
-        )
     if proposal.get("command_hint"):
         lines.append(f"- Suggested next step: `{proposal['command_hint']}`")
     else:
-        lines.append("- 当前没有直接命令提示。")
+        lines.append("- 当前没有直接命令提示；请查看 review-queue 或 execution proposal 页面。")
     safe_preview = proposal.get("safe_apply_preview")
     lines.extend(["", "## Safe Apply Preview"])
     if not safe_preview:
@@ -200,12 +196,12 @@ def render_execution_center(root: Path, memory: dict[str, Any], *, compiled_at: 
         "## Safe Apply Now",
     ]
     if not apply_ready_actions:
-        lines.append("- 当前没有可直接 `apply-action` 的低风险动作。")
+        lines.append("- 当前没有可直接处理的低风险 machine-memory 动作。")
     else:
         for action in apply_ready_actions[:10]:
             bundle_path = relative_path(root, execution_bundle_path(root, str(action.get("id") or "")))
             lines.append(
-                f"- `{action['title']}` | band `{action.get('execution_band', 'bundle-safe-apply')}` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {action.get('id', '')} --bundle {bundle_path}` | primary `{action.get('primary_path', '')}`"
+                f"- `{action['title']}` | band `{action.get('execution_band', 'bundle-safe-apply')}` | bundle `{bundle_path}` | primary `{action.get('primary_path', '')}`"
             )
     lines.extend(["", "## Revert Safe Apply"])
     if not revert_ready_actions:
@@ -213,7 +209,7 @@ def render_execution_center(root: Path, memory: dict[str, Any], *, compiled_at: 
     else:
         for action in revert_ready_actions[:10]:
             lines.append(
-                f"- `{action['title']}` | command `PYTHONPATH=src python3 -m aiwiki.cli --root . revert-action {action.get('id', '')}` | receipt `{action.get('last_receipt_path', '')}`"
+                f"- `{action['title']}` | receipt `{action.get('last_receipt_path', '')}` | primary `{action.get('primary_path', '')}`"
             )
     lines.extend(["", "## Execution Proposals"])
     if not proposals:
@@ -915,7 +911,7 @@ def render_concept_quality(memory: dict[str, Any]) -> str:
             lines.append(f"  - strategy: {candidate.get('rewrite_strategy', 'n/a')}")
     lines.extend(["", "## Rewrite Proposals"])
     if not rewrite_state.get("proposals"):
-        lines.append("- 当前还没有 concept rewrite proposal。先运行 `run-compile` 或等待下一次 rewrite proposal 生成。")
+        lines.append("- 当前还没有 concept rewrite proposal。先运行 `compile` 或等待下一次 rewrite proposal 生成。")
     else:
         for proposal in rewrite_state.get("proposals", [])[:10]:
             lines.append(
@@ -1238,10 +1234,8 @@ def render_concept_rewrite_proposal_page(proposal: dict[str, Any]) -> str:
         f"- Revert note: {proposal.get('revert_note', '') or 'none'}",
         "",
         "## Commands",
-        f"- Review: `PYTHONPATH=src python3 -m aiwiki.cli --root . review-rewrite {proposal['slug']} --status accepted`",
-        f"- Apply: `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-rewrite {proposal['slug']}`",
-        f"- Verify: `PYTHONPATH=src python3 -m aiwiki.cli --root . verify-rewrite {proposal['slug']}`",
-        f"- Revert: `PYTHONPATH=src python3 -m aiwiki.cli --root . revert-rewrite {proposal['slug']}`",
+        "- Review queue: `PYTHONPATH=src python3 -m aiwiki.cli --root . review-queue --json`",
+        f"- Proposal page: `wiki/rewrite-proposals/{proposal['slug']}.md`",
         "",
         "## Proposed Markdown",
     ]
@@ -1254,7 +1248,7 @@ def render_concept_rewrite_proposal_page(proposal: dict[str, Any]) -> str:
             ]
         )
     else:
-        lines.append("- 当前还没有生成候选重写内容。先运行 `run-compile`。")
+        lines.append("- 当前还没有生成候选重写内容。先运行 `compile`。")
     return "\n".join(lines) + "\n"
 
 
@@ -1300,7 +1294,7 @@ def render_concept_rewrite_index(state: dict[str, Any], compiled_at: str) -> str
         for proposal in apply_ready[:12]:
             lines.append(
                 f"- [{proposal['title']}](../rewrite-proposals/{proposal['slug']}.md)"
-                f" | command `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-rewrite {proposal['slug']}`"
+                f" | target `{proposal.get('target_path', '')}`"
             )
     lines.extend(["", "## Revert Ready"])
     if not revert_ready:
@@ -1311,7 +1305,6 @@ def render_concept_rewrite_index(state: dict[str, Any], compiled_at: str) -> str
                 f"- [{proposal['title']}](../rewrite-proposals/{proposal['slug']}.md)"
                 f" | applied `{proposal.get('applied_at', '') or 'none'}`"
                 f" | verify `{proposal.get('verification_status', '') or 'pending'}`"
-                f" | command `PYTHONPATH=src python3 -m aiwiki.cli --root . revert-rewrite {proposal['slug']}`"
             )
     lines.extend(["", "## Recently Closed"])
     if not inactive:

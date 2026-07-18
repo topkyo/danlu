@@ -147,11 +147,10 @@ def _build_llm_rerun_command(event: dict[str, Any]) -> str:
             command_parts.append("--lean")
         return " ".join(command_parts)
     if event_name == "run-compile-summary":
-        limit = int(event.get("limit", 5) or 5)
-        command_parts.extend(["run-compile", "--limit", str(limit)])
+        command_parts.append("compile")
         return " ".join(command_parts)
     if event_name == "run-lint":
-        command_parts.append("run-lint")
+        command_parts.append("lint")
         return " ".join(command_parts)
     if event_name == "run-nightly":
         limit = int(event.get("compile_limit", 5) or 5)

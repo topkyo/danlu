@@ -485,6 +485,10 @@ _DEAD_SUGGESTED_CLI_TOKENS = (
     " apply-archive ",
     " apply-rewrite ",
     " review-rewrite ",
+    " run-compile ",
+    " run-lint ",
+    " protocol-set ",
+    " signals-",
     " --all-pending",
     " --batch ",
 )

@@ -348,23 +348,18 @@ def rewrite_followup_action(control: dict[str, Any]) -> dict[str, Any] | None:
         "can_apply": bool(control.get("can_apply")),
         "can_revert": bool(control.get("can_revert")),
     }
-    if bool(control.get("can_apply")):
+    if bool(control.get("can_apply")) or (
+        bool(control.get("can_review")) and bool(control.get("has_candidate_markdown"))
+    ):
         return {
             **base,
-            "kind": "apply-rewrite",
+            "kind": "rewrite-proposal",
             "title": title,
-            "command": f"PYTHONPATH=src python3 -m aiwiki.cli --root . apply-rewrite {slug} --dry-run",
+            "command": "PYTHONPATH=src python3 -m aiwiki.cli --root . review-queue --json",
             "path": proposal_path or target_path,
-            "reason": "rewrite-apply-ready",
-        }
-    if bool(control.get("can_review")) and bool(control.get("has_candidate_markdown")) and default_transition:
-        return {
-            **base,
-            "kind": "review-rewrite",
-            "title": title,
-            "command": f"PYTHONPATH=src python3 -m aiwiki.cli --root . review-rewrite {slug} --status {default_transition}",
-            "path": proposal_path or target_path,
-            "reason": "rewrite-review-needed" if bool(control.get("pending_review")) else f"rewrite-{status or 'review'}",
+            "reason": "rewrite-apply-ready" if bool(control.get("can_apply")) else (
+                "rewrite-review-needed" if bool(control.get("pending_review")) else f"rewrite-{status or 'review'}"
+            ),
             "transition": default_transition,
         }
     return None

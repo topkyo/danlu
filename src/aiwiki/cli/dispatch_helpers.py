@@ -130,22 +130,8 @@ def _review_page_command(item: dict[str, object]) -> str:
 
 
 def _action_command(item: dict[str, object]) -> str:
-    action_id = str(item.get("action_id") or item.get("id") or "").strip()
-    if not action_id:
-        return ""
-    if bool(item.get("can_apply")):
-        return f"PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {action_id} --dry-run"
-    if bool(item.get("can_review")):
-        transition = (
-            str(item.get("default_transition") or "").strip()
-            or _first_string(item.get("preferred_transitions"))
-            or _first_string(item.get("allowed_transitions"))
-        )
-        if transition:
-            return f"PYTHONPATH=src python3 -m aiwiki.cli --root . review-action {action_id} --status {transition}"
-    if bool(item.get("can_revert")):
-        return f"PYTHONPATH=src python3 -m aiwiki.cli --root . revert-action {action_id}"
-    return ""
+    _ = item
+    return "PYTHONPATH=src python3 -m aiwiki.cli --root . review-queue --bucket mm_actions --json"
 
 
 def _l3_command(item: dict[str, object]) -> str:
@@ -199,17 +185,17 @@ def _ready_actions_batch_helper(items: list[dict[str, object]]) -> dict[str, obj
     if apply_count <= 1:
         return None
     return {
-        "id": "batch-apply-all-accepted-low-risk",
-        "title": f"批量预览 {apply_count} 条 accepted low-risk actions",
-        "summary": "batch-helper · dry-run first",
+        "id": "batch-review-ready-actions",
+        "title": f"查看 {apply_count} 条 accepted low-risk actions",
+        "summary": "batch-helper · review-queue",
         "target": "review:ready_actions",
         "timestamp": "",
         "protocol": "",
         "kind": "batch-helper",
         "status": "suggested",
-        "command": "PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action --all-accepted-low-risk --dry-run",
-        "can_review": False,
-        "can_apply": True,
+        "command": "PYTHONPATH=src python3 -m aiwiki.cli --root . review-queue --bucket ready_actions --json",
+        "can_review": True,
+        "can_apply": False,
     }
 
 

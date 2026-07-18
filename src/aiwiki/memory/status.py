@@ -190,7 +190,7 @@ def render_machine_memory_index(memory: dict[str, Any]) -> str:
         "",
         "## Action Workflow",
         f"- 状态文件：`{health.get('action_state_path', '.aiwiki/state/machine-memory-actions.json')}`",
-        "- 通过 `review-action` 推进 action status。",
+        "- 通过 `review-queue --bucket mm_actions` 查看 machine-memory action 状态。",
         "- nightly 会继续追踪 action 的 occurrences、aging 和 escalation。",
         "- repair 计划页：`wiki/indexes/machine-memory-repair-plan.md`",
         "",
