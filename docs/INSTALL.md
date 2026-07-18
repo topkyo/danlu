@@ -99,7 +99,7 @@ cd /path/to/your-vault
 
 ## 配置 LLM 后端
 
-炼丹炉的确定性链路（投料、编译、本地 lint）可以离线跑；但 `run-compile`、`run-ask`、nightly 等需要 LLM。
+炼丹炉的确定性链路（投料、编译、本地 lint、nightly）可以离线跑；只有 `run-ask` 等显式 LLM 命令需要后端配置。
 
 当前支持的后端：
 
@@ -213,7 +213,7 @@ sudo apt update && sudo apt install python3 python3-pip
 
 ### 没有 API key 能跑吗？
 
-可以。投料、编译、本地 lint、today 简报等确定性链路完全离线可用。只有 `run-compile`、`run-ask`、nightly 等需要 LLM。
+可以。投料、编译、本地 lint、today 简报、nightly 等确定性链路完全离线可用。只有 `run-ask` 等显式 LLM 命令需要后端配置。
 
 ### Obsidian 打不开 vault？
 

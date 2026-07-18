@@ -83,10 +83,12 @@ Product Shell 适合日常快速投料和查看状态。复杂治理操作建议
 - `wiki/derived/`：抽取的概念、关系、摘要。
 - `output/control/`：状态摘要、review queue、lint 报告。
 
-如果你想让 LLM 参与 enrichment，用受控 worker 入口（不再提供 `run-compile` / `run-lint` CLI）：
+定时维护（watcher / nightly）只做确定性 `compile` + `lint`；LLM 仅通过 `run-ask` 等显式入口参与。
 
 ```bash
-./scripts/aiwiki-launcher.sh advanced run-nightly --compile-limit 3 --no-semantic-lint
+./scripts/aiwiki-launcher.sh advanced nightly
+# 或带 agent-loop 维护层的完整 nightly：
+./scripts/aiwiki-launcher.sh advanced run-nightly
 ```
 
 ### 第 3 步：提问
