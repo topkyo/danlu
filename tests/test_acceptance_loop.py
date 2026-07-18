@@ -232,7 +232,7 @@ def test_w2_compounding_rank_and_suggest_acceptance(  # pragma: no cover - expli
     _run_cli(vault, ["compile"])
     out1 = _run_cli(
         vault,
-        ["run-ask", "compounding rank acceptance", "--format", "report", "--no-cache"],
+        ["run-ask", "compounding rank acceptance", "--format", "report"],
     )
     payload1 = json.loads(out1)
     _write_or_compare(stdout_dir / "01-run-ask.json", out1)

@@ -285,7 +285,7 @@
   },
   "model_final": "stub-model",
   "model_selected": "stub-model",
-  "no_cache": true,
+  "no_cache": false,
   "path": "output/reports/compounding-rank-acceptance.md",
   "primary_attempt_status": "",
   "primary_error": "",
