@@ -504,7 +504,7 @@ def auto_resolve_machine_memory_actions(
                 changed = True
                 item["result"] = result
             elif operation == "escalate" and escalate_unsupported:
-                # A prior item in the same run may have called apply-action, which
+                # A prior item in the same run may have applied machine-memory actions, which
                 # reloads and saves machine-memory action state. Reload before each
                 # escalation so a later state-only receipt cannot overwrite earlier
                 # apply results with the initial in-memory action snapshot.
@@ -926,7 +926,8 @@ def apply_machine_memory_action(
     )
     if not selected_bundle_path.is_file():
         raise FileNotFoundError(
-            f"Execution bundle not found: {relative_path(root, selected_bundle_path)}. Run compile or apply-action --dry-run first."
+            f"Execution bundle not found: {relative_path(root, selected_bundle_path)}. "
+            "Run `aiwiki advanced compile`, then retry via nightly reconcile or `advanced review-page`."
         )
     stored_bundle = load_execution_bundle(selected_bundle_path)
     if str(stored_bundle.get("action_id") or "") != resolved_action_id:
@@ -935,9 +936,8 @@ def apply_machine_memory_action(
         raise RuntimeError("Execution bundle digest is invalid; regenerate the bundle before apply.")
     if str(stored_bundle.get("digest") or "") != str(bundle.get("digest") or ""):
         raise RuntimeError(
-            "Execution bundle is stale; refresh it with "
-            f"`PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {resolved_action_id} --dry-run`, "
-            f"then rerun `PYTHONPATH=src python3 -m aiwiki.cli --root . apply-action {resolved_action_id}`."
+            "Execution bundle is stale; rerun `aiwiki advanced compile`, reconcile via nightly, "
+            f"or use `advanced review-page` before retrying machine-memory apply for action {resolved_action_id}."
         )
 
     applied_at = _app_utils.utc_now()
@@ -1063,7 +1063,7 @@ def apply_machine_memory_action(
                     _retire_concept(
                         root,
                         slug_to_retire,
-                        note=f"Auto-retired via apply-action {resolved_action_id}.",
+                        note=f"Auto-retired via machine-memory apply {resolved_action_id}.",
                     )
                     auto_retired_concept = slug_to_retire
                 except RuntimeError as exc:
@@ -1100,11 +1100,11 @@ def apply_machine_memory_action(
         rollback_failures = _rollback_snapshots(snapshots)
         if rollback_failures:
             raise MachineMemoryActionHalfWriteError(
-                "apply-action transaction failed and rollback also failed; manual repair required: "
+                "machine-memory apply transaction failed and rollback also failed; manual repair required: "
                 f"original={type(exc).__name__}: {exc}; rollback_failures={rollback_failures}"
             ) from exc
         raise MachineMemoryActionReceiptError(
-            f"apply-action transaction failed and was rolled back: {type(exc).__name__}: {exc}"
+            f"machine-memory apply transaction failed and was rolled back: {type(exc).__name__}: {exc}"
         ) from exc
 
     append_wiki_log(
@@ -1144,13 +1144,15 @@ def apply_machine_memory_action(
                 )
             except Exception as revert_exc:
                 raise RuntimeError(
-                    "apply-action verify failed and auto-revert also failed: "
+                    "machine-memory apply verify failed and auto-revert also failed: "
                     f"verify={type(verify_exc).__name__}: {verify_exc}; "
-                    f"revert={type(revert_exc).__name__}: {revert_exc}"
+                    f"revert={type(revert_exc).__name__}: {revert_exc}. "
+                    "Try `aiwiki advanced alchemy-revert` or manual repair."
                 ) from verify_exc
             raise RuntimeError(
-                "apply-action verify failed; auto-revert completed: "
-                f"{type(verify_exc).__name__}: {verify_exc}"
+                "machine-memory apply verify failed; auto-revert completed: "
+                f"{type(verify_exc).__name__}: {verify_exc}. "
+                "Inspect receipts and retry via nightly reconcile or `advanced review-page`."
             ) from verify_exc
         raise
     response: dict[str, Any] = {
@@ -1346,11 +1348,12 @@ def revert_machine_memory_action(
         rollback_failures = _rollback_snapshots(snapshots)
         if rollback_failures:
             raise MachineMemoryActionHalfWriteError(
-                "revert-action transaction failed and rollback also failed; manual repair required: "
-                f"original={type(exc).__name__}: {exc}; rollback_failures={rollback_failures}"
+                "machine-memory revert transaction failed and rollback also failed; manual repair required: "
+                f"original={type(exc).__name__}: {exc}; rollback_failures={rollback_failures}. "
+                "Try `aiwiki advanced alchemy-revert` if alchemy state is involved."
             ) from exc
         raise MachineMemoryActionReceiptError(
-            f"revert-action transaction failed and was rolled back: {type(exc).__name__}: {exc}"
+            f"machine-memory revert transaction failed and was rolled back: {type(exc).__name__}: {exc}"
         ) from exc
 
     append_wiki_log(
