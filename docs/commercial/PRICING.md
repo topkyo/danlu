@@ -40,7 +40,7 @@ related_docs:
 ### Free — 开源 AGPL-3.0
 - 费用：免费
 - License：AGPL-3.0
-- 包含：完整 runtime CLI、Product Shell 插件、五层主线、五协议、治理链、金丹机制
+- 包含：完整 runtime CLI、Product Shell 插件、五层主线、单 runtime 协议（`general`）、治理链、金丹机制
 - 支持：GitHub issues 社区支持
 - 适用：愿意开源合规、自行维护的个人开发者或研究者
 
@@ -74,7 +74,7 @@ related_docs:
 | `aiwiki` runtime CLI 全部功能 | ✓ | ✓ | ✓ | — |
 | Product Shell Obsidian 插件 | ✓ | ✓ | ✓ | — |
 | 五层主线（raw / wiki / machine memory / schema / outputs） | ✓ | ✓ | ✓ | — |
-| 五协议（general / investing / research / product / ops） | ✓ | ✓ | ✓ | — |
+| 单 runtime 协议（`general`；领域通过 schema / 概念扩展） | ✓ | ✓ | ✓ | — |
 | 治理链（review / aging / escalation / repair / nightly） | ✓ | ✓ | ✓ | — |
 | 金丹机制（alchemy / elixir / promote / revert） | ✓ | ✓ | ✓ | — |
 | 商业 license（免 copyleft） | × | ✓ | ✓ | — |

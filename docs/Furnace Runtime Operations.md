@@ -225,19 +225,7 @@ PYTHONPATH=src \
 python3 -m aiwiki.cli --root "$AIWIKI_VAULT" run-ask "..."
 ```
 
-### 5.3 临时切到 DeepSeek 跑 run-compile（推荐 + paths 显式过滤）
-
-```bash
-source ~/.aiwiki-secrets/deepseek.env
-AIWIKI_LLM_BACKEND=deepseek-api \
-AIWIKI_LLM_MODEL=deepseek-v4-pro \
-PYTHONPATH=src \
-python3 -m aiwiki.cli --root "$AIWIKI_VAULT" run-compile \
-  --paths "discovered-20260501001505-http-v20250903-1" \
-  --limit 1
-```
-
-### 5.4 systemd nightly 后端选择
+### 5.3 systemd nightly 后端选择
 
 `scripts/install_user_service.sh` 必须以 `AIWIKI_VAULT=/path/to/vault` 运行，不会默认使用项目根目录。它默认写入 `opencode-api/deepseek-v4-pro`。要切换到 DeepSeek / OpenAI / Claude，直接改 `~/.config/aiwiki/aiwiki-nightly.env` 里的 `AIWIKI_LLM_BACKEND`、`AIWIKI_LLM_MODEL` 和对应 API key 环境变量。
 
@@ -288,7 +276,7 @@ AIWIKI_MODEL_FALLBACK="deepseek-chat" \
 | watcher 不响应新投料 | `systemctl --user status aiwiki-watch.service` 看是否 active；`journalctl --user -u aiwiki-watch.service -n 50` |
 | nightly 没跑 | `systemctl --user list-timers --all` 看 trigger；`journalctl --user -u aiwiki-nightly.service --since today` |
 | dogfood maturity timer 还在跑（2026-07-15 清理前遗留） | `scripts/uninstall_user_service.sh` 会自动清理；保留 vault receipt/data |
-| run-compile 报 `Compile response is missing frontmatter` | backend 输出有装饰；用 `aiwiki llm-check --probe --format human` 确认；切到 compatible backend |
+| `run-ask` 报 frontmatter / contract 校验失败 | backend 输出有装饰；用 `aiwiki llm-check --probe --format human` 确认；切到 compatible backend |
 | LLM 调用 `unavailable / requires_credential` | 跑 `aiwiki llm-check --probe-all`，按 §4 表选 compatible backend；按 §5 切换 |
 | 多写者抢锁 | `cat .aiwiki/state/runtime.lock` 看 pid；停 watcher 或确认 Obsidian / CLI 是否同时在写 |
 | 想短期暂停所有自动化 | `systemctl --user stop aiwiki-watch.service aiwiki-nightly.timer`；或更激进：`AIWIKI_DISABLE_AUTOMATION=1` 全局 kill switch |
@@ -300,10 +288,10 @@ AIWIKI_MODEL_FALLBACK="deepseek-chat" \
 炼丹炉 §3 "deterministic baseline" 不变量保证：**watcher 即使在 LLM 完全不可用的情况下，也能维持 raw → wiki 的最低可用流水线**。这意味着：
 
 - 出门旅行没网 → watcher 仍能 deterministic compile 投料
-- LLM provider 全 down 且未实际尝试 configured `run-nightly` → nightly wrapper 可跑 deterministic `nightly` 维持维护层；如果 configured `run-nightly` 已失败，则失败显式暴露，不降级为 success proof
-- API key 过期 → run-* 命令显式失败，但 watcher 不受影响
+- LLM provider 全 down → `nightly` / `run-nightly` 仍可跑确定性 compile + lint；watcher 不受影响
+- API key 过期 → `run-ask` 等显式 LLM 命令失败，但 watcher / nightly 确定性链路不受影响
 
-默认产品路径可以理解为：**等待投料（watch）→ 炼丹（nightly / run-*）→ 产出（wiki/output/receipt）→ 回馈（review/file-back/judgment）→ 受控学习（L0-L3/Judgment，receipt-gated）**。dogfood maturity timer 只是证明这条路径成熟度的仪表，不是路径本身。
+默认产品路径可以理解为：**等待投料（watch）→ 确定性炼化（nightly）→ 显式提问（run-ask）→ 产出（wiki/output/receipt）→ 回馈（review/file-back/judgment / 金丹 alchemy）**。`compile` / `lint` 始终是 deterministic baseline，不再通过 watch / nightly / drop-auto 隐式调用 LLM `run-compile` / `run-lint`。
 
 这条性质是炼丹炉与多数 RAG-first PKM（Reor / Khoj 等）的根本差异，详见 [`docs/archive/Furnace Market Scan 2026Q2.md`](<./archive/Furnace Market Scan 2026Q2.md>)（该 doc 已 archive，需以 archive 形式查阅）。
 

@@ -43,7 +43,7 @@ related_docs:
 - `openai-api`
 - `anthropic-api`
 
-> 具体哪些内容被发送，取决于用户运行的命令（如 `run-ask`、`run-compile`）与所选上下文范围。炼丹炉不会 secretly 扩大上下文范围。
+> 具体哪些内容被发送，取决于用户运行的命令（如 `run-ask`）与所选上下文范围。炼丹炉不会 secretly 扩大上下文范围。
 
 ## 3. 凭据存放
 
@@ -59,7 +59,7 @@ related_docs:
 
 | 功能 | 网络访问目标 | 触发条件 |
 |------|--------------|----------|
-| LLM provider API | 用户配置的 provider endpoint | 运行 `run-ask`、`run-compile` 等 LLM 命令 |
+| LLM provider API | 用户配置的 provider endpoint | 运行 `run-ask` 等显式 LLM 命令 |
 | Web fetching（`drop-url`） | 用户指定的 URL | 执行 `aiwiki drop url <url>` |
 | Notification webhook | 用户配置的 webhook URL | 用户自行配置并触发 |
 | 包管理器 / git | PyPI、npm、GitHub 等 | 用户自行执行 `pip install`、`npm install`、`git clone` |

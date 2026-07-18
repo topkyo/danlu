@@ -95,7 +95,7 @@ cd /path/to/your-vault
 ./scripts/aiwiki-launcher.sh today
 ```
 
-> 规则：同一个 vault 同时只能有一个写入命令在跑（`single writer, many readers`）。不要在 Obsidian Product Shell 和终端两边同时执行 `compile`、`nightly`、`apply`、`revert`。
+> 规则：同一个 vault 同时只能有一个写入命令在跑（`single writer, many readers`）。不要在 Obsidian Product Shell 和终端两边同时执行 `compile`、`nightly`、`file-back` 等写入型命令。
 
 ## 配置 LLM 后端
 
@@ -110,7 +110,7 @@ cd /path/to/your-vault
 
 ### 产品默认 LLM 路由（product lock）
 
-炼丹炉产品面只锁定一条默认 LLM 路由：`opencode-api` + `deepseek-v4-pro`。Product Shell、CLI、`llm-check` 与 systemd/launchd 安装脚本均以此为准；**不会**在 `run-ask` / nightly 中自动 fallback 到其他 backend。
+炼丹炉产品面只锁定一条默认 LLM 路由：`opencode-api` + `deepseek-v4-pro`。Product Shell、CLI、`llm-check` 与 systemd/launchd 安装脚本均以此为准；**不会**在 `run-ask` 中自动 fallback 到其他 backend。`nightly` / watcher 默认只做确定性 `compile` + `lint`。
 
 `deepseek-api`、`openai-api`、`anthropic-api` 仍作为开发者/专家 escape hatch 保留在代码中，需显式设置 `AIWIKI_LLM_BACKEND` 切换；这不属于默认产品路径。
 

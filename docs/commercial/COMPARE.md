@@ -21,7 +21,7 @@ related_docs:
 | **Provenance 可追溯** | 每个派生结论都能回溯到 `raw/` 与 `wiki/sources/` 中的原始材料。 | 通常只有 source citation，无文件级全链路 provenance。 | 有分层意识，但治理深度不一。 |
 | **Receipt 可审计** | 所有 LLM 触发的写入都生成 execution receipt，可回滚、可审计。 | 通常只有消息日志或运行记录，无业务级 receipt。 | 少见等价物。 |
 | **金丹跨周期** | 支持 `draft → distilling → candidate → settled → superseded` 的跨周期知识资产。 | 多数产品没有显式的 cross-cycle distillation 生命周期。 | 通常停在 entity/concept 页。 |
-| **Protocol 多路** | 同一份编译 substrate 上跑 `general / investing / research / product / ops` 多协议。 | 多为通用模板或自定义 agent，非 substrate 级复用。 | 多为单 schema 文档。 |
+| **单 runtime 协议** | 一份 `general` 编译 substrate + schema 扩展；不再售卖多 protocol 切换面。 | 多为通用模板或自定义 agent，非 substrate 级复用。 | 多为单 schema 文档。 |
 | **Local-first 离线** | Deterministic baseline 不依赖 LLM 也能维护知识库；数据默认本地。 | 多数产品关闭模型后功能大幅受限或为 chat-first。 | 视实现而定。 |
 
 > 对 2026「LLM Wiki」浪潮：炼丹炉对齐同一模式原点，差异在 **可验证 runtime + 治理**，而不是插件安装速度或 skill 体积。

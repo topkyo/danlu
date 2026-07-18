@@ -22,7 +22,7 @@ related_docs:
 - **Runtime CLI**：`aiwiki` 全部命令，包括 `drop`、`today`、`advanced` 及其下全部 operator 命令（含 `metrics` / `compile` / `review-page` 等）。
 - **Product Shell 插件**：Obsidian 插件源码与 release bundle，见 `.obsidian/plugins/furnace-product-shell/`。
 - **五层主线**：`raw / wiki / machine memory / schema / outputs` 完整编译与治理链路。
-- **五协议 runtime**：`general / investing / research / product / ops`。
+- **单 runtime 协议**：`general` only；旧 vault 非 `general` state 一次性迁移，不再提供多 protocol 切换 CLI。
 - **治理链**：`review / aging / escalation / repair / nightly / apply / revert / audit`。
 - **金丹机制**：`alchemy-start / alchemy-distill / alchemy-finalize / alchemy-promote` 及 elixir 生命周期管理。
 - **Deterministic baseline**：不依赖 LLM 也能运行的 `compile`、`lint`、本地统计等路径。

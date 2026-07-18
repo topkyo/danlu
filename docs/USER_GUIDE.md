@@ -145,7 +145,7 @@ file-back 会把结论整理成 judgment、decision 或 derived page，并保留
 
 ### 1. 未配置 LLM
 
-表现：`run-ask`、`run-nightly` 提示没有可用的 LLM backend。
+表现：`run-ask` 提示没有可用的 LLM backend。
 
 处理：配置 key，然后跑 `./scripts/aiwiki-launcher.sh advanced llm-check --probe`。不影响确定性链路（投料、compile、today、lint）。
 

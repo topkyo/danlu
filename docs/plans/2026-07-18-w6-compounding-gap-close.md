@@ -14,7 +14,7 @@
 ## Files touched (expected)
 
 | Area | Paths |
-|------|--------|
+|------|-------|
 | Cache | `src/aiwiki/app_cache.py`, callers of sync/load hash |
 | LLM doors | `src/aiwiki/runner/workflows.py`, `runner/automation.py`, `cli/dispatch.py`, `cli/parsers.py` |
 | Shell | `.obsidian/plugins/furnace-product-shell/src/**`, rebuild `main.js` |
@@ -29,11 +29,11 @@
 
 **Files:** `src/aiwiki/app_cache.py` (+ any load/rebuild helpers that rebuild memory from snapshot)
 
-- [ ] Include `elixir_nodes` and `elixir_derived_from` (or equivalent edges) in `sync_query_cache` / `load_query_cache_snapshot`
-- [ ] Include elixir assets in `query_cache_memory_hash` so elixir-only updates invalidate cache
-- [ ] After load, `ranked_elixir_ids` must work without `--no-cache` when memory has settled elixirs
-- [ ] Extend W2 acceptance (or add assertion path) that default ask path (no `--no-cache`) still ranks elixir + writes `used_refs` elixir path
-- [ ] **Verify:** `bash scripts/verify.sh python-static acceptance`
+- [x] Include `elixir_nodes` and `elixir_derived_from` (or equivalent edges) in `sync_query_cache` / `load_query_cache_snapshot`
+- [x] Include elixir assets in `query_cache_memory_hash` so elixir-only updates invalidate cache
+- [x] After load, `ranked_elixir_ids` must work without `--no-cache` when memory has settled elixirs
+- [x] Extend W2 acceptance (or add assertion path) that default ask path (no `--no-cache`) still ranks elixir + writes `used_refs` elixir path
+- [x] **Verify:** `bash scripts/verify.sh python-static acceptance`
 
 **Commit:** `fix(cache): persist elixir nodes in query cache`
 
@@ -45,11 +45,11 @@
 
 **Files:** `runner/workflows.py` (`run_nightly`), `runner/automation.py`, `cli/parsers.py`, `cli/dispatch.py` / `dispatch_helpers.py`
 
-- [ ] `run-nightly` / `nightly`: deterministic compile+lint only; no `run_compile()` / `run_lint()` LLM calls; remove or no-op `--no-semantic-lint` semantic path (default off permanently)
-- [ ] `watch --with-llm` and `drop … --auto --with-llm`: either remove flags or make them hard-fail / warn+ignore with deterministic-only behavior (prefer remove flags + zero alias)
-- [ ] Keep deterministic `compile` / `lint` CLI; keep internal `run_compile`/`run_lint` modules only if still needed by acceptance helpers — do not expose via automation defaults
-- [ ] Fix Active docs that still teach `run-compile` / LLM nightly as product path
-- [ ] **Verify:** `bash scripts/verify.sh python-static cli-smoke`
+- [x] `run-nightly` / `nightly`: deterministic compile+lint only; no `run_compile()` / `run_lint()` LLM calls; remove or no-op `--no-semantic-lint` semantic path (default off permanently)
+- [x] `watch --with-llm` and `drop … --auto --with-llm`: either remove flags or make them hard-fail / warn+ignore with deterministic-only behavior (prefer remove flags + zero alias)
+- [x] Keep deterministic `compile` / `lint` CLI; keep internal `run_compile`/`run_lint` modules only if still needed by acceptance helpers — do not expose via automation defaults
+- [x] Fix Active docs that still teach `run-compile` / LLM nightly as product path
+- [x] **Verify:** `bash scripts/verify.sh python-static cli-smoke`
 
 **Commit:** `feat(cut): lock LLM compile/lint out of watch and nightly`
 
@@ -61,10 +61,10 @@
 
 **Files:** Product Shell `modal_specs.js`, `plugin.js`, `plugin_lifecycle.js`, `control_items.js`, `today_feed.js`, `render_today.js`, `render/cards.js`; `src/aiwiki/today_feed.py`; rebuild `main.js`
 
-- [ ] Remove or Notice-stub Shell actions that call deleted CLIs: `apply-archive`, `review-rewrite`/`apply-rewrite`, `sync-evidence-graph`, and any remaining rewrite/archive/promote candidate hooks
-- [ ] Remove `review-page --batch/--next` product UX from Today primary path (A21); keep single-page `review-page` for thin confirm/discard if needed
-- [ ] Narrow Today primary buckets to: today's reports + `compound_suggest` (+ minimal escalated only if already required by acceptance — prefer drop governance backlog from primary)
-- [ ] **Verify:** `bash scripts/verify.sh product-shell-static python-static`
+- [x] Remove or Notice-stub Shell actions that call deleted CLIs: `apply-archive`, `review-rewrite`/`apply-rewrite`, `sync-evidence-graph`, and any remaining rewrite/archive/promote candidate hooks
+- [x] Remove `review-page --batch/--next` product UX from Today primary path (A21); keep single-page `review-page` for thin confirm/discard if needed
+- [x] Narrow Today primary buckets to: today's reports + `compound_suggest` (+ minimal escalated only if already required by acceptance — prefer drop governance backlog from primary)
+- [x] **Verify:** `bash scripts/verify.sh product-shell-static python-static`
 
 **Commit:** `fix(shell): drop dead CLI hooks; Today reports+suggest first`
 
@@ -76,10 +76,10 @@
 
 **Files:** `docs/USER_GUIDE.md`, `docs/INSTALL.md`, `docs/Furnace Runtime Operations.md`, `docs/README.md`, `README.md` (P9 five-protocol residue if still present), `PROGRESS.md`, this plan checkboxes
 
-- [ ] Sweep C53 / P9 doc residue selling deleted or multi-protocol surfaces
-- [ ] Note W6 gap-close in `PROGRESS.md`
-- [ ] `bash scripts/verify.sh all` PASS
-- [ ] **Verify:** all green
+- [x] Sweep C53 / P9 doc residue selling deleted or multi-protocol surfaces
+- [x] Note W6 gap-close in `PROGRESS.md`
+- [x] `bash scripts/verify.sh all` PASS
+- [x] **Verify:** all green
 
 **Commit:** `docs+test: W6 compounding gap close`
 
