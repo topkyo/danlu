@@ -936,7 +936,7 @@ def _mark_run_ask_artifact_degraded(
     ]
     if references:
         lines.extend(["", "## 可用上下文", references])
-    target.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    atomic_write_text(target, "\n".join(lines).rstrip() + "\n")
 
 def _mark_run_ask_background_artifact_submitted(target: Path, *, job_id: str, status: str = "submitted") -> None:
     current = target.read_text(encoding="utf-8", errors="replace") if target.exists() else ""

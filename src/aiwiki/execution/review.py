@@ -120,8 +120,10 @@ def review_page(
 
     ensure_layout(root)
     candidate = Path(page)
-    target = candidate if candidate.is_absolute() else (root / candidate)
-    target = target.resolve()
+    target = _app_utils.safe_resolve_within(
+        candidate if candidate.is_absolute() else (root / candidate),
+        root,
+    )
     if not target.is_file():
         raise FileNotFoundError(f"Review target not found: {page}")
     content = target.read_text(encoding="utf-8", errors="replace")
@@ -250,7 +252,10 @@ def review_page(
     }
     receipt: dict[str, Any] | None = None
     try:
-        target.write_text(f"{render_frontmatter(frontmatter)}\n\n{updated_body.strip()}\n", encoding="utf-8")
+        _app_utils.atomic_write_text(
+            target,
+            f"{render_frontmatter(frontmatter)}\n\n{updated_body.strip()}\n",
+        )
         _entry_by_id, path_to_entry_id = entry_lookup_maps(load_manifest(root).get("entries", []))
         source_ids = entry_ids_from_paths(path_to_entry_id, citations)
         append_runtime_history(
