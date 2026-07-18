@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from aiwiki.app_protocol import ensure_layout
+from aiwiki.app_queries import build_ask_used_refs
 from aiwiki.app_state import load_machine_memory, load_manifest
 from aiwiki.app_state import run_notes_path as run_notes_file_path
 from aiwiki.app_utils import (
@@ -193,6 +194,7 @@ def _restore_run_ask_provenance_frontmatter(
     *,
     material_refs: list[str] | None = None,
     used_context_refs: list[str] | None = None,
+    used_refs: list[str] | None = None,
 ) -> None:
     """Restore runtime-owned provenance fields after LLM overwrites an artifact.
 
@@ -214,6 +216,7 @@ def _restore_run_ask_provenance_frontmatter(
     for key, refs in (
         ("material_refs", material_refs or []),
         ("used_context_refs", used_context_refs or []),
+        ("used_refs", used_refs or []),
     ):
         merged = []
         for item in refs:
@@ -231,7 +234,7 @@ def _restore_run_ask_provenance_frontmatter(
             if lines[idx].strip() == "---":
                 close_idx = idx
                 break
-    keys = {"derived_from", "source_files", "material_refs", "used_context_refs"}
+    keys = {"derived_from", "source_files", "material_refs", "used_context_refs", "used_refs"}
     restored_lines = _runtime_provenance_field_lines(restored)
     if not has_frontmatter or close_idx is None:
         if not restored_lines:
@@ -311,6 +314,36 @@ def _append_visible_quoted_report_refs(markdown: str, refs: list[str]) -> str:
     section = ["", "## 引用报告", *[f"- {ref}" for ref in quoted_refs]]
     return "\n".join(kept).rstrip() + "\n" + "\n".join(section).rstrip() + "\n"
 
+def _load_compound_context_pages(
+    root: Path,
+    machine_query: dict[str, Any],
+) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    subgraph = machine_query.get("query_subgraph", {}) or {}
+    judgment_pages: list[tuple[str, str]] = []
+    for node in subgraph.get("judgments", []) or []:
+        if not isinstance(node, dict):
+            continue
+        page_id = str(node.get("page_id") or "").strip()
+        path = str(node.get("path") or "").strip()
+        if not page_id or not path:
+            continue
+        page = root / path
+        if page.exists():
+            judgment_pages.append((page_id, page.read_text(encoding="utf-8", errors="replace")))
+    elixir_pages: list[tuple[str, str]] = []
+    for node in subgraph.get("elixirs", []) or []:
+        if not isinstance(node, dict):
+            continue
+        elixir_id = str(node.get("elixir_id") or "").strip()
+        path = str(node.get("path") or "").strip()
+        if not elixir_id or not path:
+            continue
+        page = root / path
+        if page.exists():
+            elixir_pages.append((elixir_id, page.read_text(encoding="utf-8", errors="replace")))
+    return judgment_pages, elixir_pages
+
+
 def _run_ask_prepared_context(root: Path, question: str, artifact: dict[str, Any]) -> dict[str, Any]:
     manifest = load_manifest(root)
     entry_map = {entry["id"]: entry for entry in manifest["entries"]}
@@ -338,6 +371,8 @@ def _run_ask_prepared_context(root: Path, question: str, artifact: dict[str, Any
         page = root / relative
         if page.exists():
             index_pages.append((relative, page.read_text(encoding="utf-8", errors="replace")))
+    machine_query = artifact.get("machine_memory_query", {}) or {}
+    judgment_pages, elixir_pages = _load_compound_context_pages(root, machine_query)
     target = root / artifact["path"]
     current_artifact = _strip_run_notes_prompt_fields(target.read_text(encoding="utf-8", errors="replace"))
     return {
@@ -346,6 +381,8 @@ def _run_ask_prepared_context(root: Path, question: str, artifact: dict[str, Any
         "concept_pages": concept_pages,
         "protocol_pages": protocol_pages,
         "index_pages": index_pages,
+        "judgment_pages": judgment_pages,
+        "elixir_pages": elixir_pages,
         "target": target,
         "current_artifact": current_artifact,
         "question": question,
@@ -424,6 +461,27 @@ def _complete_run_ask_artifact(
         provenance_event_fields["material_refs"] = material_refs
     if material_context_refs:
         provenance_event_fields["used_context_refs"] = material_context_refs
+    compound_paths = [
+        f"wiki/judgments/{page_id}.md"
+        for page_id, _content in prepared.get("judgment_pages", [])
+    ] + [
+        f"wiki/elixirs/{elixir_id}.md"
+        for elixir_id, _content in prepared.get("elixir_pages", [])
+    ]
+    if not compound_paths:
+        compound_paths = [
+            str(ref).strip()
+            for ref in artifact.get("used_refs", []) or []
+            if str(ref).startswith(("wiki/judgments/", "wiki/elixirs/"))
+        ]
+    used_refs = build_ask_used_refs(
+        ranked_sources=[{"id": source_id} for source_id in source_ids],
+        ranked_concepts=[{"slug": slug} for slug in artifact.get("ranked_concepts", [])],
+        compound_paths=compound_paths,
+        material_paths=material_context_refs,
+    )
+    if used_refs:
+        provenance_event_fields["used_refs"] = used_refs
     prompt = _build_ask_prompt(
         root,
         target,
@@ -438,6 +496,8 @@ def _complete_run_ask_artifact(
         previous_output_summary=previous_output_summary,
         material_context=material_context,
         prompt_profile=prompt_profile,
+        judgment_pages=prepared.get("judgment_pages", []),
+        elixir_pages=prepared.get("elixir_pages", []),
     )
     retry_profile = ""
     fallback_stages: list[str] = []
@@ -475,6 +535,8 @@ def _complete_run_ask_artifact(
                         previous_output_summary=previous_output_summary,
                         material_context=material_context,
                         prompt_profile=retry_profile,
+                        judgment_pages=prepared.get("judgment_pages", []),
+                        elixir_pages=prepared.get("elixir_pages", []),
                     )
                     prompt_profile = retry_profile
                     used_prompt_profile = retry_profile
@@ -545,6 +607,7 @@ def _complete_run_ask_artifact(
             current_artifact,
             material_refs=material_refs,
             used_context_refs=material_context_refs,
+            used_refs=used_refs,
         )
         _apply_graph_anchors_to_target()
         run_notes = write_run_notes(
@@ -600,6 +663,7 @@ def _complete_run_ask_artifact(
             current_artifact,
             material_refs=material_refs,
             used_context_refs=material_context_refs,
+            used_refs=used_refs,
         )
         reinject_candidate_frontmatter(target, corpus_id=str(artifact.get("active_corpus_id") or ""))
         _apply_graph_anchors_to_target()

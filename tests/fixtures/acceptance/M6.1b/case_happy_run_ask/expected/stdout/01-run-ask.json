@@ -41,6 +41,8 @@
     "archive_recall_hints": [],
     "bridge_concept_slugs": [],
     "direct_concept_slugs": [],
+    "direct_elixir_ids": [],
+    "direct_judgment_ids": [],
     "direct_source_ids": [
       "source-a"
     ],
@@ -80,6 +82,8 @@
     "query_subgraph": {
       "concepts": [],
       "edges": [],
+      "elixirs": [],
+      "judgments": [],
       "sources": [
         {
           "id": "source-a",
@@ -89,6 +93,8 @@
       ]
     },
     "ranked_concept_slugs": [],
+    "ranked_elixir_ids": [],
+    "ranked_judgment_ids": [],
     "ranked_source_ids": [
       "source-a"
     ],
@@ -157,6 +163,8 @@
       "protocol": "general",
       "query_signature": "sha256:b78c37f7f322b689dfc4c93133c504b1dacd6ca78996165d6bcf5c4195af5430",
       "ranked_concept_slugs": [],
+      "ranked_elixir_ids": [],
+      "ranked_judgment_ids": [],
       "ranked_source_ids": [
         "source-a"
       ],
@@ -212,5 +220,8 @@
   "retry_prompt_profile": "",
   "run_id": "ask-output-reports-deterministic-source-a",
   "run_notes_path": "",
-  "timeout_seconds": 120
+  "timeout_seconds": 120,
+  "used_refs": [
+    "wiki/sources/source-a.md"
+  ]
 }
