@@ -9,8 +9,27 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
 
 ## [Unreleased]
 
+### Added
+- `tests/test_llm_integration.py`：LLM 执行层集成测试 38 条，覆盖 `LLMConfig.from_env()` 解析 / backend resolution / retry / timeout 错误分类 / `ModelFallbackClient` 模型链回退 / `_mark_run_ask_artifact_degraded` 失败说明 / `_complete_run_ask_artifact` 端到端状态机。全部用 monkeypatch + stdlib，无真实网络调用。
+- `.pre-commit-config.yaml`：pre-commit hook（ruff check + ruff-format check + check-merge-conflict / check-yaml / check-added-large-files 500KB），轻量 gate；完整验证仍靠 `bash scripts/verify.sh`。
+- `src/aiwiki/utils/` 子包：`io` / `security` / `markdown` / `text` / `hash` / `time` / `path` / `json_utils` / `audit`（原 `app_utils.py` 下沉）。
+- `src/aiwiki/state/` + owner 子包：`io` / `constants` / `manifest` / `cache` / `compile/state` / `compile/build` / `content/material` / `content/archive` / `content/rewrite` / `execution/history` / `memory/action_state` / `memory/state` / `planner/state`（原 `app_state.py` 下沉）。
+- `src/aiwiki/memory/action_core.py`、`src/aiwiki/execution/policy.py`、`src/aiwiki/execution/patch_plan.py`、`src/aiwiki/execution/repair_plan.py`（原 `content/memory.py` 按域拆分）。
+- `src/aiwiki/compile/ranking.py`：10 个 ranking 函数从 `app_compile.py` 迁入。
+
+### Changed
+- Hub decomposition（用户显式覆盖原 AGENTS.md 「legacy hub 另一条搬迁线」定案）：`app_utils.py` / `app_state.py` 删除，函数体原样下沉到 `utils/` + `state/` + owner 子包；`content/memory.py` 1350 行拆到 4 个 owner 模块，缩为仅含 2 个 A 域辅助函数；`app_compile.py` 587→18 行（ranking 迁到 `compile/ranking`）。约 165 文件 import 更新，测试 patch target 同步迁移。无 re-export compat 保留。
+- `compile/__init__.py` 改惰性 `__getattr__` 暴露 `compile_wiki`，解决 hub 下沉后的循环 import。
+- `AGENTS.md` L115 CLI 入口描述修复：`drop/today/metrics/advanced` → `drop/today/advanced`（`metrics` 经 argv rewrite 作为 `advanced` 子命令）。
+- `src/aiwiki/trace.py` docstring 资产种类数 `6 类` → `9 类`。
+- `execution/{archive,lifecycle,ask,runtime_surfaces,concept_rewrite}.py` stale docstring 修复：删除对已移除 `_LAZY_OWNERS` / `app_compile.utc_now` 的引用。
+
 ### Removed
-- `output/agents/`、`output/packs/`、`output/pilots/`：迁到 `.aiwiki/derived/`（operator 包装物，非用户交付）。
+- `src/aiwiki/app_utils.py`：已下沉到 `utils/` 子包（1200 行/52 符号/89 文件引用）。
+- `src/aiwiki/app_state.py`：已下沉到 `state/` + owner 子包（1200 行/70 函数/60 文件引用）。
+- `src/aiwiki/dogfood_maturity.py`：死代码（全仓库零 import 引用，40 行）。
+
+### Removed
 - Per-action `output/control/execution-receipts/*.json`：迁到 `.aiwiki/state/execution-receipts/`（Obsidian 不可见）；历史流仍为 `execution-receipts.jsonl`。
 - `output/lint/` lint 报告：迁到 `.aiwiki/lint/`（Obsidian 不可见）；`semantic-lint-*.md` 与 `lint-*.md` 仍共用保留最近 10 份轮转。
 - `output/control/execution-bundles/` 执行包与 dry-run preview：迁到 `.aiwiki/state/execution-bundles/`；dry-run 保留最近 20 份。

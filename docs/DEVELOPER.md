@@ -17,13 +17,13 @@ related_docs:
 
 当前 `aiwiki` runtime owner map 按代码现实分为 **core hubs / owner packages / residual hotspots**。纯 re-export facade（`app.py` / `app_content` / `app_render` / `app_surfaces` / `app_memory_surfaces`）已按 `AGENTS.md` 定案删除；请直引 owner 模块。
 
-- `src/aiwiki/app_utils.py`：runtime write lock、hash、frontmatter、markdown / JSON helpers、`safe_fetch` 等底层 primitives。
-- `src/aiwiki/app_state.py`：**legacy central hub**，path / state / json-document primitives 的单点入口；改动半径大，需额外谨慎。
-- `src/aiwiki/app_protocol.py`：**legacy central hub**，layout、schema scaffolding、protocol runtime、review windows 和默认 runtime 规则。
+- `src/aiwiki/utils/`：底层 primitives 子包（`io` / `security` / `markdown` / `text` / `hash` / `time` / `path` / `json_utils` / `audit`）；原子写、runtime write lock、`safe_fetch` / `safe_resolve_within`、frontmatter、slugify / tokenize、sha256、`utc_now`、`relative_path` 等。原 `app_utils.py` 已删除。
+- `src/aiwiki/state/` + owner 子包：持久化状态 I/O（`io` / `constants` / `manifest` / `cache`）+ 按域分布的 build/material/archive/rewrite/history/action_state 等。原 `app_state.py` 已删除；路径常量仍在 `app_state_paths.py`。
+- `src/aiwiki/app_protocol.py`：**residual hub**，layout、schema scaffolding、protocol runtime、review windows 和默认 runtime 规则。
 - `src/aiwiki/cli/`：CLI parser / dispatch / product-first command surface；普通入口固定为 `drop` / `today` / `advanced`；operator 命令（含 `metrics`）只注册在 `advanced` 下，旧顶层名靠 argv rewrite compat。
 - `src/aiwiki/drop.py`：`drop-url` / `drop-pdf` / `drop-image` / `drop-repo` / `drop-note` 的 raw materialization owner；用户入口推荐 `drop markdown`。
-- `src/aiwiki/compile/`：compile pipeline phase owner（content/runtime/output/persist）；`app_compile.py` 仍是 legacy orchestration hotspot，新逻辑优先下沉到 `compile/*` 或明确 owner module。
-- `src/aiwiki/content/`：source / concept / derived / memory output 的主要 owner。
+- `src/aiwiki/compile/`：compile pipeline phase owner（content/runtime/output/persist）+ `ranking.py`（ranking 全家桶）；`app_compile.py` 已缩至 18 行薄壳（仅 `CompileContext` / `start_compile_context` 别名）。
+- `src/aiwiki/content/`：source / concept / derived / material / archive / rewrite owner；原 `content/memory.py` 已拆分到 `memory/action_core` + `execution/policy` + `execution/patch_plan` + `execution/repair_plan`，仅保留 2 个 A 域辅助函数。
 - `src/aiwiki/app_lifecycle.py`：judgment / decision lifecycle、aging、review queue、knowledge lifecycle governance 的 residual owner。
 - `src/aiwiki/render/`：index / dashboard / output pack / domain pilot / judgment asset render owner。
 - `src/aiwiki/memory/`：machine memory graph、execution surfaces、trace/recall/batch 相关 owner；legacy `app_memory.py` 已删除（Round 8），query helpers 在 `app_memory_query.py`。
@@ -38,7 +38,7 @@ related_docs:
 - `src/aiwiki/app_vault.py`：new-vault scaffold 与 Obsidian bootstrap owner。
 - `src/aiwiki/app_types.py`：稳定 TypedDict contracts（如 `ManifestEntry` / `CompileState` / `ShellSummary`）。
 
-后续新增逻辑优先进入明确 owner package；`app_state.py`、`app_protocol.py`、`app_compile.py`、`runner/alchemy.py` 与 Product Shell `plugin.js` 继续按 seam map 小步削薄，不做 broad rewrite。`app_memory.py`（Round 8 已删）+ `app_content.py` / `app_render.py` / `app_surfaces.py` / `app_memory_surfaces.py`（prior rounds）从 "削薄 hotspot" 列表毕业，不再 active 维护。禁止再引入纯 re-export facade。
+后续新增逻辑优先进入明确 owner package；`app_protocol.py`、`app_lifecycle.py`、`app_routing.py`、`runner/alchemy.py` 与 Product Shell `plugin.js` 继续按 seam map 小步削薄，不做 broad rewrite。`app_utils.py` / `app_state.py`（2026-07-18 commit `145276a` 已删并下沉到 `utils/` + `state/` + owner 子包）+ `app_memory.py`（Round 8 已删）+ `app_content.py` / `app_render.py` / `app_surfaces.py` / `app_memory_surfaces.py`（prior rounds）从 "削薄 hotspot" 列表毕业，不再 active 维护。禁止再引入纯 re-export facade。
 
 ### CLI command taxonomy
 
@@ -194,13 +194,17 @@ runner/alchemy.py          lane / primitive 编排，含 scope-honesty receipt�
 cli/                       product-first command surface + legacy compat dispatch
 drop.py                    raw materialization owner（url / pdf / image / repo / markdown）
 
-compile/                   compile pipeline phases（content / runtime / output / persist）
-app_compile.py             legacy orchestration / compat hotspot；新逻辑优先下沉
+compile/                   compile pipeline phases（content / runtime / output / persist）+ ranking
+app_compile.py             18 行薄壳（CompileContext / start_compile_context 别名）
 app_compile_ops.py         protocol state / recurring promotion / agent-pack helpers
 app_queries.py             ranking / report query helpers (Ask freeform md only)
 app_linting/               lint phases / repair backlog / nightly health helpers
 
-content/                   source / concept / derived / memory output 物化 owner
+content/                   source / concept / derived / material / archive / rewrite owner
+content/memory.py          仅 2 个 A 域辅助函数（M/P/T/R 已拆到 memory/action_core + execution/*）
+
+utils/                     底层 primitives（io / security / markdown / text / hash / time / path / json_utils / audit）
+state/                     持久化状态 I/O（io / constants / manifest / cache）
 app_lifecycle.py           judgments / decisions / aging / review queue governance
 
 render/                    views / packs / pilots / judgment asset render owner
