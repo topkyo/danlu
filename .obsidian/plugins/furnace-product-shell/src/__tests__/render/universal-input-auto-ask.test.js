@@ -36,8 +36,7 @@ test("built main keeps drop+question auto run-ask markers", () => {
   expect(bundleSrc).toMatch(/function splitTextMaterialQuestion\(/);
   expect(bundleSrc).toMatch(/collectMaterialPathsFromPayload\(payload\)/);
   expect(bundleSrc).toMatch(/buildAutoAskQuestion\(normalizedQuestion, normalizedMaterialPaths\)/);
-  expect(bundleSrc).toMatch(/const canUseDirect = false/);
-  expect(bundleSrc).toMatch(/!directQuestion\.includes\("材料路径供系统路由使用："\)/);
+  expect(bundleSrc).not.toMatch(/--direct/);
   expect(bundleSrc).toMatch(/--lean/);
   expect(bundleSrc).not.toMatch(/args\.push\("--timeout", "45"\)/);
   expect(bundleSrc).not.toMatch(/--fallback-to-ask/);

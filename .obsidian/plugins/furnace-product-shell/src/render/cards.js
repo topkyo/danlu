@@ -29,7 +29,7 @@ function renderReportCard(plugin, cardEl, entry) {
     text: plugin.t("Open report"),
   });
   openBtn.addEventListener("click", () => {
-    plugin.goToReport(entry.target);
+    plugin.openWorkspacePath(entry.target);
   });
 
   // 仅 advanced mode 显示 View graph 按钮 (EP-004 SC#2)
@@ -52,14 +52,14 @@ function renderConfirmationCard(plugin, cardEl, entry) {
       text: plugin.t("Review"),
     });
     reviewBtn.addEventListener("click", () => {
-      plugin.viewReviewTodayEntry(entry);
+      plugin.openReviewCenterView();
     });
 
     const snoozeBtn = actions.createEl("button", {
       text: plugin.t("Snooze"),
     });
     snoozeBtn.addEventListener("click", () => {
-      plugin.snoozeTodayEntry(entry.target);
+      plugin.runTodaySnoozeCommand(entry.target);
     });
   }
 }
