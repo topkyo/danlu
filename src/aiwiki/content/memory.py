@@ -921,12 +921,19 @@ def build_machine_memory_repair_plan(
             item["label"],
         ),
     )
-    execution_proposals = repair_execution_proposals(
-        root,
-        ready_actions + triage_actions + deferred_actions,
-        active_protocol=active_protocol,
-    )
-    planner_state = build_planner_state(root, execution_proposals, active_protocol=active_protocol)
+    execution_proposals: list[dict[str, Any]] = []
+    previous_planner = load_planner_state(root)
+    planner_state = {
+        **previous_planner,
+        "pending_proposals": [],
+        "priority_queue": [],
+        "counts": {
+            **(previous_planner.get("counts") if isinstance(previous_planner.get("counts"), dict) else {}),
+            "pending_proposals": 0,
+            "blocked": 0,
+            "unblocked": 0,
+        },
+    }
 
     return {
         "ready_actions": ready_actions,

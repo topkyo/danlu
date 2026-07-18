@@ -6,7 +6,6 @@ Submodules:
 - receipts: LLM audit, receipt, and run-log helpers
 - prompts: prompt profiles, builders, context, and validators
 - workflows: run_compile / run_ask / run_lint / run_nightly
-- commands: thin command façades for L3, audit, planner, protocol, and signals
 - alchemy: alchemy lifecycle, scoped primitives, lane, and auto orchestration
 - automation: auto_process_once / watch_inbox / inbox_snapshot
 """
@@ -57,15 +56,6 @@ from aiwiki.runner.clients import (  # noqa: F401
     create_client,
     llm_probe,
     llm_status,
-)
-from aiwiki.runner.commands import (  # noqa: F401
-    run_audit_backfill,
-    run_audit_preview,
-    run_planner_log_list,
-    run_planner_log_rollback,
-    run_planner_log_rollback_preview,
-    run_signals_list,
-    run_signals_show,
 )
 from aiwiki.runner.interfaces import SupportsComplete  # noqa: F401
 from aiwiki.runner.prompts import (  # noqa: F401

@@ -1,4 +1,4 @@
-"""Universal audit stream preview, backfill, and append helpers."""
+"""Universal audit stream append helpers."""
 
 from __future__ import annotations
 
@@ -8,8 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ..app_state import execution_receipt_history_path, llm_receipt_log_path, runtime_history_path
-from ..app_utils import atomic_append_jsonl, runtime_write_lock, sha256_bytes
+from ..app_utils import atomic_append_jsonl, sha256_bytes
 
 PROTOCOL_LEARNINGS_AGE_AUDIT_PATH = ".aiwiki/state/protocol_learnings_age.json"
 
@@ -111,100 +110,12 @@ def append_audit(
     return AuditAppendResult(written=True, reason="appended", record=record)
 
 
-def preview_universal_audit_stream(root: Path, *, limit: int = 50) -> dict[str, Any]:
-    if limit < 1:
-        raise ValueError("limit must be a positive integer.")
-
-    records: list[dict[str, Any]] = []
-    source_counts = {
-        "execution_receipts": 0,
-        "llm_receipts": 0,
-        "runtime_history": 0,
-        "protocol_learnings_age": 0,
-    }
-
-    for source_stream, path in (
-        ("execution_receipts", execution_receipt_history_path(root)),
-        ("llm_receipts", llm_receipt_log_path(root)),
-        ("runtime_history", runtime_history_path(root)),
-    ):
-        rel_path = _known_relative_path(root, path)
-        for line_number, document in _iter_jsonl_documents(path):
-            source_counts[source_stream] += 1
-            if len(records) < limit:
-                records.append(_audit_record(source_stream, f"{rel_path}#L{line_number}", document))
-
-    age_audit_path = root / PROTOCOL_LEARNINGS_AGE_AUDIT_PATH
-    if age_audit_path.exists():
-        document = _load_json_document(age_audit_path)
-        if document:
-            source_counts["protocol_learnings_age"] += 1
-            if len(records) < limit:
-                records.append(_audit_record("protocol_learnings_age", protocol_learnings_age_source_ref(document), document))
-
-    scanned_count = sum(source_counts.values())
-    return {
-        "status": "ok",
-        "mode": "dry_run",
-        "side_effects_allowed": False,
-        "audit_stream_path": AUDIT_STREAM_PATH,
-        "audit_stream_exists": (root / AUDIT_STREAM_PATH).exists(),
-        "scanned_count": scanned_count,
-        "returned_count": len(records),
-        "limit": limit,
-        "source_counts": source_counts,
-        "records": records,
-    }
-
-
-def backfill_universal_audit_stream(root: Path, *, limit: int = 50, apply: bool = False) -> dict[str, Any]:
-    preview = preview_universal_audit_stream(root, limit=limit)
-    audit_path = root / AUDIT_STREAM_PATH
-    existing_ids = _existing_audit_event_ids(audit_path)
-    appendable = [
-        record
-        for record in preview["records"]
-        if isinstance(record, dict) and str(record.get("audit_event_id") or "") not in existing_ids
-    ]
-    result = {
-        **preview,
-        "apply": apply,
-        "appended_count": 0,
-        "skipped_existing_count": len(preview["records"]) - len(appendable),
-    }
-    if not apply:
-        return result
-
-    with runtime_write_lock(root):
-        for record in appendable:
-            append_result = append_audit(
-                str(record["source_stream"]),
-                record,
-                event_id=str(record["audit_event_id"]),
-                root=root,
-            )
-            if append_result.written:
-                result["appended_count"] += 1
-            elif append_result.reason == "duplicate":
-                result["skipped_existing_count"] += 1
-        if appendable:
-            result["audit_stream_exists"] = True
-    return result
-
-
 def append_universal_audit_record(root: Path, *, source_stream: str, source_ref: str, document: dict[str, Any]) -> dict[str, Any]:
     record = _audit_record(source_stream, source_ref, document)
     result = append_audit(source_stream, record, event_id=str(record["audit_event_id"]), root=root)
     if not result.written:
         return {"status": "skipped_existing", "record": record, "audit_stream_path": AUDIT_STREAM_PATH}
     return {"status": "appended", "record": record, "audit_stream_path": AUDIT_STREAM_PATH}
-
-
-def protocol_learnings_age_source_ref(document: dict[str, Any]) -> str:
-    run_at = document.get("run_at")
-    if isinstance(run_at, str) and run_at.strip():
-        return f"{PROTOCOL_LEARNINGS_AGE_AUDIT_PATH}#run_at={run_at.strip()}"
-    return PROTOCOL_LEARNINGS_AGE_AUDIT_PATH
 
 
 def _existing_audit_event_ids(path: Path, *, strict: bool = False) -> set[str]:
@@ -239,14 +150,6 @@ def _iter_jsonl_documents(path: Path, *, strict: bool = False) -> list[tuple[int
             if isinstance(document, dict):
                 rows.append((line_number, document))
     return rows
-
-
-def _load_json_document(path: Path) -> dict[str, Any]:
-    try:
-        document = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    return document if isinstance(document, dict) else {}
 
 
 def _audit_record(source_stream: str, source_ref: str, document: dict[str, Any]) -> dict[str, Any]:
@@ -352,9 +255,3 @@ def _first_string(document: dict[str, Any], keys: tuple[str, ...]) -> str:
             return value.strip()
     return ""
 
-
-def _known_relative_path(root: Path, path: Path) -> str:
-    try:
-        return str(path.relative_to(root))
-    except ValueError:
-        return str(path)

@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 
 from ..app_compile_ops import build_agent_packs
-from ..app_execution import build_execution_bundle
 from ..app_shell import build_shell_summary, write_shell_summary
 from ..app_state import (
     agent_workbench_path,
@@ -21,19 +19,11 @@ from ..app_state import (
     furnace_center_html_path,
     graph_health_report_path,
     machine_memory_drift_report_path,
-    output_pack_build_state_path,
-    output_packs_index_path,
     review_center_html_path,
 )
-from ..app_utils import write_json_document_if_changed_ignoring_generated_timestamps
 from ..content.io import (
     collect_output_density_artifacts,
     collect_recent_output_artifacts,
-)
-from ..content.memory import (
-    remove_stale_generated_execution_bundle_files,
-    remove_stale_generated_execution_proposal_pages,
-    remove_stale_generated_markdown_files,
 )
 from ..memory.execution_surfaces import (
     render_concept_quality,
@@ -41,7 +31,6 @@ from ..memory.execution_surfaces import (
     render_concept_rewrite_proposal_page,
     render_execution_audit_html,
     render_execution_center_html,
-    render_execution_proposal_page,
 )
 from ..memory.status import (
     render_drift_report,
@@ -49,12 +38,7 @@ from ..memory.status import (
 )
 from ..render.cognitive_history import render_cognitive_history
 from ..render.furnace_center import render_furnace_center, render_furnace_center_html
-from ..render.packs import build_output_packs_incremental, render_output_packs_index
-from ..render.paths import (
-    decision_memos_dir,
-    review_packs_dir,
-    sop_drafts_dir,
-)
+from ..render.paths import decision_memos_dir
 from ..render.review_center import render_review_center_html
 from ..render.views import (
     render_agent_workbench,
@@ -336,72 +320,9 @@ def compile_output_phase(context: CompileContext) -> None:
     context.all_outputs = collect_output_density_artifacts(context.root)
     context.recent_outputs = collect_recent_output_artifacts(context.root)
 
-    output_pack_build = build_output_packs_incremental(
-        context.root,
-        context.decision_pages,
-        context.judgment_pages,
-        context.memory,
-        context.protocol_state,
-        context.recent_outputs,
-        context.compiled_at,
-        knowledge_lifecycle=context.knowledge_lifecycle,
-    )
-    output_pack_build_state = output_pack_build.get("state_document", {})
-    if not isinstance(output_pack_build_state, dict):
-        output_pack_build_state = default_output_pack_build_state()
-    try:
-        write_json_document_if_changed_ignoring_generated_timestamps(
-            output_pack_build_state_path(context.root),
-            output_pack_build_state,
-        )
-    except OSError as exc:
-        logger.warning("cache output-pack build-state save failed: %s", exc)
-    context.output_packs = output_pack_build.get("output_packs", {})
-    if not isinstance(context.output_packs, dict):
-        context.output_packs = default_output_pack_build_state()
-    context.dirty_output_pack_groups = list(output_pack_build.get("dirty_groups", []))
-    context.clean_output_pack_groups = list(output_pack_build.get("clean_groups", []))
-    dirty_output_pack_group_set = set(context.dirty_output_pack_groups)
-    context.write_output_pack_artifact(
-        output_packs_index_path(context.root),
-        render_output_packs_index(context.output_packs, context.compiled_at, context.protocol_state["active_protocol"]),
-    )
-    if "review_packs" in dirty_output_pack_group_set:
-        for pack in context.output_packs.get("review_packs", []):
-            if isinstance(pack, dict) and "content" in pack:
-                context.write_output_pack_artifact(context.root / str(pack["path"]), str(pack["content"]))
-        context.removed_pages += remove_stale_generated_markdown_files(
-            review_packs_dir(context.root),
-            {
-                Path(str(pack["path"])).stem
-                for pack in context.output_packs.get("review_packs", [])
-                if isinstance(pack, dict)
-            },
-        )
-    if "decision_memos" in dirty_output_pack_group_set:
-        for pack in context.output_packs.get("decision_memos", []):
-            if isinstance(pack, dict) and "content" in pack:
-                context.write_output_pack_artifact(context.root / str(pack["path"]), str(pack["content"]))
-        context.removed_pages += remove_stale_generated_markdown_files(
-            decision_memos_dir(context.root),
-            {
-                Path(str(pack["path"])).stem
-                for pack in context.output_packs.get("decision_memos", [])
-                if isinstance(pack, dict)
-            },
-        )
-    if "sop_drafts" in dirty_output_pack_group_set:
-        for pack in context.output_packs.get("sop_drafts", []):
-            if isinstance(pack, dict) and "content" in pack:
-                context.write_output_pack_artifact(context.root / str(pack["path"]), str(pack["content"]))
-        context.removed_pages += remove_stale_generated_markdown_files(
-            sop_drafts_dir(context.root),
-            {
-                Path(str(pack["path"])).stem
-                for pack in context.output_packs.get("sop_drafts", [])
-                if isinstance(pack, dict)
-            },
-        )
+    context.output_packs = default_output_pack_build_state()
+    context.dirty_output_pack_groups = []
+    context.clean_output_pack_groups = []
 
     context.domain_pilots = {
         "compiled_at": context.compiled_at,
@@ -496,37 +417,6 @@ def compile_output_phase(context: CompileContext) -> None:
         context.write_index_artifact(
             context.root / proposal["proposal_path"],
             render_concept_rewrite_proposal_page(proposal),
-        )
-    context.removed_pages += remove_stale_generated_execution_proposal_pages(
-        context.root,
-        {
-            str(proposal.get("action_id") or "")
-            for proposal in context.memory["health"]["repair_plan"].get("execution_proposals", [])
-            if proposal.get("action_id")
-        },
-    )
-    context.removed_pages += remove_stale_generated_execution_bundle_files(
-        context.root,
-        {
-            str(proposal.get("action_id") or "")
-            for proposal in context.memory["health"]["repair_plan"].get("execution_proposals", [])
-            if proposal.get("action_id")
-        },
-    )
-    for proposal in context.memory["health"]["repair_plan"].get("execution_proposals", []):
-        context.write_index_artifact(
-            context.root / str(proposal["proposal_path"]),
-            render_execution_proposal_page(proposal, compiled_at=context.compiled_at),
-        )
-        context.write_index_artifact(
-            context.root / str(proposal["bundle_path"]),
-            json.dumps(
-                build_execution_bundle(context.root, proposal, compiled_at=context.compiled_at),
-                ensure_ascii=False,
-                indent=2,
-                sort_keys=True,
-            )
-            + "\n",
         )
     context.write_index_artifact(graph_health_report_path(context.root), render_graph_health(context.memory))
     context.write_index_artifact(

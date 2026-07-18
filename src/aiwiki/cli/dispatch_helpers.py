@@ -660,40 +660,6 @@ def _format_feed_entry_line(entry: FeedEntry) -> str:
     return f"- [{protocol}] {entry.title} — {entry.summary} — {entry.target}"
 
 
-def _format_signal_summary_line(record: dict[str, object]) -> str:
-    scope_protocol = ""
-    scope = record.get("scope")
-    if isinstance(scope, dict):
-        scope_protocol = str(scope.get("protocol") or "")
-    return "  ".join(
-        [
-            str(record.get("signal_id") or ""),
-            str(record.get("kind") or ""),
-            str(record.get("severity") or ""),
-            str(record.get("emitted_at") or ""),
-            scope_protocol,
-            str(record.get("source_event_ref") or ""),
-        ]
-    )
-
-
-def _format_planner_decision_summary_line(record: dict[str, object]) -> str:
-    reason_codes = record.get("reason_codes")
-    if isinstance(reason_codes, list):
-        rendered_reasons = json.dumps(reason_codes, ensure_ascii=False)
-    else:
-        rendered_reasons = str(reason_codes or "[]")
-    return "  ".join(
-        [
-            str(record.get("decided_at") or ""),
-            str(record.get("decision") or ""),
-            str(record.get("mode") or ""),
-            str(record.get("signal_id") or ""),
-            rendered_reasons,
-        ]
-    )
-
-
 def _format_l3_proposal_summary_line(record: dict[str, object]) -> str:
     return "  ".join(
         [
@@ -721,26 +687,6 @@ def _format_l3_generation_preview_line(record: dict[str, object]) -> str:
             rendered_blockers,
         ]
     )
-
-
-def _format_signal_show_text(signal: dict[str, object], planner_decisions: list[object]) -> str:
-    lines = [f"Signal: {str(signal.get('signal_id') or '')}"]
-    for key in sorted(signal):
-        value = signal[key]
-        if isinstance(value, (dict, list)):
-            rendered = json.dumps(value, ensure_ascii=False, sort_keys=True)
-        else:
-            rendered = str(value)
-        lines.append(f"  {key}: {rendered}")
-    lines.append("Related planner decisions:")
-    decisions = [item for item in planner_decisions if isinstance(item, dict)]
-    if not decisions:
-        lines.append("  (none)")
-    else:
-        for decision in decisions:
-            lines.append(f"  - {_format_planner_decision_summary_line(decision)}")
-    return "\n".join(lines)
-
 
 
 _LEGACY_DROP_REPLACEMENTS = {
