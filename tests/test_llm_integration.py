@@ -735,3 +735,24 @@ def test_complete_run_ask_artifact_persistent_timeout_degrades_artifact(tmp_path
     frontmatter = parse_frontmatter(final_text)
     assert frontmatter.get("delivery_mode") == "llm-failed"
     assert frontmatter.get("llm_status") == "timeout_or_unavailable"
+
+
+def test_furnace_quick_commands_use_advanced_surface_without_protocol() -> None:
+    from aiwiki.render.views import furnace_quick_commands
+
+    cmds = furnace_quick_commands("general", [], [])
+    assert cmds
+    assert all("--protocol" not in cmd for cmd in cmds)
+    assert all("advanced" in cmd for cmd in cmds)
+
+
+def test_build_llm_rerun_command_uses_advanced_surface_without_protocol() -> None:
+    from aiwiki.app_shell.helpers import _build_llm_rerun_command
+
+    cmd = _build_llm_rerun_command(
+        {"event": "run-ask", "question": "hi", "format": "report", "protocol": "general"}
+    )
+    assert cmd
+    assert "--protocol" not in cmd
+    assert "advanced" in cmd
+    assert "advanced run-ask" in cmd
