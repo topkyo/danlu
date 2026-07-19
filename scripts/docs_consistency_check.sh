@@ -81,4 +81,21 @@ else
   echo "[OK] no /home/ hard paths in active docs/scripts"
 fi
 
+# Active SoT docs must not cite deleted hub modules as current paths.
+ACTIVE_DOCS=(
+  README.md
+  docs/DEVELOPER.md
+  docs/AGOS-9-Scorecard.md
+  "docs/Furnace Agent Architecture.md"
+  "docs/Furnace Evolution Mechanics.md"
+  "docs/Furnace Runtime Operations.md"
+  docs/USER_GUIDE.md
+  docs/INSTALL.md
+)
+for doc in "${ACTIVE_DOCS[@]}"; do
+  check_no_match "no legacy hub paths in $doc" \
+    'src/aiwiki/app_[a-z_]+\.py|src/aiwiki/drop\.py\b' \
+    "$doc"
+done
+
 exit "$FAIL"

@@ -150,5 +150,6 @@ def _build_llm_rerun_command(event: dict[str, Any]) -> str:
         command_parts.extend(["advanced", "run-nightly", "--compile-limit", str(limit)])
         return " ".join(command_parts)
     if target:
-        return f"./scripts/aiwiki-launcher.sh {event_name}"
+        command_parts.extend(["advanced", event_name, target])
+        return " ".join(command_parts)
     return ""

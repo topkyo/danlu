@@ -23,14 +23,6 @@ Feasibility Contract in ``docs/Furnace Agent Architecture.md`` §2.2 and
 proposal layers must compose these primitives rather than replace them.
 Post-W3/W8 operator surface is ``advanced compile`` / ``review-page`` /
 ``alchemy-revert``; library apply/revert paths have no matching CLI.
-
-``aiwiki.app_compile`` is the legacy owner hub for the execution
-subpackage; tests, scripts and third-party imports of
-``aiwiki.app_compile.<name>`` receive the owner module's implementation
-through the existing re-export surface. (The historical PEP 562
-``_LAZY_OWNERS`` seam described in earlier versions of this docstring was
-removed once compat callers converged on direct owner imports — see
-``AGENTS.md` 架构清理定案`.)
 """
 
 from __future__ import annotations
