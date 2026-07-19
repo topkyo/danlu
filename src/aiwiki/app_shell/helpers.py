@@ -133,24 +133,21 @@ def _build_llm_rerun_command(event: dict[str, Any]) -> str:
     if event_name in {"run-ask", "run-ask-frontdoor"}:
         question = str(event.get("question") or "").strip()
         output_format = str(event.get("format") or "report").strip() or "report"
-        protocol = str(event.get("protocol") or "").strip()
         if not question:
             return ""
-        command_parts.extend(["run-ask", json.dumps(question), "--format", output_format])
-        if protocol:
-            command_parts.extend(["--protocol", protocol])
+        command_parts.extend(["advanced", "run-ask", json.dumps(question), "--format", output_format])
         if prompt_profile == "lean":
             command_parts.append("--lean")
         return " ".join(command_parts)
     if event_name == "run-compile-summary":
-        command_parts.append("compile")
+        command_parts.extend(["advanced", "compile"])
         return " ".join(command_parts)
     if event_name == "run-lint":
-        command_parts.append("lint")
+        command_parts.extend(["advanced", "lint"])
         return " ".join(command_parts)
     if event_name == "run-nightly":
         limit = int(event.get("compile_limit", 5) or 5)
-        command_parts.extend(["run-nightly", "--compile-limit", str(limit)])
+        command_parts.extend(["advanced", "run-nightly", "--compile-limit", str(limit)])
         return " ".join(command_parts)
     if target:
         return f"./scripts/aiwiki-launcher.sh {event_name}"
