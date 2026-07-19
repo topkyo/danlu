@@ -56,6 +56,8 @@ MAX_URL_IMAGES = 6
 BROWSER_RENDER_TIMEOUT_SECONDS = 45
 BROWSER_VIRTUAL_TIME_BUDGET_MS = 8000
 ALLOW_BROWSER_NO_SANDBOX_ENV = "AIWIKI_ALLOW_BROWSER_NO_SANDBOX"
+# SSRF: Chromium CLI follows redirects without route guard; opt-in only.
+ALLOW_UNGUARDED_BROWSER_CLI_ENV = "AIWIKI_ALLOW_UNGUARDED_BROWSER_CLI"
 MAX_TEXT_CHARS = 120000
 
 
@@ -367,6 +369,9 @@ def _render_url_in_browser(url: str) -> dict[str, str]:
         if html_text:
             return {"html": html_text, "backend": "playwright-chromium"}
 
+    if not _allow_unguarded_browser_cli():
+        return {"html": "", "backend": ""}
+
     browser_command = _browser_command()
     if not browser_command:
         return {"html": "", "backend": ""}
@@ -468,6 +473,10 @@ def _render_url_with_browser_cli_no_sandbox(url: str, browser_command: str, user
 
 def _allow_browser_no_sandbox() -> bool:
     return os.environ.get(ALLOW_BROWSER_NO_SANDBOX_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _allow_unguarded_browser_cli() -> bool:
+    return os.environ.get(ALLOW_UNGUARDED_BROWSER_CLI_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _extract_html_title(text: str) -> str:

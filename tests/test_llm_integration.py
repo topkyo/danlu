@@ -756,3 +756,40 @@ def test_build_llm_rerun_command_uses_advanced_surface_without_protocol() -> Non
     assert "--protocol" not in cmd
     assert "advanced" in cmd
     assert "advanced run-ask" in cmd
+
+
+def test_render_url_in_browser_skips_unguarded_cli_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    from unittest.mock import patch
+
+    from aiwiki.drop import url as drop_url_module
+
+    monkeypatch.delenv("AIWIKI_ALLOW_UNGUARDED_BROWSER_CLI", raising=False)
+    monkeypatch.setattr(drop_url_module, "sync_playwright", None)
+
+    with patch.object(drop_url_module, "_browser_command", return_value="/fake/chromium") as mock_browser_command:
+        with patch.object(drop_url_module, "_render_url_with_browser_cli") as mock_cli:
+            result = drop_url_module._render_url_in_browser("https://example.com")
+
+    assert result == {"html": "", "backend": ""}
+    mock_browser_command.assert_not_called()
+    mock_cli.assert_not_called()
+
+
+def test_render_url_in_browser_uses_cli_when_explicitly_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
+    from unittest.mock import patch
+
+    from aiwiki.drop import url as drop_url_module
+
+    monkeypatch.setenv("AIWIKI_ALLOW_UNGUARDED_BROWSER_CLI", "1")
+    monkeypatch.setattr(drop_url_module, "sync_playwright", None)
+
+    with patch.object(drop_url_module, "_browser_command", return_value="/fake/chromium"):
+        with patch.object(
+            drop_url_module,
+            "_render_url_with_browser_cli",
+            return_value="<html>ok</html>",
+        ) as mock_cli:
+            result = drop_url_module._render_url_in_browser("https://example.com")
+
+    assert result == {"html": "<html>ok</html>", "backend": "chromium"}
+    mock_cli.assert_called_once_with("https://example.com", "/fake/chromium")
