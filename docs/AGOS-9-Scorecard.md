@@ -9,7 +9,7 @@ updated_at: "2026-07-19"
 
 > **SoT**：本文件是炼丹炉从 7.8/10 推进到 9.0/10 的统一评分与 release gate。
 > **两套门禁**：**Local Engineering Gate**（fixture/verify 可诚实宣称 ≥9.0）与 **Live Dogfood Gate**（historical / not-yet，**不阻塞** Local Engineering）见下表；商业可售 ~7.8 仍见 `docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md`，不在本计划 scope。
-> **2026-07-19 audit remediation**：Maintainability §7 与 DEVELOPER owner map 已按 P2-9 后现场刷新（acceptance **24**、llm-integration **38**、Jest **169**、顶层 `app_*.py` = **0**）。全量扫描交叉评审（`.aiwiki-audit/2026-07-19-full-scan/00-cross-review-score.md`）复评 **Local Engineering Gate ≈ 8.4**（Docs/Maint 证据漂移拖累）；下文 **9.07** 为 **2026-07-18 证据刷新前** 加权口径，完整复评见 audit 目录。
+> **2026-07-19 audit remediation**：Maintainability §7 与 DEVELOPER owner map 已按 P2-9 后现场刷新（acceptance **24**、llm-integration **42**、Jest **169**、顶层 `app_*.py` = **0**）。全量扫描交叉评审（`.aiwiki-audit/2026-07-19-full-scan/00-cross-review-score.md`）复评 **Local Engineering Gate ≈ 8.4**（Docs/Maint 证据漂移拖累）；下文 **9.07** 为 **2026-07-18 证据刷新前** 加权口径，完整复评见 audit 目录。
 > **执行计划史料**：[AGOS-9-Execution-Plan.md](./archive/AGOS-9-Execution-Plan.md)
 > **基线 tag**：`v0.3.0-agentos-baseline`（进入 AGOS 路线前的回溯点）
 
@@ -46,9 +46,9 @@ updated_at: "2026-07-19"
 | Docs SoT | 10% | 9.2 | 0.920 |
 | **合计** | 100% | — | **9.067 → 9.07** |
 
-**2026-07-19 audit 复评（`.aiwiki-audit/2026-07-19-full-scan/`）**：Docs/Maint 证据表曾列已删 `app_*` facade → 拖累加权；本轮 remediation 已刷新 DEVELOPER + §7。**复评 Local Engineering Gate ≈ 8.4**；verify 仍全绿（acceptance **24** + llm-integration **38** + Jest **169**），但不宜再原样对外宣称 **9.07** 直至下轮 scorecard 全维复评。
+**2026-07-19 audit 复评（`.aiwiki-audit/2026-07-19-full-scan/`）**：Docs/Maint 证据表曾列已删 `app_*` facade → 拖累加权；本轮 remediation 已刷新 DEVELOPER + §7。**复评 Local Engineering Gate ≈ 8.4**；verify 仍全绿（acceptance **24** + llm-integration **42** + Jest **169**），但不宜再原样对外宣称 **9.07** 直至下轮 scorecard 全维复评。
 
-**Local Engineering Gate 加权分 = 9.07（≥9.0，2026-07-18 表）** — 基于 2026-07-18 现场：`bash scripts/verify.sh all`（acceptance **24** + llm-integration **38** + Jest **169** hard-gate）、path safety acceptance、`.github/workflows/verify.yml`、docs consistency；**不伪造**当前 clean dogfood vault live PASS。**2026-07-19 audit 复评 ≈ 8.4**（Docs/Maint 证据表曾漂移；本轮 remediation 已刷新 §7 / DEVELOPER，完整复评见 `.aiwiki-audit/2026-07-19-full-scan/`）。
+**Local Engineering Gate 加权分 = 9.07（≥9.0，2026-07-18 表）** — 基于 2026-07-18 现场：`bash scripts/verify.sh all`（acceptance **24** + llm-integration **42** + Jest **169** hard-gate）、path safety acceptance、`.github/workflows/verify.yml`、docs consistency；**不伪造**当前 clean dogfood vault live PASS。**2026-07-19 audit 复评 ≈ 8.4**（Docs/Maint 证据表曾漂移；本轮 remediation 已刷新 §7 / DEVELOPER，完整复评见 `.aiwiki-audit/2026-07-19-full-scan/`）。
 
 ### Live Dogfood Gate — 状态摘要
 
@@ -100,7 +100,7 @@ updated_at: "2026-07-19"
 
 ### 2026-05-24 Release Gate 说明
 
-> **注**：本节是 AOS-C8 milestone 2026-05-24 冻结 release evidence，pytest+coverage+辅助脚本集在该日均存在。2026-07-15 清理（见 CHANGELOG [Unreleased]）后，`scripts/verify.sh all` 只走 `scripts + product-shell-static + cli-smoke + smoke + python-static + acceptance`（≈ 18 s），不再含 pytest 2509 / coverage 92%；`scripts/agos9_release_audit.sh` / `scripts/agos9_dogfood_proof_status.sh` / `scripts/dogfood_maturity_gate.py` 已删除。本节的"2439 unit tests + coverage 92%"是历史 AOS-C8 frozen 口径，不再适用于 post-cleanup verify.sh。下面的 `bash scripts/verify.sh PASS（2439 unit tests ...）` 同样标记为 [AOS-C8 frozen 2026-05-24]；post-cleanup 对应位置移到 `bash scripts/verify.sh all` **24** acceptance replay（**17** 为 2026-07-15 historical 口径，见 8. 更新记录 cross-review 段）。下方散落的 `pytest tests/test_*.py` 命令与 `dogfood_maturity_gate.py` 引用是 AOS-C8 时期的 gate 执行方式；这些脚本/测试文件已删除，现行 Local Engineering gate 以 acceptance **24** fixture replay + llm-integration **38** + Jest **169** hard-gate 等价，杜绝把 pytest/coverage 当作 post-cleanup 重新引入。
+> **注**：本节是 AOS-C8 milestone 2026-05-24 冻结 release evidence，pytest+coverage+辅助脚本集在该日均存在。2026-07-15 清理（见 CHANGELOG [Unreleased]）后，`scripts/verify.sh all` 只走 `scripts + product-shell-static + cli-smoke + smoke + python-static + acceptance`（≈ 18 s），不再含 pytest 2509 / coverage 92%；`scripts/agos9_release_audit.sh` / `scripts/agos9_dogfood_proof_status.sh` / `scripts/dogfood_maturity_gate.py` 已删除。本节的"2439 unit tests + coverage 92%"是历史 AOS-C8 frozen 口径，不再适用于 post-cleanup verify.sh。下面的 `bash scripts/verify.sh PASS（2439 unit tests ...）` 同样标记为 [AOS-C8 frozen 2026-05-24]；post-cleanup 对应位置移到 `bash scripts/verify.sh all` **24** acceptance replay（**17** 为 2026-07-15 historical 口径，见 8. 更新记录 cross-review 段）。下方散落的 `pytest tests/test_*.py` 命令与 `dogfood_maturity_gate.py` 引用是 AOS-C8 时期的 gate 执行方式；这些脚本/测试文件已删除，现行 Local Engineering gate 以 acceptance **24** fixture replay + llm-integration **42** + Jest **169** hard-gate 等价，杜绝把 pytest/coverage 当作 post-cleanup 重新引入。
 
 AOS-C1~C8 已按 harness 顺序完成本地 release gate。当前本地 release evidence [AOS-C8 frozen 2026-05-24 — `bash scripts/verify.sh` 的"2439 unit tests / coverage 92%"与本行下面 3 条脚本/命令均属本行下面的 "[AOS-C8 frozen 2026-05-24]" 口径；post-2026-07-15 cleanup 后 unit + coverage 已退役，verify.sh all 现走 acceptance-only **24** fixture replay（acceptance **17** 为 historical）]：`bash scripts/verify.sh` PASS（2439 unit tests、coverage 92%、acceptance 17 passed [AOS-C8 frozen]）；`bash scripts/agos9_release_audit.sh` PASS `**[已删 2026-07-15 commit f4f87c7]**`；`bash scripts/agos9_dogfood_proof_status.sh` PASS `**[已删 2026-07-15 commit f4f87c7]**`（会执行 local dogfood `collect --write` 写入最新 snapshot，不删除数据、不读/打印凭据）；`bash scripts/docs_consistency_check.sh` PASS；C8 `qa-review` / `qa-runtime` PASS，`run_plan` closed-loop PASS。Dogfood latest 3-day live window 覆盖 2026-05-21/22/23，`operational_maturity.status=pass`、`receipt_integrity.status=pass`、`knowledge_compounding_proof.status=pass`、`semantic_path_observed=true`、`effective_l3_candidates=0`、`budget_violations=[]`。AOS-C3 legacy direct-note missing execution receipts 已由 warn-only `receipt_coverage` 明确解释，不作为当前 release blocker；新增 direct/local success path 已写 execution receipt；2026-05-24 P1-P5 stabilization 进一步把 report/background/direct/local success receipts 统一到 `receipt_matrix_version=1` + `run_ask_path` + `artifact_status`。AOS-C7 使 `backend-telemetry` 同时聚合 execution receipts 和 LLM failure classifications，并让 failed/unmatched `run-nightly` 不污染 success proof。14/30-day natural run 仍是后续更强 proof，不在本地 release gate 中伪装完成。
 
@@ -309,7 +309,7 @@ PYTHONPATH=src python3 -m pytest tests/test_acceptance_loop.py -k 'planner or si
 # [AOS-C8 frozen] PYTHONPATH=src python -m pytest tests/test_llm.py tests/test_config.py -q  (已退)
 PYTHONPATH=src python3 -m pytest tests/test_acceptance_loop.py -k 'backend_failure or replay' -q  # 当前 post-cleanup 等价
 # telemetry 聚合（library API，非 CLI）：llm_telemetry.aggregate_llm_telemetry(root)
-bash scripts/verify.sh llm-integration   # 38 条 LLM 集成测试（mock backends，2026-07-18 纳入 verify）
+bash scripts/verify.sh llm-integration   # 42 条 LLM 集成测试（mock backends；含 2026-07-19 command-hint/SSRF 契约）
 ```
 
 ### Fail gate（blocking if reintroduced）
@@ -317,7 +317,7 @@ bash scripts/verify.sh llm-integration   # 38 条 LLM 集成测试（mock backen
 - Telemetry 泄漏 API key 或完整 prompt
 - 隐藏 cross-backend fallback 回归
 
-### 当前状态：**PASS**（Local Eng **9.0** — LLM receipt 聚合 via `llm_telemetry.aggregate_llm_telemetry()` library + acceptance backend-failure/retry replay + `verify.sh llm-integration` 38 条 mock-backend 集成测试；CLI `llm-telemetry`/`backend-telemetry` 已于 W4 删除；无 hidden cross-backend fallback）
+### 当前状态：**PASS**（Local Eng **9.0** — LLM receipt 聚合 via `llm_telemetry.aggregate_llm_telemetry()` library + acceptance backend-failure/retry replay + `verify.sh llm-integration` 42 条 mock-backend 集成测试；CLI `llm-telemetry`/`backend-telemetry` 已于 W4 删除；无 hidden cross-backend fallback）
 
 ---
 
@@ -466,7 +466,7 @@ bash scripts/verify.sh scripts
 | 4 | Product Shell | `bash scripts/verify.sh product-shell-static`（Jest **169**） |
 | 5 | Acceptance replay | **24** tests — `bash scripts/run_acceptance.sh` |
 | 6 | CI | `.github/workflows/verify.yml` |
-| 7 | LLM telemetry | `llm_telemetry.aggregate_llm_telemetry()` library + `bash scripts/verify.sh llm-integration`（38 条 mock-backend）+ acceptance backend-failure replay（CLI `llm-telemetry`/`backend-telemetry` 已于 W4 surface-noise-cuts A15 删除） |
+| 7 | LLM telemetry | `llm_telemetry.aggregate_llm_telemetry()` library + `bash scripts/verify.sh llm-integration`（42 条 mock-backend）+ acceptance backend-failure replay（CLI `llm-telemetry`/`backend-telemetry` 已于 W4 surface-noise-cuts A15 删除） |
 | 8 | Docs consistency | `bash scripts/docs_consistency_check.sh` |
 
 ### Live Dogfood Gate — 不可宣称 live 9.0（not-yet）
@@ -485,7 +485,7 @@ bash scripts/verify.sh scripts
 
 | Gate | 结果 |
 |---|---|
-| Full verify | PASS `[AOS-C8 frozen 2026-05-24]`：2439 unit tests + coverage 92% + acceptance 17；post-2026-07-18 Local Eng：`bash scripts/verify.sh all`，acceptance **24** + llm-integration **38** + Jest **169**，CI `verify.yml` |
+| Full verify | PASS `[AOS-C8 frozen 2026-05-24]`：2439 unit tests + coverage 92% + acceptance 17；post-2026-07-18 Local Eng：`bash scripts/verify.sh all`，acceptance **24** + llm-integration **42** + Jest **169**，CI `verify.yml` |
 | Product Shell static/drift | PASS：bundle matches `build.sh` output |
 | Live dogfood maturity | PASS：`summarize --days 3` days 2026-05-21/22/23，`consecutive_days=true` |
 | Knowledge compounding | PASS：sample reuses `wiki/judgments/judgment-aos-c2-dogfood-live-proof-judgment.md` with `run-ask` execution receipt |
@@ -526,4 +526,4 @@ bash scripts/verify.sh scripts
 - 2026-05-24：P1-P5 stabilization pass；`run-ask` success receipt matrix v1 覆盖 report/background/direct/local，planner-log 新增向后兼容 optional `phase` proof，CLI legacy top-level 口径收敛为 compat，14/30-day natural run proof 明确 not-yet。
 - 2026-07-15：hub 行数刷新；下一波执行计划见 `docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md`（商业 ~7.8 Out of scope）。
 - 2026-07-18：**Task 5 — Local Engineering Gate ≥9.0**。拆分 Local Engineering / Live Dogfood 两套门禁；量化 refresh（acceptance **24**、Jest **169**、`workflows.py` ~175、`auto_adopt` DELETED、CI verify.yml）；Dogfood 维 fixture/historical **8.9**，**不伪造** clean vault live PASS；**Local Engineering Gate 加权 = 9.07**（2026-07-18 表）。
-- 2026-07-19：**audit remediation Task 3** — DEVELOPER owner map + §7 Maintainability 证据表按 P2-9 后现场刷新（顶层 `app_*.py` = 0；热点 LOC；graph/drop/alchemy/workflows_ask 拆分现状）；统一 acceptance **24** / llm-integration **38** / Jest **169**；全量扫描复评 Local Engineering **≈ 8.4**（`.aiwiki-audit/2026-07-19-full-scan/`），旧 **9.07** 为证据刷新前口径。
+- 2026-07-19：**audit remediation Task 3** — DEVELOPER owner map + §7 Maintainability 证据表按 P2-9 后现场刷新（顶层 `app_*.py` = 0；热点 LOC；graph/drop/alchemy/workflows_ask 拆分现状）；统一 acceptance **24** / llm-integration **42** / Jest **169**；全量扫描复评 Local Engineering **≈ 8.4**（`.aiwiki-audit/2026-07-19-full-scan/`），旧 **9.07** 为证据刷新前口径。
