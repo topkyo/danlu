@@ -2,7 +2,7 @@
 title: "炼丹炉开发者指南"
 kind: "guide"
 status: "active"
-updated_at: "2026-07-18"
+updated_at: "2026-07-19"
 related_docs:
   - README.md
   - docs/INSTALL.md
@@ -15,30 +15,28 @@ related_docs:
 
 ## 当前 runtime 实现（repo 视角）
 
-当前 `aiwiki` runtime owner map 按代码现实分为 **core hubs / owner packages / residual hotspots**。纯 re-export facade（`app.py` / `app_content` / `app_render` / `app_surfaces` / `app_memory_surfaces`）已按 `AGENTS.md` 定案删除；请直引 owner 模块。
+当前 `aiwiki` runtime 按 **owner 分包** 组织；顶层 `app_*.py` hub 文件已在 P2-9（2026-07-18）归零。纯 re-export facade（`app.py` / `app_content` / `app_render` / `app_surfaces` / `app_memory_surfaces` / `app_memory.py` 等）更早删除。新增逻辑必须直引 owner 模块，禁止再引入 facade 或顶层 hub 文件。
 
-- `src/aiwiki/utils/`：底层 primitives 子包（`io` / `security` / `markdown` / `text` / `hash` / `time` / `path` / `json_utils` / `audit`）；原子写、runtime write lock、`safe_fetch` / `safe_resolve_within`、frontmatter、slugify / tokenize、sha256、`utc_now`、`relative_path` 等。原 `app_utils.py` 已删除。
-- `src/aiwiki/state/` + owner 子包：持久化状态 I/O（`io` / `constants` / `manifest` / `cache`）+ 按域分布的 build/material/archive/rewrite/history/action_state 等。原 `app_state.py` 已删除；路径常量仍在 `app_state_paths.py`。
-- `src/aiwiki/app_protocol.py`：**residual hub**，layout、schema scaffolding、protocol runtime、review windows 和默认 runtime 规则。
+- `src/aiwiki/utils/`：底层 primitives（`io` / `security` / `markdown` / `text` / `hash` / `time` / `path` / `json_utils` / `audit`）；原子写、runtime write lock、`safe_fetch` / `safe_resolve_within`、frontmatter、slugify / tokenize、sha256、`utc_now`、`relative_path` 等。
+- `src/aiwiki/state/` + owner 子包：持久化状态 I/O（`io` / `constants` / `manifest` / `cache`）+ 按域分布的 `compile/state` / `compile/build` / `content/material` / `content/archive` / `content/rewrite` / `execution/history` / `memory/action_state` / `memory/state` / `planner/state` 等；路径常量分散在各域 `paths.py`（原顶层 paths 常量 hub 已拆）。
+- `src/aiwiki/protocol/`：单 runtime layout、schema scaffolding、protocol state、review windows、focus scoring、runtime config / descriptors。
+- `src/aiwiki/lifecycle/`：`knowledge.py` / `status.py` — judgment / decision lifecycle、aging、review queue、knowledge lifecycle governance。
 - `src/aiwiki/cli/`：CLI parser / dispatch / product-first command surface；普通入口固定为 `drop` / `today` / `advanced`；operator 命令（含 `metrics`）只注册在 `advanced` 下，旧顶层名靠 argv rewrite compat。
-- `src/aiwiki/drop.py`：`drop-url` / `drop-pdf` / `drop-image` / `drop-repo` / `drop-note` 的 raw materialization owner；用户入口推荐 `drop markdown`。
-- `src/aiwiki/compile/`：compile pipeline phase owner（content/runtime/output/persist）+ `ranking.py`（ranking 全家桶）；`app_compile.py` 已缩至 18 行薄壳（仅 `CompileContext` / `start_compile_context` 别名）。
-- `src/aiwiki/content/`：source / concept / derived / material / archive / rewrite owner；原 `content/memory.py` 已拆分到 `memory/action_core` + `execution/policy` + `execution/patch_plan` + `execution/repair_plan`，仅保留 2 个 A 域辅助函数。
-- `src/aiwiki/app_lifecycle.py`：judgment / decision lifecycle、aging、review queue、knowledge lifecycle governance 的 residual owner。
-- `src/aiwiki/render/`：index / dashboard / output pack / domain pilot / judgment asset render owner。
-- `src/aiwiki/memory/`：machine memory graph、execution surfaces、trace/recall/batch 相关 owner；legacy `app_memory.py` 已删除（Round 8），query helpers 在 `app_memory_query.py`。
-- `src/aiwiki/execution/`：execution bundles、receipts、apply/revert/audit、alchemy proposal mutation 的事实层 owner；`app_execution.py` 保留 receipt / bundle assembly 入口。
-- `src/aiwiki/runner/`：`run-ask` / `nightly` / `watch` / alchemy min-chain 等 high-level workflow owner；AgentOS 膨胀面（`run-compile`、`alchemy auto/lane`、signals/planner CLI）已在 W3 删除。
+- `src/aiwiki/drop/`：`common` / `url` / `pdf` / `image` / `repo` / `note` — raw materialization owner（`drop-url` / `drop-pdf` / `drop-image` / `drop-repo` / `drop-note`）；用户入口推荐 `drop markdown`。
+- `src/aiwiki/compile/`：compile pipeline phase owner（content/runtime/output/persist）+ `ranking.py`（ranking 全家桶）。
+- `src/aiwiki/content/`：source / concept / derived / material / archive / rewrite / `io.py` owner；`content/memory.py` 仅保留 2 个 A 域辅助函数（M/P/T/R 已拆到 `memory/action_core` + `execution/policy` + `execution/patch_plan` + `execution/repair_plan`）。
+- `src/aiwiki/render/`：views / packs / pilots / protocols / judgment asset render owner（当前热点：`packs.py` ~1388、`views.py` ~1222）。
+- `src/aiwiki/memory/`：machine memory graph（`graph_render` / `graph_anchors` / `graph_query` / `graph_transition` / `graph_builder`）、`query_routes.py`、execution surfaces、trace/recall/batch。
+- `src/aiwiki/execution/`：execution bundles、receipts、apply/revert/audit、alchemy proposal mutation、L3 proposals（`receipts.py` / `history.py` / `l3_proposals.py` / `machine_memory_actions.py` 等）；`execution/alchemy*.py` 已拆为 `alchemy.py` + `alchemy_helpers` / `alchemy_receipts` / `alchemy_migration` / `alchemy_cleanup`。
+- `src/aiwiki/runner/`：`workflows.py`（compile/lint/nightly）+ `workflows_ask*.py`（run-ask 已拆为 context/frontmatter/status/receipts 子模块）+ `alchemy.py` lane 编排 + `watch` / nightly 等 high-level workflow；AgentOS 膨胀面（`run-compile`、signals/planner CLI）已在 W3 删除。
 - `src/aiwiki/planner/` 与 `src/aiwiki/signals/`：planner dry-run / log / safe primitive policy，以及 review / repair / aging / escalation signal source。
+- `src/aiwiki/cache/`：cache core / sync / query / status / paths（原 `app_cache.py` 已删）。
+- `src/aiwiki/vault/`：new-vault scaffold 与 Obsidian bootstrap（原 `app_vault.py` 已删）。
 - 金丹主链路已落地：`alchemy-start / alchemy-distill / alchemy-finalize / alchemy-promote` 覆盖 candidate plane、settled plane、DAG/provenance gate、promote/revert/demote receipt、Stage-3 compounding acceptance 与 maturity gate 的 `elixir_quality_proof`；剩余 planned 只指显式 LLM/human contract 下的 semantic distillation。
-- `src/aiwiki/app_shell/`：Product Shell summary、controls、status、HTML/surface assembly；Obsidian 插件源码在 `.obsidian/plugins/furnace-product-shell/src/`，它是用户 surface，不拥有 runtime SoT。
-- `src/aiwiki/app_routing.py`：material routing、archive candidate、active corpus and temperature 逻辑。
-- `src/aiwiki/app_queries.py`：ranking / report query helpers（Ask 仅 `render_report` → `output/reports/*.md` 自由 Markdown）。
-- `src/aiwiki/app_linting/`：lint phases、repair backlog、nightly health write helpers。
-- `src/aiwiki/app_vault.py`：new-vault scaffold 与 Obsidian bootstrap owner。
-- `src/aiwiki/app_types.py`：稳定 TypedDict contracts（如 `ManifestEntry` / `CompileState` / `ShellSummary`）。
+- `src/aiwiki/app_shell/`：Product Shell summary、controls、status、HTML/surface assembly（带逻辑的 runtime 包，不是已删 facade）；Obsidian 插件源码在 `.obsidian/plugins/furnace-product-shell/src/`，它是用户 surface，不拥有 runtime SoT。
+- `src/aiwiki/app_linting/`：lint phases、repair backlog、nightly health write helpers（带逻辑的 runtime 包）。
 
-后续新增逻辑优先进入明确 owner package；`app_protocol.py`、`app_lifecycle.py`、`app_routing.py`、`runner/alchemy.py` 与 Product Shell `plugin.js` 继续按 seam map 小步削薄，不做 broad rewrite。`app_utils.py` / `app_state.py`（2026-07-18 commit `145276a` 已删并下沉到 `utils/` + `state/` + owner 子包）+ `app_memory.py`（Round 8 已删）+ `app_content.py` / `app_render.py` / `app_surfaces.py` / `app_memory_surfaces.py`（prior rounds）从 "削薄 hotspot" 列表毕业，不再 active 维护。禁止再引入纯 re-export facade。
+后续新增逻辑优先进入明确 owner package；`runner/alchemy.py`、`render/packs.py`、`execution/machine_memory_actions.py` 与 Product Shell `plugin.js` 继续按 seam map 小步削薄，不做 broad rewrite。禁止再引入纯 re-export facade 或顶层 `app_*.py` hub。
 
 ### CLI command taxonomy
 
@@ -166,7 +164,7 @@ bash scripts/verify_target_rules.sh
 按 target 验证，或跑全量：
 
 ```bash
-bash scripts/verify.sh [scripts|smoke|python-static|acceptance|cli-smoke|product-shell-static|all]
+bash scripts/verify.sh [scripts|smoke|python-static|acceptance|llm-integration|cli-smoke|product-shell-static|all]
 ```
 
 ### Developer Guide
@@ -175,56 +173,38 @@ bash scripts/verify.sh [scripts|smoke|python-static|acceptance|cli-smoke|product
 
 ```bash
 bash scripts/verify.sh
-PYTHONPATH=src python3 -m unittest discover -s tests -p 'test_*.py'
+PYTHONPATH=src python3 -m pytest tests/test_acceptance_loop.py -q
+bash scripts/verify.sh llm-integration
 PYTHONPATH=src python3 -m aiwiki.cli --root . advanced shell-status
 ```
 
 新增能力时，优先沿下面这张模块边界图落位，而不是继续往巨石文件里堆：
 
 ```text
-cli/                       命令入口；只做参数解析与 dispatch
-├─ drop.py / input_router.py   外部投喂入口（drop url / drop pdf / drop image / drop repo / drop markdown）
-├─ runner/                 lifecycle / alchemy / nightly 等 high-level 编排
-└─ planner/                deterministic + LLM-assisted plan 生成
-
-execution/                 事实层 mutation（promote / revert / demote / archive / proposals…）
-                           硬边界：所有 mutation 必须 receipt + hash + revert（M9-P0.1）
-runner/alchemy.py          lane / primitive 编排，含 scope-honesty receipt（M9-P0.2）
-
-cli/                       product-first command surface + legacy compat dispatch
-drop.py                    raw materialization owner（url / pdf / image / repo / markdown）
-
-compile/                   compile pipeline phases（content / runtime / output / persist）+ ranking
-app_compile.py             18 行薄壳（CompileContext / start_compile_context 别名）
-app_compile_ops.py         protocol state / recurring promotion / agent-pack helpers
-app_queries.py             ranking / report query helpers (Ask freeform md only)
-app_linting/               lint phases / repair backlog / nightly health helpers
-
-content/                   source / concept / derived / material / archive / rewrite owner
-content/memory.py          仅 2 个 A 域辅助函数（M/P/T/R 已拆到 memory/action_core + execution/*）
-
-utils/                     底层 primitives（io / security / markdown / text / hash / time / path / json_utils / audit）
-state/                     持久化状态 I/O（io / constants / manifest / cache）
-app_lifecycle.py           judgments / decisions / aging / review queue governance
-
-render/                    views / packs / pilots / judgment asset render owner
-
-memory/                    machine memory（graph / trace / recall / execution surfaces）
-app_memory_query.py        query helpers owner
-
-execution/                 execution bundles / receipts / apply / revert / audit owner
-app_execution.py           receipt / bundle assembly compat entry
-runner/                    run-ask / nightly / watch / alchemy min-chain 等 high-level 编排
-runner/alchemy.py          deferred residual hotspot
+cli/                       命令入口；product-first surface + legacy argv rewrite compat
+drop/                      raw materialization（common / url / pdf / image / repo / note）
+runner/                    workflows（compile/lint/nightly）+ workflows_ask*（run-ask 子模块）
+                           + alchemy lane 编排 + watch / nightly high-level 编排
 planner/                   dry-run / log / safe primitive policy
 signals/                   review / repair / aging / escalation 信号源
 
-app_state.py               持久化状态 I/O 单一入口
-                           best-effort + strict 双语义；strict raise CorruptStateError（M9-P0.4）
-app_protocol.py            单 runtime layout / schema / protocol state / review windows
-app_utils.py               runtime lock / markdown / JSON / safe_fetch primitives
-app_shell/                 product shell runtime surfaces（summary / controls / status / HTML）
-app_vault.py               new-vault scaffold / Obsidian bootstrap
+protocol/                  layout / schema / protocol state / review windows / runtime config
+lifecycle/                 knowledge + status（judgment/decision/aging/review queue）
+compile/                   pipeline phases（content / runtime / output / persist）+ ranking
+content/                   source / concept / material / archive / rewrite / io
+render/                    views / packs / pilots / protocols（热点 packs ~1388, views ~1222）
+memory/                    graph_* 子模块 + query_routes + trace/recall/execution surfaces
+execution/                 receipts / history / apply / revert / audit / l3_proposals / alchemy_*
+                           硬边界：所有 mutation 必须 receipt + hash + revert（M9-P0.1）
+cache/                     cache core / sync / query / status / paths
+vault/                     new-vault scaffold / Obsidian bootstrap
+
+utils/                     底层 primitives（io / security / markdown / text / hash / time / path …）
+state/                     持久化状态 I/O + 各域 paths（best-effort + strict 双语义，M9-P0.4）
+app_shell/                 Product Shell runtime surfaces（summary / controls / status / HTML）
+app_linting/               lint phases / repair backlog / nightly health helpers
+
+（顶层 app_*.py = 0；原 protocol / compile / state / drop 等顶层 hub 已删并下沉到上表 owner 包）
 ```
 
 约定：

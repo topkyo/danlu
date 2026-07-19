@@ -484,7 +484,7 @@ promoted_at: null
 
 ### 7.6 Elixir 生命周期 Receipt（复用 ExecutionReceipt）
 
-- Elixir `promote / demote / revert` 复用现有 `build_execution_receipt` 基底（`src/aiwiki/app_execution.py:168`），不引入 elixir 专用第二套 receipt 物理层。
+- Elixir `promote / demote / revert` 复用现有 `build_execution_receipt` 基底（`src/aiwiki/execution/receipts.py`），不引入 elixir 专用第二套 receipt 物理层。
 - `subject_kind` 明确新增：`elixir_promotion` / `elixir_demotion` / `elixir_revert`。
 - 写入路径保持不变：History 写 `.aiwiki/state/execution-receipts.jsonl`；Single 写 `.aiwiki/state/execution-receipts/<action_id>.json`。
 - payload 至少包含：`elixir_id`、`protocol`、`from_state`、`to_state`、`candidate_path`、`wiki_path`；`demote/revert` 需补失败原因或来源 receipt id。

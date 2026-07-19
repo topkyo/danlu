@@ -402,7 +402,7 @@ learning 不允许自动改 `src/aiwiki/**`，不允许自动改 schema 核心�
 
 ## 11.1 State Loader 语义边界（best-effort vs strict）
 
-炼丹炉所有持久化状态（`.aiwiki/state/*.json` / `*.jsonl`）有两种合法读取语义，对应两种调用契约。M9-P0.4 起在 `aiwiki.app_state` 同时暴露两套 API，调用方必须根据"静默 fallback 是否等同于事实层数据丢失"显式选择。
+炼丹炉所有持久化状态（`.aiwiki/state/*.json` / `*.jsonl`）有两种合法读取语义，对应两种调用契约。M9-P0.4 起在 `aiwiki.state`（`state/io.py` 等）同时暴露两套 API，调用方必须根据"静默 fallback 是否等同于事实层数据丢失"显式选择。
 
 **Best-effort：`load_json_document` / `load_jsonl_documents`**
 
