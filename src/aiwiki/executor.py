@@ -38,7 +38,7 @@ from .drop_helpers import timestamped_stem
 from .input_planner import Plan
 from .protocol.scaffold import ensure_layout
 from .render.paths import append_wiki_log
-from .utils.io import runtime_write_lock
+from .utils.io import _restore_file_bytes, _snapshot_file_bytes, runtime_write_lock
 from .utils.path import relative_path
 from .utils.security import FetchPolicyError, PathOutsideWorkspaceError, safe_fetch, safe_resolve_within
 
@@ -92,9 +92,7 @@ def _execute_fetch_raw(root: Path, plan: Plan, original_payload: str, *, refresh
     from .drop.common import _allow_private_fetch
     from .drop.ingest_identity import find_manifest_entry_by_ingest_urls, resolve_manifest_stored_file
 
-    lookup_urls = [original_payload]
-    if plan.targets:
-        lookup_urls.append(plan.targets[0])
+    lookup_urls = [original_payload, *list(plan.targets or [])]
     existing = find_manifest_entry_by_ingest_urls(root, *lookup_urls)
     if existing and not refresh:
         if resolve_manifest_stored_file(root, existing) is not None:
@@ -146,10 +144,23 @@ def _execute_fetch_raw(root: Path, plan: Plan, original_payload: str, *, refresh
     }
     created_paths: list[Path] = []
     append_file_sizes = _snapshot_append_files(root)
+    note_snapshot: bytes | None = None
     with runtime_write_lock(root):
+        # Re-check under lock for concurrent first-time drops.
+        existing = find_manifest_entry_by_ingest_urls(root, *lookup_urls)
+        if existing and not refresh and resolve_manifest_stored_file(root, existing) is not None:
+            return _reused_fetch_raw_payload(original_payload, existing)
+        if refresh and existing:
+            overwrite_path = resolve_manifest_stored_file(root, existing)
+            if overwrite_path is not None:
+                note_path = overwrite_path
+                refreshed = True
         try:
+            if refreshed and note_path.exists():
+                note_snapshot = _snapshot_file_bytes(note_path)
             _write_text(note_path, markdown)
-            created_paths.append(note_path)
+            if not refreshed:
+                created_paths.append(note_path)
             entry = _append_manifest_entry(
                 root,
                 stored_path=note_path,
@@ -181,6 +192,8 @@ def _execute_fetch_raw(root: Path, plan: Plan, original_payload: str, *, refresh
             )
         except Exception:
             _rollback_created_paths(created_paths)
+            if note_snapshot is not None:
+                _restore_file_bytes(note_path, note_snapshot)
             _truncate_append_files(append_file_sizes)
             raise
     return {

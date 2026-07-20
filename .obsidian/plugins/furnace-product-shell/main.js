@@ -4682,8 +4682,9 @@ function renderUniversalInput(plugin, container) {
             jobId: String(flowResult && flowResult.jobId || ""),
           });
           if (!normalizedQuestion) {
-            plugin.completePendingMaterialDrop(pendingId, flowResult && flowResult.materialPaths);
-            materialDropCompleted = true;
+            materialDropCompleted = Boolean(
+              plugin.completePendingMaterialDrop(pendingId, flowResult && flowResult.materialPaths)
+            );
           }
         }
       } else {
@@ -4749,8 +4750,7 @@ function renderUniversalInput(plugin, container) {
               materialPaths,
               reused: Boolean(payload && payload.reused),
             });
-            plugin.completePendingMaterialDrop(pendingId, materialPaths);
-            materialDropCompleted = true;
+            materialDropCompleted = Boolean(plugin.completePendingMaterialDrop(pendingId, materialPaths));
           }
         } else {
           const askFormat = inferAutoAskFormat(normalizedQuestion, []);

@@ -37,16 +37,19 @@ def normalize_ingest_url(url: str) -> str | None:
     if scheme not in ("http", "https"):
         return None
 
-    rewritten = rewrite_github_raw_url(text)
-    canonical = rewritten if rewritten else text
-    parsed = parse.urlparse(canonical)
-
-    scheme = parsed.scheme.lower()
-    netloc = parsed.netloc.lower()
-    path = parsed.path.rstrip("/")
+    netloc = (parsed.netloc or "").lower()
+    path = (parsed.path or "").rstrip("/")
     query = _strip_tracking_query(parsed.query)
+    # Strip query before GitHub rewrite — repo-root regex is path-only and fails on ?utm_*.
+    bare = parse.urlunparse((scheme, netloc, path, "", "", ""))
+    rewritten = rewrite_github_raw_url(bare)
+    if rewritten:
+        parsed = parse.urlparse(rewritten)
+        scheme = parsed.scheme.lower()
+        netloc = parsed.netloc.lower()
+        path = parsed.path.rstrip("/")
+        query = ""
     return parse.urlunparse((scheme, netloc, path, "", query, ""))
-
 
 def _iter_ingest_url_candidates(entry: dict[str, Any]) -> list[str]:
     candidates: list[str] = []
@@ -70,20 +73,24 @@ def _iter_ingest_url_candidates(entry: dict[str, Any]) -> list[str]:
     return candidates
 
 
+_URL_INGEST_SOURCE_TYPES = frozenset({"url-drop", "planner-fetch-raw"})
+
+
 def find_manifest_entry_by_ingest_url(root: Path, url: str) -> dict[str, Any] | None:
-    """Find the first manifest entry whose ingest URL candidates match ``url``."""
+    """Find the first URL-ingest manifest entry whose candidates match ``url``."""
     target_key = normalize_ingest_url(url)
     if target_key is None:
         return None
     for entry in load_manifest(root).get("entries") or []:
         if not isinstance(entry, dict):
             continue
+        if str(entry.get("source_type") or "") not in _URL_INGEST_SOURCE_TYPES:
+            continue
         for candidate in _iter_ingest_url_candidates(entry):
             candidate_key = normalize_ingest_url(candidate)
             if candidate_key == target_key:
                 return entry
     return None
-
 
 def find_manifest_entry_by_ingest_urls(root: Path, *urls: str) -> dict[str, Any] | None:
     """Return the first manifest hit across multiple URL candidates."""

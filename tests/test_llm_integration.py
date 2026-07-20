@@ -1102,6 +1102,8 @@ def test_normalize_ingest_url_github_repo_root_matches_raw_readme() -> None:
     repo_root = "https://github.com/34306/vphone-aio"
     raw_readme = "https://raw.githubusercontent.com/34306/vphone-aio/HEAD/README.md"
     assert normalize_ingest_url(repo_root) == normalize_ingest_url(raw_readme)
+    tracked = "https://github.com/34306/vphone-aio?utm_source=share"
+    assert normalize_ingest_url(tracked) == normalize_ingest_url(raw_readme)
 
 
 def test_normalize_ingest_url_strips_tracking_and_fragment() -> None:

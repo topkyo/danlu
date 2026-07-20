@@ -18,7 +18,7 @@ from ..drop_helpers import strip_leading_title_echo, timestamped_stem
 from ..protocol.scaffold import ensure_layout
 from ..render.paths import append_wiki_log
 from ..state.manifest import load_manifest, save_manifest
-from ..utils.io import atomic_write_bytes, runtime_write_lock
+from ..utils.io import _restore_file_bytes, _snapshot_file_bytes, atomic_write_bytes, runtime_write_lock
 from ..utils.path import relative_path
 from ..utils.security import FetchPolicyError, _validate_safe_url, safe_fetch, safe_resolve_within
 from .common import (
@@ -64,16 +64,19 @@ MAX_TEXT_CHARS = 120000
 
 def drop_url(root: Path, url: str, title: str | None = None, refresh: bool = False) -> dict[str, Any]:
     ensure_layout(root)
-    existing = find_manifest_entry_by_ingest_url(root, url)
-    if existing and not refresh:
-        if resolve_manifest_stored_file(root, existing) is not None:
+    # Fast path: reuse without network when possible.
+    if not refresh:
+        existing = find_manifest_entry_by_ingest_url(root, url)
+        if existing and resolve_manifest_stored_file(root, existing) is not None:
             return _reused_url_drop_payload(url, existing)
     collection = _collect_url(root, url)
     _validate_url_collection(collection)
-    overwrite_path = None
-    if refresh and existing:
-        overwrite_path = resolve_manifest_stored_file(root, existing)
     with runtime_write_lock(root):
+        # Re-check under the write lock so concurrent drops cannot both miss.
+        existing = find_manifest_entry_by_ingest_url(root, url)
+        if existing and not refresh and resolve_manifest_stored_file(root, existing) is not None:
+            return _reused_url_drop_payload(url, existing)
+        overwrite_path = resolve_manifest_stored_file(root, existing) if refresh and existing else None
         result = _materialize_url(
             root,
             url,
@@ -85,7 +88,6 @@ def drop_url(root: Path, url: str, title: str | None = None, refresh: bool = Fal
         for event in collection.get("skip_events", []):
             _append_run_event(root, event)
     return result
-
 
 def _reused_url_drop_payload(url: str, entry: dict[str, Any]) -> dict[str, Any]:
     stored_rel = str(entry.get("stored_path") or "")
@@ -198,6 +200,7 @@ def _materialize_url(
             final_url=str(fetched.get("final_url") or ""),
         )
     append_file_sizes = _snapshot_append_files(root)
+    note_snapshot: bytes | None = None
     try:
         for index, image in enumerate(collection["inline_images"], start=1):
             asset_path = _unique_path(
@@ -220,8 +223,13 @@ def _materialize_url(
             "fetched_at": _drop_pkg.utc_now(),
         }
         markdown = _write_url_note_body(display_title, fetched, asset_paths)
+        # Refresh overwrites an existing note — snapshot so rollback restores
+        # instead of unlinking the user's prior capture.
+        if refreshed and note_path.exists():
+            note_snapshot = _snapshot_file_bytes(note_path)
         _write_text(note_path, markdown)
-        created_paths.append(note_path)
+        if not refreshed:
+            created_paths.append(note_path)
         entry = _append_manifest_entry(
             root,
             stored_path=note_path,
@@ -253,6 +261,8 @@ def _materialize_url(
         )
     except Exception:
         _rollback_created_paths(created_paths)
+        if note_snapshot is not None:
+            _restore_file_bytes(note_path, note_snapshot)
         _truncate_append_files(append_file_sizes)
         raise
     payload: dict[str, Any] = {
