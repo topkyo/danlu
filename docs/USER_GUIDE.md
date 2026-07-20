@@ -44,6 +44,10 @@ Product Shell 适合日常快速投料和查看状态。复杂治理操作建议
 ./scripts/aiwiki-launcher.sh drop pdf /path/to/report.pdf
 ./scripts/aiwiki-launcher.sh drop image /path/to/chart.png
 ./scripts/aiwiki-launcher.sh drop repo https://github.com/org/repo.git
+# 万能入口：一条 payload（URL / 本地路径 / 问题）→ 默认 LLM 计划再确定性执行
+./scripts/aiwiki-launcher.sh drop https://github.com/org/repo
+./scripts/aiwiki-launcher.sh drop plan https://github.com/org/repo   # 只看计划，不写 raw
+# 关闭 planner、退回确定性分类：AIWIKI_LLM_PLANNER=0
 
 # 看今日简报
 ./scripts/aiwiki-launcher.sh today
@@ -69,7 +73,8 @@ Product Shell 适合日常快速投料和查看状态。复杂治理操作建议
 
 文本、Markdown、URL 抓取和 repo snapshot 会进入 `raw/inbox/`；PDF、image 原件会进入 `raw/assets/`。不要把二进制原件手动放进 `raw/inbox/`。
 
-成功投料后，runtime **默认**会跑一轮确定性 `compile` + `lint`（P8 投料即煅烧）；若只想入 raw 暂不炼化，加 `--no-auto`。
+成功投料后，runtime **默认**会跑一轮确定性 `compile` + `lint`（P8 投料即煅烧）；若只想入 raw 暂不炼化，加 `--no-auto`。  
+万能 `drop <payload>` 默认先经 LLM planner 分类（github 仓库根 URL 会优先 `fetch_raw` README，而不是误走会触发阻断/空抓取的路径）；planner 失败或 `AIWIKI_LLM_PLANNER=0` 时回退确定性分类器。
 
 ### 第 2 步：编译
 

@@ -175,7 +175,7 @@ watcher 与 nightly timer 默认不调 LLM。LLM 在产品面的默认发生点�
 | `aiwiki lint` | 手动 / nightly | 是 | 否 | 确定性 lint + repair backlog |
 | `aiwiki run-nightly` / `aiwiki nightly` | timer / 手动 | 是 | 否 | 确定性 compile + lint + nightly health |
 | `aiwiki run-ask "<question>" --format report` | 手动 / agent 调用 | 是 | **是** | LLM-backed reasoning：生成 query report |
-| `aiwiki drop …` | 手动 / Shell | 是 | 否 | 入 raw 后 **默认** deterministic compile + lint（`--no-auto` 可跳过） |
+| `aiwiki drop …` | 手动 / Shell | 是 | 可选（universal payload 默认 LLM planner；`AIWIKI_LLM_PLANNER=0` 关） | 入 raw 后 **默认** deterministic compile + lint（`--no-auto` 可跳过）。plan/execute：planner 不写 raw，executor 原样落盘。`AIWIKI_LLM_DISTILL` 控制 distill synthesizer（默认开）。 |
 
 `run-ask` 路径会：
 - 先做 `preflight_check_backend`（4-state probe），结果记入 receipt 的 `backend_compat` 字段

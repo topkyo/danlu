@@ -84,7 +84,7 @@ updated_at: "2026-07-15"
 ### 交互流图
 - **通知流**：runtime 写出新报告 → Notifier 推送飞书 / 企业微信 webhook → 用户在 IM 中收到提醒 → 回到 vault 打开报告 Markdown → UI 内对应卡片按 `last_viewed_timestamp` 更新视觉态。
 - **输入流**：用户在 Universal Input 输入问题或材料 → 提交 → 界面显示 running / received / done / failed / degraded 状态 → 完成后，可交付输出进入 Today Feed。
-- **投喂流**：用户拖拽文件或粘贴 URL 到 Universal Input → runtime 识别类型并路由 → 进度提示 → 完成后进入输出列表。
+- **投喂流**：用户拖拽文件或粘贴 URL 到 Universal Input → CLI universal `drop <payload>`（默认 LLM planner → deterministic executor；`AIWIKI_LLM_PLANNER=0` 退回确定性分类）→ 进度提示 → 完成后进入输出列表。
 
 ### 组件清单
 - **TodayFeed**：默认输出端，只展示可交付输出、确认项和非降级活动。

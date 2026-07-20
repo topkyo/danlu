@@ -1,12 +1,15 @@
 ---
 title: "Audit Remediation 2026-07-19"
 kind: "plan"
-status: "active"
-updated_at: "2026-07-19"
+status: "executed"
+updated_at: "2026-07-20"
 based_on:
   - ".aiwiki-audit/2026-07-19-full-scan/00-cross-review-score.md"
+note: >
+  Tasks 1–5（--protocol / Chromium SSRF / docs SoT / hygiene / verify）已在
+  2026-07-19 remediation 波落地。2026-07-20 另落地能力层修复（plan/execute、
+  CJK tokenize、distill synthesizer 等），见 commit 5d6bcef；不在本计划原 Task 表内。
 ---
-
 # Audit Remediation Plan（2026-07-19）
 
 > 来源：全量扫描交叉评审建议下一刀。用户已批准执行。

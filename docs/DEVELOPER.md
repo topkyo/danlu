@@ -2,7 +2,7 @@
 title: "炼丹炉开发者指南"
 kind: "guide"
 status: "active"
-updated_at: "2026-07-19"
+updated_at: "2026-07-20"
 related_docs:
   - README.md
   - docs/INSTALL.md
@@ -17,12 +17,13 @@ related_docs:
 
 当前 `aiwiki` runtime 按 **owner 分包** 组织；顶层 `app_*.py` hub 文件已在 P2-9（2026-07-18）归零。纯 re-export facade（`app.py` / `app_content` / `app_render` / `app_surfaces` / `app_memory_surfaces` / `app_memory.py` 等）更早删除。新增逻辑必须直引 owner 模块，禁止再引入 facade 或顶层 hub 文件。
 
-- `src/aiwiki/utils/`：底层 primitives（`io` / `security` / `markdown` / `text` / `hash` / `time` / `path` / `json_utils` / `audit`）；原子写、runtime write lock、`safe_fetch` / `safe_resolve_within`、frontmatter、slugify / tokenize、sha256、`utc_now`、`relative_path` 等。
+- `src/aiwiki/utils/`：底层 primitives（`io` / `security` / `markdown` / `text` / `hash` / `time` / `path` / `json_utils` / `audit`）；原子写、runtime write lock、`safe_fetch` / `safe_resolve_within`、frontmatter、slugify / tokenize（CJK Lucene-style bigram；拉丁不变）、sha256、`utc_now`、`relative_path` 等。
 - `src/aiwiki/state/` + owner 子包：持久化状态 I/O（`io` / `constants` / `manifest` / `cache`）+ 按域分布的 `compile/state` / `compile/build` / `content/material` / `content/archive` / `content/rewrite` / `execution/history` / `memory/action_state` / `memory/state` / `planner/state` 等；路径常量分散在各域 `paths.py`（原顶层 paths 常量 hub 已拆）。
 - `src/aiwiki/protocol/`：单 runtime layout、schema scaffolding、protocol state、review windows、focus scoring、runtime config / descriptors。
 - `src/aiwiki/lifecycle/`：`knowledge.py` / `status.py` — judgment / decision lifecycle、aging、review queue、knowledge lifecycle governance。
 - `src/aiwiki/cli/`：CLI parser / dispatch / product-first command surface；普通入口固定为 `drop` / `today` / `advanced`；operator 命令（含 `metrics`）只注册在 `advanced` 下，旧顶层名靠 argv rewrite compat。
 - `src/aiwiki/drop/`：`common` / `url` / `pdf` / `image` / `repo` / `note` — raw materialization owner（`drop-url` / `drop-pdf` / `drop-image` / `drop-repo` / `drop-note`）；用户入口推荐 `drop markdown`。
+- `src/aiwiki/input_planner.py` + `src/aiwiki/executor.py`：universal `drop <payload>` 的 **plan/execute 分流**——LLM planner 只产出 Plan（`fetch_raw` / `fetch_page` / `read_local_repo` / `read_local_note` / `ask`），绝不写 `raw/`；deterministic executor 经 `safe_fetch` 原样落盘并带 provenance。CLI 另有 `drop plan <payload>`；`AIWIKI_LLM_PLANNER=0` 可退回 `input_router.classify_universal_input`。
 - `src/aiwiki/compile/`：compile pipeline phase owner（content/runtime/output/persist）+ `ranking.py`（ranking 全家桶）。
 - `src/aiwiki/content/`：source / concept / derived / material / archive / rewrite / `io.py` owner；`content/memory.py` 仅保留 2 个 A 域辅助函数（M/P/T/R 已拆到 `memory/action_core` + `execution/policy` + `execution/patch_plan` + `execution/repair_plan`）。
 - `src/aiwiki/render/`：views / packs / pilots / protocols / judgment asset render owner（当前热点：`packs.py` ~1388、`views.py` ~1222）。
@@ -44,7 +45,7 @@ related_docs:
 
 | Layer | Commands | Purpose |
 | --- | --- | --- |
-| `primary` | `drop`, `today`, `advanced` | 日常投料、今日简报，以及进入 operator 面（compile / lint / metrics / review-page 等）。`drop` 下含 `url / pdf / image / repo / markdown`。 |
+| `primary` | `drop`, `today`, `advanced` | 日常投料、今日简报，以及进入 operator 面（compile / lint / metrics / review-page 等）。`drop` 下含 `url / pdf / image / repo / markdown / plan`；无子命令的 `drop <payload>` 默认走 LLM planner（可 `AIWIKI_LLM_PLANNER=0` 关闭）。 |
 | `advanced` | `aiwiki advanced ...` | 治理、编译、执行、审计、协议、LLM 和调试；完整列表见 `aiwiki advanced --help`。 |
 | `compat` | 旧顶层名（rewrite only） | 不在 argparse 顶层注册；`drop-*` → `drop <kind>`，其余 → `advanced <cmd>`（含 legacy `metrics` / `compile` 等）。 |
 
@@ -121,6 +122,7 @@ LLM enrichment 仍然是炼丹炉主路径，但放在受控 worker 入口：`ru
 - `run-ask` / `ask` 只产出 `output/reports/*.md` 自由 Markdown 报告；CLI `--format` 仅 `report`（缺省即 report）；旧值 `note|slides|figure|decision-memo|sop` 与 `--direct` 已硬删，argparse 直接拒绝
 - `run-ask` 现在会先用 balanced prompt；如果碰到 timeout，会自动再试一次 lean prompt；失败时写出可审计失败说明和 receipt，不再伪装为 deterministic fallback 成功
 - `run-ask` 现在也支持显式 `--lean` 与 `--timeout <seconds>`，用于直接选择稳优先 prompt 或覆盖单次调用 timeout，而不改动全局环境变量
+- universal `drop <payload>` 默认走 LLM `input_planner`（`AIWIKI_LLM_PLANNER=0|false|no|off` 关闭，退回确定性分类器）；alchemy distill 可选 LLM body synthesizer（`AIWIKI_LLM_DISTILL=0|…` 关闭，退回 deterministic seed）
 - 默认不做隐式 model fallback；需要同 backend 多模型 fallback 时必须显式传 `--model-fallback model_a,model_b`（可重复）或设置 `AIWIKI_MODEL_FALLBACK=model_a,model_b`，CLI 参数优先于 env
 - 默认不做跨 backend fallback；`AIWIKI_BACKEND_FALLBACK` / `AIWIKI_BACKEND_FALLBACK_MODEL` 不再驱动普通 CLI/runtime 的隐藏 backend routing。需要重跑到另一个 backend 时，显式设置 `AIWIKI_LLM_BACKEND` / `AIWIKI_LLM_MODEL` 后重新执行
 - `scripts/run_nightly.sh` 不再切换 fallback backend；已配置 LLM 执行失败后 fail closed，只有未配置 LLM 且未设置 `AIWIKI_NIGHTLY_REQUIRE_LLM=1` 时才跑 deterministic nightly
@@ -183,8 +185,10 @@ PYTHONPATH=src python3 -m aiwiki.cli --root . advanced shell-status
 ```text
 cli/                       命令入口；product-first surface + legacy argv rewrite compat
 drop/                      raw materialization（common / url / pdf / image / repo / note）
+input_planner.py           universal drop LLM Plan（不写 raw/）；AIWIKI_LLM_PLANNER kill-switch
+executor.py                deterministic Plan 执行（safe_fetch / provenance / rollback）
 runner/                    workflows（compile/lint/nightly）+ workflows_ask*（run-ask 子模块）
-                           + alchemy lane 编排 + watch / nightly high-level 编排
+                           + alchemy lane 编排（含可选 distill synthesizer）+ watch / nightly
 planner/                   dry-run / log / safe primitive policy
 signals/                   review / repair / aging / escalation 信号源
 
@@ -199,7 +203,7 @@ execution/                 receipts / history / apply / revert / audit / l3_prop
 cache/                     cache core / sync / query / status / paths
 vault/                     new-vault scaffold / Obsidian bootstrap
 
-utils/                     底层 primitives（io / security / markdown / text / hash / time / path …）
+utils/                     底层 primitives（io / security / markdown / text(CJK tokenize) / hash …）
 state/                     持久化状态 I/O + 各域 paths（best-effort + strict 双语义，M9-P0.4）
 app_shell/                 Product Shell runtime surfaces（summary / controls / status / HTML）
 app_linting/               lint phases / repair backlog / nightly health helpers

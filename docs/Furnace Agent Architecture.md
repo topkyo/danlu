@@ -18,7 +18,7 @@ related_docs:
 
 这份文档是炼丹炉（aiwiki runtime）的**架构边界 / AgentOS 史料 SoT**；**现行产品 CLI 与知识复利主链**以 `docs/USER_GUIDE.md`、`docs/specs/2026-07-18-knowledge-compounding-principles.md` 与 `docs/Furnace Runtime Operations.md` 为准。
 
-> **产品面收敛（2026-07-18，W1–W7）**：多协议、`protocol-learn-*`、L3 apply/revert、rewrite/repair/archive 候选链、`alchemy` 膨胀 CLI、`run-compile`/`run-lint`、signals/planner-log ops、`audit-preview`/`audit-backfill` 等已从 **产品 CLI 删除**。现行主链为 `drop` / `watch` / 确定性 `compile`+`lint` / `ask` / 薄 `file-back`+`review-page` / 金丹最小链 `alchemy-start|distill|finalize|promote(+revert|demote)` / `trace`。下文大量「已落地」清单若仍点名已删 CLI，视为 **历史实现快照**，不得当作当前用户面命令。
+> **产品面收敛（2026-07-18，W1–W7；2026-07-20 plan/execute）**：多协议、`protocol-learn-*`、L3 apply/revert、rewrite/repair/archive 候选链、`alchemy` 膨胀 CLI、`run-compile`/`run-lint`、signals/planner-log ops、`audit-preview`/`audit-backfill` 等已从 **产品 CLI 删除**。现行主链为万能 `drop <payload>`（默认 LLM plan → deterministic execute；`AIWIKI_LLM_PLANNER=0` 可关）/ typed `drop …` / `watch` / 确定性 `compile`+`lint` / `ask` / 薄 `file-back`+`review-page` / 金丹最小链 `alchemy-start|distill|finalize|promote(+revert|demote)` / `trace`。下文大量「已落地」清单若仍点名已删 CLI，视为 **历史实现快照**，不得当作当前用户面命令。
 
 > **实现状态说明（2026-04-26，史料）**：本文定义终局架构边界，不等同于所有机制均已完整落地。当前 runtime 已落地五层文件平面、显式 LLM backend、Product Shell shell-facing contract、active corpus / output candidate state、最小金丹 `alchemy-start / alchemy-distill / alchemy-finalize / alchemy-promote` 链路等；下文对 L3 / rewrite / alchemy auto / audit-preview 等的详细枚举以 W3–W7 删除边界为准，不再视为现行产品入口。
 
