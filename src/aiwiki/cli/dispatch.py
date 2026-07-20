@@ -21,6 +21,9 @@ from ..execution.runtime_surfaces import (
     nightly_health,
     shell_status,
 )
+from ..executor import AskSignal, execute_plan
+from ..input_planner import PlannerError, plan_input
+from ..input_router import UniversalRoute, classify_universal_input
 from ..runner.alchemy import (
     run_alchemy_demote,
     run_alchemy_distill,
@@ -99,8 +102,55 @@ def _handle_drop(args: argparse.Namespace, root: Path) -> tuple[object, str | No
             kind=args.kind,
             allow_sensitive=args.allow_sensitive,
         )
+    elif args.handler_command == "drop-plan":
+        return _handle_drop_plan(args, root)
     else:
         raise ValueError(f"Unsupported command: {args.handler_command}")
+    return _out(_maybe_auto_process(root, result, args))
+
+
+def _handle_drop_plan(args: argparse.Namespace, root: Path) -> tuple[object, str | None]:
+    """LLM-planned drop: planner decides action, executor runs it.
+
+    On any planner failure (LLM error, JSON parse error, autonomy block),
+    fall back to the deterministic classifier and re-dispatch to the existing
+    typed drop_* handler. This keeps `drop <payload>` working offline and
+    when the LLM is unavailable.
+    """
+    payload = args.payload
+    title = getattr(args, "title", None)
+    try:
+        plan = plan_input(payload, root)
+    except PlannerError as exc:
+        print(f"aiwiki: LLM planner unavailable ({exc}); falling back to deterministic router.", file=sys.stderr)
+        return _dispatch_fallback_route(root, payload, title, args)
+
+    result = execute_plan(root, plan, payload)
+    if isinstance(result, AskSignal):
+        ask_payload = result.get("payload") or payload
+        ask_result = ask_question(root, ask_payload, "report")
+        return _out(_maybe_auto_process(root, ask_result, args))
+    return _out(_maybe_auto_process(root, result, args))
+
+
+def _dispatch_fallback_route(
+    root: Path, payload: str, title: str | None, args: argparse.Namespace
+) -> tuple[object, str | None]:
+    """Deterministic fallback: use classify_universal_input and call the matching drop_*."""
+    decision = classify_universal_input(payload)
+    routed_payload = decision.payload
+    if decision.route == UniversalRoute.URL:
+        result = drop_url(root, routed_payload, title=title)
+    elif decision.route == UniversalRoute.PDF:
+        result = drop_pdf(root, routed_payload, title=title)
+    elif decision.route == UniversalRoute.IMAGE:
+        result = drop_image(root, routed_payload, title=title, enable_vision=True)
+    elif decision.route == UniversalRoute.REPO:
+        result = drop_repo(root, routed_payload, title=title)
+    elif decision.route == UniversalRoute.NOTE:
+        result = drop_note(root, routed_payload, title=title)
+    else:  # ASK
+        result = ask_question(root, routed_payload, "report")
     return _out(_maybe_auto_process(root, result, args))
 
 
@@ -263,6 +313,7 @@ _DROP_HANDLERS = {
     "drop-image": _handle_drop,
     "drop-repo": _handle_drop,
     "drop-note": _handle_drop,
+    "drop-plan": _handle_drop,
 }
 
 _COMPILE_PROTOCOL_HANDLERS = {

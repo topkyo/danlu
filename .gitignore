@@ -68,6 +68,9 @@ build/
 # Probe/scratch files
 probe_*.md
 
+# Local multi-agent / audit scratch (not SoT; regenerate under .aiwiki-audit/)
+.aiwiki-audit/
+
 # Local design reference material (embedded git repo, not for redistribution)
 awesome-design-md/
 .worktrees/

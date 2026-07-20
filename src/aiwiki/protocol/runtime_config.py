@@ -129,6 +129,11 @@ CONFLICT_SIGNAL_PAIRS = (
     ("improve", "hurt", "improve-vs-hurt"),
     ("benefit", "risk", "benefit-vs-risk"),
     ("faster", "slower", "faster-vs-slower"),
+    ("upgrade", "downgrade", "upgrade-vs-downgrade"),
+    ("optimize", "degrade", "optimize-vs-degrade"),
+    ("success", "failure", "success-vs-failure"),
+    ("increase", "hurt", "increase-vs-hurt"),
+    ("reduce", "improve", "reduce-vs-improve"),
     ("增加", "减少", "增加-vs-减少"),
     ("上升", "下降", "上升-vs-下降"),
     ("更高", "更低", "更高-vs-更低"),
@@ -136,6 +141,14 @@ CONFLICT_SIGNAL_PAIRS = (
     ("改善", "恶化", "改善-vs-恶化"),
     ("收益", "风险", "收益-vs-风险"),
     ("更快", "更慢", "更快-vs-更慢"),
+    ("升级", "降级", "升级-vs-降级"),
+    ("优化", "劣化", "优化-vs-劣化"),
+    ("成功", "失败", "成功-vs-失败"),
+    ("增强", "削弱", "增强-vs-削弱"),
+    ("促进", "抑制", "促进-vs-抑制"),
+    ("利好", "利空", "利好-vs-利空"),
+    ("优点", "缺点", "优点-vs-缺点"),
+    ("优势", "劣势", "优势-vs-劣势"),
 )
 
 

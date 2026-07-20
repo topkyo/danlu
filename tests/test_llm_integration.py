@@ -793,3 +793,208 @@ def test_render_url_in_browser_uses_cli_when_explicitly_allowed(monkeypatch: pyt
 
     assert result == {"html": "<html>ok</html>", "backend": "chromium"}
     mock_cli.assert_called_once_with("https://example.com", "/fake/chromium")
+
+
+# ---------------------------------------------------------------------------
+# LLM input planner (plan/execute split): JSON parse + Plan validation
+# ---------------------------------------------------------------------------
+
+
+def test_planner_parse_plan_valid_json() -> None:
+    from aiwiki.input_planner import _parse_plan
+
+    plan = _parse_plan('{"action": "fetch_raw", "targets": ["https://raw.githubusercontent.com/x/y/HEAD/README.md"], "title": "y", "reason": "github"}')
+    assert plan.action == "fetch_raw"
+    assert plan.targets == ["https://raw.githubusercontent.com/x/y/HEAD/README.md"]
+    assert plan.title == "y"
+    assert plan.reason == "github"
+
+
+def test_planner_parse_plan_strips_code_fence() -> None:
+    from aiwiki.input_planner import _parse_plan
+
+    plan = _parse_plan('```json\n{"action": "ask", "targets": ["what is aiwiki?"]}\n```')
+    assert plan.action == "ask"
+    assert plan.targets == ["what is aiwiki?"]
+
+
+def test_planner_parse_plan_handles_leading_prose() -> None:
+    from aiwiki.input_planner import _parse_plan
+
+    plan = _parse_plan('Here is the plan:\n{"action": "fetch_page", "targets": ["https://example.com"]}\nDone.')
+    assert plan.action == "fetch_page"
+    assert plan.targets == ["https://example.com"]
+
+
+def test_planner_parse_plan_no_json_raises() -> None:
+    from aiwiki.input_planner import PlannerError, _parse_plan
+
+    with pytest.raises(PlannerError):
+        _parse_plan("no json here")
+
+
+def test_planner_validate_invalid_action() -> None:
+    from aiwiki.input_planner import Plan, PlannerError
+
+    with pytest.raises(PlannerError):
+        Plan(action="bogus", targets=["x"]).validate()
+
+
+def test_planner_validate_missing_targets() -> None:
+    from aiwiki.input_planner import Plan, PlannerError
+
+    with pytest.raises(PlannerError):
+        Plan(action="fetch_raw", targets=[]).validate()
+
+
+def test_planner_validate_ask_allows_empty_targets() -> None:
+    from aiwiki.input_planner import Plan
+
+    Plan(action="ask", targets=[]).validate()  # should not raise
+
+
+def test_planner_validate_too_many_targets() -> None:
+    from aiwiki.input_planner import MAX_TARGETS, Plan, PlannerError
+
+    with pytest.raises(PlannerError):
+        Plan(action="fetch_raw", targets=[f"https://example.com/{i}" for i in range(MAX_TARGETS + 1)]).validate()
+
+
+def test_plan_input_success_with_mock_client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from aiwiki import input_planner
+    from aiwiki.llm import CompletionResult
+
+    class _StubClient:
+        def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+            return CompletionResult(
+                text='{"action": "fetch_raw", "targets": ["https://raw.githubusercontent.com/34306/vphone-aio/HEAD/README.md"], "title": "vphone-aio", "reason": "github repo"}',
+                response_id="stub",
+                usage={},
+            )
+
+    monkeypatch.setattr("aiwiki.runner.clients.create_client", lambda root, timeout_seconds=None: _StubClient())
+
+    plan = input_planner.plan_input("https://github.com/34306/vphone-aio", tmp_path)
+    assert plan.action == "fetch_raw"
+    assert plan.targets == ["https://raw.githubusercontent.com/34306/vphone-aio/HEAD/README.md"]
+    assert plan.title == "vphone-aio"
+
+
+def test_plan_input_llm_error_raises_planner_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from aiwiki import input_planner
+    from aiwiki.llm import LLMError
+
+    class _FailingClient:
+        def complete(self, system_prompt: str, user_prompt: str) -> Any:
+            raise LLMError("backend down")
+
+    monkeypatch.setattr("aiwiki.runner.clients.create_client", lambda root, timeout_seconds=None: _FailingClient())
+
+    with pytest.raises(input_planner.PlannerError):
+        input_planner.plan_input("https://example.com", tmp_path)
+
+
+def test_plan_input_client_resolution_error_raises_planner_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from aiwiki import input_planner
+
+    def _fail_create(root: Path, timeout_seconds: int | None = None) -> Any:
+        raise ValueError("LLM backend resolution failed: no key")
+
+    monkeypatch.setattr("aiwiki.runner.clients.create_client", _fail_create)
+
+    with pytest.raises(input_planner.PlannerError):
+        input_planner.plan_input("https://example.com", tmp_path)
+
+
+def test_plan_input_bad_json_raises_planner_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from aiwiki import input_planner
+    from aiwiki.llm import CompletionResult
+
+    class _GarbageClient:
+        def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+            return CompletionResult(text="I cannot help with that.", response_id="stub", usage={})
+
+    monkeypatch.setattr("aiwiki.runner.clients.create_client", lambda root, timeout_seconds=None: _GarbageClient())
+
+    with pytest.raises(input_planner.PlannerError):
+        input_planner.plan_input("https://example.com", tmp_path)
+
+
+def test_tokenize_cjk_bigrams_overlap_across_phrasings() -> None:
+    from aiwiki.utils.text import tokenize
+
+    query = tokenize("为什么编译很慢")
+    haystack = tokenize("编译流程很慢的原因")
+    # CJK runs are segmented into overlapping bigrams, so differently-phrased
+    # Chinese text shares matchable units for retrieval ranking.
+    assert "编译" in query and "编译" in haystack
+    assert "很慢" in query and "很慢" in haystack
+    assert set(query) & set(haystack)
+
+
+def test_tokenize_preserves_latin_and_mixed() -> None:
+    from aiwiki.utils.text import tokenize
+
+    assert tokenize("the quick brown fox") == ["quick", "brown", "fox"]
+    mixed = tokenize("aiwiki 编译 pipeline")
+    assert "aiwiki" in mixed and "pipeline" in mixed and "编译" in mixed
+
+
+def test_conflict_signals_detect_cjk_upgrade_downgrade() -> None:
+    from aiwiki.content.concepts import detect_concept_conflict_signals
+
+    contexts = [
+        {"path": "wiki/sources/a.md", "title": "A", "status": "ready", "summary": "这次变更是一次升级"},
+        {"path": "wiki/sources/b.md", "title": "B", "status": "ready", "summary": "这次变更其实是降级"},
+    ]
+    signals = detect_concept_conflict_signals(contexts)
+    labels = {signal["label"] for signal in signals}
+    assert "升级-vs-降级" in labels
+
+
+def test_distill_synthesizer_disabled_returns_none(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from aiwiki.runner.alchemy import _llm_distill_synthesizer
+
+    monkeypatch.setenv("AIWIKI_LLM_DISTILL", "0")
+    assert _llm_distill_synthesizer(tmp_path) is None
+
+
+def test_distill_synthesizer_no_backend_returns_none(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from aiwiki.runner.alchemy import _llm_distill_synthesizer
+
+    monkeypatch.setenv("AIWIKI_LLM_DISTILL", "1")
+    ref = "wiki/derived/src.md"
+    src = tmp_path / ref
+    src.parent.mkdir(parents=True, exist_ok=True)
+    src.write_text("# Src\n\nsome evidence", encoding="utf-8")
+
+    def _fail_create(root: Path, timeout_seconds: int | None = None) -> Any:
+        raise ValueError("no backend configured")
+
+    monkeypatch.setattr("aiwiki.runner.clients.create_client", _fail_create)
+    synth = _llm_distill_synthesizer(tmp_path)
+    assert synth is not None
+    # No backend -> synthesizer returns None so the mutation layer uses the
+    # deterministic seed (replay-safe).
+    assert synth("why", [ref]) is None
+
+
+def test_distill_synthesizer_mocked_llm_returns_body(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from aiwiki.llm import CompletionResult
+    from aiwiki.runner.alchemy import _llm_distill_synthesizer
+
+    monkeypatch.setenv("AIWIKI_LLM_DISTILL", "1")
+    ref = "wiki/derived/src.md"
+    src = tmp_path / ref
+    src.parent.mkdir(parents=True, exist_ok=True)
+    src.write_text("---\nkey: v\n---\n# Src\n\nevidence body", encoding="utf-8")
+
+    class _StubClient:
+        def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+            assert "evidence body" in user_prompt
+            return CompletionResult(text="## Thesis\n- synthesized", response_id="stub", usage={})
+
+    monkeypatch.setattr("aiwiki.runner.clients.create_client", lambda root, timeout_seconds=None: _StubClient())
+    synth = _llm_distill_synthesizer(tmp_path)
+    assert synth is not None
+    assert synth("why", [ref]) == "## Thesis\n- synthesized"

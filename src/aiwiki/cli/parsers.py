@@ -390,10 +390,26 @@ def _register_drop_subcommand_parsers(subparsers: argparse._SubParsersAction) ->
     _configure_drop_note_parser(drop_note_parser)
     drop_note_parser.set_defaults(handler_command="drop-note")
 
+    drop_plan_parser = subparsers.add_parser(
+        "plan",
+        help="LLM-planned drop: classify a universal payload and execute the chosen action.",
+    )
+    _configure_drop_plan_parser(drop_plan_parser)
+    drop_plan_parser.set_defaults(handler_command="drop-plan")
+
 
 def _configure_drop_url_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("url", help="Web URL to fetch.")
     parser.add_argument("--title", help="Optional display title.")
+    _add_auto_flags(parser)
+
+
+def _configure_drop_plan_parser(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "payload",
+        help="Universal payload: URL, local path, question, or inline text. The LLM planner decides how to handle it.",
+    )
+    parser.add_argument("--title", help="Optional display title override.")
     _add_auto_flags(parser)
 
 

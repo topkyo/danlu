@@ -567,6 +567,15 @@ def _pick_main_node(soup: Any) -> Any:
         ".article-body",
         ".post-body",
         ".content",
+        ".markdown-body",
+        ".readme",
+        ".readme-content",
+        '[data-testid="readme"]',
+        ".documentation",
+        ".docs-body",
+        ".prose",
+        "#content",
+        "#main-content",
     ]
     candidates = []
     for selector in preferred:

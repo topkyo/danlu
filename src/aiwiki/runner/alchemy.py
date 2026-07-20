@@ -180,13 +180,86 @@ def run_alchemy_start(
     return start_elixir(root, corpus_id, protocol=protocol, topic=topic, include_elixir_ids=include_elixir_ids)
 
 
+_DISTILL_SYNTHESIS_SYSTEM_PROMPT = (
+    "你是炼丹炉 (aiwiki) 的金丹提炼器。给定一个提炼问题和若干来源材料，"
+    "综合出一份结构化、简洁的金丹正文 (markdown)，包含 ## Thesis / ## Evidence / ## Open Questions 三节。"
+    "只依据来源材料下判断，保留来源引用；不要编造材料中没有的事实。只输出 markdown 正文，不要额外说明。"
+)
+_DISTILL_SOURCE_CHAR_BUDGET = 12000
+
+
+def _llm_distill_enabled() -> bool:
+    import os
+
+    return os.environ.get("AIWIKI_LLM_DISTILL", "1").strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _llm_distill_synthesizer(root: Path):
+    """Return an LLM-backed body synthesizer, or None when disabled.
+
+    The returned callable takes (question, source_refs) and returns a
+    synthesized elixir body, or None on any failure so the mutation layer
+    falls back to the deterministic seed. LLM lives in this orchestration
+    layer; the mutation layer stays deterministic given the injected body.
+    """
+    if not _llm_distill_enabled():
+        return None
+
+    def _synthesize(question: str, source_refs: list[str]) -> str | None:
+        from aiwiki.llm import LLMError
+        from aiwiki.utils.markdown import strip_frontmatter
+
+        source_texts: list[str] = []
+        budget = _DISTILL_SOURCE_CHAR_BUDGET
+        for ref in source_refs:
+            path = root / ref
+            if not path.is_file():
+                continue
+            try:
+                text = strip_frontmatter(path.read_text(encoding="utf-8", errors="replace"))
+            except OSError:
+                continue
+            chunk = text[:budget]
+            source_texts.append(f"## Source: {ref}\n\n{chunk}")
+            budget -= len(chunk)
+            if budget <= 0:
+                break
+        if not source_texts:
+            return None
+        try:
+            from aiwiki.runner.clients import create_client
+
+            client = create_client(root)
+        except Exception as exc:  # noqa: BLE001 - any client failure -> deterministic fallback
+            logging.getLogger("aiwiki").info("distill LLM synthesis unavailable, using deterministic seed: %s", exc)
+            return None
+        user_prompt = "提炼问题: {q}\n\n来源材料:\n{s}\n\n输出金丹正文 (markdown):".format(
+            q=question, s="\n\n".join(source_texts)
+        )
+        try:
+            result = client.complete(_DISTILL_SYNTHESIS_SYSTEM_PROMPT, user_prompt)
+        except LLMError as exc:
+            logging.getLogger("aiwiki").info("distill LLM synthesis failed, using deterministic seed: %s", exc)
+            return None
+        body = (result.text or "").strip()
+        return body or None
+
+    return _synthesize
+
+
 @runtime_write_operation
 def run_alchemy_distill(
     root: Path, elixir_id: str, question: str, include_elixir_ids: list[str] | None = None
 ) -> dict[str, Any]:
     from aiwiki.execution.alchemy import distill_elixir
 
-    return distill_elixir(root, elixir_id, question=question, include_elixir_ids=include_elixir_ids)
+    return distill_elixir(
+        root,
+        elixir_id,
+        question=question,
+        include_elixir_ids=include_elixir_ids,
+        body_synthesizer=_llm_distill_synthesizer(root),
+    )
 
 
 @runtime_write_operation

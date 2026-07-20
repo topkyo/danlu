@@ -637,6 +637,75 @@ def test_universal_input_routing(  # pragma: no cover - explicit pytest acceptan
     assert auto_process.get("llm_used") is False
 
 
+def test_planner_fetch_raw_routes_github_url_without_clone(  # pragma: no cover - explicit pytest acceptance gate
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """LLM planner fetch_raw path: github URL -> raw README fetch, no clone.
+
+    Validates the plan/execute split end-to-end: the LLM planner emits a
+    fetch_raw plan for a github repo URL, the deterministic executor fetches
+    the raw README verbatim via safe_fetch, and the raw note preserves the
+    content with provenance. No git clone is invoked.
+    """
+    _, vault = _copy_case_and_fix_clock_from("M6.2", "case_universal_input", tmp_path, monkeypatch)
+
+    from aiwiki.llm import CompletionResult
+
+    readme_content = "# vphone-aio\n\n1 script run the vphone.\n"
+
+    class _PlannerStubClient:
+        def complete(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+            return CompletionResult(
+                text=json.dumps(
+                    {
+                        "action": "fetch_raw",
+                        "targets": ["https://raw.githubusercontent.com/34306/vphone-aio/HEAD/README.md"],
+                        "title": "vphone-aio",
+                        "reason": "github repo, fetch raw README",
+                    }
+                ),
+                response_id="planner-stub",
+                usage={},
+            )
+
+    monkeypatch.setattr("aiwiki.runner.clients.create_client", lambda root, timeout_seconds=None: _PlannerStubClient())
+
+    def _fake_safe_fetch(url: str, **kwargs: object) -> tuple[bytes, str]:
+        assert "raw.githubusercontent.com" in url, f"executor should fetch raw URL, got {url}"
+        return readme_content.encode("utf-8"), url
+
+    monkeypatch.setattr("aiwiki.utils.security.safe_fetch", _fake_safe_fetch)
+    monkeypatch.setattr("aiwiki.drop.common.safe_fetch", _fake_safe_fetch)
+    monkeypatch.setattr("aiwiki.executor.safe_fetch", _fake_safe_fetch)
+
+    # Ensure planner is ON (this test targets the planner path explicitly) and
+    # remote repo drop would require env -- the planner path must NOT trigger
+    # clone, so that env must stay unset.
+    monkeypatch.setenv("AIWIKI_LLM_PLANNER", "1")
+    monkeypatch.delenv("AIWIKI_ALLOW_REMOTE_REPO_DROP", raising=False)
+
+    out = _run_cli(vault, ["drop", "https://github.com/34306/vphone-aio"])
+    payload = json.loads(out)
+
+    assert payload["material"] == "url"
+    assert payload["planner_action"] == "fetch_raw"
+    assert payload["title"] == "vphone-aio"
+    assert "raw.githubusercontent.com" in payload["targets"][0]
+
+    notes = sorted((vault / "raw" / "inbox").glob("*vphone-aio*.md"))
+    assert len(notes) == 1, f"expected 1 raw note, got {len(notes)}"
+    note_text = notes[0].read_text(encoding="utf-8")
+    assert "vphone-aio" in note_text
+    assert "1 script run the vphone" in note_text
+    assert "## Source: https://raw.githubusercontent.com" in note_text
+    assert "planner-fetch-raw" in note_text or "github.com/34306/vphone-aio" in note_text
+
+    history = _load_jsonl(vault / ".aiwiki/state/runtime-history.jsonl")
+    assert history[-1]["event_type"] == "raw-added"
+    assert history[-1]["source_type"] == "planner-fetch-raw"
+    assert history[-1]["ingest_metadata"]["planner_action"] == "fetch_raw"
+
+
 def test_file_back_rejects_non_judgment_kind(  # pragma: no cover - explicit pytest acceptance gate
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

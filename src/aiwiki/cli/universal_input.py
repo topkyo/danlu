@@ -13,7 +13,12 @@ import sys
 
 from ..input_router import UniversalRoute, classify_universal_input
 
-_DROP_TYPED_SUBCOMMANDS = {"url", "pdf", "image", "repo", "markdown", "md", "note"}
+_DROP_TYPED_SUBCOMMANDS = {"url", "pdf", "image", "repo", "markdown", "md", "note", "plan"}
+
+
+def _llm_planner_enabled() -> bool:
+    """Default ON. Set AIWIKI_LLM_PLANNER=0 to disable and use the deterministic classifier."""
+    return os.environ.get("AIWIKI_LLM_PLANNER", "1").strip().lower() not in {"0", "false", "no", "off"}
 
 
 def _looks_like_local_path(value: str) -> bool:
@@ -71,9 +76,17 @@ def _rewrite_universal_drop_argv(argv: list[str] | None) -> list[str] | None:
             print("error: empty stdin payload", file=sys.stderr)
             raise SystemExit(2)
 
+    rest = rewritten[drop_index + 2 :]
+    if _llm_planner_enabled():
+        # Default ON: route through the LLM planner. The planner decides
+        # fetch_raw / fetch_page / read_local_repo / read_local_note / ask,
+        # and the deterministic executor runs it. On planner failure the
+        # dispatch layer falls back to classify_universal_input.
+        rewritten[drop_index:] = ["drop", "plan", payload, *rest]
+        return rewritten
+
     decision = classify_universal_input(payload)
     routed_payload = decision.payload
-    rest = rewritten[drop_index + 2 :]
     if decision.route == UniversalRoute.ASK:
         if _looks_like_local_path(routed_payload):
             print(

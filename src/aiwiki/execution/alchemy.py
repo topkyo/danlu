@@ -11,6 +11,7 @@ Boundary: mutation only. Higher-level orchestration lives in
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import datetime, timezone  # noqa: F401
 from pathlib import Path
 from typing import Any
@@ -160,7 +161,12 @@ def start_elixir(
 
 
 def distill_elixir(
-    root: Path, elixir_id: str, *, question: str, include_elixir_ids: list[str] | None = None
+    root: Path,
+    elixir_id: str,
+    *,
+    question: str,
+    include_elixir_ids: list[str] | None = None,
+    body_synthesizer: Callable[[str, list[str]], str | None] | None = None,
 ) -> dict[str, Any]:
     normalized_id = _resolve_elixir_id(root, elixir_id)
     source_path, frontmatter = _read_elixir_anywhere(root, normalized_id)
@@ -227,7 +233,10 @@ def distill_elixir(
     body = original.split("---", 2)[-1]
     body = body.lstrip("\n")
     if _elixir_body_has_pending_refinement(body):
-        body = _seed_elixir_body_from_sources(root, topic=question, source_outputs=merged)
+        synthesized = body_synthesizer(question, merged) if body_synthesizer is not None else None
+        body = synthesized if synthesized and synthesized.strip() else _seed_elixir_body_from_sources(
+            root, topic=question, source_outputs=merged
+        )
     _write_elixir_markdown(target_path, frontmatter=frontmatter, body=body)
     _validate_state_for_path(root, "distilling", target_path)
     return {

@@ -158,13 +158,36 @@ _TIMESTAMP_FRAGMENT_PATTERN = re.compile(r"^\d{2,}t\d{2,}$")
 _QUARTER_TAG_PATTERN = re.compile(r"^(?:[12]\d{3}q[1-4]|q[1-4][12]\d{3})$")
 
 
+def _is_meaningful_token(token: str) -> bool:
+    # CJK bigrams/unigrams are pre-segmented to length 1-2; keep them.
+    # Latin tokens: keep 3+ char non-numeric runs.
+    if re.search(r"[\u4e00-\u9fff]", token):
+        return len(token) >= 2
+    return len(token) > 2 and not token.isdigit()
+
+
+def _cjk_ngrams(run: str) -> list[str]:
+    # Dependency-free CJK segmentation via overlapping bigrams (Lucene
+    # CJKAnalyzer style). Chinese has no word spaces, so a whole run collapses
+    # into one unmatchable token; bigrams give matchable retrieval units
+    # without a dictionary segmenter (jieba) that would violate stdlib-first.
+    if len(run) <= 2:
+        return [run]
+    return [run[index : index + 2] for index in range(len(run) - 1)]
+
+
 def tokenize(text: str) -> list[str]:
-    tokens = re.findall(r"[a-zA-Z0-9]+", text.lower())
+    raw_tokens = re.findall(r"[a-zA-Z0-9]+|[\u4e00-\u9fff]+", text.lower())
+    tokens: list[str] = []
+    for token in raw_tokens:
+        if re.search(r"[\u4e00-\u9fff]", token):
+            tokens.extend(_cjk_ngrams(token))
+        else:
+            tokens.append(token)
     return [
         token
         for token in tokens
-        if len(token) > 2
-        and not token.isdigit()
+        if _is_meaningful_token(token)
         and token not in STOP_WORDS
         and not _BATCH_TAG_PATTERN.match(token)
         and not _TIMESTAMP_FRAGMENT_PATTERN.match(token)
