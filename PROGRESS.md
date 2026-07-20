@@ -14,7 +14,9 @@
 
 ## 当前动态
 
-- 2026-07-20 (**plan/execute + capability remediation**，`5d6bcef`)：universal `drop <payload>` 默认走 LLM `input_planner` → deterministic `executor`（`drop plan` 可只看计划；`AIWIKI_LLM_PLANNER=0` 退回确定性分类）。能力层补洞：CJK bigram `tokenize`、conflict CJK pairs、repo/url 抽取扩面、alchemy distill 在 runner 注入可选 LLM synthesizer（`AIWIKI_LLM_DISTILL=0` 关闭）。验证口径：**25** acceptance + **60** llm-integration + Jest **169**。文档 SoT 同步中（防计数/owner 漂移）。
+- 2026-07-20 (**capability follow-up**): 修 5d6bcef 下游空洞——CJK concept `len>=2` + unicode `slugify` + CJK stopwords；`fetch_raw` 全失败 fail-loud；planner 本地路径 fail-loud + vault containment；distill LLM 锁外合成 + receipt `llm_invoked`/`generation_mode`；GitHub blob/tree planner 规则。验证：acceptance **25** + llm-integration **65**。
+
+- 2026-07-20 (**plan/execute + capability remediation**，`5d6bcef`)：universal `drop <payload>` 默认走 LLM `input_planner` → deterministic `executor`（`drop plan` 可只看计划；`AIWIKI_LLM_PLANNER=0` 退回确定性分类）。能力层补洞：CJK bigram `tokenize`、conflict CJK pairs、repo/url 抽取扩面、alchemy distill 在 runner 注入可选 LLM synthesizer（`AIWIKI_LLM_DISTILL=0` 关闭）。文档 SoT 同步 `a89779d`。
 
 - 2026-07-18 (**Active SoT sync + ask/atomic hot-path**)：Architecture / Evolution / Elixir / Runtime Ops / USER_GUIDE 对齐金丹锚点 `wiki/judgments|derived` 与 judgment-only file-back；execution/runner ask 热路径续扫 `write_text`→`atomic_write_text`。验证：`bash scripts/verify.sh scripts python-static acceptance`。
 

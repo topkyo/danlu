@@ -109,6 +109,20 @@ def _handle_drop(args: argparse.Namespace, root: Path) -> tuple[object, str | No
     return _out(_maybe_auto_process(root, result, args))
 
 
+def _reject_path_like_ask(payload: str) -> None:
+    """Fail loud when a path-like payload would otherwise become ASK."""
+    from .universal_input import _looks_like_local_path
+
+    if _looks_like_local_path(payload):
+        print(
+            f"error: drop payload looks like a file path but matches no known type: {payload!r}\n"
+            "hint: use 'drop markdown <path>' for markdown/text files, "
+            "or prefix with 'ask:' to force a question.",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
+
 def _handle_drop_plan(args: argparse.Namespace, root: Path) -> tuple[object, str | None]:
     """LLM-planned drop: planner decides action, executor runs it.
 
@@ -128,6 +142,7 @@ def _handle_drop_plan(args: argparse.Namespace, root: Path) -> tuple[object, str
     result = execute_plan(root, plan, payload)
     if isinstance(result, AskSignal):
         ask_payload = result.get("payload") or payload
+        _reject_path_like_ask(str(ask_payload))
         ask_result = ask_question(root, ask_payload, "report")
         return _out(_maybe_auto_process(root, ask_result, args))
     return _out(_maybe_auto_process(root, result, args))
@@ -150,6 +165,7 @@ def _dispatch_fallback_route(
     elif decision.route == UniversalRoute.NOTE:
         result = drop_note(root, routed_payload, title=title)
     else:  # ASK
+        _reject_path_like_ask(routed_payload)
         result = ask_question(root, routed_payload, "report")
     return _out(_maybe_auto_process(root, result, args))
 

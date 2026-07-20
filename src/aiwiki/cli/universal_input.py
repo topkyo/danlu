@@ -77,6 +77,19 @@ def _rewrite_universal_drop_argv(argv: list[str] | None) -> list[str] | None:
             raise SystemExit(2)
 
     rest = rewritten[drop_index + 2 :]
+    # EP-001/EP-003: path-like payloads that classify as ASK must fail loud on
+    # BOTH planner-default and deterministic paths (planner must not hide this).
+    if _looks_like_local_path(payload):
+        decision = classify_universal_input(payload)
+        if decision.route == UniversalRoute.ASK:
+            print(
+                f"error: drop payload looks like a file path but matches no known type: {payload!r}\n"
+                "hint: use 'drop markdown <path>' for markdown/text files, "
+                "or prefix with 'ask:' to force a question.",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+
     if _llm_planner_enabled():
         # Default ON: route through the LLM planner. The planner decides
         # fetch_raw / fetch_page / read_local_repo / read_local_note / ask,

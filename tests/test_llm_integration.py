@@ -998,3 +998,68 @@ def test_distill_synthesizer_mocked_llm_returns_body(monkeypatch: pytest.MonkeyP
     synth = _llm_distill_synthesizer(tmp_path)
     assert synth is not None
     assert synth("why", [ref]) == "## Thesis\n- synthesized"
+
+
+def test_cjk_concept_terms_and_slug_survive_bigrams() -> None:
+    from aiwiki.content.concepts import entry_concept_terms
+    from aiwiki.utils.text import slugify, tokenize
+
+    title = "炼丹炉检索能力"
+    tokens = tokenize(title)
+    assert "炼丹" in tokens and "检索" in tokens
+    terms = entry_concept_terms({"title": title, "id": "x1"}, f"{title}需要提升。")
+    assert terms, "CJK bigrams must pass concept length gate"
+    assert slugify("炼丹炉") == "炼丹炉"
+    assert slugify("炼丹炉") != slugify("中文标题")
+
+
+def test_cjk_stopwords_filter_function_bigrams() -> None:
+    from aiwiki.utils.text import tokenize
+
+    tokens = tokenize("这是一个测试，我们发现这个系统很好")
+    assert "这是" not in tokens
+    assert "一个" not in tokens
+    assert "我们" not in tokens
+    assert "这个" not in tokens
+    assert "测试" in tokens or "系统" in tokens
+
+
+def test_fetch_raw_all_fail_raises(tmp_path: Path) -> None:
+    from aiwiki.executor import execute_plan
+    from aiwiki.input_planner import Plan
+    from aiwiki.protocol.scaffold import ensure_layout
+
+    ensure_layout(tmp_path)
+    plan = Plan(
+        action="fetch_raw",
+        targets=["http://127.0.0.1:9/blocked"],
+        title="blocked",
+        reason="test",
+    )
+    with pytest.raises(RuntimeError, match="fetch_raw failed for all targets"):
+        execute_plan(tmp_path, plan, "https://github.com/owner/repo")
+    assert not any((tmp_path / "raw" / "inbox").glob("*.md"))
+
+
+def test_executor_rejects_path_escape(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from aiwiki.executor import execute_plan
+    from aiwiki.input_planner import Plan
+    from aiwiki.protocol.scaffold import ensure_layout
+    from aiwiki.utils.security import PathOutsideWorkspaceError
+
+    ensure_layout(tmp_path)
+    outside = Path("/tmp/aiwiki-outside-note-test.md")
+    outside.write_text("secret", encoding="utf-8")
+    plan = Plan(action="read_local_note", targets=[str(outside)], title="x", reason="injection")
+    with pytest.raises(PathOutsideWorkspaceError):
+        execute_plan(tmp_path, plan, "https://example.com/article")
+    outside.unlink(missing_ok=True)
+
+
+def test_universal_drop_path_like_ask_fails_with_planner_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    from aiwiki.cli.universal_input import _rewrite_universal_drop_argv
+
+    monkeypatch.setenv("AIWIKI_LLM_PLANNER", "1")
+    with pytest.raises(SystemExit) as caught:
+        _rewrite_universal_drop_argv(["drop", "notes/no-such-type.docx"])
+    assert caught.value.code == 2

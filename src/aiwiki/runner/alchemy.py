@@ -247,19 +247,63 @@ def _llm_distill_synthesizer(root: Path):
     return _synthesize
 
 
-@runtime_write_operation
+def _distill_source_refs_for_synthesis(root: Path, elixir_id: str) -> list[str]:
+    """Read-only peek of candidate derived_from for LLM synthesis outside the write lock."""
+    from aiwiki.execution.alchemy_helpers import _candidate_path, _parse_elixir_frontmatter, _resolve_elixir_id
+
+    try:
+        normalized_id = _resolve_elixir_id(root, elixir_id)
+        candidate = _candidate_path(root, normalized_id)
+        if not candidate.is_file():
+            return []
+        frontmatter = _parse_elixir_frontmatter(candidate)
+    except Exception:  # noqa: BLE001 - synthesis peek is best-effort
+        return []
+    return [str(item) for item in frontmatter.get("derived_from", []) if isinstance(item, str)]
+
+
 def run_alchemy_distill(
     root: Path, elixir_id: str, question: str, include_elixir_ids: list[str] | None = None
 ) -> dict[str, Any]:
-    from aiwiki.execution.alchemy import distill_elixir
+    """Distill with LLM synthesis outside the single-writer lock.
 
-    return distill_elixir(
-        root,
-        elixir_id,
-        question=question,
-        include_elixir_ids=include_elixir_ids,
-        body_synthesizer=_llm_distill_synthesizer(root),
-    )
+    Network LLM calls must not hold `runtime_write_lock`. Mutation stays locked;
+    synthesizer output is injected as a precomputed body.
+    """
+    from aiwiki.execution.alchemy import distill_elixir
+    from aiwiki.utils.io import runtime_write_lock
+
+    precomputed_body: str | None = None
+    llm_invoked = False
+    generation_mode = "deterministic_seed"
+    synth = _llm_distill_synthesizer(root)
+    if synth is not None:
+        source_refs = _distill_source_refs_for_synthesis(root, elixir_id)
+        if include_elixir_ids:
+            # include refs are elixir ids; synthesizer only needs wiki paths —
+            # peek list is enough for primary sources already on the candidate.
+            pass
+        body = synth(question, source_refs) if source_refs else None
+        if body and str(body).strip():
+            precomputed_body = str(body).strip()
+            llm_invoked = True
+            generation_mode = "llm"
+
+    def _fixed_body(_question: str, _source_refs: list[str]) -> str | None:
+        return precomputed_body
+
+    with runtime_write_lock(root):
+        result = distill_elixir(
+            root,
+            elixir_id,
+            question=question,
+            include_elixir_ids=include_elixir_ids,
+            body_synthesizer=_fixed_body if precomputed_body else None,
+        )
+    result["llm_invoked"] = llm_invoked
+    result["generation_mode"] = generation_mode
+    result["semantic_content_generated_by_runtime"] = llm_invoked
+    return result
 
 
 @runtime_write_operation

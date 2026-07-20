@@ -68,8 +68,9 @@ PLANNER_SYSTEM_PROMPT = """你是炼丹炉 (aiwiki) 的输入路由器。给定�
 
 判断要点:
 - github.com/<owner>/<repo>（无 .git 后缀、无 /archive/ /blob/ /tree/ 子路径）：优先 fetch_raw，targets 用 https://raw.githubusercontent.com/<owner>/<repo>/HEAD/README.md（以及 README 提到的关键脚本，若可推断）；不要 clone 整个仓库
+- github.com/<owner>/<repo>/blob/<ref>/<path> 或 /tree/<ref>/<path>：优先 fetch_raw，把 blob/tree URL 改写成 https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>（目录 tree 则抓该目录下 README.md 若可推断，否则抓页面用 fetch_page）
 - github.com/<owner>/<repo>.git 或 git@ 或 ssh://：fetch_page 抓仓库页面（避免本地 clone 大仓库）
-- 普通 http(s) 网页（非 github repo 根）：fetch_page
+- 普通 http(s) 网页（非 github repo 根、非 blob/tree）：fetch_page
 - 本地目录路径：read_local_repo
 - 本地 .md/.txt 文件：read_local_note
 - 多行文本或 note: 前缀：read_local_note
@@ -90,6 +91,9 @@ PLANNER_FEW_SHOT = """示例:
 
 输入: https://github.com/34306/vphone-aio
 输出: {"action": "fetch_raw", "targets": ["https://raw.githubusercontent.com/34306/vphone-aio/HEAD/README.md"], "title": "vphone-aio", "reason": "github repo, fetch raw README via raw.githubusercontent.com"}
+
+输入: https://github.com/34306/vphone-aio/blob/main/README.md
+输出: {"action": "fetch_raw", "targets": ["https://raw.githubusercontent.com/34306/vphone-aio/main/README.md"], "title": "README.md", "reason": "github blob, rewrite to raw.githubusercontent.com"}
 
 输入: https://example.com/article.html
 输出: {"action": "fetch_page", "targets": ["https://example.com/article.html"], "reason": "ordinary webpage"}

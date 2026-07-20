@@ -12,7 +12,7 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
 ### Added
 - Universal drop **plan/execute**：`src/aiwiki/input_planner.py`（LLM 分类 Plan，不写 `raw/`）+ `src/aiwiki/executor.py`（deterministic 原样落盘 + SSRF `safe_fetch` + 事务回滚）；CLI `drop plan <payload>`；默认 `drop <payload>` 走 planner（`AIWIKI_LLM_PLANNER=0` 关闭）。
 - Alchemy distill 可选 LLM body synthesizer（`runner/alchemy.py` 编排层注入；mutation 层仍 deterministic；`AIWIKI_LLM_DISTILL=0` 关闭）。
-- `tests/test_llm_integration.py`：现行 **60** 条（含 plan/execute、CJK tokenize、conflict CJK、distill synthesizer）；历史起点为 42 条 LLM 执行层契约（`LLMConfig.from_env()` / backend / retry / `ModelFallbackClient` / degraded artifact）。
+- `tests/test_llm_integration.py`：现行 **65** 条（含 plan/execute、CJK tokenize/concept/stopwords、fetch_raw fail-loud、path containment、distill synthesizer）；历史起点为 42 条 LLM 执行层契约。
 - `.pre-commit-config.yaml`：pre-commit hook（ruff check + ruff-format check + check-merge-conflict / check-yaml / check-added-large-files 500KB），轻量 gate；完整验证仍靠 `bash scripts/verify.sh`。
 - `src/aiwiki/utils/` 子包：`io` / `security` / `markdown` / `text` / `hash` / `time` / `path` / `json_utils` / `audit`（原 `app_utils.py` 下沉）。
 - `src/aiwiki/state/` + owner 子包：`io` / `constants` / `manifest` / `cache` / `compile/state` / `compile/build` / `content/material` / `content/archive` / `content/rewrite` / `execution/history` / `memory/action_state` / `memory/state` / `planner/state`（原 `app_state.py` 下沉）。
@@ -27,7 +27,8 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
 - `AGENTS.md` L115 CLI 入口描述修复：`drop/today/metrics/advanced` → `drop/today/advanced`（`metrics` 经 argv rewrite 作为 `advanced` 子命令）。
 - `src/aiwiki/trace.py` docstring 资产种类数 `6 类` → `9 类`。
 - `execution/{archive,lifecycle,ask,runtime_surfaces,concept_rewrite}.py` stale docstring 修复：删除对已移除 `_LAZY_OWNERS` / `app_compile.utc_now` 的引用。
-- verify 现行口径：acceptance **25** + llm-integration **60** + Jest **169**（历史 24/42 为 2026-07-18/19 快照）。
+- verify 现行口径：acceptance **25** + llm-integration **65** + Jest **169**（历史 24/42/60 为沿革快照）。
+- Capability follow-up：CJK concept/slug/stopwords；`fetch_raw` fail-loud；local-path fail-loud + containment；distill LLM outside write lock + `llm_invoked` receipt；GitHub blob/tree planner few-shot。
 
 ### Removed
 - `src/aiwiki/app_utils.py`：已下沉到 `utils/` 子包（1200 行/52 符号/89 文件引用）。
@@ -62,7 +63,7 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
 - `scripts/verify.sh` 整个 `unit` target（含 `verify_unit()` 函数 + dispatch case + usage help 一行）删除；与 `all` 唯一差别是 coverage overhead，`unit` 是 `all` 的"裸测版本"，被证实为冗余单独入口。
 - `scripts/verify.sh` 中 `all|full)` 后串行落点里 `coverage erase + coverage run pytest + coverage report` 三段（约 12 min）一并删除；`.coveragerc` 同步删，`pyproject.toml` 中 `coverage>=7.6,<8` dev 依赖同步移除。`verify.sh all` 退化为 `scripts + product-shell-static + cli-smoke + smoke + python-static + acceptance`（≈18 s daily-feasible；**acceptance 17** 为 2026-07-15 historical 口径；现行见 Unreleased：**25**）。
 - `scripts/verify_target_rules.sh`：`.coveragerc` 路径 case 一并删除（文件已无）。
-- `tests/` 收缩到 acceptance-only：删除 118 个顶层 `tests/test_*.py`（除 `tests/test_acceptance_loop.py`） + 26 个 `tests/unit/test_*.py`，合计 144 个 pytest 单元测试文件 / 约 56k LOC 退役。`tests/` 现仅含 `tests/test_acceptance_loop.py`（acceptance loop runner）+ `tests/acceptance/`（`case_runner.py` / `llm_replay.py` / `__init__.py`）+ `tests/fixtures/`（259 个 acceptance fixture），由 `bash scripts/verify.sh all` 默认跑 acceptance replay（**17** 为 2026-07-15 historical；**24**/llm-integration **42** 为 2026-07-18/19 快照；现行 **25** + llm-integration **60**）。`tests/unit/` 整目录也从 git 跟踪中清空。
+- `tests/` 收缩到 acceptance-only：删除 118 个顶层 `tests/test_*.py`（除 `tests/test_acceptance_loop.py`） + 26 个 `tests/unit/test_*.py`，合计 144 个 pytest 单元测试文件 / 约 56k LOC 退役。`tests/` 现仅含 `tests/test_acceptance_loop.py`（acceptance loop runner）+ `tests/acceptance/`（`case_runner.py` / `llm_replay.py` / `__init__.py`）+ `tests/fixtures/`（259 个 acceptance fixture），由 `bash scripts/verify.sh all` 默认跑 acceptance replay（**17** 为 2026-07-15 historical；**24**/llm-integration **42** 为 2026-07-18/19 快照；现行 **25** + llm-integration **65**）。`tests/unit/` 整目录也从 git 跟踪中清空。
 - `scripts/archive/` 整目录删除（5 文件：`dogfood-watch.sh` / `p0_operational_setup.sh` / `p1_p2_gate_review.sh` / `extract_rounds.py` + `README.md`）：它们没有 live 调用者，只在 `docs/archive/` 与 `archive/rounds/` 历史文档中作为 runbook evidence 出现，README 自白为 "new automation should not depend on archived scripts"。
 - **[Round 7 cross-review]**: `tests/fixtures/{planner_log, signals, signals_collector}/` 三个孤立目录共 42 文件（307 LOC）：acceptance/case_runner.py 与 `tests/test_acceptance_loop.py` 全部 case 均不引用此 fixtures，pure 孤立 cleanup，零风险（**17** case 为 historical 口径；现行 **25** acceptance）。
 

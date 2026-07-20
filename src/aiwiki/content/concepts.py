@@ -44,7 +44,7 @@ CONCEPT_RENDER_SCHEMA_VERSION = 4
 # ingested article titles (building, powered, maintain, you, base, systems).
 # v14: drop generic adjectives/adverbs and duplicate plurals from article titles
 # (digital, personal, privately, llms, local, ideas, component, systems).
-CONCEPT_NOISE_FLOOR_VERSION = 14
+CONCEPT_NOISE_FLOOR_VERSION = 15
 
 CAUSAL_RELATION_LABELS = {
     "causes": "→ causes",
@@ -184,7 +184,14 @@ _PHRASE_WEAK_TOKENS = {
 
 
 def _valid_concept_term(term: str) -> bool:
-    if not term or len(term) < 3:
+    if not term:
+        return False
+    # CJK tokenize emits length-2 bigrams; Latin tokens stay 3+ via tokenize().
+    # A uniform len<3 gate would discard every Chinese concept term.
+    if re.search(r"[\u4e00-\u9fff]", term):
+        if len(term) < 2:
+            return False
+    elif len(term) < 3:
         return False
     if term.isdigit():
         return False

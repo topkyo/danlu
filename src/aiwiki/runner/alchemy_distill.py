@@ -90,6 +90,9 @@ def run_alchemy_distill_apply_impl(
         "audit_path": audit_path,
         "source_preview": deps["distill_preview_receipt_summary"](preview, candidates),
         "result_summary": {"refreshed": refreshed, "skipped": skipped},
+        "llm_invoked": False,
+        "semantic_content_generated_by_runtime": False,
+        "generation_modes": [],
     }
     receipt_path.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -128,6 +131,14 @@ def run_alchemy_distill_apply_impl(
             result = deps["distill_runner"](root, target_id, question)
             result_path = root / str(result.get("path") or deps["relative_path"](root, candidate_path))
             after_hash = deps["compute_file_sha256"](result_path)
+            llm_invoked = bool(result.get("llm_invoked"))
+            generation_mode = str(result.get("generation_mode") or "deterministic_seed")
+            if llm_invoked:
+                receipt["llm_invoked"] = True
+                receipt["semantic_content_generated_by_runtime"] = True
+            receipt["generation_modes"] = list(
+                dict.fromkeys([*receipt.get("generation_modes", []), generation_mode])
+            )
             refreshed.append(
                 {
                     "candidate_id": candidate_id,
@@ -138,6 +149,8 @@ def run_alchemy_distill_apply_impl(
                     "before_hash": before_hash,
                     "after_hash": after_hash,
                     "iteration": result.get("iteration"),
+                    "llm_invoked": llm_invoked,
+                    "generation_mode": generation_mode,
                 }
             )
         receipt["refreshed_count"] = len(refreshed)

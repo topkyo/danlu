@@ -88,6 +88,58 @@ STOP_WORDS = {
     "two",
     "with",
     "wiki",
+    # CJK function-word bigrams from Lucene-style overlapping segmentation.
+    # Without these, term_index/search drown in 这个/我们/这是 noise.
+    "这是",
+    "是一",
+    "一个",
+    "我们",
+    "这个",
+    "这些",
+    "那些",
+    "没有",
+    "可以",
+    "因为",
+    "所以",
+    "但是",
+    "如果",
+    "已经",
+    "还有",
+    "不是",
+    "什么",
+    "怎么",
+    "自己",
+    "他们",
+    "以及",
+    "进行",
+    "通过",
+    "对于",
+    "一种",
+    "一些",
+    "不会",
+    "不能",
+    "时候",
+    "之后",
+    "之前",
+    "然后",
+    "或者",
+    "而且",
+    "不过",
+    "只是",
+    "就是",
+    "还是",
+    "其实",
+    "当然",
+    "比如",
+    "例如",
+    "等等",
+    "之中",
+    "之间",
+    "以上",
+    "以下",
+    "其中",
+    "其他",
+    "其它",
 }
 
 
@@ -132,7 +184,12 @@ def human_query_title(question: str) -> str:
 
 
 def slugify(value: str) -> str:
-    cleaned = re.sub(r"[^a-zA-Z0-9]+", "-", value.strip().lower()).strip("-")
+    """Slug for paths/ids: keep Latin alnum and CJK; collapse other runs to '-' .
+
+    Pure-CJK labels must not collapse to the shared fallback `item` (that merged
+    distinct Chinese concepts into one slug). Latin behavior unchanged.
+    """
+    cleaned = re.sub(r"[^a-zA-Z0-9\u4e00-\u9fff]+", "-", value.strip().lower()).strip("-")
     return cleaned or "item"
 
 

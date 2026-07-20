@@ -40,7 +40,7 @@ from .protocol.scaffold import ensure_layout
 from .render.paths import append_wiki_log
 from .utils.io import runtime_write_lock
 from .utils.path import relative_path
-from .utils.security import FetchPolicyError, safe_fetch
+from .utils.security import FetchPolicyError, PathOutsideWorkspaceError, safe_fetch, safe_resolve_within
 
 _LOGGER = logging.getLogger("aiwiki.executor")
 
@@ -68,9 +68,11 @@ def execute_plan(root: Path, plan: Plan, original_payload: str) -> dict[str, Any
         return drop_url(root, target, title=plan.title or None)
     if plan.action == "read_local_repo":
         target = plan.targets[0] if plan.targets else original_payload
+        _assert_local_target_allowed(root, target, original_payload)
         return drop_repo(root, target, title=plan.title or None)
     if plan.action == "read_local_note":
         target = plan.targets[0] if plan.targets else original_payload
+        _assert_local_target_allowed(root, target, original_payload)
         return drop_note(root, target, title=plan.title or None)
     if plan.action == "ask":
         ask_payload = plan.targets[0] if plan.targets else original_payload
@@ -112,6 +114,13 @@ def _execute_fetch_raw(root: Path, plan: Plan, original_payload: str) -> dict[st
         text = payload_bytes.decode("utf-8", errors="replace").strip()
         text = _truncate_text(text, _FETCH_RAW_PER_TARGET_CHAR_LIMIT)
         fetched.append({"url": final_url, "content": text, "ok": True})
+
+    ok_count = sum(1 for item in fetched if item.get("ok"))
+    if ok_count == 0:
+        # Match drop_url / drop_repo fail-loud: never persist a placeholder-only
+        # note that compile would treat as real material.
+        details = "; ".join(f"{item['url']}: {item['content']}" for item in fetched) or "no targets"
+        raise RuntimeError(f"fetch_raw failed for all targets ({details})")
 
     markdown = _build_fetch_raw_note(display_title, fetched, original_payload, plan.reason)
     ingest_metadata = {
@@ -212,6 +221,36 @@ def _derive_title_from_targets(targets: list[str]) -> str:
     if parsed.path and parsed.path != "/":
         return parsed.path.rstrip("/").rsplit("/", 1)[-1] or parsed.netloc
     return parsed.netloc
+
+
+def _assert_local_target_allowed(root: Path, target: str, original_payload: str) -> None:
+    """Reject LLM-rewritten local paths that escape the vault / original payload.
+
+    Planner may choose read_local_* but must not turn an unrelated payload into
+    an absolute path outside the workspace (confused-deputy). Allowed:
+    - path resolves under vault root, or
+    - path resolves to the same file/dir as the original_payload.
+    """
+    resolved = Path(target).expanduser()
+    try:
+        resolved = resolved.resolve(strict=False)
+    except OSError as exc:
+        raise ValueError(f"invalid local target: {target}") from exc
+    try:
+        safe_resolve_within(resolved, root)
+        return
+    except PathOutsideWorkspaceError:
+        pass
+    original = Path(original_payload).expanduser()
+    try:
+        original_resolved = original.resolve(strict=False)
+    except OSError:
+        original_resolved = None
+    if original_resolved is not None and resolved == original_resolved:
+        return
+    raise PathOutsideWorkspaceError(
+        f"local plan target escapes vault and is not the original payload: {target}"
+    )
 
 
 def _utc_now() -> str:
