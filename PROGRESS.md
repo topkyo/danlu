@@ -14,6 +14,8 @@
 
 ## 当前动态
 
+- 2026-07-20 (**ingest dedup + drop UX**)：同规范化 URL 默认复用 raw（`--refresh` 重抓）；Shell 纯投料「已收料」不暗示报告。Spec/plan：`docs/specs|plans/2026-07-20-ingest-dedup-and-drop-ux.md`。验证：acceptance **25** + llm-integration **76**。
+
 - 2026-07-20 (**Obsidian Python 3.9 zip crash**): drop 后 auto-compile 在 Apple `/usr/bin/python3` 上因 `zip(..., strict=)` 崩 → Shell「生成被阻断」+ 收件箱重复。修：去 `strict=`；launcher 挑 ≥3.10；vault launcher 转发 runtime。
 
 - 2026-07-20 (**rescan P1 ingest/governance**): 死 CLI hint→`advanced review-queue`；CJK phrase 乱码；确定性 GitHub raw rewrite；路径 fail-loud 误伤（裸目录 / 中文 A/B）；`run-ask` LLM 出写锁；alchemy lane 假回滚文案；local target 须派生自 original。验证：acceptance **25** + llm-integration **69**。Deferred：L3 revert partial、nightly reconciliation gate、EN-only page copy。

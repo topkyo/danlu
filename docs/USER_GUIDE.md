@@ -76,6 +76,8 @@ Product Shell 适合日常快速投料和查看状态。复杂治理操作建议
 成功投料后，runtime **默认**会跑一轮确定性 `compile` + `lint`（P8 投料即煅烧）；若只想入 raw 暂不炼化，加 `--no-auto`。  
 万能 `drop <payload>` 默认先经 LLM planner 分类（github 仓库根 URL 会优先 `fetch_raw` README，而不是误走会触发阻断/空抓取的路径）；planner 失败或 `AIWIKI_LLM_PLANNER=0` 时回退确定性分类器。
 
+同一规范化 URL（含 GitHub 仓库根与对应 raw README）再投一次时**默认复用**已有 `raw/` 条目，不新建 `-2/-3` 文件；需要重抓时加 `--refresh`。纯投料只入 raw / compile，**不会**自动写出 `output/reports`；要报告请再提问（或「材料 + 问题」一并提交）。
+
 ### 第 2 步：编译
 
 投料默认已触发 compile；需要手动全量重炼时再跑：
