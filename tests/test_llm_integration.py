@@ -1096,6 +1096,54 @@ def test_github_raw_rewrite_deterministic() -> None:
     assert decision.payload.endswith("/HEAD/README.md")
 
 
+def test_normalize_ingest_url_github_repo_root_matches_raw_readme() -> None:
+    from aiwiki.drop.ingest_identity import normalize_ingest_url
+
+    repo_root = "https://github.com/34306/vphone-aio"
+    raw_readme = "https://raw.githubusercontent.com/34306/vphone-aio/HEAD/README.md"
+    assert normalize_ingest_url(repo_root) == normalize_ingest_url(raw_readme)
+
+
+def test_normalize_ingest_url_strips_tracking_and_fragment() -> None:
+    from aiwiki.drop.ingest_identity import normalize_ingest_url
+
+    tracked = "https://Example.com/path?utm_source=x&fbclid=abc&gclid=def&ref=1&source=newsletter&keep=yes#section"
+    assert normalize_ingest_url(tracked) == "https://example.com/path?keep=yes"
+
+
+def test_normalize_ingest_url_rejects_non_http() -> None:
+    from aiwiki.drop.ingest_identity import normalize_ingest_url
+
+    assert normalize_ingest_url("/local/path") is None
+    assert normalize_ingest_url("git@github.com:34306/vphone-aio.git") is None
+
+
+def test_ingest_identity_find_manifest_entry_by_url(tmp_path: Path) -> None:
+    from aiwiki.drop.ingest_identity import find_manifest_entry_by_ingest_url
+    from aiwiki.protocol.scaffold import ensure_layout
+    from aiwiki.state.manifest import save_manifest
+
+    ensure_layout(tmp_path)
+    entry = {
+        "id": "entry-1",
+        "stored_path": "raw/inbox/example.md",
+        "original_path": "https://github.com/34306/vphone-aio",
+        "source_type": "url-drop",
+        "ingest_metadata": {
+            "original_url": "https://github.com/34306/vphone-aio",
+            "final_url": "https://raw.githubusercontent.com/34306/vphone-aio/HEAD/README.md",
+        },
+    }
+    save_manifest(tmp_path, {"entries": [entry]})
+
+    hit = find_manifest_entry_by_ingest_url(
+        tmp_path,
+        "https://raw.githubusercontent.com/34306/vphone-aio/HEAD/README.md",
+    )
+    assert hit is not None
+    assert hit["id"] == "entry-1"
+
+
 def test_executor_rejects_unrelated_vault_internal(tmp_path: Path) -> None:
     from aiwiki.executor import execute_plan
     from aiwiki.input_planner import Plan
