@@ -387,6 +387,7 @@ test("drop pure URL text fills textarea and does not enter file flow", async () 
   expect(plugin.runUniversalInputCommand).toHaveBeenCalledWith({ payload: "https://example.com/post" });
   expect(plugin.runAskCommand).not.toHaveBeenCalled();
   expect(plugin.completePendingMaterialDrop).toHaveBeenCalledWith("pending-1", ["raw/inbox/url.md"]);
+  expect(plugin.markPendingSubmissionReceived).not.toHaveBeenCalled();
 });
 
 test("obsidian open links navigate instead of submitting ask", async () => {
@@ -440,6 +441,72 @@ test("file-only submission completes as raw material instead of staying queued",
   });
   expect(plugin.runAskCommand).not.toHaveBeenCalled();
   expect(plugin.completePendingMaterialDrop).toHaveBeenCalledWith("pending-1", ["raw/inbox/image.md", "raw/assets/image.png"]);
+  expect(plugin.markPendingSubmissionReceived).not.toHaveBeenCalled();
+});
+
+test("pure material pending card shows 已收料 and never 排队生成报告", () => {
+  const context = loadRenderContext();
+  const plugin = makePlugin({
+    pendingSubmissions: [
+      {
+        id: "p-material",
+        status: "done",
+        displayText: "https://example.com/post",
+        reconcileTarget: "raw",
+        reconcilePath: "raw/inbox/url.md",
+        startedAt: "2026-05-13T09:00:00Z",
+        retryArgs: { kind: "material", payload: "https://example.com/post", materialPaths: ["raw/inbox/url.md"] },
+      },
+    ],
+  });
+  const container = document.createElement("div");
+
+  context.renderTodayFeed(plugin, container);
+
+  expect(container.textContent).toContain("已收料");
+  expect(container.textContent).not.toContain("排队生成报告");
+  expect(container.textContent).not.toContain("已接收，正在排队生成报告");
+});
+
+test("ask pending received card still shows report queue copy", () => {
+  const context = loadRenderContext();
+  const plugin = makePlugin({
+    pendingSubmissions: [
+      {
+        id: "p-ask",
+        status: "received",
+        displayText: "请总结这篇文章",
+        startedAt: "2026-05-13T09:00:00Z",
+        retryArgs: { kind: "auto-ask", question: "请总结这篇文章", format: "report" },
+      },
+    ],
+  });
+  const container = document.createElement("div");
+
+  context.renderTodayFeed(plugin, container);
+
+  expect(container.textContent).toContain("已接收，正在排队生成报告");
+});
+
+test("pure material failure card uses 投料失败 title", () => {
+  const context = loadRenderContext();
+  const plugin = makePlugin({
+    pendingSubmissions: [
+      {
+        id: "p-fail-material",
+        status: "failed",
+        displayText: "https://example.com/broken",
+        error: "fetch failed",
+        retryArgs: { kind: "material", payload: "https://example.com/broken" },
+      },
+    ],
+  });
+  const container = document.createElement("div");
+
+  context.renderTodayFeed(plugin, container);
+
+  expect(container.textContent).toContain("投料失败");
+  expect(container.textContent).not.toContain("生成被阻断");
 });
 
 test("plain question goes through run-ask instead of deterministic universal drop", async () => {

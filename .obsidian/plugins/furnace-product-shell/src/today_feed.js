@@ -347,7 +347,7 @@ function buildRawInputEntries(summary, todayDate) {
     entries.push({
       kind: "action",
       title: `已投料：${title || originalPath || storedPath}`,
-      summary: `已接收 ${sourceLabel}，等待编译/刷新`,
+      summary: `已收料 · ${sourceLabel}`,
       target: storedPath,
       timestamp: occurredAt,
       protocol: firstText(item, "protocol"),

@@ -306,7 +306,8 @@ function renderPendingSubmissionsGroup(plugin, section) {
 
     if (entry.status === "failed") {
       const exceptionCard = aiBubble.createDiv({ cls: "furnace-inline-exception-card furnace-inline-exception-failed" });
-      exceptionCard.createDiv({ cls: "furnace-inline-exception-title", text: plugin.t("生成被阻断") });
+      const failTitle = isPureMaterialPendingEntry(entry) ? plugin.t("投料失败") : plugin.t("生成被阻断");
+      exceptionCard.createDiv({ cls: "furnace-inline-exception-title", text: failTitle });
       exceptionCard.createDiv({
         cls: "furnace-bubble-hint",
         text: plugin.t("这次没成功。可以点重试，或检查输入是否完整。"),
@@ -319,6 +320,7 @@ function renderPendingSubmissionsGroup(plugin, section) {
         const args = entry.retryArgs || {};
         plugin.resetPendingSubmissionForRetry(entry.id);
         try {
+          let markReceivedAfterRetry = true;
           if (args.kind === "files" && Array.isArray(args.files)) {
             const flowResult = await plugin.runDroppedFilesWithAutoAsk({
               files: args.files,
@@ -334,6 +336,10 @@ function renderPendingSubmissionsGroup(plugin, section) {
               runNotesPath: String(flowResult && flowResult.runNotesPath || args.runNotesPath || ""),
               runId: String(flowResult && flowResult.runId || args.runId || ""),
             });
+            if (!String(args.question || "").trim()) {
+              plugin.completePendingMaterialDrop(entry.id, flowResult && flowResult.materialPaths);
+              markReceivedAfterRetry = false;
+            }
           } else if (args.kind === "auto-ask") {
             await plugin.runAskCommand({
               question: args.askQuestion || args.question || entry.displayText || "",
@@ -362,8 +368,15 @@ function renderPendingSubmissionsGroup(plugin, section) {
             if (retryText && looksLikeUniversalMaterialPayload(retryText)) {
               const payload = await plugin.runUniversalInputCommand({ payload: retryText });
               const materialPaths = collectMaterialPathsFromPayload(payload);
-              plugin.updatePendingSubmissionRetryArgs(entry.id, { ...args, kind: "material", payload: retryText, materialPaths });
+              plugin.updatePendingSubmissionRetryArgs(entry.id, {
+                ...args,
+                kind: "material",
+                payload: retryText,
+                materialPaths,
+                reused: Boolean(payload && payload.reused),
+              });
               plugin.completePendingMaterialDrop(entry.id, materialPaths);
+              markReceivedAfterRetry = false;
             } else {
               await plugin.runAskCommand({
                 question: retryText,
@@ -373,7 +386,7 @@ function renderPendingSubmissionsGroup(plugin, section) {
               });
             }
           }
-          plugin.markPendingSubmissionReceived(entry.id);
+          if (markReceivedAfterRetry) plugin.markPendingSubmissionReceived(entry.id);
         } catch (e) {
           plugin.markPendingSubmissionFailed(entry.id, e);
         }
@@ -485,6 +498,9 @@ function pendingSubmissionProgressSteps(plugin, entry) {
   if (entry && entry.retryArgs && entry.retryArgs.longRunning) {
     return [plugin.t("已接收长程报告任务"), plugin.t("LLM 正在生成结构化报告"), plugin.t("完成后会写入本地报告")];
   }
+  if (isPureMaterialPendingEntry(entry)) {
+    return [plugin.t("正在收料"), plugin.t("写入 raw/"), plugin.t("已收料")];
+  }
   const startedMs = Date.parse(entry && entry.startedAt || "");
   const elapsed = Number.isFinite(startedMs) ? Math.max(0, Date.now() - startedMs) : 0;
   if (entry && entry.status === "received") {
@@ -513,7 +529,12 @@ function pendingSubmissionSnippetFallback(plugin, entry) {
   if (pendingSubmissionIsDegraded(entry)) return plugin.t("LLM 未完成；这是保留 provenance 的本地恢复产物，可打开检查上下文后重试。");
   if (target === "outputs") return plugin.t("报告已写入本地文件；摘要加载中…");
   if (target === "receipts") return plugin.t("回执已写入控制层，可用于审计与回滚追踪。");
-  if (target === "raw") return plugin.t("原料已进入 raw/，等待后续编译沉淀。");
+  if (target === "raw") {
+    if (entry && entry.retryArgs && entry.retryArgs.reused) {
+      return plugin.t("已存在，未重复入库");
+    }
+    return plugin.t("原料已进入 raw/，等待后续编译沉淀。");
+  }
   return plugin.t("任务已完成，结果已关联到本地工作区。");
 }
 
@@ -537,6 +558,7 @@ function pendingSubmissionArtifactMeta(plugin, entry) {
 
 function pendingSubmissionStageLabel(plugin, entry) {
   const status = String(entry && entry.status || "running");
+  const pureMaterial = isPureMaterialPendingEntry(entry);
   if (status === "degraded") return plugin.t("LLM 未完成，已保留恢复产物");
   if (status === "done") {
     if (pendingSubmissionIsDegraded(entry)) return plugin.t("LLM 未完成，已保留恢复产物");
@@ -545,6 +567,9 @@ function pendingSubmissionStageLabel(plugin, entry) {
     return plugin.t("报告已生成");
   }
   if (status === "received") {
+    if (pureMaterial) {
+      return entry && entry._stale ? plugin.t("可能已完成，刷新看看") : plugin.t("正在收料");
+    }
     if (entry && entry.retryArgs && entry.retryArgs.longRunning) {
       return entry._stale ? plugin.t("长程报告可能已完成，刷新看看") : plugin.t("长程报告生成中，可稍后刷新");
     }
@@ -552,6 +577,7 @@ function pendingSubmissionStageLabel(plugin, entry) {
   }
   if (status === "failed") return plugin.t("失败");
   if (status === "escalated") return plugin.t("需要人工确认");
+  if (pureMaterial) return plugin.t("正在收料");
   return plugin.t("正在整理材料与上下文");
 }
 
