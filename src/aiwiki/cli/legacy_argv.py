@@ -1,5 +1,8 @@
 """Rewrite deprecated top-level operator argv into `advanced ...`.
 
+Product docs teach only ``drop`` / ``today`` / ``advanced``; this module
+exists solely for legacy script argv rewrite and must not grow new compat.
+
 Primary surface stays: drop / today / advanced.
 Operator commands are registered only under `advanced`. Old top-level
 invocations are rewritten with a stderr deprecation warning so dogfood

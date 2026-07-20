@@ -31,6 +31,9 @@ def lint_reports_dir(root: Path) -> Path:
     return root / ".aiwiki" / "lint"
 
 
+STAGING_PROPOSALS_DIR = ".aiwiki/staging/proposals"
+
+
 def l3_proposal_state_path(root: Path) -> Path:
     return root / ".aiwiki" / "state" / "l3-proposals.json"
 

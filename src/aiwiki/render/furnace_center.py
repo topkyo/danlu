@@ -21,7 +21,7 @@ from ..protocol.descriptors import protocol_title
 from ..protocol.library import PROTOCOL_LIBRARY
 from ..state.constants import DEFAULT_PROTOCOL
 from .html_theme import html_meta_theme, html_theme_css
-from .packs import compact_section_lines, protocol_output_pack_rows
+from .markdown_links import compact_section_lines, protocol_output_pack_rows
 from .pilots import protocol_scorecard
 from .review_center import render_review_center_lifecycle_item
 from .views import furnace_quick_commands, protocol_execution_receipts

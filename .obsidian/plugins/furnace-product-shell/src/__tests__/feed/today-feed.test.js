@@ -20,8 +20,6 @@ function makeSummary(overrides = {}) {
     review_backlog_counts: {},
     counter_evidence_pages: [],
     drift_warnings: [],
-    l3_proposals: null,
-    review_controls: { l3_proposals: [] },
     recent_outputs: [],
     recent_receipts: [],
     suggested_next_actions: [],
@@ -326,19 +324,6 @@ test("buildTodayFeed keeps degraded LLM health out of primary Today", () => {
   const feed = buildTodayFeed(summary);
 
   expect(feed).toHaveLength(0);
-});
-
-test("buildTodayFeed keeps L3 proposals out of primary feed", () => {
-  const summary = makeSummary({
-    review_controls: {
-      l3_proposals: [
-        { proposal_id: "p1", title: "Improve prompt X", target_file: "prompts/ask.md", needs_attention: true, state: "pending", kind: "prompt", updated_at: "2026-05-03T08:00:00Z", protocol: "research" },
-        { proposal_id: "p2", title: "Improve prompt Y", target_file: "prompts/compile.md", needs_attention: false, state: "stale", kind: "prompt", updated_at: "2026-05-01T08:00:00Z" },
-      ],
-    },
-  });
-  const feed = buildTodayFeed(summary);
-  expect(feed.filter((e) => e.kind === "proposal")).toHaveLength(0);
 });
 
 test("buildTodayFeed keeps generic suggested actions out of primary feed", () => {

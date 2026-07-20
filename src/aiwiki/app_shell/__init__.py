@@ -17,7 +17,6 @@ from . import meta as _meta
 from . import rendering as _rendering
 from . import summary as _summary
 from .controls import (
-    l3_proposal_control_object,
     rewrite_control_object,
     rewrite_control_objects_for_paths,
     rewrite_followup_action,
@@ -83,7 +82,6 @@ __all__ = [
     "shell_suggested_next_actions",
     "shell_dashboard",
     "shell_review_controls",
-    "l3_proposal_control_object",
     "rewrite_control_object",
     "rewrite_control_objects_for_paths",
     "rewrite_followup_action",

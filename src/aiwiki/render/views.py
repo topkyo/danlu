@@ -25,7 +25,7 @@ from ..protocol.library import PROTOCOL_LIBRARY
 from ..state.constants import DEFAULT_PROTOCOL, JUDGMENT_LIFECYCLE_STATES
 from ..utils.markdown import render_frontmatter
 from ..utils.text import human_query_title, slugify
-from .packs import workspace_link
+from .markdown_links import workspace_link
 
 
 def render_curated_page_summary(page: dict[str, str]) -> str:

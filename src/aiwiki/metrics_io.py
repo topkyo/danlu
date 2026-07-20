@@ -11,9 +11,9 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from aiwiki.execution.alchemy_helpers import CANDIDATE_ELIXIR_DIR
-from aiwiki.execution.l3_proposals import STAGING_PROPOSALS_DIR
 from aiwiki.metrics import MetricsSnapshot, OutputMeta, ProposalMeta, ReceiptMeta, WikiPageMeta
 from aiwiki.render.paths import execution_receipts_dir, legacy_execution_receipt_path
+from aiwiki.state.paths import STAGING_PROPOSALS_DIR
 from aiwiki.utils.markdown import parse_frontmatter
 from aiwiki.utils.path import relative_path
 

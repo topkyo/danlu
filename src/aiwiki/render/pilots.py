@@ -29,7 +29,7 @@ from ..utils.hash import sha256_bytes
 from ..utils.markdown import render_frontmatter
 from ..utils.path import relative_path
 from ..utils.text import slugify
-from .packs import pack_workspace_link
+from .markdown_links import pack_workspace_link
 
 
 def domain_pilots_index_path(root: Path) -> Path:

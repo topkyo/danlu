@@ -11,7 +11,7 @@ receipt action_id），输出 provenance 树。
 
 不引入第三方依赖；只用 stdlib + 既有 helper：
 - `aiwiki.utils.markdown.parse_frontmatter`
-- `aiwiki.execution.l3_proposals.load_l3_proposal_state`
+- `aiwiki.state.io.load_json_document` + `aiwiki.state.paths.l3_proposal_state_path`
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from aiwiki.execution.alchemy_helpers import CANDIDATE_ELIXIR_DIR
-from aiwiki.execution.l3_proposals import STAGING_PROPOSALS_DIR
+from aiwiki.state.paths import STAGING_PROPOSALS_DIR
 from aiwiki.utils.markdown import parse_frontmatter
 
 # 资产种类 — 用前缀 / 路径形态识别
@@ -402,11 +402,13 @@ def _resolve_elixir(root: Path, asset_id: str, *, direction: str, depth: int, vi
 
 
 def _resolve_proposal(root: Path, asset_id: str, *, direction: str, depth: int, visited: set[str]) -> TraceNode:
-    try:
-        from aiwiki.execution.l3_proposals import load_l3_proposal_state
-    except Exception:  # pragma: no cover
+    from aiwiki.state.io import load_json_document
+    from aiwiki.state.paths import l3_proposal_state_path
+
+    state_path = l3_proposal_state_path(root)
+    if not state_path.exists():
         return TraceNode(id=asset_id, kind="proposal", label=asset_id, not_found=True)
-    state = load_l3_proposal_state(root)
+    state = load_json_document(state_path)
     proposals = state.get("proposals", []) if isinstance(state, dict) else []
     target_id = Path(asset_id).stem if "/" in asset_id else asset_id
     found: dict[str, Any] | None = None

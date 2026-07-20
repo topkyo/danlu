@@ -196,45 +196,6 @@ def shell_review_controls(
     }
 
 
-def l3_proposal_control_object(proposal: dict[str, Any]) -> dict[str, Any]:
-    proposal_id = str(proposal.get("proposal_id") or "")
-    kind = str(proposal.get("kind") or "")
-    state = str(proposal.get("state") or "candidate")
-    target_file = str(proposal.get("target_file") or "")
-    proposal_path = str(proposal.get("proposal_path") or "")
-    last_receipt_path = str(proposal.get("last_receipt_path") or "")
-    patch = proposal.get("patch")
-    patch_kind = str(patch.get("kind") if isinstance(patch, dict) else "full_replace")
-    review_state = str(proposal.get("review_state") or "pending_human")
-    can_reject = state == "candidate"
-    can_apply = state == "candidate" and (patch_kind == "metadata_only" or review_state == "human_accepted")
-    can_revert = state == "accepted" and bool(last_receipt_path)
-    needs_attention = state in {"candidate", "stale", "revert_conflict"}
-    return {
-        "proposal_id": proposal_id,
-        "kind": kind,
-        "state": state,
-        "current_status": state,
-        "target_file": target_file,
-        "proposal_path": proposal_path,
-        "review_queue_entry_id": str(proposal.get("review_queue_entry_id") or ""),
-        "created_at": str(proposal.get("created_at") or ""),
-        "accepted_at": str(proposal.get("accepted_at") or ""),
-        "rejected_at": str(proposal.get("rejected_at") or ""),
-        "reverted_at": str(proposal.get("reverted_at") or ""),
-        "stale_at": str(proposal.get("stale_at") or ""),
-        "revert_conflict_at": str(proposal.get("revert_conflict_at") or ""),
-        "last_receipt_path": last_receipt_path,
-        "revert_hint_path": str(proposal.get("revert_hint_path") or ""),
-        "can_review": can_reject,
-        "can_reject": can_reject,
-        "can_apply": can_apply,
-        "can_revert": can_revert,
-        "needs_attention": needs_attention,
-        "command_hints": {},
-    }
-
-
 def rewrite_control_object(root: Path, proposal: dict[str, Any]) -> dict[str, Any] | None:
     if not isinstance(proposal, dict):
         return None
