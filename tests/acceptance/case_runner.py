@@ -36,10 +36,13 @@ def _run_cli(root: Path, args: list[str]) -> bytes:  # pragma: no cover - exerci
     for key in _ACCEPTANCE_HOST_LLM_ENV_KEYS:
         restored[key] = os.environ.pop(key, None)
     try:
+        argv = list(args)
+        if argv and argv[0] not in {"drop", "today", "advanced"}:
+            argv = ["advanced", *argv]
         stdout = io.StringIO()
         stderr = io.StringIO()
         with patch("sys.stdout", new=stdout), patch("sys.stderr", new=stderr):
-            code = main(["--root", str(root), *args])
+            code = main(["--root", str(root), *argv])
         assert code == 0, stderr.getvalue()
         return stdout.getvalue().encode("utf-8")
     finally:

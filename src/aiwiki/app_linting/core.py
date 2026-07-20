@@ -182,7 +182,6 @@ from ..memory.execution_surfaces import (
     render_concept_rewrite_index,
     render_concept_rewrite_proposal_page,
     render_execution_audit,
-    render_execution_audit_html,
     render_execution_proposal_page,
 )
 from ..memory.graph_builder import build_machine_memory_graph
@@ -242,12 +241,10 @@ from ..render.paths import (
     concept_rewrite_index_path,
     decision_memos_dir,
     ensure_wiki_log,
-    execution_audit_html_path,
     execution_audit_path,
     execution_bundle_path,
     execution_proposal_path,
     execution_receipt_path,
-    furnace_center_html_path,
     graph_health_report_path,
     judgment_assets_path,
     machine_memory_actions_path,
@@ -257,7 +254,6 @@ from ..render.paths import (
     product_shell_html_path,
     remove_stale_generated_concept_pages,
     repair_backlog_path,
-    review_center_html_path,
     review_packs_dir,
     shell_summary_path,
     sop_drafts_dir,
@@ -268,10 +264,8 @@ from ..render.pilots import (
     domain_pilots_index_path,
     pilot_scorecards_dir,
 )
-from ..render.review_center import render_review_center_html
 from ..render.views import (
     render_agent_pack,
-    render_agent_workbench,
     render_aging_report,
     render_curated_index,
     render_domain_pilots_index,

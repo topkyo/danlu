@@ -87,59 +87,6 @@ function renderMainHeader(plugin, container) {
   }
 }
 
-function renderMaterialPanel(plugin, container) {
-  const panel = plugin.renderPanel(container, "Materials", "Push new material into the furnace.");
-  const grid = panel.createDiv({ cls: "furnace-shell-material-grid" });
-  [
-    { icon: "📝", label: "投文字材料", onClick: async () => new CaptureNoteModal(plugin.app, plugin).open() },
-    { icon: "🔗", label: "Drop URL", onClick: async () => new DropUrlModal(plugin.app, plugin).open() },
-    { icon: "📄", label: "Drop File", onClick: async () => new DropFileModal(plugin.app, plugin).open() },
-    { icon: "📷", label: "Drop Image", onClick: async () => new DropImageModal(plugin.app, plugin).open() },
-  ].forEach((item) => {
-    const button = grid.createEl("button", { cls: "furnace-shell-material-button" });
-    button.createEl("span", { cls: "furnace-shell-material-icon", text: item.icon });
-    button.createEl("span", { cls: "furnace-shell-material-label", text: plugin.t(item.label) });
-    button.addEventListener("click", () => {
-      plugin.runUiAction(() => item.onClick(), plugin.t(item.label));
-    });
-  });
-  panel.createDiv({
-    cls: "furnace-shell-panel-note",
-    text: plugin.t("Follow single writer for write actions: do not run compile / nightly / apply / revert in Obsidian and the terminal at the same time."),
-  });
-}
-
-function renderOutputsPanel(plugin, container) {
-  const panel = plugin.renderPanel(container, "Latest outputs", "Open the newest outputs without diving into control surfaces.", {
-    action: { label: "View all", onClick: async () => plugin.openOutputsHub() },
-  });
-  const outputs = plugin.shellSummary && typeof plugin.shellSummary === "object" && Array.isArray(plugin.shellSummary.recent_outputs)
-    ? plugin.shellSummary.recent_outputs
-    : [];
-  if (!outputs.length) {
-    panel.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No recent outputs yet. Drop material or run a compile.") });
-    plugin.renderInlineButtons(panel, [
-      { label: "Compile", cta: true, onClick: async () => plugin.runCompileCommand() },
-      { label: "Open outputs hub", kind: "ghost", onClick: async () => plugin.openOutputsHub() },
-    ]);
-    return;
-  }
-  const list = panel.createDiv({ cls: "furnace-shell-output-list" });
-  outputs.slice(0, 2).forEach((artifact) => {
-    const item = list.createDiv({ cls: "furnace-shell-output-item" });
-    const copy = item.createDiv({ cls: "furnace-shell-output-copy" });
-    copy.createEl("strong", { text: artifact.title || artifact.path || plugin.t("output") });
-    copy.createDiv({
-      cls: "furnace-shell-meta",
-      text: `${plugin.t(artifact.protocol || "general")} · ${plugin.t(artifact.format || "markdown")} · ${formatDisplayTime(artifact.created_at, plugin.locale())}`,
-    });
-    const openButton = item.createEl("button", { text: plugin.t("Open") });
-    openButton.addEventListener("click", () => {
-      plugin.runUiAction(() => plugin.openWorkspacePath(artifact.path), `Open output: ${artifact.path}`);
-    });
-  });
-}
-
 function llmHealthToneClass(status) {
   if (status === "healthy") {
     return "is-healthy";

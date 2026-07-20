@@ -96,8 +96,6 @@ Product Shell 适合日常快速投料和查看状态。复杂治理操作建议
 定时维护（watcher / nightly / `run-nightly`）只做确定性 `compile` + `lint` + nightly health 写入；LLM 仅通过 `run-ask` 等显式入口参与。
 
 ```bash
-./scripts/aiwiki-launcher.sh advanced nightly
-# 与 timer 同语义：
 ./scripts/aiwiki-launcher.sh advanced run-nightly
 ```
 
@@ -140,7 +138,7 @@ Ask 只产出 `output/reports/*.md` 自由 Markdown 报告（CLI 仅接受 `--fo
 
 ```bash
 # 每晚自动巡检（确定性 compile + lint）
-./scripts/aiwiki-launcher.sh advanced nightly
+./scripts/aiwiki-launcher.sh advanced run-nightly
 
 # 启动 / 蒸馏 / 定稿金丹（跨周期 reusable thesis）
 ./scripts/aiwiki-launcher.sh advanced alchemy-start --help

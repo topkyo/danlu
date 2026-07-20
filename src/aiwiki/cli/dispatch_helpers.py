@@ -99,11 +99,6 @@ def _action_command(item: dict[str, object]) -> str:
     return "PYTHONPATH=src python3 -m aiwiki.cli --root . review-queue --bucket mm_actions --json"
 
 
-def _l3_command(item: dict[str, object]) -> str:
-    _ = item
-    return ""
-
-
 def _page_review_item(item: dict[str, object]) -> dict[str, object]:
     path = str(item.get("path") or "").strip()
     return {
@@ -172,23 +167,6 @@ def _review_action_item(item: dict[str, object]) -> dict[str, object]:
         "command": str(item.get("review_command") or ""),
         "can_review": bool(str(item.get("review_command") or "").strip()),
         "can_apply": False,
-    }
-
-
-def _l3_review_item(item: dict[str, object]) -> dict[str, object]:
-    proposal_id = str(item.get("proposal_id") or "").strip()
-    return {
-        "id": proposal_id,
-        "title": str(item.get("target_file") or proposal_id),
-        "summary": f"{item.get('kind') or 'proposal'} · {item.get('current_status') or item.get('state') or ''}".strip(),
-        "target": str(item.get("proposal_path") or item.get("target_file") or proposal_id),
-        "timestamp": str(item.get("created_at") or item.get("accepted_at") or item.get("reverted_at") or ""),
-        "protocol": str(item.get("protocol") or ""),
-        "kind": str(item.get("kind") or "proposal"),
-        "status": str(item.get("current_status") or item.get("state") or ""),
-        "command": _l3_command(item),
-        "can_review": bool(item.get("can_review")),
-        "can_apply": bool(item.get("can_apply")),
     }
 
 
@@ -497,56 +475,6 @@ def _format_feed_entry_line(entry: FeedEntry) -> str:
     """统一 entry 渲染：- [{protocol}] {title} — {summary} — {target}"""
     protocol = entry.protocol or "?"
     return f"- [{protocol}] {entry.title} — {entry.summary} — {entry.target}"
-
-
-def _format_l3_proposal_summary_line(record: dict[str, object]) -> str:
-    return "  ".join(
-        [
-            str(record.get("proposal_id") or ""),
-            str(record.get("kind") or ""),
-            str(record.get("state") or ""),
-            str(record.get("target_file") or ""),
-            str(record.get("proposal_path") or ""),
-        ]
-    )
-
-
-def _format_l3_generation_preview_line(record: dict[str, object]) -> str:
-    blockers = record.get("blockers")
-    if isinstance(blockers, list):
-        rendered_blockers = json.dumps(blockers, ensure_ascii=False)
-    else:
-        rendered_blockers = str(blockers or "[]")
-    return "  ".join(
-        [
-            str(record.get("decided_at") or ""),
-            str(record.get("signal_id") or ""),
-            str(record.get("proposal_kind") or "unknown"),
-            "blocked",
-            rendered_blockers,
-        ]
-    )
-
-
-_LEGACY_DROP_REPLACEMENTS = {
-    "drop-url": "drop url",
-    "drop-pdf": "drop pdf",
-    "drop-image": "drop image",
-    "drop-repo": "drop repo",
-    "drop-note": "drop markdown",
-}
-
-
-def _emit_legacy_drop_deprecation_warning(args: argparse.Namespace) -> None:
-    if args.handler_command not in _LEGACY_DROP_REPLACEMENTS:
-        return
-    if args.command != args.handler_command:
-        return
-    replacement = _LEGACY_DROP_REPLACEMENTS[args.handler_command]
-    print(
-        f"[deprecated] `aiwiki {args.handler_command}` is deprecated; use `aiwiki {replacement}` instead.",
-        file=sys.stderr,
-    )
 
 
 def _maybe_auto_process(root: Path, result: dict[str, object], args: argparse.Namespace) -> dict[str, object]:

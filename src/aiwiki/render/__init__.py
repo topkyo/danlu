@@ -9,5 +9,6 @@ Submodules:
 - paths: filesystem destinations + wiki log helpers
 - packs: output-pack helpers + builders + index
 - pilots: domain-pilot scorecards
-- views: dashboard renderers
+- furnace_center: markdown furnace-center dashboard
+- views: dashboard renderers (markdown surfaces + product shell)
 """

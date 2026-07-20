@@ -23,7 +23,7 @@ related_docs:
 | `state/` + 域 `paths.py` | 持久化 state I/O（best-effort / strict 双语义） |
 | `protocol/` | 单 runtime layout、schema、review windows、runtime config |
 | `lifecycle/` | judgment/decision lifecycle、aging、review queue |
-| `cli/` | product-first surface：`drop` / `today` / `advanced` + argv rewrite compat |
+| `cli/` | product-first surface：`drop` / `today` / `advanced` |
 | `drop/` + `input_planner.py` + `executor.py` | raw materialization；universal drop LLM plan → deterministic execute |
 | `compile/` | compile pipeline + ranking |
 | `content/` | source / concept / material / archive / rewrite |
@@ -35,7 +35,7 @@ related_docs:
 | `app_shell/` | Product Shell summary / controls / status |
 | `app_linting/` | lint phases、repair backlog、nightly health |
 
-热点（deferred seam）：`render/packs.py`、`execution/machine_memory_actions.py`、`runner/alchemy.py`、Product Shell `plugin.js`。
+热点（deferred seam）：`execution/machine_memory_actions.py`、`runner/alchemy.py`、Product Shell `plugin.js`。
 
 ### CLI taxonomy
 
@@ -43,7 +43,6 @@ related_docs:
 |---|---|
 | `primary` | `drop`, `today`, `advanced` |
 | `advanced` | compile、lint、run-ask、file-back、review-page、watch、run-nightly、金丹链、metrics、trace、shell-status、llm-check 等（`advanced --help`） |
-| `compat` | 旧顶层名 rewrite only（如 `drop-url` → `drop url`，`compile` → `advanced compile`） |
 
 ## 验证
 
@@ -59,7 +58,7 @@ bash scripts/docs_consistency_check.sh
 |---|---|
 | `acceptance` | **16** tests — `tests/test_acceptance_loop.py`（`case_*` fixture + path safety 等） |
 | `llm-integration` | **76** tests — `tests/test_llm_integration.py`（mock backends） |
-| `product-shell-static` | `node --check` + Jest **174** hard-gate |
+| `product-shell-static` | `node --check` + Jest **173** hard-gate |
 | 其余 | scripts、cli-smoke、smoke、python-static |
 
 本地开发常用：

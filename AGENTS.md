@@ -74,7 +74,7 @@
 
 - 维护炼丹炉五层主线：`raw / wiki / machine memory / schema / outputs`。
 - 维持 deterministic baseline + 显式 LLM 执行层；Shell/CLI 默认主路由是 `opencode-api/deepseek-v4-pro`，不自动跨 backend fallback，也不写占位式 deterministic fallback 成功内容。
-- 维持直接投喂入口：万能 `drop <payload>`（默认 LLM plan → deterministic execute；`AIWIKI_LLM_PLANNER=0` 可关）与 typed `drop url|pdf|image|repo|markdown|plan`；legacy `drop-url` / `drop-pdf` / `drop-image` / `drop-repo` 仍为 argv rewrite compat。
+- 维持直接投喂入口：万能 `drop <payload>`（默认 LLM plan → deterministic execute；`AIWIKI_LLM_PLANNER=0` 可关）与 typed `drop url|pdf|image|repo|markdown|plan`。
 - 维持单协议 runtime：`general` only。
 - 维持治理与执行层（CLI 入口经 W3 后收敛为 `advanced` 子命令或 library API）：`review-page`、`file-back`、金丹 `alchemy-*`、`run-nightly`、`watch`、`trace`、`shell-status` 等；L3 apply/revert、signals/planner-log、apply-action/rewrite/archive 等产品 CLI 已删，library 与 receipt 语义保留。
 - 保持 `raw/ -> wiki/ -> output/` 分层，不引入 hosted service、multi-user sync、heavy RAG infra 或 fine-tuning。
@@ -112,7 +112,7 @@
 3. 去掉 owner 为了 patch 又绕回 facade 的 `_facade` 回环（如 `content/*`、`memory/graph.py`）— `[已闭环 via commit 29ed655]` `memory/graph.py → app_memory` facade回环已拆。
 4. [已落地] 删除纯 facade 文件：`app_content.py`、`app_render.py`、`app_surfaces.py`、`app_memory_surfaces.py`；`app_memory.py`（Round 8 commit `10a6186`）；`app.py` 缩成极薄入口。
 5. compat oracle（如 `tests/test_execution_compat.py`）与仅断言 re-export 的单测：删除或改成 owner 契约测试；[Round 3 已删除 144 pytest 单元测试 / 退休 `tests/unit/`]。
-6. [已落地 2026-07-18 commit `145276a`] legacy hub 下沉（用户显式覆盖原「另一条搬迁线」定案，一次做干净）：`app_utils.py` → `utils/` 子包（io/security/markdown/text/hash/time/path/json_utils/audit）；`app_state.py` → `state/` + owner 子包（compile/state、compile/build、content/material、content/archive、content/rewrite、execution/history、memory/action_state、memory/state、planner/state、lifecycle/knowledge）；`content/memory.py` 拆到 `memory/action_core` + `execution/policy` + `execution/patch_plan` + `execution/repair_plan`；`app_compile.py` ranking 函数迁到 `compile/ranking`。CLI 顶层双注册已取消：只保留 `drop/today/advanced`；`metrics` 经 argv rewrite compat 作为 `advanced` 子命令（见 `cli/legacy_argv.py`）。
+6. [已落地 2026-07-18 commit `145276a`] legacy hub 下沉：CLI 顶层只保留 `drop/today/advanced`；**无**顶层旧命令 argv rewrite（`cli/legacy_argv.py` 已删除）。
 7. [已落地 2026-07-18 P2-9 hub 削薄彻底完成] 全部 `app_*` hub + 4 个巨石一次性削薄至零（facade→删除策略）。**`app_*` 文件归零**。现行验证口径见上文验证入口（acceptance **16** + llm-integration **76**）。
 
 ### 禁止

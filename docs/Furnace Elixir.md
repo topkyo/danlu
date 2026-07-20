@@ -61,27 +61,27 @@ Elixir 的头部需要包含最小化的生命周期与血缘标记：
 
 ```bash
 # 1. 开启炼化主题，初始化 active_corpus
-aiwiki alchemy-start <corpus-id> --topic "主题"
+aiwiki advanced alchemy-start <corpus-id> --topic "主题"
 
 # 2. 多轮迭代（自动串联前轮 output）
-aiwiki ask "首问" --corpus <id>
-aiwiki ask "追问1" --corpus <id>
-aiwiki ask "追问2" --corpus <id>
+aiwiki advanced ask "首问" --corpus <id>
+aiwiki advanced ask "追问1" --corpus <id>
+aiwiki advanced ask "追问2" --corpus <id>
 
 # 3. 中途评估与资料补充
-aiwiki drop-url <url>
-aiwiki drop-pdf <file>
-aiwiki ask "补料后重炼" --corpus <id>
+aiwiki drop url <url>
+aiwiki drop pdf <file>
+aiwiki advanced ask "补料后重炼" --corpus <id>
 
 # 4. 显式凝丹（生成 elixir candidate）
-aiwiki alchemy-distill <elixir-id> --question "..."
+aiwiki advanced alchemy-distill <elixir-id> --question "..."
 
 # 5. 定稿与晋升（入库 wiki/elixirs/）
-aiwiki alchemy-finalize <elixir-id>
-aiwiki alchemy-promote --elixir-id <elixir-id>
+aiwiki advanced alchemy-finalize <elixir-id>
+aiwiki advanced alchemy-promote --elixir-id <elixir-id>
 
 # 6. 跨周期复利（新丹引用旧丹）
-aiwiki alchemy-start <corpus-id> --topic "新主题" --include-elixir <old-elixir-id>
+aiwiki advanced alchemy-start <corpus-id> --topic "新主题" --include-elixir <old-elixir-id>
 ```
 
 ## 进化与反哺机制 (Evolution & Feedback)

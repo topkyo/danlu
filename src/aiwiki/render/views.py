@@ -739,27 +739,6 @@ def render_aging_report(
     return "\n".join(lines) + "\n"
 
 
-def render_review_center_html(
-    decisions: list[dict[str, str]],
-    judgments: list[dict[str, str]],
-    memory: dict[str, Any],
-    compiled_at: str,
-    *,
-    active_protocol: str = DEFAULT_PROTOCOL,
-    knowledge_lifecycle: dict[str, Any] | None = None,
-) -> str:
-    from .review_center import render_review_center_html as _render_review_center_html
-
-    return _render_review_center_html(
-        decisions,
-        judgments,
-        memory,
-        compiled_at,
-        active_protocol=active_protocol,
-        knowledge_lifecycle=knowledge_lifecycle,
-    )
-
-
 def protocol_execution_receipts(
     execution_audit: dict[str, Any], protocol: str, *, limit: int = 8
 ) -> list[dict[str, str]]:
@@ -800,7 +779,7 @@ def furnace_quick_commands(
     commands = [
         'PYTHONPATH=src python3 -m aiwiki.cli --root . advanced ask "对当前主题做协议化总结" --format report',
         "PYTHONPATH=src python3 -m aiwiki.cli --root . advanced compile",
-        "PYTHONPATH=src python3 -m aiwiki.cli --root . advanced nightly",
+        "PYTHONPATH=src python3 -m aiwiki.cli --root . advanced run-nightly",
         "PYTHONPATH=src python3 -m aiwiki.cli --root . advanced review-queue --json",
     ]
     return commands[:6]
@@ -822,35 +801,6 @@ def render_furnace_center(
     from .furnace_center import render_furnace_center as _render_furnace_center
 
     return _render_furnace_center(
-        decisions,
-        judgments,
-        memory,
-        compiled_at,
-        protocol_state,
-        recent_outputs,
-        output_packs,
-        domain_pilots,
-        execution_audit,
-        knowledge_lifecycle=knowledge_lifecycle,
-    )
-
-
-def render_furnace_center_html(
-    decisions: list[dict[str, str]],
-    judgments: list[dict[str, str]],
-    memory: dict[str, Any],
-    compiled_at: str,
-    protocol_state: dict[str, Any],
-    recent_outputs: list[dict[str, str]],
-    output_packs: dict[str, Any],
-    domain_pilots: dict[str, Any],
-    execution_audit: dict[str, Any],
-    *,
-    knowledge_lifecycle: dict[str, Any] | None = None,
-) -> str:
-    from .furnace_center import render_furnace_center_html as _render_furnace_center_html
-
-    return _render_furnace_center_html(
         decisions,
         judgments,
         memory,

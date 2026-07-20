@@ -15,7 +15,7 @@ def build_parser() -> argparse.ArgumentParser:
             "炼丹炉 local-first knowledge agent runtime. "
             f"PRIMARY_SURFACE commands: {', '.join(PRIMARY_SURFACE_COMMANDS)}. "
             "Daily path: `aiwiki drop ...` to feed material, `aiwiki today` to read outputs. "
-            "Use `aiwiki advanced ...` for compat/operator commands."
+            "Use `aiwiki advanced ...` for operator commands."
         ),
     )
     parser.add_argument(
@@ -34,8 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         metavar="{" + ",".join(PRIMARY_SURFACE_COMMANDS) + "}",
     )
-    # Operator/compat commands are registered only under `advanced` (no dual
-    # top-level registration). Legacy top-level argv is rewritten in dispatch.
+    # Operator commands are registered only under `advanced` (no top-level aliases).
     today_parser = subparsers.add_parser("today", help="炼丹炉今日产出 / 待办 / 建议")
     today_parser.add_argument("--json", action="store_true", help="JSON 输出（按 section 桶化）")
     today_parser.set_defaults(handler_command="today")
@@ -47,17 +46,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="高级抽屉：系统状态、receipts、compile/lint、review-page、alchemy、调试入口",
     )
     advanced_subparsers = advanced_parser.add_subparsers(dest="advanced_command", required=True)
-    _register_legacy_top_level_parsers(advanced_subparsers)
+    _register_advanced_parsers(advanced_subparsers)
     _converge_default_help_surface(subparsers)
     return parser
 
 
 def _converge_default_help_surface(subparsers: argparse._SubParsersAction) -> None:
-    """Keep legacy commands parseable while making top-level help product-first.
-
-    Operator commands live only under ``aiwiki advanced ...``. This hook keeps
-    top-level help product-first if argparse ever exposes extra choices.
-    """
+    """Keep top-level help product-first (drop / today / advanced only)."""
     visible = {
         getattr(action, "dest", ""): action
         for action in subparsers._choices_actions  # type: ignore[attr-defined]
@@ -68,8 +63,8 @@ def _converge_default_help_surface(subparsers: argparse._SubParsersAction) -> No
     ]
 
 
-def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -> None:
-    """Register operator/compat commands under the advanced drawer only."""
+def _register_advanced_parsers(subparsers: argparse._SubParsersAction) -> None:
+    """Register operator commands under the advanced drawer."""
 
     metrics_parser = subparsers.add_parser("metrics", help="炼丹炉知识复利指标")
     metrics_parser.add_argument("--json", action="store_true", help="JSON 输出")
@@ -272,7 +267,6 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
     review_queue_parser.set_defaults(handler_command="review-queue")
 
     subparsers.add_parser("lint", help="Run deterministic lint checks against the wiki.")
-    subparsers.add_parser("nightly", help="Run deterministic compile + lint and write nightly repair artifacts.")
     run_nightly_parser = subparsers.add_parser(
         "run-nightly",
         help="Run deterministic compile + lint and write nightly repair artifacts.",
@@ -334,7 +328,6 @@ def _register_legacy_top_level_parsers(subparsers: argparse._SubParsersAction) -
         help="Stop after N polling cycles. Useful for tests and short-lived runs.",
     )
     _set_handler_command_defaults(subparsers)
-    _mark_legacy_compat_help(subparsers)
 
 
 def _set_handler_command_defaults(subparsers: argparse._SubParsersAction, handler_command: str | None = None) -> None:
@@ -344,16 +337,6 @@ def _set_handler_command_defaults(subparsers: argparse._SubParsersAction, handle
         for action in choice._actions:
             if isinstance(action, argparse._SubParsersAction):
                 _set_handler_command_defaults(action, canonical_command)
-
-
-def _mark_legacy_compat_help(subparsers: argparse._SubParsersAction) -> None:
-    for action in subparsers._choices_actions:  # type: ignore[attr-defined]
-        command = getattr(action, "dest", "")
-        if command in PRIMARY_SURFACE_COMMANDS:
-            continue
-        help_text = str(getattr(action, "help", "") or "")
-        if help_text and not help_text.startswith("[compat]"):
-            action.help = f"[compat] {help_text}"
 
 
 def _register_drop_subcommand_parsers(subparsers: argparse._SubParsersAction) -> None:
@@ -382,13 +365,6 @@ def _register_drop_subcommand_parsers(subparsers: argparse._SubParsersAction) ->
     )
     _configure_drop_note_parser(drop_markdown_parser)
     drop_markdown_parser.set_defaults(handler_command="drop-note")
-
-    drop_note_parser = subparsers.add_parser(
-        "note",
-        help="Legacy alias for `drop markdown`; preserved for old automation.",
-    )
-    _configure_drop_note_parser(drop_note_parser)
-    drop_note_parser.set_defaults(handler_command="drop-note")
 
     drop_plan_parser = subparsers.add_parser(
         "plan",

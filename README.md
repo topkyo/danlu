@@ -60,7 +60,7 @@ cd ../demo-furnace-vault
 ./scripts/aiwiki-launcher.sh advanced compile
 ./scripts/aiwiki-launcher.sh advanced run-ask "Compare A and B on thesis, catalyst, risk"
 ./scripts/aiwiki-launcher.sh advanced file-back output/reports/xxx.md
-./scripts/aiwiki-launcher.sh advanced nightly
+./scripts/aiwiki-launcher.sh advanced run-nightly
 ```
 
 更多命令与失败三态见 [USER_GUIDE.md](./docs/USER_GUIDE.md)。

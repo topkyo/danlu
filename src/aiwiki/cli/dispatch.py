@@ -18,7 +18,6 @@ from ..execution.ask import (
 )
 from ..execution.review import review_page
 from ..execution.runtime_surfaces import (
-    nightly_health,
     shell_status,
 )
 from ..executor import AskSignal, execute_plan
@@ -38,7 +37,6 @@ from ..runner.workflows import run_ask, run_ask_resume, run_ask_submit, run_nigh
 from ..vault.bootstrap import bootstrap_new_vault
 from ..vault.plugin import sync_product_shell_plugin
 from .dispatch_helpers import (
-    _emit_legacy_drop_deprecation_warning,
     _flatten_model_retry_args,
     _maybe_auto_process,
     metrics_command,
@@ -46,7 +44,6 @@ from .dispatch_helpers import (
     today_command,
     trace_command,
 )
-from .legacy_argv import rewrite_legacy_top_level_argv
 from .parsers import build_parser
 from .universal_input import _rewrite_universal_drop_argv
 
@@ -285,8 +282,6 @@ def _handle_review_lifecycle(args: argparse.Namespace, root: Path) -> tuple[obje
 def _handle_runtime_workflows(args: argparse.Namespace, root: Path) -> tuple[object, str | None]:
     if args.handler_command == "lint":
         result = lint_wiki(root)
-    elif args.handler_command == "nightly":
-        result = nightly_health(root)
     elif args.handler_command == "run-nightly":
         result = run_nightly(root, compile_limit=args.compile_limit)
     else:
@@ -368,7 +363,6 @@ _REVIEW_LIFECYCLE_HANDLERS = {
 
 _RUNTIME_WORKFLOW_HANDLERS = {
     "lint": _handle_runtime_workflows,
-    "nightly": _handle_runtime_workflows,
     "run-nightly": _handle_runtime_workflows,
 }
 
@@ -392,9 +386,7 @@ _HANDLERS = {
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
-    # Universal drop may emit `advanced ask`; legacy rewrite handles bare
-    # operator top-level tokens (compile, drop-url, ask, ...).
-    argv = rewrite_legacy_top_level_argv(argv)
+    # Universal drop may emit `advanced ask` / typed drop subcommands.
     argv = _rewrite_universal_drop_argv(argv)
     args = parser.parse_args(argv)
     root = _resolve_vault_root(args)
@@ -407,7 +399,6 @@ def main(argv: list[str] | None = None) -> int:
     result: object = None
     text_output: str | None = None
     try:
-        _emit_legacy_drop_deprecation_warning(args)
         handler = _HANDLERS.get(args.handler_command)
         if handler is None:
             raise ValueError(f"Unsupported command: {args.handler_command}")

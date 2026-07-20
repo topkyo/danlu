@@ -302,24 +302,12 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     await this.runCliAction(`Review Page: ${status}`, "review-page", [pagePath, "--status", status]);
   }
 
-  async runReviewRewriteTransition(slug, status) {
-    new Notice(this.t("Concept rewrite commands were removed in W3; use review-page on the concept page instead."));
-  }
-
   visibleReviewPageCandidates() {
     return this.reviewPageControlItems();
   }
 
-  visibleRewriteCandidates() {
-    return this.rewriteControlItems("review");
-  }
-
   visibleActionCandidates(mode = "review") {
     return this.actionControlItems(mode);
-  }
-
-  visibleArchiveCandidates(mode = "apply") {
-    return this.archiveControlItems(mode);
   }
 
   openContextAwareAction(spec) {
@@ -328,10 +316,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   async handleVaultChange(relativePath) {
     return handleProductShellVaultChange(this, relativePath);
-  }
-
-  async openEvidenceGraphView() {
-    return openProductShellEvidenceGraphView(this);
   }
 
   updateStatusBar() {
@@ -430,7 +414,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async runNightlyCommand() {
-    await this.runPluginCommand(this.t("Nightly"), ["nightly"], { refreshAfter: true });
+    await this.runPluginCommand(this.t("Nightly"), ["run-nightly"], { refreshAfter: true });
   }
 
   async runTodaySnoozeCommand(target, days = 1) {
@@ -606,30 +590,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     this.openStructuredCommandModal(buildReviewPageModalSpec(this, prefill));
   }
 
-  openReviewRewriteModal(_prefill = {}) {
-    new Notice(this.t("Concept rewrite commands were removed in W3; use review-page on the concept page instead."));
-  }
-
-  openApplyRewriteModal(_prefill = {}) {
-    new Notice(this.t("Concept rewrite commands were removed in W3; use review-page on the concept page instead."));
-  }
-
-  openRetireConceptModal(_prefill = {}) {
-    new Notice(this.t("Concept retire/reactivate commands were removed in W3; use review-page instead."));
-  }
-
-  openReactivateConceptModal(_prefill = {}) {
-    new Notice(this.t("Concept retire/reactivate commands were removed in W3; use review-page instead."));
-  }
-
-  openApplyArchiveModal(_prefill = {}) {
-    new Notice(this.t("Archive commands were removed in W3; inspect manifest pages manually."));
-  }
-
-  openRevertArchiveModal(_prefill = {}) {
-    new Notice(this.t("Archive commands were removed in W3; inspect manifest pages manually."));
-  }
-
   openReviewPageContextPicker(options = this.visibleReviewPageCandidates()) {
     this.openContextAwareAction({
       title: this.t("Pick Review Page"),
@@ -640,18 +600,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       onFallback: () => this.openReviewPageModal(),
       onSubmit: (option) => this.openReviewPageTransitionPicker(option),
     });
-  }
-
-  openReviewRewriteContextPicker(_options = this.visibleRewriteCandidates()) {
-    new Notice(this.t("Concept rewrite commands were removed in W3; use review-page on the concept page instead."));
-  }
-
-  openApplyArchiveContextPicker(_options = this.visibleArchiveCandidates("apply")) {
-    new Notice(this.t("Archive commands were removed in W3; inspect manifest pages manually."));
-  }
-
-  openRevertArchiveContextPicker(_options = this.visibleArchiveCandidates("revert")) {
-    new Notice(this.t("Archive commands were removed in W3; inspect manifest pages manually."));
   }
 
   openReviewPageTransitionPicker(control) {
@@ -673,10 +621,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         );
       },
     });
-  }
-
-  openReviewRewriteTransitionPicker(_control) {
-    new Notice(this.t("Concept rewrite commands were removed in W3; use review-page on the concept page instead."));
   }
 
   async openView(viewType, options = {}) {
@@ -723,14 +667,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   renderMainHeader(container) {
     renderMainHeader(this, container);
-  }
-
-  renderMaterialPanel(container) {
-    renderMaterialPanel(this, container);
-  }
-
-  renderOutputsPanel(container) {
-    renderOutputsPanel(this, container);
   }
 
   renderStatusPanel(container) {

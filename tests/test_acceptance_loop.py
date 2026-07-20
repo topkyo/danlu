@@ -116,7 +116,7 @@ def test_happy_run_ask_replay(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     case, vault = _copy_case_and_fix_clock_from("M6.1b", "case_happy_run_ask", tmp_path, monkeypatch)
     inject_replay_client(monkeypatch, case)
 
-    out = _run_cli(vault, ["run-ask", "deterministic source-a", "--format", "report"])
+    out = _run_cli(vault, ["advanced", "run-ask", "deterministic source-a", "--format", "report"])
     payload = json.loads(out)
 
     _write_or_compare(case / "expected" / "stdout" / "01-run-ask.json", out)
@@ -202,7 +202,7 @@ def test_w2_compounding_rank_and_suggest_acceptance(  # pragma: no cover - expli
     inject_replay_client(monkeypatch, case)
     stdout_dir = case / "expected" / "stdout"
 
-    _run_cli(vault, ["compile"])
+    _run_cli(vault, ["advanced", "compile"])
     out1 = _run_cli(
         vault,
         ["run-ask", "compounding rank acceptance", "--format", "report"],
@@ -271,7 +271,7 @@ def test_backend_failure_replay(  # pragma: no cover - explicit pytest acceptanc
     inject_replay_client(monkeypatch, case)
 
     with pytest.raises(SystemExit) as exc_info:
-        _run_cli(vault, ["run-ask", "what is source-a", "--format", "report"])
+        _run_cli(vault, ["advanced", "run-ask", "what is source-a", "--format", "report"])
     assert exc_info.value.code == 1
 
     receipt_path = vault / ".aiwiki/logs/llm-receipts.jsonl"
@@ -295,7 +295,7 @@ def test_backend_failure_replay(  # pragma: no cover - explicit pytest acceptanc
     assert [record["event_type"] for record in audit_events] == ["query", "failed"]
     assert audit_events[-1]["subject"] == {"kind": "failed", "id": ""}
 
-    summary_payload = json.loads(_run_cli(vault, ["shell-status"]))
+    summary_payload = json.loads(_run_cli(vault, ["advanced", "shell-status"]))
     assert summary_payload["summary_path"] == "output/control/shell-summary.json"
     summary = json.loads((vault / "output/control/shell-summary.json").read_text(encoding="utf-8"))
     latest_llm = summary["latest_llm_run"]
@@ -329,7 +329,7 @@ def test_universal_input_routing(  # pragma: no cover - explicit pytest acceptan
 
     _, typed_vault = _copy_case_and_fix_clock_from("M6.2", "case_universal_input", tmp_path / "typed", monkeypatch)
     typed_source = str(typed_vault / "inputs" / "universal-note.md")
-    typed_out = _run_cli(typed_vault, ["drop", "note", typed_source])
+    typed_out = _run_cli(typed_vault, ["drop", "markdown", typed_source])
     typed_payload = json.loads(typed_out)
 
     assert bare_payload["material"] == typed_payload["material"] == "note"
@@ -638,10 +638,10 @@ def test_elixir_stage3_compounding(  # pragma: no cover - explicit pytest accept
     )
     _write_or_compare(case / "expected" / "stdout" / "02-alchemy-distill.json", out_distill)
 
-    out_finalize = _run_cli(vault, ["alchemy-finalize", "--elixir-id", elixir_new])
+    out_finalize = _run_cli(vault, ["advanced", "alchemy-finalize", "--elixir-id", elixir_new])
     _write_or_compare(case / "expected" / "stdout" / "03-alchemy-finalize.json", out_finalize)
 
-    out_promote = _run_cli(vault, ["alchemy-promote", "--elixir-id", elixir_new])
+    out_promote = _run_cli(vault, ["advanced", "alchemy-promote", "--elixir-id", elixir_new])
     _write_or_compare(case / "expected" / "stdout" / "04-alchemy-promote.json", out_promote)
     if not REFRESH:
         promote_payload = json.loads(out_promote)
@@ -708,7 +708,7 @@ def test_file_back_judgment_preserves_derived_promoted_to(  # pragma: no cover -
         encoding="utf-8",
     )
 
-    _run_cli(vault, ["file-back", report_ref, "--title", "D3 old review"])
+    _run_cli(vault, ["advanced", "file-back", report_ref, "--title", "D3 old review"])
 
     candidates_state = json.loads((vault / ".aiwiki" / "state" / "output-candidates.json").read_text(encoding="utf-8"))
     matched = [
@@ -747,8 +747,8 @@ def test_file_back_judgment_preserves_derived_promoted_to(  # pragma: no cover -
             "Does the derived anchor still hold after file-back?",
         ],
     )
-    _run_cli(vault, ["alchemy-finalize", "--elixir-id", elixir_id])
-    out_promote = _run_cli(vault, ["alchemy-promote", "--elixir-id", elixir_id])
+    _run_cli(vault, ["advanced", "alchemy-finalize", "--elixir-id", elixir_id])
+    out_promote = _run_cli(vault, ["advanced", "alchemy-promote", "--elixir-id", elixir_id])
     promote_payload = json.loads(out_promote)
     assert promote_payload.get("elixir_state") == "settled"
 

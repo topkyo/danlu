@@ -11,13 +11,6 @@ async function handleProductShellVaultChange(plugin, relativePath) {
   }
 }
 
-async function openProductShellEvidenceGraphView(plugin) {
-  await plugin.openWorkspacePath("wiki/evidence-graph.md");
-  if (plugin.app.commands?.executeCommandById) {
-    await plugin.app.commands.executeCommandById("graph:open");
-  }
-}
-
 async function copyProductShellText(plugin, value) {
   const text = String(value || "").trim();
   if (!text) {

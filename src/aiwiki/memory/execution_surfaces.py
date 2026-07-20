@@ -9,7 +9,6 @@ are scoped to the minimal set actually used by these functions; no sibling
 
 from __future__ import annotations
 
-import html
 from pathlib import Path
 from typing import Any
 
@@ -39,7 +38,6 @@ from ..protocol.runtime_config import (
     PENDING_ACTION_STATUSES,
     REWRITE_PROPOSAL_STATUSES,
 )
-from ..render.html_theme import html_meta_theme, html_theme_css
 from ..state.constants import DEFAULT_PROTOCOL
 from ..utils.hash import sha256_bytes
 from ..utils.markdown import parse_frontmatter, render_frontmatter
@@ -522,122 +520,9 @@ def render_execution_audit(audit: dict[str, Any]) -> str:
             "- [机器记忆动作队列](./machine-memory-actions.md)",
             "- [认知历史](./cognitive-history.md)",
             "- [炉心面板](./furnace-center.md)",
-            "- `output/control/execution-audit.html`：本地执行审计面板（浏览器 / 系统 HTML 入口）",
         ]
     )
     return "\n".join(lines) + "\n"
-
-
-def render_execution_audit_html(audit: dict[str, Any]) -> str:
-    summary_cards = [
-        ("Receipts", str(audit.get("counts", {}).get("receipts", 0))),
-        ("Apply", str(audit.get("counts", {}).get("apply", 0))),
-        ("Revert", str(audit.get("counts", {}).get("revert", 0))),
-        ("Bundle Safe", str(audit.get("counts", {}).get("bundle_safe", 0))),
-    ]
-    band_markup = (
-        "".join(
-            f"<li><strong>{html.escape(str(row.get('label') or row.get('band') or 'band'))}</strong>"
-            f' <span class="item-meta">{html.escape(str(row.get("band") or ""))}</span>'
-            f'<div class="metric-inline">count {html.escape(str(row.get("count") or 0))}</div></li>'
-            for row in audit.get("policy_bands", [])
-        )
-        or "<li>当前还没有可审计的 execution policy band。</li>"
-    )
-    apply_markup = (
-        "".join(
-            f"<li><strong>{html.escape(str(item.get('title') or item.get('action_id') or 'receipt'))}</strong>"
-            f'<div class="item-meta">{html.escape(str(item.get("action_id") or ""))} / {html.escape(str(item.get("protocol") or DEFAULT_PROTOCOL))}</div>'
-            f"<div>{html.escape(str(item.get('applied_at') or ''))}</div></li>"
-            for item in audit.get("recent_apply", [])
-        )
-        or "<li>当前还没有 apply receipt。</li>"
-    )
-    revert_markup = (
-        "".join(
-            f"<li><strong>{html.escape(str(item.get('title') or item.get('action_id') or 'receipt'))}</strong>"
-            f'<div class="item-meta">{html.escape(str(item.get("action_id") or ""))} / {html.escape(str(item.get("protocol") or DEFAULT_PROTOCOL))}</div>'
-            f"<div>{html.escape(str(item.get('applied_at') or ''))}</div></li>"
-            for item in audit.get("recent_revert", [])
-        )
-        or "<li>当前还没有 revert receipt。</li>"
-    )
-    protocol_markup = (
-        "".join(
-            f"<li><strong>{html.escape(str(row.get('title') or row.get('protocol') or 'protocol'))}</strong>"
-            f' <span class="item-meta">{html.escape(str(row.get("protocol") or ""))}</span>'
-            f"<div>receipts {html.escape(str(row.get('count') or 0))}</div></li>"
-            for row in audit.get("protocols", [])
-        )
-        or "<li>当前还没有 protocol 级 execution history。</li>"
-    )
-    action_markup = (
-        "".join(
-            f"<li><strong>{html.escape(str(action.get('title') or action.get('id') or 'action'))}</strong>"
-            f'<div class="item-meta">{html.escape(str(action.get("execution_band_label") or action.get("execution_band") or ""))}'
-            f" / {html.escape(str(action.get('execution_policy') or 'triage'))}"
-            f" / receipts {html.escape(str(action.get('receipt_count') or 0))}</div>"
-            f"<div>{html.escape(str(action.get('policy_summary') or ''))}</div></li>"
-            for action in audit.get("actions", [])
-        )
-        or "<li>当前还没有 action audit rows。</li>"
-    )
-    consistency_markup = (
-        "".join(
-            f"<li><strong>{html.escape(str(signal.get('title') or signal.get('action_id') or 'signal'))}</strong>"
-            f' <span class="item-meta">{html.escape(str(signal.get("severity") or "warn"))}</span>'
-            f"<div>{html.escape(str(signal.get('message') or ''))}</div></li>"
-            for signal in audit.get("consistency_signals", [])
-        )
-        or "<li>当前没有 execution consistency signal。</li>"
-    )
-    return "\n".join(
-        [
-            "<!doctype html>",
-            '<html lang="zh-CN">',
-            "<head>",
-            html_meta_theme(),
-            "  <title>Execution Audit</title>",
-            "  <style>",
-            html_theme_css(),
-            "  </style>",
-            "</head>",
-            "<body>",
-            "  <main>",
-            '    <section class="panel">',
-            "      <h1>Execution Audit</h1>",
-            f"      <p>当前协议 <strong>{html.escape(str(audit.get('active_protocol') or DEFAULT_PROTOCOL))}</strong> · 最近编译 {html.escape(str(audit.get('compiled_at') or ''))}</p>",
-            '      <p><a href="../../wiki/indexes/execution-audit.md">Markdown 审计页</a> · <a href="../../wiki/indexes/furnace-center.md">炉心面板</a></p>',
-            '      <div class="meta">',
-            *[
-                "\n".join(
-                    [
-                        '        <div class="card">',
-                        f'          <div class="metric-label">{html.escape(label)}</div>',
-                        f'          <div class="metric">{html.escape(value)}</div>',
-                        "        </div>",
-                    ]
-                )
-                for label, value in summary_cards
-            ],
-            "      </div>",
-            "    </section>",
-            '    <section class="grid">',
-            f'      <div class="card"><h2>Policy Bands</h2><ul>{band_markup}</ul></div>',
-            f'      <div class="card"><h2>Protocol Breakdown</h2><ul>{protocol_markup}</ul></div>',
-            f'      <div class="card"><h2>Recent Apply</h2><ul>{apply_markup}</ul></div>',
-            f'      <div class="card"><h2>Recent Revert</h2><ul>{revert_markup}</ul></div>',
-            f'      <div class="card"><h2>Consistency Signals</h2><ul>{consistency_markup}</ul></div>',
-            f'      <div class="card"><h2>Action Audit</h2><ul>{action_markup}</ul></div>',
-            "    </section>",
-            "  </main>",
-            "</body>",
-            "</html>",
-            "",
-        ]
-    )
-
-
 def render_concept_quality(memory: dict[str, Any]) -> str:
     quality = memory.get("health", {}).get("concept_quality", {})
     rewrite_state = memory.get("health", {}).get("concept_rewrite", {})

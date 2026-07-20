@@ -21,6 +21,7 @@ COMPILE_LIMIT="${AIWIKI_WATCH_COMPILE_LIMIT:-5}"
 
 ARGS=(
   --root "$TARGET_ROOT"
+  advanced
   watch
   --interval "$INTERVAL"
   --compile-limit "$COMPILE_LIMIT"

@@ -26,7 +26,7 @@ updated_at: "2026-07-15"
 
 - **一个输入端**：首屏只给用户一个 Universal Input；URL、文件拖拽、文本笔记和问题都从这里进入。
 - **一个输出端**：首屏只呈现 Today Feed 中可交付的输出、需要确认的事项和非降级活动，不把运行态流水线当成用户目标。
-- **其他全部隐藏**：System Status / LLM Health / Repair Backlog / Recent Runs 等运维、状态、监控入口全部收纳到 Advanced / 更多工具抽屉（W8：Review Center / Execution Center / Recent Runs **已从 Product Shell 视图注册移除**，Today-only）。
+- **其他全部隐藏**：System Status / LLM Health 等 diagnostics 收纳到 Advanced / 更多工具抽屉；W8 起 Review Center / Execution Center / Recent Runs **已从 Product Shell 视图注册移除**（Today-only）。
 - **用户心智最小化**：任何 UI 层新增卡片、按钮、状态或通知，都必须证明它没有扩大用户需要理解的概念数量。
 - **通知只服务输出端**：外部 webhook 通知（飞书 / 企业微信）只提醒"有新报告需要看"，不把后台调度细节推给用户。
 - **Advanced / 更多工具不是删除**：高级视图仍保留给操作者排障和治理，只是不占据默认首屏。
@@ -196,7 +196,7 @@ updated_at: "2026-07-15"
 
 ## 10. 已拍板决策（2026-04-27）
 
-> **实施状态（2026-05-24）**：M-PS.1 之后的 AgentOS 收敛已完成默认面更新：首屏为 Today Feed + Universal Input；AskBox / DropZone 已吸收到 Universal Input，Advanced 仅在 `showAdvancedCommands` 下作为 diagnostics/history/Review/Execution surface 出现。Phase B 的飞书 / 企业微信 webhook Notifier、插件 env bridge、`run-ask` report hook 和 notifier tests 继续保留。
+> **实施状态（2026-05-24）**：M-PS.1 之后的 AgentOS 收敛已完成默认面更新：首屏为 Today Feed + Universal Input；AskBox / DropZone 已吸收到 Universal Input，Advanced 仅在 `showAdvancedCommands` 下作为 diagnostics/history 入口出现（W8：无 Review/Execution/Runs 视图注册）。Phase B 的飞书 / 企业微信 webhook Notifier、插件 env bridge、`run-ask` report hook 和 notifier tests 继续保留。
 
 以下决策点已闭环，本文档其余章节均已与决策对齐：
 
@@ -231,7 +231,7 @@ M-PS.1 实施后，Product Shell 仍只作为 surface / trigger 运行；Notifie
 - **Provenance**：报告、简报和输出卡片只展示已有 provenance 的 runtime 产出，不制造无来源结论。
 - **Deterministic baseline**：UI 重写不改变 backend / model selection；Notifier 只接 report-generated hook，成功无审计副作用，失败仅追加 `notify_failed` audit，不改变 report generation exit code。
 - **Backend 显式手动选择**：UI 不做 hidden backend routing；backend / model 切换仍由操作者显式选择。
-- **Review-apply-revert-audit**：Advanced 抽屉中的治理入口继续走既有可审计、可回滚路径。
+- **Review-apply-revert-audit**：治理仍走 CLI / wiki indexes 的可审计、可回滚路径；W8 起 Advanced 抽屉仅 diagnostics/history，不含 Review/Execution Center 视图。
 - **Advanced 抽屉不删除 CLI 能力**：System Status / LLM Health / Repair Backlog 等 operator 面仍可通过 CLI / wiki indexes 访问；W8 起 Product Shell **不再注册** Review Center / Execution Center / Recent Runs 视图。
 - **同步审查要求**：当 `docs/Furnace Agent Architecture.md` §3 的不变量发生变化时，本文档必须同步审查。
 
@@ -241,10 +241,10 @@ M-UX.1 ~ M-UX.6 之后，Product Shell 的实际产品面继续向“一个输�
 
 - 默认 Obsidian workspace 进入主区 Product Shell，左侧仅文件列表/书签，右侧仅大纲/反链，并默认折叠左右侧栏。
 - new-vault 与 dogfood vault 的 CSS snippet 把普通用户文件树收敛为报告视图：隐藏 `raw/wiki/schema/scripts/prompts`，`output/` 下默认只露出 `reports/`。
-- Advanced 抽屉在中文界面显示为“更多工具”，摘要显示“待审 / 待执行 / 运行记录”，避免把 operator 机制放进首屏。
+- Advanced 抽屉在中文界面显示为“更多工具”，折叠区为“系统状态 / 运行与历史”两段 diagnostics（W8：不含 Review Center / Execution Center / Recent Runs 视图注册）。
 - Today feed 的可见 target 不再默认展示 `output/...` / `wiki/...` runtime path，而以“报告 / 判断页 / 决策页 / 提案页 / 关系图谱”等产品标签呈现；真实路径仍由按钮动作持有。
 - 报告卡和 Today 报告动作使用 “Open report / 打开报告”，而不是泛化的 “Open / 打开”，让报告入口成为明确输出端。
 - 关系图谱 HTML 已从 `component / slug / wiki 页面 / Hub / rewrite` 口吻收敛到“关系组 / 关键词或来源编号 / 详情页 / 核心概念 / 核心来源 / 改写提案”。
-- **2026-07-18（freeform ask + Today 动作）**：Ask / Universal Input 提问只走 `run-ask` → `output/reports/*.md`（无 format 选择 UI、无 `--direct`）；Today 报告卡「打开报告 / 审阅」已接线到 `openWorkspacePath` 与 review center。W4 已删除 `today-snooze` CLI 与 Today「稍后」产品入口（`runTodaySnoozeCommand` 仅 stub Notice）。
+- **2026-07-18（freeform ask + Today 动作）**：Ask / Universal Input 提问只走 `run-ask` → `output/reports/*.md`（无 format 选择 UI、无 `--direct`）；Today 报告卡「打开报告 / 审阅」已接线到 `openWorkspacePath` 与 wiki 审阅页。W4 已删除 `today-snooze` CLI 与 Today「稍后」产品入口（`runTodaySnoozeCommand` 仅 stub Notice）。
 
 这些变更不扩展 `shell-summary`，不新增 settings schema，不移动 runtime 目录，也不删除 CLI/operator 能力。

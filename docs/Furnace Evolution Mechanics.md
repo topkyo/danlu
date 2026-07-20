@@ -32,7 +32,7 @@ related_docs:
 
 ## 2. 现行 operator CLI
 
-顶层：`drop` / `today` / `advanced`。旧顶层名经 argv rewrite compat。
+顶层：`drop` / `today` / `advanced`。运算符走 `aiwiki advanced ...`。
 
 | 命令 | 语义 | 写目标 |
 |---|---|---|
@@ -97,7 +97,7 @@ related_docs:
 
 ## 7. L3 prompt/policy proposal（library 保留，CLI 已删）
 
-`src/aiwiki/execution/l3_proposals.py` 等 library 仍服务 acceptance replay 与历史 state；**产品面无** `l3-proposal-create`、`apply <proposal-id>`、`review proposals` 等 CLI。prompt/policy 写回须 operator 显式路径（现行：`review-page` + 手工编辑 + receipt  discipline），不得假装 nightly 自动 adopt。
+L3 产品 CLI 与 library 已移除。prompt/policy 写回须 operator 显式路径（现行：`review-page` + 手工编辑 + receipt discipline），不得假装 nightly 自动 adopt。
 
 ## 8. Audit / revert
 

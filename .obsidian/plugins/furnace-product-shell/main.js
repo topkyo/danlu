@@ -352,8 +352,6 @@ const ZH_TEXT = {
   "升级候选": "升级候选",
   "逾期动作": "逾期动作",
   "逾期复审": "逾期复审",
-  "L3 提案": "L3 提案",
-  "L3 提案需要关注": "L3 提案需要关注",
   "数据漂移": "数据漂移",
   "待审队列": "待审队列",
   "指标提醒": "指标提醒",
@@ -669,7 +667,6 @@ const ZH_TEXT = {
   "Attention Pages": "关注页",
   "Missing Counter Evidence": "缺少反证",
   "Missing Invalidation": "缺少失效条件",
-  "Missing Next Signals": "缺少下一信号",
   "Missing Review History": "缺少审阅历史",
   "Decision Objects": "决策对象",
   "Judgment Objects": "判断对象",
@@ -699,7 +696,6 @@ const ZH_TEXT = {
   "Execution Links": "执行链接",
   "Open page": "打开页面",
   "Open first": "打开第一项",
-  "Batch review": "批量审阅",
   "Open proposal": "打开提案",
   "Open target": "打开目标",
   "Open primary": "打开主路径",
@@ -809,14 +805,12 @@ const ZH_TEXT = {
   "File an output artifact back into wiki/judgments for thin review.": "将输出报告回填到 wiki/judgments，进入薄审阅流程。",
   "Prefer an explicit review control object before falling back to manual page entry.": "优先使用显式 review control object，再回退到手动输入页面。",
   "Advance multiple review pages that share a safe common transition.": "批量推进共享安全公共迁移的多个审阅页面。",
-  "Batch review is only offered when multiple pages share the same preferred or default transition.": "只有多个页面共享相同的推荐或默认迁移时才提供批量审阅。",
   "Prefer an explicit rewrite proposal object before falling back to manual slug entry.": "优先使用显式 rewrite proposal object，再回退到手动输入 slug。",
   "Prefer an explicit action control object before falling back to manual action id entry.": "优先使用显式 action control object，再回退到手动输入 action id。",
   "Prefer an explicit archive control object before falling back to manual entry id.": "优先使用显式 archive control object，再回退到手动输入 entry id。",
   "Choose a valid next status for this review page.": "为这个审阅页面选择一个有效的下一状态。",
   "Choose a valid next status for this rewrite proposal.": "为这个改写提案选择一个有效的下一状态。",
   "Choose a valid next status for this machine-memory action.": "为这个 machine-memory 动作选择一个有效的下一状态。",
-  "Batch review requires at least one page path.": "批量审阅至少需要一个页面路径。",
   "share the recommended transition": "共享推荐迁移",
   "actions": "动作",
   "archives": "归档",
@@ -3361,25 +3355,18 @@ module.exports = { refreshRepoState, resolveLauncherPath, launcherIsExecutable }
 // Extracted from plugin.js — wraps spawn/child_process calls to the aiwiki launcher.
 // Note: spawn, fs, path, buildNotifyEnv, readJsonText are already in the build header.
 
-const PRIMARY_SURFACE_COMMANDS = new Set(["drop", "today", "metrics", "advanced"]);
-const PRIMARY_DROP_REPLACEMENTS = {
-  "drop-url": ["drop", "url"],
-  "drop-pdf": ["drop", "pdf"],
-  "drop-image": ["drop", "image"],
-  "drop-repo": ["drop", "repo"],
-  "drop-note": ["drop", "markdown"],
-};
+const PRIMARY_SURFACE_COMMANDS = new Set(["drop", "today", "advanced"]);
 
 function normalizeLauncherArgv(args) {
   const argv = Array.isArray(args) ? args.map((item) => String(item)) : [];
   const command = argv[0] || "";
-  if (!command || PRIMARY_SURFACE_COMMANDS.has(command)) {
+  if (!command) {
     return argv;
   }
-  const dropReplacement = PRIMARY_DROP_REPLACEMENTS[command];
-  if (dropReplacement) {
-    return dropReplacement.concat(argv.slice(1));
+  if (PRIMARY_SURFACE_COMMANDS.has(command)) {
+    return argv;
   }
+  // Plugin buttons still pass operator verbs; prefix advanced explicitly.
   return ["advanced", ...argv];
 }
 
@@ -4132,59 +4119,6 @@ function renderMainHeader(plugin, container) {
   if (runningCount) {
     plugin.renderPill(badges, `${runningCount} ${plugin.t("running")}`, "is-running");
   }
-}
-
-function renderMaterialPanel(plugin, container) {
-  const panel = plugin.renderPanel(container, "Materials", "Push new material into the furnace.");
-  const grid = panel.createDiv({ cls: "furnace-shell-material-grid" });
-  [
-    { icon: "📝", label: "投文字材料", onClick: async () => new CaptureNoteModal(plugin.app, plugin).open() },
-    { icon: "🔗", label: "Drop URL", onClick: async () => new DropUrlModal(plugin.app, plugin).open() },
-    { icon: "📄", label: "Drop File", onClick: async () => new DropFileModal(plugin.app, plugin).open() },
-    { icon: "📷", label: "Drop Image", onClick: async () => new DropImageModal(plugin.app, plugin).open() },
-  ].forEach((item) => {
-    const button = grid.createEl("button", { cls: "furnace-shell-material-button" });
-    button.createEl("span", { cls: "furnace-shell-material-icon", text: item.icon });
-    button.createEl("span", { cls: "furnace-shell-material-label", text: plugin.t(item.label) });
-    button.addEventListener("click", () => {
-      plugin.runUiAction(() => item.onClick(), plugin.t(item.label));
-    });
-  });
-  panel.createDiv({
-    cls: "furnace-shell-panel-note",
-    text: plugin.t("Follow single writer for write actions: do not run compile / nightly / apply / revert in Obsidian and the terminal at the same time."),
-  });
-}
-
-function renderOutputsPanel(plugin, container) {
-  const panel = plugin.renderPanel(container, "Latest outputs", "Open the newest outputs without diving into control surfaces.", {
-    action: { label: "View all", onClick: async () => plugin.openOutputsHub() },
-  });
-  const outputs = plugin.shellSummary && typeof plugin.shellSummary === "object" && Array.isArray(plugin.shellSummary.recent_outputs)
-    ? plugin.shellSummary.recent_outputs
-    : [];
-  if (!outputs.length) {
-    panel.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No recent outputs yet. Drop material or run a compile.") });
-    plugin.renderInlineButtons(panel, [
-      { label: "Compile", cta: true, onClick: async () => plugin.runCompileCommand() },
-      { label: "Open outputs hub", kind: "ghost", onClick: async () => plugin.openOutputsHub() },
-    ]);
-    return;
-  }
-  const list = panel.createDiv({ cls: "furnace-shell-output-list" });
-  outputs.slice(0, 2).forEach((artifact) => {
-    const item = list.createDiv({ cls: "furnace-shell-output-item" });
-    const copy = item.createDiv({ cls: "furnace-shell-output-copy" });
-    copy.createEl("strong", { text: artifact.title || artifact.path || plugin.t("output") });
-    copy.createDiv({
-      cls: "furnace-shell-meta",
-      text: `${plugin.t(artifact.protocol || "general")} · ${plugin.t(artifact.format || "markdown")} · ${formatDisplayTime(artifact.created_at, plugin.locale())}`,
-    });
-    const openButton = item.createEl("button", { text: plugin.t("Open") });
-    openButton.addEventListener("click", () => {
-      plugin.runUiAction(() => plugin.openWorkspacePath(artifact.path), `Open output: ${artifact.path}`);
-    });
-  });
 }
 
 function llmHealthToneClass(status) {
@@ -6854,10 +6788,6 @@ function openContextAwareActionForSpec(plugin, spec) {
 
 // Structured command modal specs for Product Shell operator actions.
 
-function noticeRemovedCommand(plugin, message) {
-  new Notice(plugin.t(message));
-}
-
 function buildFileBackModalSpec(plugin, prefill = {}) {
   return {
     title: plugin.t("File Back"),
@@ -6958,109 +6888,6 @@ function buildReviewPageModalSpec(plugin, prefill = {}) {
       appendOptionalArg(args, "--note", values.note);
       appendOptionalArg(args, "--confidence", values.confidence);
       await plugin.runCliAction(`Review Page: ${values.status}`, "review-page", args);
-    },
-  };
-}
-
-function buildReviewRewriteModalSpec(plugin, prefill = {}) {
-  return {
-    title: plugin.t("Review Rewrite"),
-    description: plugin.t("Advance a concept rewrite proposal through the rewrite workflow."),
-    fields: [
-      { key: "slug", label: plugin.t("Concept slug"), required: true, initialValue: () => prefill.slug || plugin.getActiveConceptSlug() },
-      { key: "status", label: plugin.t("Status"), required: true, placeholder: plugin.t("accepted / rejected / needs-revision ..."), initialValue: prefill.status || "" },
-      { key: "note", label: plugin.t("Note"), kind: "textarea", rows: 4, placeholder: plugin.t("Optional review note"), initialValue: prefill.note || "" },
-    ],
-    onSubmit: async (values) => {
-      noticeRemovedCommand(
-        plugin,
-        "Concept rewrite commands were removed in W3; use review-page on the concept page instead."
-      );
-    },
-  };
-}
-
-function buildApplyRewriteModalSpec(plugin, prefill = {}) {
-  return {
-    title: plugin.t("Apply Rewrite"),
-    description: plugin.t("Apply an accepted concept rewrite proposal."),
-    fields: [
-      { key: "slug", label: plugin.t("Concept slug"), required: true, initialValue: () => prefill.slug || plugin.getActiveConceptSlug() },
-      { key: "note", label: plugin.t("Note"), kind: "textarea", rows: 4, placeholder: plugin.t("Optional apply note"), initialValue: prefill.note || "" },
-    ],
-    onSubmit: async () => {
-      noticeRemovedCommand(
-        plugin,
-        "Concept rewrite commands were removed in W3; use review-page on the concept page instead."
-      );
-    },
-  };
-}
-
-function buildRetireConceptModalSpec(plugin, prefill = {}) {
-  return {
-    title: plugin.t("Retire Concept"),
-    description: plugin.t("Apply an explicit retired override for a concept."),
-    fields: [
-      { key: "slug", label: plugin.t("Concept slug"), required: true, initialValue: () => prefill.slug || plugin.getActiveConceptSlug() },
-      { key: "note", label: plugin.t("Note"), kind: "textarea", rows: 4, placeholder: plugin.t("Why retire this concept?"), initialValue: prefill.note || "" },
-    ],
-    onSubmit: async () => {
-      noticeRemovedCommand(
-        plugin,
-        "Concept retire/reactivate commands were removed in W3; use review-page instead."
-      );
-    },
-  };
-}
-
-function buildReactivateConceptModalSpec(plugin, prefill = {}) {
-  return {
-    title: plugin.t("Reactivate Concept"),
-    description: plugin.t("Clear the explicit retired override for a concept."),
-    fields: [
-      { key: "slug", label: plugin.t("Concept slug"), required: true, initialValue: () => prefill.slug || plugin.getActiveConceptSlug() },
-      { key: "note", label: plugin.t("Note"), kind: "textarea", rows: 4, placeholder: plugin.t("Optional reactivate note"), initialValue: prefill.note || "" },
-    ],
-    onSubmit: async () => {
-      noticeRemovedCommand(
-        plugin,
-        "Concept retire/reactivate commands were removed in W3; use review-page instead."
-      );
-    },
-  };
-}
-
-function buildApplyArchiveModalSpec(plugin, prefill = {}) {
-  return {
-    title: plugin.t("Apply Archive"),
-    description: plugin.t("Apply a ready archive candidate and pin it to archived."),
-    fields: [
-      { key: "entry_id", label: plugin.t("Entry id"), required: true, placeholder: plugin.t("manifest/material entry id"), initialValue: prefill.entryId || "" },
-      { key: "note", label: plugin.t("Note"), kind: "textarea", rows: 4, placeholder: plugin.t("Optional apply note"), initialValue: prefill.note || "" },
-    ],
-    onSubmit: async () => {
-      noticeRemovedCommand(
-        plugin,
-        "Archive commands were removed in W3; inspect manifest pages manually."
-      );
-    },
-  };
-}
-
-function buildRevertArchiveModalSpec(plugin, prefill = {}) {
-  return {
-    title: plugin.t("Revert Archive"),
-    description: plugin.t("Revert the latest explicit archive transition."),
-    fields: [
-      { key: "entry_id", label: plugin.t("Entry id"), required: true, placeholder: plugin.t("manifest/material entry id"), initialValue: prefill.entryId || "" },
-      { key: "note", label: plugin.t("Note"), kind: "textarea", rows: 4, placeholder: plugin.t("Optional revert note"), initialValue: prefill.note || "" },
-    ],
-    onSubmit: async () => {
-      noticeRemovedCommand(
-        plugin,
-        "Archive commands were removed in W3; inspect manifest pages manually."
-      );
     },
   };
 }
@@ -7705,13 +7532,6 @@ async function handleProductShellVaultChange(plugin, relativePath) {
   }
   if (relativePath.startsWith("output/") || relativePath.startsWith("wiki/indexes/")) {
     plugin.refreshOpenViews();
-  }
-}
-
-async function openProductShellEvidenceGraphView(plugin) {
-  await plugin.openWorkspacePath("wiki/evidence-graph.md");
-  if (plugin.app.commands?.executeCommandById) {
-    await plugin.app.commands.executeCommandById("graph:open");
   }
 }
 
@@ -8963,24 +8783,12 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     await this.runCliAction(`Review Page: ${status}`, "review-page", [pagePath, "--status", status]);
   }
 
-  async runReviewRewriteTransition(slug, status) {
-    new Notice(this.t("Concept rewrite commands were removed in W3; use review-page on the concept page instead."));
-  }
-
   visibleReviewPageCandidates() {
     return this.reviewPageControlItems();
   }
 
-  visibleRewriteCandidates() {
-    return this.rewriteControlItems("review");
-  }
-
   visibleActionCandidates(mode = "review") {
     return this.actionControlItems(mode);
-  }
-
-  visibleArchiveCandidates(mode = "apply") {
-    return this.archiveControlItems(mode);
   }
 
   openContextAwareAction(spec) {
@@ -8989,10 +8797,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   async handleVaultChange(relativePath) {
     return handleProductShellVaultChange(this, relativePath);
-  }
-
-  async openEvidenceGraphView() {
-    return openProductShellEvidenceGraphView(this);
   }
 
   updateStatusBar() {
@@ -9091,7 +8895,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   async runNightlyCommand() {
-    await this.runPluginCommand(this.t("Nightly"), ["nightly"], { refreshAfter: true });
+    await this.runPluginCommand(this.t("Nightly"), ["run-nightly"], { refreshAfter: true });
   }
 
   async runTodaySnoozeCommand(target, days = 1) {
@@ -9267,30 +9071,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     this.openStructuredCommandModal(buildReviewPageModalSpec(this, prefill));
   }
 
-  openReviewRewriteModal(_prefill = {}) {
-    new Notice(this.t("Concept rewrite commands were removed in W3; use review-page on the concept page instead."));
-  }
-
-  openApplyRewriteModal(_prefill = {}) {
-    new Notice(this.t("Concept rewrite commands were removed in W3; use review-page on the concept page instead."));
-  }
-
-  openRetireConceptModal(_prefill = {}) {
-    new Notice(this.t("Concept retire/reactivate commands were removed in W3; use review-page instead."));
-  }
-
-  openReactivateConceptModal(_prefill = {}) {
-    new Notice(this.t("Concept retire/reactivate commands were removed in W3; use review-page instead."));
-  }
-
-  openApplyArchiveModal(_prefill = {}) {
-    new Notice(this.t("Archive commands were removed in W3; inspect manifest pages manually."));
-  }
-
-  openRevertArchiveModal(_prefill = {}) {
-    new Notice(this.t("Archive commands were removed in W3; inspect manifest pages manually."));
-  }
-
   openReviewPageContextPicker(options = this.visibleReviewPageCandidates()) {
     this.openContextAwareAction({
       title: this.t("Pick Review Page"),
@@ -9301,18 +9081,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       onFallback: () => this.openReviewPageModal(),
       onSubmit: (option) => this.openReviewPageTransitionPicker(option),
     });
-  }
-
-  openReviewRewriteContextPicker(_options = this.visibleRewriteCandidates()) {
-    new Notice(this.t("Concept rewrite commands were removed in W3; use review-page on the concept page instead."));
-  }
-
-  openApplyArchiveContextPicker(_options = this.visibleArchiveCandidates("apply")) {
-    new Notice(this.t("Archive commands were removed in W3; inspect manifest pages manually."));
-  }
-
-  openRevertArchiveContextPicker(_options = this.visibleArchiveCandidates("revert")) {
-    new Notice(this.t("Archive commands were removed in W3; inspect manifest pages manually."));
   }
 
   openReviewPageTransitionPicker(control) {
@@ -9334,10 +9102,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
         );
       },
     });
-  }
-
-  openReviewRewriteTransitionPicker(_control) {
-    new Notice(this.t("Concept rewrite commands were removed in W3; use review-page on the concept page instead."));
   }
 
   async openView(viewType, options = {}) {
@@ -9384,14 +9148,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   renderMainHeader(container) {
     renderMainHeader(this, container);
-  }
-
-  renderMaterialPanel(container) {
-    renderMaterialPanel(this, container);
-  }
-
-  renderOutputsPanel(container) {
-    renderOutputsPanel(this, container);
   }
 
   renderStatusPanel(container) {

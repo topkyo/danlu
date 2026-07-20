@@ -71,6 +71,11 @@ verify_llm_integration() {
 
 verify_cli_smoke() {
   "$PYTHON" -m aiwiki.cli --help >/dev/null
+  # Top-level operator verbs must fail (no legacy argv rewrite).
+  if "$PYTHON" -m aiwiki.cli compile >/dev/null 2>&1; then
+    echo "expected top-level 'compile' to be rejected" >&2
+    return 1
+  fi
 }
 
 verify_smoke() {

@@ -54,7 +54,7 @@ Product Shell 投影见 `docs/Furnace Product Shell.md`（归档史料见 `docs/
 
 - **Single writer, many readers**：同一时刻一个 writer 写 `wiki/`、`.aiwiki/state/`、`output/control/`。
 - **`raw/` 不可覆盖**；派生层必须保留 provenance。
-- **Deterministic baseline**：`compile` / `lint` / `nightly` / `run-nightly` / `watch` 不依赖 LLM；LLM 只在显式 `run-ask`、universal `drop` planner、可选 distill synthesizer 等受控入口。
+- **Deterministic baseline**：`compile` / `lint` / `run-nightly` / `watch` 不依赖 LLM；LLM 只在显式 `run-ask`、universal `drop` planner、可选 distill synthesizer 等受控入口。
 - **Backend 显式选择**：`AIWIKI_LLM_BACKEND` 必须显式设置；无隐式 cross-backend / model fallback。
 - **Receipt 闭环**：会改 `wiki/` 或规则面的动作必须产生 execution receipt 与 audit trail；金丹 promote/revert/demote 同理。
 - **Runtime 不生成语义判断**：判断结论由 human 或显式 LLM 在报告 / judgment 页提供；runtime 只做结构性调度与落盘。

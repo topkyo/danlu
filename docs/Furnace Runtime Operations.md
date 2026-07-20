@@ -119,10 +119,10 @@ Unit=aiwiki-nightly.service
 `run_nightly.sh` 决策路径：
 
 ```text
-aiwiki run-nightly --compile-limit N    ← deterministic compile + lint + nightly health
+aiwiki advanced run-nightly --compile-limit N    ← deterministic compile + lint + nightly health
 ```
 
-> **W8 产品路径说明**：`run-nightly` / `nightly` 不再读取 `AIWIKI_NIGHTLY_AUTO_*` 做 agent-loop、signals 或 debt LLM 消化。installer 仍可能写入这些 env 键作历史 compat，但对当前 nightly 路径 **无效果**；需要 LLM 或治理 apply 请走显式 `run-ask` / operator CLI。
+> **W8 产品路径说明**：`run-nightly` 不再读取 `AIWIKI_NIGHTLY_AUTO_*` 做 agent-loop、signals 或 debt LLM 消化。installer 仍可能写入这些 env 键作历史 compat，但对当前 nightly 路径 **无效果**；需要 LLM 或治理 apply 请走显式 `run-ask` / operator CLI。
 
 关键 env（仍生效）：
 - `AIWIKI_AUTONOMY_PROFILE=agentic` —— runtime profile override；新安装 nightly env 默认写入，保证旧 vault 的 legacy policy 文件不会让 receipt 继续按旧 profile 记账
@@ -171,9 +171,9 @@ watcher 与 nightly timer 默认不调 LLM。LLM 在产品面的默认发生点�
 
 | 入口 | 触发方式 | 持锁 | LLM | 用途 |
 |---|---|---|---|---|
-| `aiwiki compile` | 手动 / watcher / nightly | 是 | 否 | 确定性 compile：manifest → wiki sources/indexes |
-| `aiwiki lint` | 手动 / nightly | 是 | 否 | 确定性 lint + repair backlog |
-| `aiwiki run-nightly` / `aiwiki nightly` | timer / 手动 | 是 | 否 | 确定性 compile + lint + nightly health |
+| `aiwiki advanced compile` | 手动 / watcher / nightly | 是 | 否 | 确定性 compile：manifest → wiki sources/indexes |
+| `aiwiki advanced lint` | 手动 / nightly | 是 | 否 | 确定性 lint + repair backlog |
+| `aiwiki advanced run-nightly` | timer / 手动 | 是 | 否 | 确定性 compile + lint + nightly health |
 | `aiwiki run-ask "<question>" --format report` | 手动 / agent 调用 | 是 | **是** | LLM-backed reasoning：生成 query report |
 | `aiwiki drop …` | 手动 / Shell | 是 | 可选（universal payload 默认 LLM planner；`AIWIKI_LLM_PLANNER=0` 关） | 入 raw 后 **默认** deterministic compile + lint（`--no-auto` 可跳过）。plan/execute：planner 不写 raw，executor 原样落盘。`AIWIKI_LLM_DISTILL` 控制 distill synthesizer（默认开）。 |
 
@@ -286,7 +286,7 @@ AIWIKI_MODEL_FALLBACK="deepseek-chat" \
 炼丹炉 §3 "deterministic baseline" 不变量保证：**watcher 即使在 LLM 完全不可用的情况下，也能维持 raw → wiki 的最低可用流水线**。这意味着：
 
 - 出门旅行没网 → watcher 仍能 deterministic compile 投料
-- LLM provider 全 down → `nightly` / `run-nightly` 仍可跑确定性 compile + lint；watcher 不受影响
+- LLM provider 全 down → `run-nightly` 仍可跑确定性 compile + lint；watcher 不受影响
 - API key 过期 → `run-ask` 等显式 LLM 命令失败，但 watcher / nightly 确定性链路不受影响
 
 默认产品路径可以理解为：**等待投料（watch）→ 确定性炼化（nightly）→ 显式提问（run-ask）→ 产出（wiki/output/receipt）→ 回馈（review/file-back/judgment / 金丹 alchemy）**。`compile` / `lint` 始终是 deterministic baseline，不再通过 watch / nightly / drop-auto 隐式调用 LLM `run-compile` / `run-lint`。
