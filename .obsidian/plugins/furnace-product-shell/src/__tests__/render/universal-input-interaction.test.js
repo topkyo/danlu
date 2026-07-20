@@ -210,7 +210,7 @@ function makePlugin(overrides = {}) {
         entry.runNotesPath = "";
       }
     }),
-    completePendingMaterialDrop: jest.fn(),
+    completePendingMaterialDrop: jest.fn(() => true),
     runDroppedFilesWithAutoAsk: jest.fn().mockResolvedValue({ materialPaths: ["raw/inbox/input.md"], askQuestion: "Q" }),
     runDroppedPayloadsWithAutoAsk: jest.fn().mockResolvedValue({ materialPaths: ["raw/inbox/input.md"], askQuestion: "Q" }),
     runUniversalInputCommand: jest.fn().mockResolvedValue({ note_path: "raw/inbox/url.md" }),
