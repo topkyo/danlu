@@ -401,6 +401,11 @@ def _register_drop_subcommand_parsers(subparsers: argparse._SubParsersAction) ->
 def _configure_drop_url_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("url", help="Web URL to fetch.")
     parser.add_argument("--title", help="Optional display title.")
+    parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help="Re-fetch and overwrite the existing raw note for this URL when one already exists.",
+    )
     _add_auto_flags(parser)
 
 
@@ -410,6 +415,11 @@ def _configure_drop_plan_parser(parser: argparse.ArgumentParser) -> None:
         help="Universal payload: URL, local path, question, or inline text. The LLM planner decides how to handle it.",
     )
     parser.add_argument("--title", help="Optional display title override.")
+    parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help="Re-fetch and overwrite the existing raw note for this URL when one already exists.",
+    )
     _add_auto_flags(parser)
 
 

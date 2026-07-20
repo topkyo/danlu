@@ -85,8 +85,9 @@ def _handle_vault_admin(args: argparse.Namespace, root: Path) -> tuple[object, s
 
 
 def _handle_drop(args: argparse.Namespace, root: Path) -> tuple[object, str | None]:
+    refresh = bool(getattr(args, "refresh", False))
     if args.handler_command == "drop-url":
-        result = drop_url(root, args.url, title=args.title)
+        result = drop_url(root, args.url, title=args.title, refresh=refresh)
     elif args.handler_command == "drop-pdf":
         result = drop_pdf(root, args.source, title=args.title)
     elif args.handler_command == "drop-image":
@@ -139,7 +140,7 @@ def _handle_drop_plan(args: argparse.Namespace, root: Path) -> tuple[object, str
         print(f"aiwiki: LLM planner unavailable ({exc}); falling back to deterministic router.", file=sys.stderr)
         return _dispatch_fallback_route(root, payload, title, args)
 
-    result = execute_plan(root, plan, payload)
+    result = execute_plan(root, plan, payload, refresh=bool(getattr(args, "refresh", False)))
     if isinstance(result, AskSignal):
         ask_payload = result.get("payload") or payload
         _reject_path_like_ask(str(ask_payload))
@@ -155,7 +156,7 @@ def _dispatch_fallback_route(
     decision = classify_universal_input(payload)
     routed_payload = decision.payload
     if decision.route == UniversalRoute.URL:
-        result = drop_url(root, routed_payload, title=title)
+        result = drop_url(root, routed_payload, title=title, refresh=bool(getattr(args, "refresh", False)))
     elif decision.route == UniversalRoute.PDF:
         result = drop_pdf(root, routed_payload, title=title)
     elif decision.route == UniversalRoute.IMAGE:

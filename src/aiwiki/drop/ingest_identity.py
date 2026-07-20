@@ -8,6 +8,7 @@ from urllib import parse
 
 from ..input_router import rewrite_github_raw_url
 from ..state.manifest import load_manifest
+from ..utils.security import PathOutsideWorkspaceError, safe_resolve_within
 
 _TRACKING_QUERY_KEYS = frozenset({"fbclid", "gclid", "ref", "source"})
 
@@ -82,3 +83,24 @@ def find_manifest_entry_by_ingest_url(root: Path, url: str) -> dict[str, Any] | 
             if candidate_key == target_key:
                 return entry
     return None
+
+
+def find_manifest_entry_by_ingest_urls(root: Path, *urls: str) -> dict[str, Any] | None:
+    """Return the first manifest hit across multiple URL candidates."""
+    for url in urls:
+        entry = find_manifest_entry_by_ingest_url(root, url)
+        if entry is not None:
+            return entry
+    return None
+
+
+def resolve_manifest_stored_file(root: Path, entry: dict[str, Any]) -> Path | None:
+    """Resolve ``stored_path`` to an existing file under ``root``, or None."""
+    stored = str(entry.get("stored_path") or "").strip()
+    if not stored:
+        return None
+    try:
+        path = safe_resolve_within(root / stored, root)
+    except PathOutsideWorkspaceError:
+        return None
+    return path if path.is_file() else None

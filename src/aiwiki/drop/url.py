@@ -40,6 +40,7 @@ from .common import (
     _write_bytes,
     _write_text,
 )
+from .ingest_identity import find_manifest_entry_by_ingest_url, resolve_manifest_stored_file
 
 try:
     from bs4 import BeautifulSoup
@@ -61,15 +62,47 @@ ALLOW_UNGUARDED_BROWSER_CLI_ENV = "AIWIKI_ALLOW_UNGUARDED_BROWSER_CLI"
 MAX_TEXT_CHARS = 120000
 
 
-def drop_url(root: Path, url: str, title: str | None = None) -> dict[str, Any]:
+def drop_url(root: Path, url: str, title: str | None = None, refresh: bool = False) -> dict[str, Any]:
     ensure_layout(root)
+    existing = find_manifest_entry_by_ingest_url(root, url)
+    if existing and not refresh:
+        if resolve_manifest_stored_file(root, existing) is not None:
+            return _reused_url_drop_payload(url, existing)
     collection = _collect_url(root, url)
     _validate_url_collection(collection)
+    overwrite_path = None
+    if refresh and existing:
+        overwrite_path = resolve_manifest_stored_file(root, existing)
     with runtime_write_lock(root):
-        result = _materialize_url(root, url, title, collection)
+        result = _materialize_url(
+            root,
+            url,
+            title,
+            collection,
+            note_path=overwrite_path,
+            refreshed=overwrite_path is not None,
+        )
         for event in collection.get("skip_events", []):
             _append_run_event(root, event)
     return result
+
+
+def _reused_url_drop_payload(url: str, entry: dict[str, Any]) -> dict[str, Any]:
+    stored_rel = str(entry.get("stored_path") or "")
+    meta = entry.get("ingest_metadata") if isinstance(entry.get("ingest_metadata"), dict) else {}
+    return {
+        "material": "url",
+        "note_path": stored_rel,
+        "path": stored_rel,
+        "stored_path": stored_rel,
+        "original_url": url,
+        "final_url": str(meta.get("final_url") or entry.get("original_path") or url),
+        "asset_paths": list(meta.get("asset_files") or []),
+        "title": str(entry.get("title") or ""),
+        "reused": True,
+        "refreshed": False,
+        "duplicate_of": entry.get("id"),
+    }
 
 
 def _collect_url(root: Path, url: str) -> dict[str, Any]:
@@ -140,19 +173,30 @@ def _prior_url_drop_hints(root: Path, *, original_url: str, final_url: str) -> l
     return hints
 
 
-def _materialize_url(root: Path, url: str, title: str | None, collection: dict[str, Any]) -> dict[str, Any]:
+def _materialize_url(
+    root: Path,
+    url: str,
+    title: str | None,
+    collection: dict[str, Any],
+    *,
+    note_path: Path | None = None,
+    refreshed: bool = False,
+) -> dict[str, Any]:
     fetched = collection["fetched"]
     display_title = title or fetched["title"] or _label_from_url(fetched["final_url"])
     created_paths: list[Path] = []
     asset_paths: list[str] = []
     asset_dir = root / "raw" / "assets"
-    stem = timestamped_stem(display_title)
-    note_path = _unique_path(root / "raw" / "inbox", stem, ".md")
-    prior_url_drops = _prior_url_drop_hints(
-        root,
-        original_url=url,
-        final_url=str(fetched.get("final_url") or ""),
-    )
+    if note_path is None:
+        stem = timestamped_stem(display_title)
+        note_path = _unique_path(root / "raw" / "inbox", stem, ".md")
+    prior_url_drops: list[dict[str, str]] = []
+    if not refreshed:
+        prior_url_drops = _prior_url_drop_hints(
+            root,
+            original_url=url,
+            final_url=str(fetched.get("final_url") or ""),
+        )
     append_file_sizes = _snapshot_append_files(root)
     try:
         for index, image in enumerate(collection["inline_images"], start=1):
@@ -211,15 +255,21 @@ def _materialize_url(root: Path, url: str, title: str | None, collection: dict[s
         _rollback_created_paths(created_paths)
         _truncate_append_files(append_file_sizes)
         raise
-    return {
+    payload: dict[str, Any] = {
         "material": "url",
         "note_path": relative_path(root, note_path),
+        "path": relative_path(root, note_path),
+        "stored_path": relative_path(root, note_path),
         "original_url": url,
         "final_url": fetched["final_url"],
         "asset_paths": asset_paths,
         "title": display_title,
+        "reused": False,
+        "refreshed": refreshed,
         "prior_url_drop_count": len(prior_url_drops),
-        **(
+    }
+    if prior_url_drops:
+        payload.update(
             {
                 "prior_url_drops": prior_url_drops,
                 "duplicate_url_hint": (
@@ -227,10 +277,8 @@ def _materialize_url(root: Path, url: str, title: str | None, collection: dict[s
                     "new note created without merging."
                 ),
             }
-            if prior_url_drops
-            else {}
-        ),
-    }
+        )
+    return payload
 
 
 def _write_url_note_body(display_title: str, fetched: dict[str, Any], asset_paths: list[str]) -> str:

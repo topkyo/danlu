@@ -53,7 +53,7 @@ class AskSignal(dict):
     """Marker subclass returned for ask plans so the caller can re-dispatch."""
 
 
-def execute_plan(root: Path, plan: Plan, original_payload: str) -> dict[str, Any]:
+def execute_plan(root: Path, plan: Plan, original_payload: str, refresh: bool = False) -> dict[str, Any]:
     """Execute a validated Plan against the vault root.
 
     Returns the same shape as the underlying drop_* handler for delegation
@@ -62,10 +62,10 @@ def execute_plan(root: Path, plan: Plan, original_payload: str) -> dict[str, Any
     """
     ensure_layout(root)
     if plan.action == "fetch_raw":
-        return _execute_fetch_raw(root, plan, original_payload)
+        return _execute_fetch_raw(root, plan, original_payload, refresh=refresh)
     if plan.action == "fetch_page":
         target = plan.targets[0] if plan.targets else original_payload
-        return drop_url(root, target, title=plan.title or None)
+        return drop_url(root, target, title=plan.title or None, refresh=refresh)
     if plan.action == "read_local_repo":
         target = plan.targets[0] if plan.targets else original_payload
         _assert_local_target_allowed(root, target, original_payload)
@@ -80,7 +80,7 @@ def execute_plan(root: Path, plan: Plan, original_payload: str) -> dict[str, Any
     raise ValueError(f"unsupported plan action: {plan.action}")
 
 
-def _execute_fetch_raw(root: Path, plan: Plan, original_payload: str) -> dict[str, Any]:
+def _execute_fetch_raw(root: Path, plan: Plan, original_payload: str, *, refresh: bool = False) -> dict[str, Any]:
     """Fetch each target URL verbatim and write a single raw note with provenance.
 
     Uses safe_fetch for SSRF guard (allow_private follows AIWIKI_ALLOW_PRIVATE_FETCH
@@ -90,10 +90,24 @@ def _execute_fetch_raw(root: Path, plan: Plan, original_payload: str) -> dict[st
     with the URL recorded for provenance.
     """
     from .drop.common import _allow_private_fetch
+    from .drop.ingest_identity import find_manifest_entry_by_ingest_urls, resolve_manifest_stored_file
+
+    lookup_urls = [original_payload]
+    if plan.targets:
+        lookup_urls.append(plan.targets[0])
+    existing = find_manifest_entry_by_ingest_urls(root, *lookup_urls)
+    if existing and not refresh:
+        if resolve_manifest_stored_file(root, existing) is not None:
+            return _reused_fetch_raw_payload(original_payload, existing)
 
     display_title = plan.title or _derive_title_from_targets(plan.targets) or "raw fetch"
-    stem = timestamped_stem(display_title)
-    note_path = _unique_path(root / "raw" / "inbox", stem, ".md")
+    overwrite_path = resolve_manifest_stored_file(root, existing) if refresh and existing else None
+    if overwrite_path is None:
+        stem = timestamped_stem(display_title)
+        note_path = _unique_path(root / "raw" / "inbox", stem, ".md")
+    else:
+        note_path = overwrite_path
+    refreshed = overwrite_path is not None
     fetched: list[dict[str, str]] = []
     for target in plan.targets:
         try:
@@ -172,11 +186,35 @@ def _execute_fetch_raw(root: Path, plan: Plan, original_payload: str) -> dict[st
     return {
         "material": "url",
         "note_path": relative_path(root, note_path),
+        "path": relative_path(root, note_path),
+        "stored_path": relative_path(root, note_path),
         "original_path": original_payload,
         "title": display_title,
         "planner_action": "fetch_raw",
         "targets": [item["url"] for item in fetched],
         "fetch_ok_count": sum(1 for item in fetched if item.get("ok")),
+        "reused": False,
+        "refreshed": refreshed,
+    }
+
+
+def _reused_fetch_raw_payload(original_payload: str, entry: dict[str, Any]) -> dict[str, Any]:
+    stored_rel = str(entry.get("stored_path") or "")
+    meta = entry.get("ingest_metadata") if isinstance(entry.get("ingest_metadata"), dict) else {}
+    targets = meta.get("targets") if isinstance(meta.get("targets"), list) else []
+    return {
+        "material": "url",
+        "note_path": stored_rel,
+        "path": stored_rel,
+        "stored_path": stored_rel,
+        "original_path": original_payload,
+        "title": str(entry.get("title") or ""),
+        "planner_action": "fetch_raw",
+        "targets": list(targets),
+        "fetch_ok_count": len(targets),
+        "reused": True,
+        "refreshed": False,
+        "duplicate_of": entry.get("id"),
     }
 
 

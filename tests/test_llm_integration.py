@@ -1144,6 +1144,110 @@ def test_ingest_identity_find_manifest_entry_by_url(tmp_path: Path) -> None:
     assert hit["id"] == "entry-1"
 
 
+_DEFAULT_INGEST_DEDUP_FETCHED: dict[str, Any] = {
+    "title": "Example Page",
+    "final_url": "https://example.com/page",
+    "content_type": "text/html",
+    "status": "200",
+    "browser_backend": "",
+    "extraction_mode": "plain-text",
+    "description": "An example page.",
+    "image_urls": [],
+    "text": "First fetch body.",
+}
+
+
+def _stub_drop_url_fetch(monkeypatch: pytest.MonkeyPatch, fetched: dict[str, Any] | None = None) -> None:
+    payload = dict(_DEFAULT_INGEST_DEDUP_FETCHED if fetched is None else fetched)
+    monkeypatch.setattr("aiwiki.drop._fetch_url", lambda u, root=None: payload)
+
+
+def test_ingest_dedup_drop_url_second_drop_reuses(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from aiwiki.drop import drop_url
+    from aiwiki.protocol.scaffold import ensure_layout
+
+    ensure_layout(tmp_path)
+    url = "https://example.com/page"
+    _stub_drop_url_fetch(monkeypatch)
+
+    first = drop_url(tmp_path, url, title="Example")
+    assert first.get("reused") is False
+    assert first.get("refreshed") is False
+
+    second = drop_url(tmp_path, url, title="Example")
+    inbox_files = sorted((tmp_path / "raw" / "inbox").glob("*.md"))
+    assert len(inbox_files) == 1
+    assert second.get("reused") is True
+    assert second.get("refreshed") is False
+    assert second.get("note_path") == first.get("note_path")
+    assert second.get("duplicate_of")
+
+
+def test_ingest_dedup_github_root_and_raw_cross_hit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from aiwiki.drop import drop_url
+    from aiwiki.protocol.scaffold import ensure_layout
+    from aiwiki.state.manifest import save_manifest
+
+    ensure_layout(tmp_path)
+    repo_root = "https://github.com/34306/vphone-aio"
+    raw_readme = "https://raw.githubusercontent.com/34306/vphone-aio/HEAD/README.md"
+    note_rel = "raw/inbox/vphone-aio.md"
+    note_path = tmp_path / note_rel
+    note_path.parent.mkdir(parents=True, exist_ok=True)
+    note_path.write_text("# vphone-aio\n", encoding="utf-8")
+    save_manifest(
+        tmp_path,
+        {
+            "entries": [
+                {
+                    "id": "source-vphone-aio",
+                    "stored_path": note_rel,
+                    "original_path": repo_root,
+                    "source_type": "url-drop",
+                    "title": "vphone-aio",
+                    "ingest_metadata": {
+                        "original_url": repo_root,
+                        "final_url": raw_readme,
+                    },
+                }
+            ]
+        },
+    )
+    _stub_drop_url_fetch(monkeypatch)
+
+    result = drop_url(tmp_path, raw_readme, title="vphone-aio")
+    assert result.get("reused") is True
+    assert result.get("note_path") == note_rel
+    assert len(list((tmp_path / "raw" / "inbox").glob("*.md"))) == 1
+
+
+def test_ingest_dedup_drop_url_refresh_overwrites_same_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from aiwiki.drop import drop_url
+    from aiwiki.protocol.scaffold import ensure_layout
+
+    ensure_layout(tmp_path)
+    url = "https://example.com/page"
+    _stub_drop_url_fetch(monkeypatch, {**_DEFAULT_INGEST_DEDUP_FETCHED, "text": "v1"})
+
+    first = drop_url(tmp_path, url, title="Example")
+    first_path = first["note_path"]
+    assert "-2" not in Path(first_path).name
+
+    _stub_drop_url_fetch(
+        monkeypatch,
+        {**_DEFAULT_INGEST_DEDUP_FETCHED, "text": "v2 refreshed body"},
+    )
+    refreshed = drop_url(tmp_path, url, title="Example", refresh=True)
+    inbox_files = sorted((tmp_path / "raw" / "inbox").glob("*.md"))
+
+    assert len(inbox_files) == 1
+    assert refreshed.get("reused") is False
+    assert refreshed.get("refreshed") is True
+    assert refreshed.get("note_path") == first_path
+    assert "-2" not in inbox_files[0].name
+    assert "v2 refreshed body" in inbox_files[0].read_text(encoding="utf-8")
+
+
 def test_executor_rejects_unrelated_vault_internal(tmp_path: Path) -> None:
     from aiwiki.executor import execute_plan
     from aiwiki.input_planner import Plan
