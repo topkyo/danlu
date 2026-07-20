@@ -9,11 +9,13 @@ fail-loud rejection path for ambiguous local-path-like payloads.
 from __future__ import annotations
 
 import os
+import re
 import sys
 
-from ..input_router import UniversalRoute, classify_universal_input
+from ..input_router import UniversalRoute, classify_universal_input, rewrite_github_raw_url
 
 _DROP_TYPED_SUBCOMMANDS = {"url", "pdf", "image", "repo", "markdown", "md", "note", "plan"}
+_CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 
 
 def _llm_planner_enabled() -> bool:
@@ -26,12 +28,15 @@ def _looks_like_local_path(value: str) -> bool:
 
     Heuristic only; no LLM, deterministic. Triggers on:
     - explicit relative/absolute prefixes (./, ../, /, ~/)
-    - POSIX-style nested path with '/' (e.g. notes/file.docx)
+    - POSIX-style nested path with '/' (e.g. notes/file.docx) when not CJK Q&A
     - Windows-style path with '\\' or drive letter (e.g. C:\\x, notes\\x)
-    - the payload pointing at an existing file on disk
-    Excludes payloads containing '?' which clearly read as questions.
+    - the payload pointing at an existing file or directory on disk
+    Excludes URL schemes, '?' questions, and CJK text that only has '/' as
+    typography (e.g. ``A/B测试怎么做``) unless the path exists on disk.
     """
-    if not value or "?" in value:
+    if not value or "?" in value or "？" in value:
+        return False
+    if value.startswith(("http://", "https://", "git@", "ssh://", "ask:", "note:")):
         return False
     # strong path signals
     if value.startswith(("./", "../", "/", "~/")):
@@ -40,16 +45,31 @@ def _looks_like_local_path(value: str) -> bool:
         return True
     if len(value) >= 3 and value[0].isalpha() and value[1] == ":" and value[2] in ("\\", "/"):
         return True
-    # POSIX nested path: must contain '/' and have no whitespace around it
-    if "/" in value and not any(ch.isspace() for ch in value):
-        return True
-    # last resort: check if it points to an existing file (whitespace ok here)
+    # Existing file/dir (bare names like ``reponame`` that are real directories)
     try:
-        if os.path.isfile(value):
+        if os.path.isfile(value) or os.path.isdir(value):
             return True
     except (OSError, ValueError):
-        return False
+        pass
+    # POSIX nested path: must contain '/' and have no whitespace.
+    # CJK natural-language with an embedded slash is not a path unless it exists
+    # (existence already handled above).
+    if "/" in value and not any(ch.isspace() for ch in value):
+        if _CJK_RE.search(value):
+            return False
+        return True
     return False
+
+
+def _reject_ambiguous_path_ask(payload: str) -> None:
+    print(
+        f"error: drop payload looks like a file path but matches no known type: {payload!r}\n"
+        "hint: use 'drop markdown <path>' for markdown/text files, "
+        "'drop repo <dir>' for directories, "
+        "or prefix with 'ask:' to force a question.",
+        file=sys.stderr,
+    )
+    raise SystemExit(2)
 
 
 def _rewrite_universal_drop_argv(argv: list[str] | None) -> list[str] | None:
@@ -77,18 +97,33 @@ def _rewrite_universal_drop_argv(argv: list[str] | None) -> list[str] | None:
             raise SystemExit(2)
 
     rest = rewritten[drop_index + 2 :]
-    # EP-001/EP-003: path-like payloads that classify as ASK must fail loud on
-    # BOTH planner-default and deterministic paths (planner must not hide this).
+
+    # Existing local directory → typed drop repo (before planner / ASK fail-loud).
+    try:
+        if os.path.isdir(payload):
+            rewritten[drop_index:] = ["drop", "repo", payload, *rest]
+            return rewritten
+        if os.path.isfile(payload):
+            decision = classify_universal_input(payload)
+            if decision.route != UniversalRoute.ASK:
+                routed_subcommand = {
+                    UniversalRoute.URL: "url",
+                    UniversalRoute.PDF: "pdf",
+                    UniversalRoute.IMAGE: "image",
+                    UniversalRoute.REPO: "repo",
+                    UniversalRoute.NOTE: "markdown",
+                }[decision.route]
+                rewritten[drop_index:] = ["drop", routed_subcommand, decision.payload, *rest]
+                return rewritten
+    except (OSError, ValueError):
+        pass
+
+    # EP-001/EP-003: path-like payloads that classify as ASK must fail loud —
+    # but not for existing dirs (handled above) or CJK Q&A with '/'.
     if _looks_like_local_path(payload):
         decision = classify_universal_input(payload)
         if decision.route == UniversalRoute.ASK:
-            print(
-                f"error: drop payload looks like a file path but matches no known type: {payload!r}\n"
-                "hint: use 'drop markdown <path>' for markdown/text files, "
-                "or prefix with 'ask:' to force a question.",
-                file=sys.stderr,
-            )
-            raise SystemExit(2)
+            _reject_ambiguous_path_ask(payload)
 
     if _llm_planner_enabled():
         # Default ON: route through the LLM planner. The planner decides
@@ -102,16 +137,12 @@ def _rewrite_universal_drop_argv(argv: list[str] | None) -> list[str] | None:
     routed_payload = decision.payload
     if decision.route == UniversalRoute.ASK:
         if _looks_like_local_path(routed_payload):
-            print(
-                f"error: drop payload looks like a file path but matches no known type: {routed_payload!r}\n"
-                "hint: use 'drop markdown <path>' for markdown/text files, "
-                "or prefix with 'ask:' to force a question.",
-                file=sys.stderr,
-            )
-            raise SystemExit(2)
+            _reject_ambiguous_path_ask(routed_payload)
         # Ask lives under advanced after primary-surface cleanup.
         rewritten[drop_index:] = ["advanced", "ask", routed_payload, *rest]
     else:
+        if decision.route == UniversalRoute.URL:
+            routed_payload = rewrite_github_raw_url(routed_payload) or routed_payload
         routed_subcommand = {
             UniversalRoute.URL: "url",
             UniversalRoute.PDF: "pdf",

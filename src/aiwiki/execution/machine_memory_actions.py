@@ -312,7 +312,8 @@ def _build_auto_resolution_escalation_receipt(
         "human_required_reason": str(decision.get("human_required_reason") or "semantic_judgment_required"),
         "revert_supported": False,
         "human_recovery_path": (
-            f"PYTHONPATH=src python3 -m aiwiki.cli --root . review-action {action_id} --status accepted"
+            "PYTHONPATH=src python3 -m aiwiki.cli --root . advanced review-queue"
+            f'  # action_id: {action_id} — 在 review-queue 中处理，无 review-action 子命令'
         ),
         "primary_path": primary_path,
         "secondary_path": secondary_path,
@@ -482,7 +483,11 @@ def auto_resolve_machine_memory_actions(
         }
 
     changed = False
-    for action, decision in zip(candidates, decisions, strict=True):
+    if len(candidates) != len(decisions):
+        raise ValueError(
+            f"auto-resolution length mismatch: {len(candidates)} candidates vs {len(decisions)} decisions"
+        )
+    for action, decision in zip(candidates, decisions):
         operation = str(decision.get("operation") or "skip")
         item = dict(decision)
         action_id = str(action.get("id") or "")
@@ -753,7 +758,11 @@ def review_machine_memory_actions_batch(
 
     reviewed_at = utc_now()
     receipts: list[dict[str, Any]] = []
-    for target, resolved_id in zip(targets, resolved_ids, strict=True):
+    if len(targets) != len(resolved_ids):
+        raise ValueError(
+            f"batch review length mismatch: {len(targets)} targets vs {len(resolved_ids)} ids"
+        )
+    for target, resolved_id in zip(targets, resolved_ids):
         _update_action_review_state(root, target, status, note=note, reviewed_at=reviewed_at)
         receipts.append(
             {
@@ -1271,8 +1280,11 @@ def revert_machine_memory_action(
             "review_note": note or "Safe apply reverted.",
             "pending_review": "true",
             "last_receipt_path": relative_path(root, receipt_path),
-            "command_hint": f'PYTHONPATH=src python3 -m aiwiki.cli --root . review-action {resolved_action_id} --status accepted --note "Resume reverted repair."',
-            "next_step": "回滚后重新 review，确认是否要再次 accepted 再执行。",
+            "command_hint": "PYTHONPATH=src python3 -m aiwiki.cli --root . advanced review-queue",
+            "next_step": (
+                f"回滚后通过 advanced review-queue 重新 review action `{resolved_action_id}`，"
+                "确认是否要再次 accepted 再执行。"
+            ),
         }
         preview_proposals = repair_execution_proposals(root, [reverted_target], active_protocol=protocol)
         proposal = (

@@ -34,4 +34,11 @@ if [ -x "$LAUNCHER" ]; then
   exec "$LAUNCHER" "${ARGS[@]:2}"
 fi
 
+# Fallback: repo launcher (picks Python ≥3.10) then bare python3.
+REPO_LAUNCHER="$PROJECT_ROOT/scripts/aiwiki-launcher.sh"
+if [ -x "$REPO_LAUNCHER" ]; then
+  export AIWIKI_VAULT="$TARGET_ROOT"
+  exec "$REPO_LAUNCHER" "${ARGS[@]:2}"
+fi
+
 exec python3 -m aiwiki.cli "${ARGS[@]}"

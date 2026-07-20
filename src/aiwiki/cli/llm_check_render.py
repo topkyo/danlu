@@ -77,7 +77,7 @@ def _render_table(rows: list[list[str]]) -> list[str]:
     min_widths = [14, 20, 24, 10, 60]
     widths = [
         max(min_width, len(header), *(len(row[index]) for row in rows))
-        for index, (header, min_width) in enumerate(zip(headers, min_widths, strict=True))
+        for index, (header, min_width) in enumerate(zip(headers, min_widths))
     ]
     lines = [_format_row(headers, widths), _format_row(["-" * width for width in widths], widths)]
     lines.extend(_format_row(row, widths) for row in rows)
@@ -85,7 +85,7 @@ def _render_table(rows: list[list[str]]) -> list[str]:
 
 
 def _format_row(cells: list[str], widths: list[int]) -> str:
-    return " | ".join(cell.ljust(width) for cell, width in zip(cells, widths, strict=True))
+    return " | ".join(cell.ljust(width) for cell, width in zip(cells, widths))
 
 
 def _status_marker(compat: str) -> str:

@@ -35,3 +35,7 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "W", "I", "B", "F541", "F821", "F822", "F823", "F841"]
+# B905 wants zip(..., strict=); that keyword is Python ≥3.10-only. Obsidian GUI
+# PATH often resolves to Apple /usr/bin/python3 (3.9), so we keep plain zip +
+# explicit length checks where equality matters.
+ignore = ["B905"]

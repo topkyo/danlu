@@ -224,33 +224,65 @@ def _derive_title_from_targets(targets: list[str]) -> str:
 
 
 def _assert_local_target_allowed(root: Path, target: str, original_payload: str) -> None:
-    """Reject LLM-rewritten local paths that escape the vault / original payload.
+    """Reject LLM-rewritten local paths (confused-deputy).
 
-    Planner may choose read_local_* but must not turn an unrelated payload into
-    an absolute path outside the workspace (confused-deputy). Allowed:
-    - path resolves under vault root, or
-    - path resolves to the same file/dir as the original_payload.
+    Allowed only when:
+    - target resolves to the same path as original_payload, or
+    - original_payload itself is a local path under the vault and target is
+      that path or a descendant within the vault.
+
+    Vault-internal paths (``.aiwiki/``, ``wiki/``, ``output/``, …) are never
+    allowed unless they are exactly the user-supplied original_payload.
     """
+    _RUNTIME_OWNED_TOP = {".aiwiki", "wiki", "output", "schema", "prompts", "raw"}
+
     resolved = Path(target).expanduser()
     try:
         resolved = resolved.resolve(strict=False)
     except OSError as exc:
         raise ValueError(f"invalid local target: {target}") from exc
-    try:
-        safe_resolve_within(resolved, root)
-        return
-    except PathOutsideWorkspaceError:
-        pass
+
+    root_resolved = root.resolve()
     original = Path(original_payload).expanduser()
     try:
         original_resolved = original.resolve(strict=False)
     except OSError:
         original_resolved = None
+
     if original_resolved is not None and resolved == original_resolved:
         return
-    raise PathOutsideWorkspaceError(
-        f"local plan target escapes vault and is not the original payload: {target}"
-    )
+
+    # Unrelated absolute/relative target that merely sits inside the vault.
+    try:
+        within = safe_resolve_within(resolved, root)
+    except PathOutsideWorkspaceError as exc:
+        raise PathOutsideWorkspaceError(
+            f"local plan target escapes vault and is not the original payload: {target}"
+        ) from exc
+
+    rel = within.relative_to(root_resolved)
+    top = rel.parts[0] if rel.parts else ""
+    if top in _RUNTIME_OWNED_TOP:
+        raise PathOutsideWorkspaceError(
+            f"local plan target may not point at runtime-owned path `{top}/` unless it is the original payload: {target}"
+        )
+
+    # Target under vault is only OK if original_payload is also under vault and
+    # is an ancestor of (or equal to) the target.
+    if original_resolved is None:
+        raise PathOutsideWorkspaceError(
+            f"local plan target under vault is unrelated to original payload: {target}"
+        )
+    try:
+        original_within = safe_resolve_within(original_resolved, root)
+    except PathOutsideWorkspaceError as exc:
+        raise PathOutsideWorkspaceError(
+            f"local plan target under vault is unrelated to original payload: {target}"
+        ) from exc
+    if within != original_within and original_within not in within.parents:
+        raise PathOutsideWorkspaceError(
+            f"local plan target under vault is unrelated to original payload: {target}"
+        )
 
 
 def _utc_now() -> str:

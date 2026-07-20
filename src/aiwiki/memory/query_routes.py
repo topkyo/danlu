@@ -285,7 +285,9 @@ def render_machine_memory_route(
 ) -> dict[str, Any]:
     nodes = [machine_memory_node_metadata(memory, node_key) for node_key in path]
     edges: list[dict[str, str]] = []
-    for left, right in zip(path, path[1:], strict=False):
+    # Plain zip: path[1:] is shorter by one; avoid zip(..., strict=) — Python <3.10
+    # rejects the keyword entirely (Obsidian GUI PATH often resolves to /usr/bin/python3 3.9).
+    for left, right in zip(path, path[1:]):
         edge_type = adjacency.get(left, {}).get(right, "")
         if edge_type == "HAS_CONCEPT":
             if left.startswith("source:"):

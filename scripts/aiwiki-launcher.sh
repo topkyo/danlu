@@ -6,7 +6,7 @@ PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 TARGET_ROOT="${AIWIKI_VAULT:-$PROJECT_ROOT}"
 cd "$PROJECT_ROOT"
 
-for candidate in "$HOME/.local/bin" "$HOME/.local/npm/bin" "$HOME/bin"; do
+for candidate in "$HOME/.local/bin" "$HOME/.local/npm/bin" "$HOME/bin" "/usr/local/bin" "/opt/homebrew/bin"; do
   if [ -d "$candidate" ]; then
     case ":${PATH:-}:" in
       *":$candidate:"*) ;;
@@ -15,6 +15,34 @@ for candidate in "$HOME/.local/bin" "$HOME/.local/npm/bin" "$HOME/bin"; do
   fi
 done
 export PATH
+
+# Obsidian/GUI launches often get a minimal PATH where `python3` is Apple
+# /usr/bin/python3 (3.9). Prefer an explicit ≥3.10 interpreter.
+_aiwiki_pick_python() {
+  local cand version
+  for cand in \
+    ${AIWIKI_PYTHON:+"$AIWIKI_PYTHON"} \
+    /usr/local/bin/python3 \
+    /opt/homebrew/bin/python3 \
+    "$HOME/.local/bin/python3" \
+    python3.14 python3.13 python3.12 python3.11 python3.10 \
+    python3; do
+    [ -n "$cand" ] || continue
+    if ! command -v "$cand" >/dev/null 2>&1 && [ ! -x "$cand" ]; then
+      continue
+    fi
+    version="$("$cand" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || true)"
+    case "$version" in
+      3.1[0-9]|3.[2-9][0-9]|[4-9].*)
+        printf '%s\n' "$cand"
+        return 0
+        ;;
+    esac
+  done
+  echo "error: need Python >= 3.10 for aiwiki (Obsidian PATH often hits 3.9). Set AIWIKI_PYTHON." >&2
+  return 1
+}
+AIWIKI_PYTHON_BIN="$(_aiwiki_pick_python)"
 
 PLUGIN_DATA="$TARGET_ROOT/.obsidian/plugins/furnace-product-shell/data.json"
 if [ -f "$PLUGIN_DATA" ]; then
@@ -33,7 +61,7 @@ if [ -f "$PLUGIN_DATA" ]; then
     [ -n "$line" ] || continue
     export "$line"
   done < <(
-    python3 - "$PLUGIN_DATA" <<'PY'
+    "$AIWIKI_PYTHON_BIN" - "$PLUGIN_DATA" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -86,4 +114,4 @@ fi
 
 export PYTHONPATH="$PROJECT_ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
 
-exec python3 -m aiwiki.cli --root "$TARGET_ROOT" "$@"
+exec "$AIWIKI_PYTHON_BIN" -m aiwiki.cli --root "$TARGET_ROOT" "$@"

@@ -445,7 +445,8 @@ def run_receipted_lane_primitive(
                 f"rollback_error={rollback_exc}"
             ) from rollback_exc
         raise deps["receipt_error_cls"](
-            f"lane primitive receipt persistence failed for {lane}:{primitive}; mutation rolled back"
+            f"lane primitive receipt persistence failed for {lane}:{primitive}; "
+            "mutation already applied and was NOT rolled back"
         ) from tx_exc
     return {
         "primitive": primitive,

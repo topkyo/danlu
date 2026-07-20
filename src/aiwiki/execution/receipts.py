@@ -371,11 +371,7 @@ def build_material_archive_bundle(
     current_temperature: str,
     resulting_temperature: str,
 ) -> ExecutionBundle:
-    command_hint = (
-        f"PYTHONPATH=src python3 -m aiwiki.cli --root . revert-archive {entry_id}"
-        if operation == "apply"
-        else f"PYTHONPATH=src python3 -m aiwiki.cli --root . apply-archive {entry_id}"
-    )
+    command_hint = ""
     action_id = material_archive_action_id(entry_id)
     bundle: ExecutionBundle = {
         "version": 1,
@@ -425,7 +421,7 @@ def build_material_archive_bundle(
             "follow_up": "执行后会重跑 compile，让 material-state / archive-candidates / ask 排序同步收敛。",
         },
         "command_hint": command_hint,
-        "next_step": "如需恢复材料，再执行对应的 revert-archive。",
+        "next_step": "材料温度归档已无独立 CLI；见 advanced review-queue / 文档。",
         "dry_run_supported": True,
     }
     bundle["digest"] = execution_bundle_digest(bundle)

@@ -1063,3 +1063,47 @@ def test_universal_drop_path_like_ask_fails_with_planner_on(monkeypatch: pytest.
     with pytest.raises(SystemExit) as caught:
         _rewrite_universal_drop_argv(["drop", "notes/no-such-type.docx"])
     assert caught.value.code == 2
+
+
+def test_cjk_slash_question_not_treated_as_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    from aiwiki.cli.universal_input import _looks_like_local_path, _rewrite_universal_drop_argv
+
+    assert not _looks_like_local_path("A/B测试怎么做？")
+    monkeypatch.setenv("AIWIKI_LLM_PLANNER", "1")
+    rewritten = _rewrite_universal_drop_argv(["drop", "A/B测试怎么做？"])
+    assert rewritten[:3] == ["drop", "plan", "A/B测试怎么做？"]
+
+
+def test_existing_dir_routes_to_drop_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from aiwiki.cli.universal_input import _rewrite_universal_drop_argv
+
+    repo = tmp_path / "reponame"
+    repo.mkdir()
+    (repo / "README.md").write_text("# hi\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("AIWIKI_LLM_PLANNER", "1")
+    rewritten = _rewrite_universal_drop_argv(["drop", "reponame"])
+    assert rewritten[:3] == ["drop", "repo", "reponame"]
+
+
+def test_github_raw_rewrite_deterministic() -> None:
+    from aiwiki.input_router import classify_universal_input, rewrite_github_raw_url
+
+    blob = "https://github.com/34306/vphone-aio/blob/main/README.md"
+    assert rewrite_github_raw_url(blob) == "https://raw.githubusercontent.com/34306/vphone-aio/main/README.md"
+    decision = classify_universal_input("https://github.com/34306/vphone-aio")
+    assert decision.reason == "github-raw-rewrite"
+    assert decision.payload.endswith("/HEAD/README.md")
+
+
+def test_executor_rejects_unrelated_vault_internal(tmp_path: Path) -> None:
+    from aiwiki.executor import execute_plan
+    from aiwiki.input_planner import Plan
+    from aiwiki.protocol.scaffold import ensure_layout
+    from aiwiki.utils.security import PathOutsideWorkspaceError
+
+    ensure_layout(tmp_path)
+    internal = tmp_path / ".aiwiki"
+    plan = Plan(action="read_local_repo", targets=[str(internal)], title="x", reason="injection")
+    with pytest.raises(PathOutsideWorkspaceError):
+        execute_plan(tmp_path, plan, "https://example.com/unrelated")

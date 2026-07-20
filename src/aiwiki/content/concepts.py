@@ -44,7 +44,7 @@ CONCEPT_RENDER_SCHEMA_VERSION = 4
 # ingested article titles (building, powered, maintain, you, base, systems).
 # v14: drop generic adjectives/adverbs and duplicate plurals from article titles
 # (digital, personal, privately, llms, local, ideas, component, systems).
-CONCEPT_NOISE_FLOOR_VERSION = 15
+CONCEPT_NOISE_FLOOR_VERSION = 16
 
 CAUSAL_RELATION_LABELS = {
     "causes": "→ causes",
@@ -212,7 +212,11 @@ def entry_concept_terms(entry: dict[str, Any], context: str, max_terms: int = 5)
     # v12: skip title-prefix phrases that are just filename-derived concatenations
     # of broad domain labels (e.g. "plugin llm vault"). If any constituent token
     # is phrase-weak, the phrase is noise; let the tokens compete individually.
-    if len(phrase_tokens) >= 2 and not any(token in _PHRASE_WEAK_TOKENS for token in phrase_tokens):
+    if (
+        len(phrase_tokens) >= 2
+        and not any(token in _PHRASE_WEAK_TOKENS for token in phrase_tokens)
+        and not any(any("\u4e00" <= ch <= "\u9fff" for ch in token) for token in phrase_tokens)
+    ):
         phrase = " ".join(phrase_tokens)
         scores[phrase] = scores.get(phrase, 0) + 8
     for token in deduped_title_tokens[:4]:

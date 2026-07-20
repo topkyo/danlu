@@ -9,10 +9,14 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
 
 ## [Unreleased]
 
+### Fixed
+- Obsidian GUI PATH 命中 Apple Python 3.9 时，`zip(..., strict=)` 导致 drop 后 auto-compile 崩、Shell 显示「生成被阻断」：去掉 `strict=`；`aiwiki-launcher.sh` 显式挑选 ≥3.10；vault launcher 改为转发 runtime launcher。
+- Rescan P1 ingest/governance：死 CLI hint → `advanced review-queue`；CJK overlapping bigram 不再拼乱码短语；确定性 GitHub raw/blob/tree rewrite；路径 fail-loud 不再误伤裸目录 / 中文 `A/B…`；`run-ask`/`run-ask-resume` LLM 移出写锁；alchemy lane receipt 失败不再谎称 mutation rolled back；local target 须派生自 original payload（拒 vault 内部无关路径）。
+
 ### Added
 - Universal drop **plan/execute**：`src/aiwiki/input_planner.py`（LLM 分类 Plan，不写 `raw/`）+ `src/aiwiki/executor.py`（deterministic 原样落盘 + SSRF `safe_fetch` + 事务回滚）；CLI `drop plan <payload>`；默认 `drop <payload>` 走 planner（`AIWIKI_LLM_PLANNER=0` 关闭）。
 - Alchemy distill 可选 LLM body synthesizer（`runner/alchemy.py` 编排层注入；mutation 层仍 deterministic；`AIWIKI_LLM_DISTILL=0` 关闭）。
-- `tests/test_llm_integration.py`：现行 **65** 条（含 plan/execute、CJK tokenize/concept/stopwords、fetch_raw fail-loud、path containment、distill synthesizer）；历史起点为 42 条 LLM 执行层契约。
+- `tests/test_llm_integration.py`：现行 **69** 条（含 plan/execute、CJK tokenize/concept/stopwords、fetch_raw fail-loud、path containment、GitHub raw rewrite、path false-positive、distill synthesizer）；历史起点为 42 条 LLM 执行层契约。
 - `.pre-commit-config.yaml`：pre-commit hook（ruff check + ruff-format check + check-merge-conflict / check-yaml / check-added-large-files 500KB），轻量 gate；完整验证仍靠 `bash scripts/verify.sh`。
 - `src/aiwiki/utils/` 子包：`io` / `security` / `markdown` / `text` / `hash` / `time` / `path` / `json_utils` / `audit`（原 `app_utils.py` 下沉）。
 - `src/aiwiki/state/` + owner 子包：`io` / `constants` / `manifest` / `cache` / `compile/state` / `compile/build` / `content/material` / `content/archive` / `content/rewrite` / `execution/history` / `memory/action_state` / `memory/state` / `planner/state`（原 `app_state.py` 下沉）。
@@ -27,8 +31,9 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
 - `AGENTS.md` L115 CLI 入口描述修复：`drop/today/metrics/advanced` → `drop/today/advanced`（`metrics` 经 argv rewrite 作为 `advanced` 子命令）。
 - `src/aiwiki/trace.py` docstring 资产种类数 `6 类` → `9 类`。
 - `execution/{archive,lifecycle,ask,runtime_surfaces,concept_rewrite}.py` stale docstring 修复：删除对已移除 `_LAZY_OWNERS` / `app_compile.utc_now` 的引用。
-- verify 现行口径：acceptance **25** + llm-integration **65** + Jest **169**（历史 24/42/60 为沿革快照）。
+- verify 现行口径：acceptance **25** + llm-integration **69** + Jest **169**（历史 24/42/60/65 为沿革快照）。
 - Capability follow-up：CJK concept/slug/stopwords；`fetch_raw` fail-loud；local-path fail-loud + containment；distill LLM outside write lock + `llm_invoked` receipt；GitHub blob/tree planner few-shot。
+- Rescan follow-up：见 Fixed；verify llm-integration **69**。
 
 ### Removed
 - `src/aiwiki/app_utils.py`：已下沉到 `utils/` 子包（1200 行/52 符号/89 文件引用）。
