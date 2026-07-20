@@ -228,6 +228,20 @@ function pendingHasActiveLongRunning(pendingSubmissions) {
   return pendingSubmissions.some((entry) => entry && (entry.status === "running" || entry.status === "received") && entry.retryArgs && entry.retryArgs.longRunning);
 }
 
+function isPureMaterialPendingEntry(entry) {
+  const args = entry && entry.retryArgs;
+  if (!args || typeof args !== "object") return false;
+  const kind = String(args.kind || "").trim();
+  if (kind === "material") return true;
+  if (kind === "files") {
+    const question = String(args.question || args.askQuestion || "").trim();
+    if (question) return false;
+    if (args.autoAsk === true) return false;
+    return true;
+  }
+  return false;
+}
+
 function reconcilePendingSubmissionList(pendingSubmissions, summary, now = Date.now()) {
   const pending = Array.isArray(pendingSubmissions) ? pendingSubmissions : [];
   if (!pending.length || !summary || typeof summary !== "object") {
@@ -296,35 +310,56 @@ function reconcilePendingSubmissionList(pendingSubmissions, summary, now = Date.
     const entryRunId = String(entry.runId || (entry.retryArgs && entry.retryArgs.runId) || "").trim();
     const findRunIdHit = (cands) => entryRunId ? cands.find((cand) => cand && String(cand.run_id || cand.runId || "").trim() === entryRunId) : null;
     const findHit = (cands) => cands.find(matchAgainst);
-    let hitCand = findRunIdHit(outputCands) || findHit(outputCands);
-    if (hitCand) {
-      target = "outputs";
-      targetPath = String(hitCand.path || "");
-      hitRunNotesPath = String(hitCand.run_notes_path || "");
-      hitRunId = String(hitCand.run_id || "");
-      hitMeta = {
-        runNotesPath: hitRunNotesPath,
-        runId: hitRunId,
-        deliveryMode: String(hitCand.delivery_mode || ""),
-        llmStatus: String(hitCand.llm_status || ""),
-        llmBackend: String(hitCand.llm_backend || ""),
-        llmModel: String(hitCand.llm_model || ""),
-        backgroundStatus: String(hitCand.background_status || ""),
-        artifactQuality: String(hitCand.artifact_quality || ""),
-      };
+    const pureMaterial = isPureMaterialPendingEntry(entry);
+    if (!pureMaterial) {
+      let hitCand = findRunIdHit(outputCands) || findHit(outputCands);
+      if (hitCand) {
+        target = "outputs";
+        targetPath = String(hitCand.path || "");
+        hitRunNotesPath = String(hitCand.run_notes_path || "");
+        hitRunId = String(hitCand.run_id || "");
+        hitMeta = {
+          runNotesPath: hitRunNotesPath,
+          runId: hitRunId,
+          deliveryMode: String(hitCand.delivery_mode || ""),
+          llmStatus: String(hitCand.llm_status || ""),
+          llmBackend: String(hitCand.llm_backend || ""),
+          llmModel: String(hitCand.llm_model || ""),
+          backgroundStatus: String(hitCand.background_status || ""),
+          artifactQuality: String(hitCand.artifact_quality || ""),
+        };
+      } else {
+        hitCand = findRunIdHit(receiptCands) || findHit(receiptCands);
+        if (hitCand) {
+          target = "receipts";
+          targetPath = String(hitCand.path || hitCand.receipt_path || "");
+          hitRunNotesPath = String(hitCand.run_notes_path || "");
+          hitRunId = String(hitCand.run_id || "");
+          hitMeta = { runId: hitRunId, runNotesPath: hitRunNotesPath };
+        }
+      }
+      if (!target) {
+        const rawHit = findHit(rawCands);
+        if (rawHit) {
+          target = "raw";
+          targetPath = String(rawHit.stored_path || rawHit.path || "");
+        }
+      }
     } else {
-      hitCand = findRunIdHit(receiptCands) || findHit(receiptCands);
+      let hitCand = findRunIdHit(receiptCands) || findHit(receiptCands);
       if (hitCand) {
         target = "receipts";
         targetPath = String(hitCand.path || hitCand.receipt_path || "");
         hitRunNotesPath = String(hitCand.run_notes_path || "");
         hitRunId = String(hitCand.run_id || "");
         hitMeta = { runId: hitRunId, runNotesPath: hitRunNotesPath };
+      } else {
+        hitCand = findHit(rawCands);
+        if (hitCand) {
+          target = "raw";
+          targetPath = String(hitCand.stored_path || hitCand.path || "");
+        }
       }
-    }
-    if (!hitCand) {
-      hitCand = findHit(rawCands);
-      if (hitCand) { target = "raw"; targetPath = String(hitCand.stored_path || hitCand.path || ""); }
     }
     if (target) {
       hits.push({ id: entry.id, target, path: targetPath, runNotesPath: hitRunNotesPath, runId: hitRunId, meta: hitMeta || {} });

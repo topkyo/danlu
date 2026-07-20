@@ -14,7 +14,7 @@ function renderUniversalInput(plugin, container) {
     attr: { "aria-label": plugin.t("Universal input") }
   });
   
-  textarea.placeholder = plugin.t("投 URL / PDF / Markdown / 图片 / repo，或直接问一个问题；炼丹炉会生成报告");
+  textarea.placeholder = plugin.t("投 URL / PDF / Markdown / 图片 / repo；提问才会生成报告");
   textarea.rows = 1;
 
   const submitButton = form.createEl("button", { 
@@ -24,7 +24,7 @@ function renderUniversalInput(plugin, container) {
   });
 
   const hint = wrapper.createDiv({ cls: "furnace-universal-input-hint" });
-      hint.setText(plugin.t("Ctrl+Enter 提交 · 拖入文件 · 结果会出现在“今天”"));
+      hint.setText(plugin.t("Ctrl+Enter 提交 · 拖入文件 · 投料入 raw，提问出报告"));
 
   const attachmentsContainer = wrapper.createDiv({ cls: "furnace-input-attachments-container" });
   
@@ -103,6 +103,7 @@ function renderUniversalInput(plugin, container) {
     hint.setText(plugin.t("已提交，进度会出现在上方对话流"));
 
     let succeeded = false;
+    let materialDropCompleted = false;
     // R88: 立即推一个"处理中"卡片到 Today，构成视觉闭环
     let pendingId = "";
     try {
@@ -144,6 +145,7 @@ function renderUniversalInput(plugin, container) {
           });
           if (!normalizedQuestion) {
             plugin.completePendingMaterialDrop(pendingId, flowResult && flowResult.materialPaths);
+            materialDropCompleted = true;
           }
         }
       } else {
@@ -207,8 +209,10 @@ function renderUniversalInput(plugin, container) {
             plugin.updatePendingSubmissionRetryArgs(pendingId, {
               ...retryArgs,
               materialPaths,
+              reused: Boolean(payload && payload.reused),
             });
             plugin.completePendingMaterialDrop(pendingId, materialPaths);
+            materialDropCompleted = true;
           }
         } else {
           const askFormat = inferAutoAskFormat(normalizedQuestion, []);
@@ -239,8 +243,8 @@ function renderUniversalInput(plugin, container) {
         }
       }
       succeeded = true;
-      // R89: 成功 ≠ 报告生成；先标 received（"已接收，等待生成报告"），等 reconcile 命中再 done
-      if (pendingId) plugin.markPendingSubmissionReceived(pendingId);
+      // 纯投料已在 completePendingMaterialDrop 标 done(raw)；提问路径才进入 received 等报告
+      if (pendingId && !materialDropCompleted) plugin.markPendingSubmissionReceived(pendingId);
     } catch (e) {
       if (pendingId) plugin.markPendingSubmissionFailed(pendingId, e);
       new Notice(plugin.t("提交失败：{message}（输入已保留，可重试）", { message: e && e.message ? e.message : String(e) }));
@@ -249,7 +253,7 @@ function renderUniversalInput(plugin, container) {
       textarea.disabled = false;
       submitting = false;
       submitButton.setText(originalLabel || plugin.t("Submit"));
-  hint.setText(plugin.t("Ctrl+Enter 提交 · 拖入文件 · 结果会出现在“今天”"));
+  hint.setText(plugin.t("Ctrl+Enter 提交 · 拖入文件 · 投料入 raw，提问出报告"));
       if (succeeded) {
         textarea.value = '';
         autoResize();

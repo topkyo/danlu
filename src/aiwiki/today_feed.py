@@ -458,7 +458,7 @@ def _build_raw_input_entries(summary: dict[str, Any], today_date: str) -> list[F
             FeedEntry(
                 kind="action",
                 title=f"已投料：{title or original_path or stored_path}",
-                summary=f"已接收 {source_type or '材料'}，等待编译/刷新",
+                summary=f"已收料 · {source_type or '材料'}",
                 target=stored_path,
                 timestamp=occurred_at,
                 protocol=_first_text(item, "protocol"),

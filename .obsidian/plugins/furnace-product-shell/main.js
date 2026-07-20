@@ -576,6 +576,13 @@ const ZH_TEXT = {
   // R89: pending 状态文案
   "处理中…": "处理中…",
   "已接收，等待生成报告": "已接收，等待生成报告",
+  "已接收，正在排队生成报告": "已接收，正在排队生成报告",
+  "已收料": "已收料",
+  "正在收料": "正在收料",
+  "投料失败": "投料失败",
+  "已存在，未重复入库": "已存在，未重复入库",
+  "投 URL / PDF / Markdown / 图片 / repo；提问才会生成报告": "投 URL / PDF / Markdown / 图片 / repo；提问才会生成报告",
+  "Ctrl+Enter 提交 · 拖入文件 · 投料入 raw，提问出报告": "Ctrl+Enter 提交 · 拖入文件 · 投料入 raw，提问出报告",
   "报告已生成": "报告已生成",
   "已记录": "已记录",
   "可能已完成，点上方刷新": "可能已完成，点上方刷新",
@@ -1911,6 +1918,20 @@ function pendingHasActiveLongRunning(pendingSubmissions) {
   return pendingSubmissions.some((entry) => entry && (entry.status === "running" || entry.status === "received") && entry.retryArgs && entry.retryArgs.longRunning);
 }
 
+function isPureMaterialPendingEntry(entry) {
+  const args = entry && entry.retryArgs;
+  if (!args || typeof args !== "object") return false;
+  const kind = String(args.kind || "").trim();
+  if (kind === "material") return true;
+  if (kind === "files") {
+    const question = String(args.question || args.askQuestion || "").trim();
+    if (question) return false;
+    if (args.autoAsk === true) return false;
+    return true;
+  }
+  return false;
+}
+
 function reconcilePendingSubmissionList(pendingSubmissions, summary, now = Date.now()) {
   const pending = Array.isArray(pendingSubmissions) ? pendingSubmissions : [];
   if (!pending.length || !summary || typeof summary !== "object") {
@@ -1979,35 +2000,56 @@ function reconcilePendingSubmissionList(pendingSubmissions, summary, now = Date.
     const entryRunId = String(entry.runId || (entry.retryArgs && entry.retryArgs.runId) || "").trim();
     const findRunIdHit = (cands) => entryRunId ? cands.find((cand) => cand && String(cand.run_id || cand.runId || "").trim() === entryRunId) : null;
     const findHit = (cands) => cands.find(matchAgainst);
-    let hitCand = findRunIdHit(outputCands) || findHit(outputCands);
-    if (hitCand) {
-      target = "outputs";
-      targetPath = String(hitCand.path || "");
-      hitRunNotesPath = String(hitCand.run_notes_path || "");
-      hitRunId = String(hitCand.run_id || "");
-      hitMeta = {
-        runNotesPath: hitRunNotesPath,
-        runId: hitRunId,
-        deliveryMode: String(hitCand.delivery_mode || ""),
-        llmStatus: String(hitCand.llm_status || ""),
-        llmBackend: String(hitCand.llm_backend || ""),
-        llmModel: String(hitCand.llm_model || ""),
-        backgroundStatus: String(hitCand.background_status || ""),
-        artifactQuality: String(hitCand.artifact_quality || ""),
-      };
+    const pureMaterial = isPureMaterialPendingEntry(entry);
+    if (!pureMaterial) {
+      let hitCand = findRunIdHit(outputCands) || findHit(outputCands);
+      if (hitCand) {
+        target = "outputs";
+        targetPath = String(hitCand.path || "");
+        hitRunNotesPath = String(hitCand.run_notes_path || "");
+        hitRunId = String(hitCand.run_id || "");
+        hitMeta = {
+          runNotesPath: hitRunNotesPath,
+          runId: hitRunId,
+          deliveryMode: String(hitCand.delivery_mode || ""),
+          llmStatus: String(hitCand.llm_status || ""),
+          llmBackend: String(hitCand.llm_backend || ""),
+          llmModel: String(hitCand.llm_model || ""),
+          backgroundStatus: String(hitCand.background_status || ""),
+          artifactQuality: String(hitCand.artifact_quality || ""),
+        };
+      } else {
+        hitCand = findRunIdHit(receiptCands) || findHit(receiptCands);
+        if (hitCand) {
+          target = "receipts";
+          targetPath = String(hitCand.path || hitCand.receipt_path || "");
+          hitRunNotesPath = String(hitCand.run_notes_path || "");
+          hitRunId = String(hitCand.run_id || "");
+          hitMeta = { runId: hitRunId, runNotesPath: hitRunNotesPath };
+        }
+      }
+      if (!target) {
+        const rawHit = findHit(rawCands);
+        if (rawHit) {
+          target = "raw";
+          targetPath = String(rawHit.stored_path || rawHit.path || "");
+        }
+      }
     } else {
-      hitCand = findRunIdHit(receiptCands) || findHit(receiptCands);
+      let hitCand = findRunIdHit(receiptCands) || findHit(receiptCands);
       if (hitCand) {
         target = "receipts";
         targetPath = String(hitCand.path || hitCand.receipt_path || "");
         hitRunNotesPath = String(hitCand.run_notes_path || "");
         hitRunId = String(hitCand.run_id || "");
         hitMeta = { runId: hitRunId, runNotesPath: hitRunNotesPath };
+      } else {
+        hitCand = findHit(rawCands);
+        if (hitCand) {
+          target = "raw";
+          targetPath = String(hitCand.stored_path || hitCand.path || "");
+        }
       }
-    }
-    if (!hitCand) {
-      hitCand = findHit(rawCands);
-      if (hitCand) { target = "raw"; targetPath = String(hitCand.stored_path || hitCand.path || ""); }
     }
     if (target) {
       hits.push({ id: entry.id, target, path: targetPath, runNotesPath: hitRunNotesPath, runId: hitRunId, meta: hitMeta || {} });
@@ -2605,7 +2647,7 @@ function buildRawInputEntries(summary, todayDate) {
     entries.push({
       kind: "action",
       title: `已投料：${title || originalPath || storedPath}`,
-      summary: `已接收 ${sourceLabel}，等待编译/刷新`,
+      summary: `已收料 · ${sourceLabel}`,
       target: storedPath,
       timestamp: occurredAt,
       protocol: firstText(item, "protocol"),
@@ -4510,7 +4552,7 @@ function renderUniversalInput(plugin, container) {
     attr: { "aria-label": plugin.t("Universal input") }
   });
   
-  textarea.placeholder = plugin.t("投 URL / PDF / Markdown / 图片 / repo，或直接问一个问题；炼丹炉会生成报告");
+  textarea.placeholder = plugin.t("投 URL / PDF / Markdown / 图片 / repo；提问才会生成报告");
   textarea.rows = 1;
 
   const submitButton = form.createEl("button", { 
@@ -4520,7 +4562,7 @@ function renderUniversalInput(plugin, container) {
   });
 
   const hint = wrapper.createDiv({ cls: "furnace-universal-input-hint" });
-      hint.setText(plugin.t("Ctrl+Enter 提交 · 拖入文件 · 结果会出现在“今天”"));
+      hint.setText(plugin.t("Ctrl+Enter 提交 · 拖入文件 · 投料入 raw，提问出报告"));
 
   const attachmentsContainer = wrapper.createDiv({ cls: "furnace-input-attachments-container" });
   
@@ -4599,6 +4641,7 @@ function renderUniversalInput(plugin, container) {
     hint.setText(plugin.t("已提交，进度会出现在上方对话流"));
 
     let succeeded = false;
+    let materialDropCompleted = false;
     // R88: 立即推一个"处理中"卡片到 Today，构成视觉闭环
     let pendingId = "";
     try {
@@ -4640,6 +4683,7 @@ function renderUniversalInput(plugin, container) {
           });
           if (!normalizedQuestion) {
             plugin.completePendingMaterialDrop(pendingId, flowResult && flowResult.materialPaths);
+            materialDropCompleted = true;
           }
         }
       } else {
@@ -4703,8 +4747,10 @@ function renderUniversalInput(plugin, container) {
             plugin.updatePendingSubmissionRetryArgs(pendingId, {
               ...retryArgs,
               materialPaths,
+              reused: Boolean(payload && payload.reused),
             });
             plugin.completePendingMaterialDrop(pendingId, materialPaths);
+            materialDropCompleted = true;
           }
         } else {
           const askFormat = inferAutoAskFormat(normalizedQuestion, []);
@@ -4735,8 +4781,8 @@ function renderUniversalInput(plugin, container) {
         }
       }
       succeeded = true;
-      // R89: 成功 ≠ 报告生成；先标 received（"已接收，等待生成报告"），等 reconcile 命中再 done
-      if (pendingId) plugin.markPendingSubmissionReceived(pendingId);
+      // 纯投料已在 completePendingMaterialDrop 标 done(raw)；提问路径才进入 received 等报告
+      if (pendingId && !materialDropCompleted) plugin.markPendingSubmissionReceived(pendingId);
     } catch (e) {
       if (pendingId) plugin.markPendingSubmissionFailed(pendingId, e);
       new Notice(plugin.t("提交失败：{message}（输入已保留，可重试）", { message: e && e.message ? e.message : String(e) }));
@@ -4745,7 +4791,7 @@ function renderUniversalInput(plugin, container) {
       textarea.disabled = false;
       submitting = false;
       submitButton.setText(originalLabel || plugin.t("Submit"));
-  hint.setText(plugin.t("Ctrl+Enter 提交 · 拖入文件 · 结果会出现在“今天”"));
+  hint.setText(plugin.t("Ctrl+Enter 提交 · 拖入文件 · 投料入 raw，提问出报告"));
       if (succeeded) {
         textarea.value = '';
         autoResize();
@@ -5132,7 +5178,8 @@ function renderPendingSubmissionsGroup(plugin, section) {
 
     if (entry.status === "failed") {
       const exceptionCard = aiBubble.createDiv({ cls: "furnace-inline-exception-card furnace-inline-exception-failed" });
-      exceptionCard.createDiv({ cls: "furnace-inline-exception-title", text: plugin.t("生成被阻断") });
+      const failTitle = isPureMaterialPendingEntry(entry) ? plugin.t("投料失败") : plugin.t("生成被阻断");
+      exceptionCard.createDiv({ cls: "furnace-inline-exception-title", text: failTitle });
       exceptionCard.createDiv({
         cls: "furnace-bubble-hint",
         text: plugin.t("这次没成功。可以点重试，或检查输入是否完整。"),
@@ -5145,6 +5192,7 @@ function renderPendingSubmissionsGroup(plugin, section) {
         const args = entry.retryArgs || {};
         plugin.resetPendingSubmissionForRetry(entry.id);
         try {
+          let markReceivedAfterRetry = true;
           if (args.kind === "files" && Array.isArray(args.files)) {
             const flowResult = await plugin.runDroppedFilesWithAutoAsk({
               files: args.files,
@@ -5160,6 +5208,10 @@ function renderPendingSubmissionsGroup(plugin, section) {
               runNotesPath: String(flowResult && flowResult.runNotesPath || args.runNotesPath || ""),
               runId: String(flowResult && flowResult.runId || args.runId || ""),
             });
+            if (!String(args.question || "").trim()) {
+              plugin.completePendingMaterialDrop(entry.id, flowResult && flowResult.materialPaths);
+              markReceivedAfterRetry = false;
+            }
           } else if (args.kind === "auto-ask") {
             await plugin.runAskCommand({
               question: args.askQuestion || args.question || entry.displayText || "",
@@ -5188,8 +5240,15 @@ function renderPendingSubmissionsGroup(plugin, section) {
             if (retryText && looksLikeUniversalMaterialPayload(retryText)) {
               const payload = await plugin.runUniversalInputCommand({ payload: retryText });
               const materialPaths = collectMaterialPathsFromPayload(payload);
-              plugin.updatePendingSubmissionRetryArgs(entry.id, { ...args, kind: "material", payload: retryText, materialPaths });
+              plugin.updatePendingSubmissionRetryArgs(entry.id, {
+                ...args,
+                kind: "material",
+                payload: retryText,
+                materialPaths,
+                reused: Boolean(payload && payload.reused),
+              });
               plugin.completePendingMaterialDrop(entry.id, materialPaths);
+              markReceivedAfterRetry = false;
             } else {
               await plugin.runAskCommand({
                 question: retryText,
@@ -5199,7 +5258,7 @@ function renderPendingSubmissionsGroup(plugin, section) {
               });
             }
           }
-          plugin.markPendingSubmissionReceived(entry.id);
+          if (markReceivedAfterRetry) plugin.markPendingSubmissionReceived(entry.id);
         } catch (e) {
           plugin.markPendingSubmissionFailed(entry.id, e);
         }
@@ -5311,6 +5370,9 @@ function pendingSubmissionProgressSteps(plugin, entry) {
   if (entry && entry.retryArgs && entry.retryArgs.longRunning) {
     return [plugin.t("已接收长程报告任务"), plugin.t("LLM 正在生成结构化报告"), plugin.t("完成后会写入本地报告")];
   }
+  if (isPureMaterialPendingEntry(entry)) {
+    return [plugin.t("正在收料"), plugin.t("写入 raw/"), plugin.t("已收料")];
+  }
   const startedMs = Date.parse(entry && entry.startedAt || "");
   const elapsed = Number.isFinite(startedMs) ? Math.max(0, Date.now() - startedMs) : 0;
   if (entry && entry.status === "received") {
@@ -5339,7 +5401,12 @@ function pendingSubmissionSnippetFallback(plugin, entry) {
   if (pendingSubmissionIsDegraded(entry)) return plugin.t("LLM 未完成；这是保留 provenance 的本地恢复产物，可打开检查上下文后重试。");
   if (target === "outputs") return plugin.t("报告已写入本地文件；摘要加载中…");
   if (target === "receipts") return plugin.t("回执已写入控制层，可用于审计与回滚追踪。");
-  if (target === "raw") return plugin.t("原料已进入 raw/，等待后续编译沉淀。");
+  if (target === "raw") {
+    if (entry && entry.retryArgs && entry.retryArgs.reused) {
+      return plugin.t("已存在，未重复入库");
+    }
+    return plugin.t("原料已进入 raw/，等待后续编译沉淀。");
+  }
   return plugin.t("任务已完成，结果已关联到本地工作区。");
 }
 
@@ -5363,6 +5430,7 @@ function pendingSubmissionArtifactMeta(plugin, entry) {
 
 function pendingSubmissionStageLabel(plugin, entry) {
   const status = String(entry && entry.status || "running");
+  const pureMaterial = isPureMaterialPendingEntry(entry);
   if (status === "degraded") return plugin.t("LLM 未完成，已保留恢复产物");
   if (status === "done") {
     if (pendingSubmissionIsDegraded(entry)) return plugin.t("LLM 未完成，已保留恢复产物");
@@ -5371,6 +5439,9 @@ function pendingSubmissionStageLabel(plugin, entry) {
     return plugin.t("报告已生成");
   }
   if (status === "received") {
+    if (pureMaterial) {
+      return entry && entry._stale ? plugin.t("可能已完成，刷新看看") : plugin.t("正在收料");
+    }
     if (entry && entry.retryArgs && entry.retryArgs.longRunning) {
       return entry._stale ? plugin.t("长程报告可能已完成，刷新看看") : plugin.t("长程报告生成中，可稍后刷新");
     }
@@ -5378,6 +5449,7 @@ function pendingSubmissionStageLabel(plugin, entry) {
   }
   if (status === "failed") return plugin.t("失败");
   if (status === "escalated") return plugin.t("需要人工确认");
+  if (pureMaterial) return plugin.t("正在收料");
   return plugin.t("正在整理材料与上下文");
 }
 

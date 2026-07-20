@@ -95,6 +95,82 @@ test("pending entry transitions preserve terminal and retry contracts", () => {
   expect(entry.retryArgs).toMatchObject({ jobId: "", runId: "", runNotesPath: "", longRunning: true });
 });
 
+test("pure material reconcile ignores recent outputs and matches raw only", () => {
+  const context = loadPendingStateContext();
+  const pending = [
+    {
+      id: "p-url",
+      status: "received",
+      payloadFingerprint: "https://example.com/post",
+      title: "https://example.com/post",
+      startedAt: "2026-05-13T08:59:00Z",
+      retryArgs: { kind: "material", payload: "https://example.com/post" },
+    },
+  ];
+  const summary = {
+    recent_outputs: [
+      {
+        path: "output/reports/unrelated.md",
+        title: "https://example.com/post",
+        created_at: "2026-05-13T09:00:00Z",
+      },
+    ],
+    recent_receipts: [],
+    recent_raw_inputs: [
+      {
+        stored_path: "raw/inbox/url.md",
+        title: "https://example.com/post",
+        occurred_at: "2026-05-13T09:00:00Z",
+      },
+    ],
+  };
+
+  const { hits } = context.reconcilePendingSubmissionList(pending, summary, Date.parse("2026-05-13T09:01:00Z"));
+
+  expect(hits).toEqual([
+    expect.objectContaining({
+      id: "p-url",
+      target: "raw",
+      path: "raw/inbox/url.md",
+    }),
+  ]);
+});
+
+test("ask reconcile still prefers recent outputs", () => {
+  const context = loadPendingStateContext();
+  const pending = [
+    {
+      id: "p-ask",
+      status: "received",
+      payloadFingerprint: "请总结",
+      title: "请总结",
+      startedAt: "2026-05-13T08:59:00Z",
+      retryArgs: { kind: "auto-ask", question: "请总结", format: "report" },
+    },
+  ];
+  const summary = {
+    recent_outputs: [
+      {
+        path: "output/reports/summary.md",
+        title: "请总结",
+        created_at: "2026-05-13T09:00:00Z",
+      },
+    ],
+    recent_receipts: [],
+    recent_raw_inputs: [],
+  };
+
+  const { hits } = context.reconcilePendingSubmissionList(pending, summary, Date.parse("2026-05-13T09:01:00Z"));
+
+  expect(hits).toEqual([
+    expect.objectContaining({
+      id: "p-ask",
+      target: "outputs",
+      path: "output/reports/summary.md",
+    }),
+  ]);
+});
+
 test("pending artifact metadata updates camel and snake case fields", () => {
   const context = loadPendingStateContext();
   const entry = context.createPendingSubmissionEntry({
