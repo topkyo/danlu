@@ -19,7 +19,6 @@ from ..content.io import (
 )
 from ..content.rewrite import load_concept_rewrite_state
 from ..execution.history import load_llm_receipt_history, load_runtime_history
-from ..execution.l3_proposals import list_l3_proposals
 from ..execution.paths import llm_receipt_log_path, run_log_path
 from ..execution.policy import load_execution_receipt_history
 from ..lifecycle.aging import collect_aging_signals
@@ -188,14 +187,12 @@ def shell_review_controls(
             str(item.get("title") or "").lower(),
         )
     )
-    l3_controls = [l3_proposal_control_object(proposal) for proposal in list_l3_proposals(root)]
     return {
         "pages": review_pages,
         "decision_pages": [page for page in review_pages if str(page.get("kind") or "") == "decision"],
         "judgment_pages": [page for page in review_pages if str(page.get("kind") or "") == "judgment"],
         "review_actions": [dict(action) for action in review_actions if isinstance(action, dict)],
         "rewrite_proposals": rewrite_controls,
-        "l3_proposals": l3_controls,
     }
 
 

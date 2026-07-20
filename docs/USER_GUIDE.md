@@ -183,7 +183,6 @@ Ask 只产出 `output/reports/*.md` 自由 Markdown 报告（CLI 仅接受 `--fo
 炼丹炉的治理面板不是给每个人天天看的，而是“人只看异常”：
 
 - **review-queue.md**：需要人工审阅的 judgment / decision / proposal。
-- **aging-report.md**：长时间未 revisit 的判断资产，提示是否该更新或归档。
 - **repair-backlog.md**：lint 或 nightly 发现的结构性问题，待修复。
 
 打开方式：

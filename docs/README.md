@@ -11,8 +11,8 @@ updated_at: 2026-07-15
 
 | 文档 | 角色 |
 |---|---|
-| [Furnace Agent Architecture](<./Furnace Agent Architecture.md>) | **终局架构 SoT**：loop-first agent 模型、persistent planes、L1/L2/L3 自主权红线 |
-| [Furnace Evolution Mechanics](<./Furnace Evolution Mechanics.md>) | **实现契约 SoT**：heavy/light alchemy、active corpus、金丹生命周期、L3 proposal |
+| [Furnace Agent Architecture](<./Furnace Agent Architecture.md>) | **架构边界 SoT**：五层平面、single writer、provenance、drop/today/advanced 用户面 |
+| [Furnace Evolution Mechanics](<./Furnace Evolution Mechanics.md>) | **实现契约 SoT**：active corpus、金丹生命周期、现行 operator CLI |
 | [Furnace Product Shell](<./Furnace Product Shell.md>) | **Obsidian Product Shell SoT**：一个输入端 + 一个输出端 + Advanced 抽屉；**Desktop-only** |
 | [Furnace Runtime Operations](<./Furnace Runtime Operations.md>) | **运行手册 SoT**：watcher、确定性 nightly、显式 LLM ask、universal drop plan/execute、四 API 后端与 fail-closed 策略 |
 | [AGOS-9-Scorecard](<./AGOS-9-Scorecard.md>) | **AgentOS 评分与 release gate SoT**：证据分层、blocking gate、本地 release 口径 |
@@ -33,26 +33,19 @@ updated_at: 2026-07-15
 
 | 文档 | 角色 |
 |---|---|
-| [Furnace Post-Cleanup Audit and Next Direction 2026-07](<./Furnace Post-Cleanup Audit and Next Direction 2026-07.md>) | **当前执行计划**：cleanup 后再审计报告 + Commercial Go-Live WS1–WS6 |
-| [W2 Compounding Rank + Suggest plan](<./plans/2026-07-18-w2-compounding-rank-suggest.md>) | **已完成**：ranking / `used_refs` / 稀缺 `compound_suggest` + Today CTA（2026-07-18） |
-| [W3 Governance Side-Cuts plan](<./plans/2026-07-18-w3-governance-side-cuts.md>) | **已完成**：删除 AgentOS governance CLI；保留 alchemy min-chain / compile / lint / ask / review-page（2026-07-18） |
-| [W6 Compounding Gap Close plan](<./plans/2026-07-18-w6-compounding-gap-close.md>) | **已完成**：query cache elixir、锁 LLM compile/lint 侧门、Shell dead hooks + Today 收窄、Active docs 收尾（2026-07-18） |
-| [Audit Remediation 2026-07-19](<./plans/2026-07-19-audit-remediation.md>) | **已执行**：`--protocol` 死命令、Chromium SSRF 默认关、DEVELOPER/Scorecard 刷新、graph facade/manifest/docs gate；能力层后续见 `5d6bcef` |
+| [Furnace Post-Cleanup Audit and Next Direction 2026-07](<./Furnace Post-Cleanup Audit and Next Direction 2026-07.md>) | **当前执行计划**：Commercial Go-Live WS1–WS6 |
+| [Report Provenance GC spec](<./specs/2026-07-20-report-delete-provenance-gc.md>) | **在途**：删报告后 provenance scrub + `gc-orphans` + 停写机器记忆 HTML（①′） |
 
 > Commercial Grade Cleanup Plan 2026-07 已归档（`executed-reviewed-pass`），见下方 Archived。
-> Investing Demo Pack（`delivered-fixture`）与 RuntimeClient Mobile Companion（`implemented-slice`）已交付规格，见下方 Delivered specs；残留 go-to-market 工作并入上表 Go-Live 计划。
+> W1–W9 / ingest-dedup / audit remediation 等已完成 plan → [docs/archive/plans/](<./archive/plans/>)。
+> Investing Demo Pack（`delivered-fixture`）见下方 Delivered specs。
 
 ## Delivered specs（已交付，非活跃执行）
 
 | 文档 | 角色 |
 |---|---|
 | [Furnace Investing Demo Pack Spec](<./Furnace Investing Demo Pack Spec.md>) + [Demo Pack fixture](<../demos/investing-demo-pack/README.md>) | 商业 demo 规格与已交付 fixture（截图/录屏资产见 Go-Live WS3） |
-
-## Direction context（非当前执行 SoT）
-
-| 文档 | 角色 |
-|---|---|
-| [Furnace First-Principles Evaluation Report 2026-07](<./Furnace First-Principles Evaluation Report 2026-07.md>) | **方向评估**：多 agent 全量扫描 + 开源 LLM-Wiki 对标 + 第一性原理建议；**不替代** Post-Cleanup 执行计划 |
+| [Ingest dedup + Drop UX](<./archive/specs/2026-07-20-ingest-dedup-and-drop-ux.md>) | 已落地：URL 投料幂等 + Shell「已收料」语义 |
 
 历史方向与已完成执行计划已移入 [docs/archive/](<./archive/README.md>)；当前执行以 [Post-Cleanup Audit](<./Furnace Post-Cleanup Audit and Next Direction 2026-07.md>) + Scorecard + `PROGRESS.md` 为准。
 `wiki/indexes/` 是 compile 生成的派生索引区；策略见 [wiki/indexes/README](<../wiki/indexes/README.md>)。
@@ -91,7 +84,7 @@ Furnace Agent Architecture  (终局世界观 / 架构 SoT)
          |
          | 实现契约
          v
-Furnace Evolution Mechanics (heavy/light, corpus, elixir, L3 proposal)
+Furnace Evolution Mechanics (active corpus, elixir, 现行 CLI)
          |
          | 运行与产品入口
          v

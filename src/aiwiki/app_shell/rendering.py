@@ -19,7 +19,6 @@ from ..content.io import (
 )
 from ..content.rewrite import load_concept_rewrite_state
 from ..execution.history import load_llm_receipt_history, load_runtime_history
-from ..execution.l3_proposals import list_l3_proposals
 from ..execution.paths import llm_receipt_log_path, run_log_path
 from ..execution.policy import load_execution_receipt_history
 from ..lifecycle.aging import collect_aging_signals
@@ -189,13 +188,13 @@ def render_product_shell_html(summary: ShellSummary) -> str:
         ("Recent routes", len(route_telemetry.get("entries", [])) if isinstance(route_telemetry, dict) else 0),
     ]
     quick_links = [
-        ("Furnace Center", str(links.get("furnace_center_html") or "")),
-        ("Execution Audit", str(links.get("execution_audit_html") or "")),
-        ("Graph View", str(links.get("graph_html") or "")),
+        ("Graph View (Obsidian)", str(links.get("graph_view_markdown") or "")),
+        ("Machine Memory JSON", str(links.get("machine_memory_graph_json") or "")),
+        ("Furnace Center (Obsidian)", str(links.get("furnace_center_markdown") or "")),
         ("Shell Summary", str(links.get("summary_path") or "")),
     ]
     suggested_actions = summary.get("suggested_next_actions", [])
-    drift_warnings = summary.get("drift_warnings", [])
+    drift_warnings = summary.get("drift_warnings") if isinstance(summary.get("drift_warnings"), list) else []
 
     def render_cards(locale: str) -> str:
         return "".join(

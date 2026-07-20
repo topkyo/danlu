@@ -407,7 +407,7 @@ def _render_vault_readme(runtime_root: Path) -> str:
                 "## 备注",
                 "",
                 "- 这个 vault 通过 `scripts/aiwiki-launcher.sh` 回到 runtime 执行，不要求 vault 自己包含 `src/aiwiki/`。",
-                "- `.html` 控制面（如 `output/graph/machine-memory.html`）会交给系统默认浏览器打开。",
+                "- 图谱与审阅优先在 Obsidian 打开 `wiki/indexes/`；机器记忆 JSON 见 `.aiwiki/cache/machine-memory-graph.json`。**HTML 控制面（如 `output/graph/machine-memory.html`）已停写**，勿再当主入口。",
                 "- 如果 runtime root 迁移了，重新创建 launcher 或更新脚本里的 `RUNTIME_ROOT` 即可。",
                 "",
             ]

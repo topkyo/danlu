@@ -178,7 +178,7 @@ def render_furnace_center(
         f"- 当前协议 outputs / receipts：`{scorecard_metrics.get('outputs', 0)}` / `{scorecard_metrics.get('receipts', 0)}`",
         f"- 当前协议 review packs / memos / SOP：`{scorecard_metrics.get('review_packs', 0)}` / `{scorecard_metrics.get('decision_memos', 0)}` / `{scorecard_metrics.get('sop_drafts', 0)}`",
         f"- 最近输出：`{len(recent_outputs)}`",
-        "- 本地控制面板：`output/control/furnace-center.html`",
+        "- 机器记忆 JSON：`.aiwiki/cache/machine-memory-graph.json`（Obsidian 证据链 + compile 邻接导出；HTML 控制面已停写）",
         "",
         "## 今天先做什么",
     ]
@@ -356,10 +356,8 @@ def render_furnace_center(
             "- [修复待办](./repair-backlog.md)",
             "- [协议总览](./protocols.md)",
             "- [输出面板](../../wiki/indexes/Outputs.md)",
-            "- `output/review/review-center.html`：本地审阅面板（浏览器 / 系统 HTML 入口）",
-            "- `output/graph/machine-memory.html`：本地图谱视图（若点开变成 Mihomo/Clash，说明系统接管了 `text/html`）",
-            "- `output/control/furnace-center.html`：本地炉心面板（浏览器 / 系统 HTML 入口）",
-            "- `output/control/execution-audit.html`：本地执行审计面板（浏览器 / 系统 HTML 入口）",
+            "- 机器记忆 JSON：`.aiwiki/cache/machine-memory-graph.json`（compile 邻接导出；**HTML 控制面已停写**）",
+            "- Obsidian 图谱：[[wiki/indexes/graph-view|图谱视图]]（证据链主入口）",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -571,9 +569,8 @@ def render_furnace_center_html(
             '      <a href="../../wiki/indexes/graph-view.md">图谱视图</a>',
             '      <a href="../../wiki/indexes/repair-backlog.md">修复待办</a>',
             '      <a href="../../wiki/indexes/protocols.md">协议总览</a>',
-            '      <a href="../../output/review/review-center.html">审阅 HTML</a>',
-            '      <a href="../../output/graph/machine-memory.html">图谱 HTML</a>',
-            '      <a href="../../output/control/execution-audit.html">审计 HTML</a>',
+            '      <a href="../../wiki/indexes/graph-view.md">图谱视图 (Obsidian)</a>',
+            '      <a href="../../.aiwiki/cache/machine-memory-graph.json">机器记忆 JSON</a>',
             "    </div>",
             '    <div class="meta">',
             *[

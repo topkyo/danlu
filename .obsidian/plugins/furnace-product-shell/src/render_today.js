@@ -84,8 +84,6 @@ const REVIEW_BUCKET_LABELS = {
   escalated_actions: ["处理升级动作", "处理已升级、需要人工确认的动作"],
   escalation_candidates: ["处理升级候选", "确认是否需要人工介入"],
   judgment_review_actions: ["复核研究判断", "处理需要重新判断的结论"],
-  l3_proposals: ["处理 L3 提案", "确认采纳、拒绝或回滚提案"],
-  l3_proposal_attention: ["处理 L3 提案", "确认采纳、拒绝或回滚提案"],
   machine_memory_actions: ["修复机器记忆", "处理可审计的记忆修复动作"],
   overdue_actions: ["处理逾期动作", "确认是否继续执行或关闭"],
   overdue_reviews: ["处理逾期复审", "确认旧判断是否仍成立"],
@@ -716,8 +714,6 @@ function reviewBucketDisplayLabel(plugin, target) {
     case "escalation_candidates": return plugin.t("升级候选");
     case "overdue_actions": return plugin.t("逾期动作");
     case "overdue_reviews": return plugin.t("逾期复审");
-    case "l3_proposals": return plugin.t("L3 提案");
-    case "l3_proposal_attention": return plugin.t("L3 提案需要关注");
     case "drift": return plugin.t("数据漂移");
     default: return plugin.t("待审队列");
   }

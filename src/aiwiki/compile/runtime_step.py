@@ -39,9 +39,7 @@ from ..memory.execution_surfaces import (
     build_execution_audit_snapshot,
     reconcile_concept_rewrite_proposals,
 )
-from ..memory.graph_anchors import collect_report_anchors
 from ..memory.graph_builder import build_machine_memory_graph
-from ..memory.graph_render import render_machine_memory_graph_html
 from ..memory.graph_transition import (
     append_machine_memory_history,
     summarize_machine_memory_transition,
@@ -52,7 +50,7 @@ from ..memory.paths import machine_memory_history_path
 from ..memory.status import render_machine_memory_index
 from ..planner.paths import planner_state_path, query_route_telemetry_path
 from ..protocol.templates import DEFAULT_DASHBOARD_FILES, MANAGED_DASHBOARD_TEMPLATE_FILES
-from ..render.paths import machine_memory_graph_html_path, machine_memory_graph_path
+from ..render.paths import machine_memory_graph_path
 from ..render.protocols import render_protocols_dashboard
 from ..state.constants import DEFAULT_PROTOCOL
 from ..state.paths import machine_memory_state_path, material_state_path
@@ -518,11 +516,6 @@ def compile_runtime_phase(context: CompileContext) -> None:
     context.write_index_artifact(
         machine_memory_graph_path(context.root),
         json.dumps(graph, indent=2, sort_keys=True) + "\n",
-    )
-    report_anchors = collect_report_anchors(context.root)
-    context.write_index_artifact(
-        machine_memory_graph_html_path(context.root),
-        render_machine_memory_graph_html(context.memory, graph, report_anchors=report_anchors),
     )
     append_machine_memory_history(context.root, context.memory, context.transition)
     context.write_index_artifact(

@@ -33,7 +33,7 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
 - `AGENTS.md` L115 CLI 入口描述修复：`drop/today/metrics/advanced` → `drop/today/advanced`（`metrics` 经 argv rewrite 作为 `advanced` 子命令）。
 - `src/aiwiki/trace.py` docstring 资产种类数 `6 类` → `9 类`。
 - `execution/{archive,lifecycle,ask,runtime_surfaces,concept_rewrite}.py` stale docstring 修复：删除对已移除 `_LAZY_OWNERS` / `app_compile.utc_now` 的引用。
-- verify 现行口径：acceptance **25** + llm-integration **76** + Jest **174**（历史 24/42/60/65 为沿革快照）。
+- verify 现行口径：acceptance **16** + llm-integration **76** + Jest **174**（历史 24/42/60/65 为沿革快照）。
 - Capability follow-up：CJK concept/slug/stopwords；`fetch_raw` fail-loud；local-path fail-loud + containment；distill LLM outside write lock + `llm_invoked` receipt；GitHub blob/tree planner few-shot。
 - Rescan follow-up：见 Fixed；verify llm-integration **76**。
 

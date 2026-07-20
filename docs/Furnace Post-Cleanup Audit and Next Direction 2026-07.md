@@ -24,7 +24,7 @@ supersedes: []
 | 指标 | 当前值 | 来源 |
 |---|---|---|
 | Runtime | `src/aiwiki` **155** `.py` / **~62k LOC** | `find` + `wc`（2026-07-18） |
-| Tests | acceptance **25** + llm-integration **76** + Jest **174**（2026-07-20 ingest dedup）；表内历史快照曾为 24/168、65 | `pytest` + `npm test` |
+| Tests | acceptance **16** + llm-integration **76** + Jest **174**（2026-07-20 ingest dedup）；表内历史快照曾为 24/168、65 | `pytest` + `npm test` |
 | Top hubs | `memory/graph.py` 1758 / `drop.py` 1747 / `execution/alchemy.py` 1680 / `auto_adopt` **DELETED** / `app_state` 1221 | `wc -l` |
 | `except Exception` | **~116**（↓ from 172）；裸 `except Exception: pass` **0** | ripgrep |
 | AgentOS Scorecard | **Local Engineering Gate 9.05**；Live Dogfood **not-yet** | `docs/AGOS-9-Scorecard.md` |
@@ -48,7 +48,7 @@ supersedes: []
 1. **事实分层与 fail-closed 契约完整**：`raw/` 唯一输入；LLM 失败不伪装 deterministic 成功；无隐式跨 backend fallback（docs consistency 硬门禁 PASS）。
 2. **治理与事务基线生产级**：receipt / revert / audit / lock / atomic_write 主路径成熟；凭据 `repr=False` 已落地。
 3. **商业文档骨架齐**：LICENSE（AGPL/Commercial dual）、INSTALL、USER_GUIDE、commercial/{PRICING,BOUNDARIES,PRIVACY,SUPPORT,COMPARE}、CHANGELOG 均存在。
-4. **Facade 清除彻底**：无半迁移尾巴；CLI 顶层只留 `drop/today/metrics/advanced`。
+4. **Facade 清除彻底**：无半迁移尾巴；CLI 顶层只留 `drop/today/advanced`（`metrics` 仅在 `advanced` 下）。
 5. **Demo Pack + Mobile companion slice 已交付**：`demos/investing-demo-pack/`、`RuntimeClient`/`VaultQueue` implemented-slice；不宜再当「未完成 Active Plan」主线。
 6. **验证主链可用**：本轮 `scripts` / `python-static` / `smoke` / docs consistency PASS。
 

@@ -7,7 +7,7 @@ import json
 import sys
 from pathlib import Path
 
-from ..app_shell import build_shell_summary
+from ..app_shell.summary import build_review_queue_controls, build_shell_summary
 from ..runner.automation import auto_process_once
 from ..today_feed import FeedEntry, build_today_feed, priority_for_kind
 from .parsers import build_parser
@@ -192,10 +192,12 @@ def _l3_review_item(item: dict[str, object]) -> dict[str, object]:
     }
 
 
-def _review_queue_detail_buckets(summary: dict[str, object]) -> dict[str, list[dict[str, object]]]:
+def _review_queue_detail_buckets(
+    root: Path,
+    summary: dict[str, object],
+) -> dict[str, list[dict[str, object]]]:
     buckets: dict[str, list[dict[str, object]]] = {}
-    review_controls = summary.get("review_controls")
-    execution_controls = summary.get("execution_controls")
+    review_controls, execution_controls = build_review_queue_controls(root)
     counts = summary.get("review_backlog_counts")
     review_counts = counts if isinstance(counts, dict) else {}
 
@@ -209,7 +211,6 @@ def _review_queue_detail_buckets(summary: dict[str, object]) -> dict[str, list[d
         judgment_pages = [item for item in review_controls.get("judgment_pages", []) if isinstance(item, dict)]
         decision_pages = [item for item in review_controls.get("decision_pages", []) if isinstance(item, dict)]
         review_actions = [item for item in review_controls.get("review_actions", []) if isinstance(item, dict)]
-        l3_proposals = [item for item in review_controls.get("l3_proposals", []) if isinstance(item, dict)]
 
         if has_backlog("pending_judgments"):
             buckets["pending_judgments"] = [_page_review_item(item) for item in judgment_pages]
@@ -223,11 +224,6 @@ def _review_queue_detail_buckets(summary: dict[str, object]) -> dict[str, list[d
                 for item in review_actions
                 if "counter-evidence-candidate" in {str(reason) for reason in item.get("reason_codes", [])}
             ]
-        if has_backlog("l3_proposals"):
-            buckets["l3_proposals"] = [
-                _l3_review_item(item) for item in l3_proposals if bool(item.get("needs_attention"))
-            ]
-
     if isinstance(execution_controls, dict):
         actions = [item for item in execution_controls.get("actions", []) if isinstance(item, dict)]
         actionable = [item for item in actions if bool(item.get("can_apply")) or bool(item.get("can_review"))]
@@ -264,7 +260,7 @@ def review_queue_command(
     for entry in decisions:
         sub = _classify_review_bucket(entry)
         buckets.setdefault(sub, []).append(_feed_entry_to_review_item(entry))
-    buckets.update(_review_queue_detail_buckets(summary))
+    buckets.update(_review_queue_detail_buckets(root, summary))
 
     if bucket:
         bucket_key = bucket.strip()
@@ -311,17 +307,16 @@ def review_queue_command(
 
 
 def _today_feed_to_json(feed: list[FeedEntry], summary: dict[str, object]) -> dict[str, object]:
-    """把 today feed 桶化成结构化 dict，对应 _render_today_text 的 5 个 section。
+    """把 today feed 桶化成结构化 dict，对应 _render_today_text 的 section。
 
     Bucket key 与 _render_today_text 的 section 对齐：
-    - todays_reports / automation_status / needs_review / completed_elixirs / l3_proposals / suggested_next_actions
+    - todays_reports / automation_status / needs_review / completed_elixirs / suggested_next_actions
     """
     buckets: dict[str, list[FeedEntry]] = {
         "report": [],
         "automation": [],
         "decision": [],
         "elixir": [],
-        "proposal": [],
         "action": [],
     }
     for entry in feed:
@@ -331,7 +326,6 @@ def _today_feed_to_json(feed: list[FeedEntry], summary: dict[str, object]) -> di
         ("automation_status", "automation"),
         ("needs_review", "decision"),
         ("completed_elixirs", "elixir"),
-        ("l3_proposals", "proposal"),
         ("suggested_next_actions", "action"),
     ]
     out: dict[str, object] = {
@@ -465,7 +459,6 @@ def _render_today_text(feed: list[FeedEntry], summary: dict[str, object]) -> str
         "report": [],
         "automation": [],
         "decision": [],
-        "proposal": [],
         "elixir": [],
         "action": [],
     }
@@ -477,7 +470,6 @@ def _render_today_text(feed: list[FeedEntry], summary: dict[str, object]) -> str
         ("Automation", "automation", "(automation idle)"),
         ("Needs Review", "decision", "(no pending review)"),
         ("Completed Elixirs", "elixir", "(no completed elixirs today)"),
-        ("L3 Proposals", "proposal", "(no L3 proposals need attention)"),
         ("Suggested Next Actions", "action", "(no suggested next actions)"),
     ]
 
@@ -494,7 +486,7 @@ def _render_today_text(feed: list[FeedEntry], summary: dict[str, object]) -> str
     lines.extend(
         [
             "Advanced",
-            "Run `aiwiki advanced ...` for system status, receipts, audit, repair, lanes, and debugging.",
+            "Run `aiwiki advanced ...` for system status, receipts, audit, repair, and debugging.",
             "Run `aiwiki advanced metrics` for knowledge compounding metrics.",
         ]
     )

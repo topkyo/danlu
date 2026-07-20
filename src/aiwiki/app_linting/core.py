@@ -187,7 +187,6 @@ from ..memory.execution_surfaces import (
 )
 from ..memory.graph_builder import build_machine_memory_graph
 from ..memory.graph_query import build_machine_memory_query
-from ..memory.graph_render import render_machine_memory_graph_html
 from ..memory.graph_transition import (
     append_machine_memory_history,
     summarize_machine_memory_transition,
@@ -202,7 +201,6 @@ from ..memory.paths import (
 from ..memory.state import load_machine_memory
 from ..memory.status import (
     render_drift_report,
-    render_graph_health,
     render_machine_memory_actions,
     render_machine_memory_index,
     render_machine_memory_repair_plan,
@@ -233,14 +231,8 @@ from ..render.cognitive_history import render_cognitive_history
 from ..render.compile_status import render_compile_status
 from ..render.furnace_center import (
     render_furnace_center,
-    render_furnace_center_html,
 )
 from ..render.judgment_assets import render_judgment_assets
-from ..render.packs import (
-    build_output_packs,
-    build_output_packs_incremental,
-    render_output_packs_index,
-)
 from ..render.paths import (
     agent_workbench_path,
     aging_report_path,
@@ -259,9 +251,6 @@ from ..render.paths import (
     graph_health_report_path,
     judgment_assets_path,
     machine_memory_actions_path,
-    machine_memory_drift_report_path,
-    machine_memory_graph_html_path,
-    machine_memory_graph_path,
     machine_memory_repair_plan_path,
     machine_memory_topology_path,
     output_packs_index_path,

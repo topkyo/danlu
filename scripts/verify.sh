@@ -27,7 +27,7 @@ Targets:
   llm-integration       Run LLM integration tests (76 tests, mock backends).
   cli-smoke             Check aiwiki CLI startup/help.
   product-shell-static  Run Product Shell JavaScript syntax checks.
-  all                   Run scripts + product-shell-static + cli-smoke + smoke + python-static + acceptance (25) + llm-integration (76); no coverage / legacy unit. Default.
+  all                   Run scripts + product-shell-static + cli-smoke + smoke + python-static + acceptance (16) + llm-integration (76); no coverage / legacy unit. Default.
 USAGE
 }
 

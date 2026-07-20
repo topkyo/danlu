@@ -19,7 +19,6 @@ from ..content.io import (
 )
 from ..content.rewrite import load_concept_rewrite_state
 from ..execution.history import load_llm_receipt_history, load_runtime_history
-from ..execution.l3_proposals import list_l3_proposals
 from ..execution.paths import llm_receipt_log_path, run_log_path
 from ..execution.policy import load_execution_receipt_history
 from ..input_router import is_obsidian_open_link

@@ -6,33 +6,20 @@ Submodules:
 - receipts: LLM audit, receipt, and run-log helpers
 - prompts: prompt profiles, builders, context, and validators
 - workflows: run_ask / run_nightly
-- alchemy: alchemy lifecycle, scoped primitives, lane, and auto orchestration
+- alchemy: alchemy lifecycle and scoped primitives
 - automation: auto_process_once / watch_inbox / inbox_snapshot
 """
 
 from __future__ import annotations
 
 from aiwiki.runner.alchemy import (  # noqa: F401
-    run_alchemy_auto,
     run_alchemy_demote,
     run_alchemy_distill,
-    run_alchemy_distill_apply,
-    run_alchemy_distill_preview,
     run_alchemy_finalize,
-    run_alchemy_judge_apply,
-    run_alchemy_judge_preview,
-    run_alchemy_judge_proposal_apply,
-    run_alchemy_judge_propose,
-    run_alchemy_lane_apply,
-    run_alchemy_lane_dry_run,
     run_alchemy_legacy_migration_apply,
     run_alchemy_legacy_migration_preview,
     run_alchemy_promote,
-    run_alchemy_propose_apply,
-    run_alchemy_propose_preview,
     run_alchemy_revert,
-    run_alchemy_review_apply,
-    run_alchemy_review_preview,
     run_alchemy_start,
     run_alchemy_superseded_cleanup_apply,
     run_alchemy_superseded_cleanup_preview,

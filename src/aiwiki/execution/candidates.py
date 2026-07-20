@@ -207,14 +207,6 @@ def write_machine_memory_anchor_frontmatter(path: Path, *, anchors: list[str]) -
     _write_frontmatter_string_list(path, "machine_memory_anchor_node_ids", anchors)
 
 
-def promote_candidate(root: Path, artifact_ref: str) -> dict[str, Any]:
-    """Legacy candidate promote path removed (W8): use judgment-only file-back instead."""
-    _ = (root, artifact_ref)
-    raise ValueError(
-        "promote_candidate via wiki/derived file-back was removed; use aiwiki file-back <artifact> (judgment-only)."
-    )
-
-
 def demote_candidate(root: Path, artifact_ref: str) -> dict[str, Any]:
     ensure_layout(root)
     _find_candidate(root, artifact_ref)

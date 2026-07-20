@@ -2,10 +2,6 @@ async function handleProductShellVaultChange(plugin, relativePath) {
   if (!relativePath) {
     return;
   }
-  if (relativePath === ".obsidian/graph.json" && typeof plugin.maybeRepairEvidenceGraphFilter === "function") {
-    void plugin.maybeRepairEvidenceGraphFilter().catch(() => {});
-    return;
-  }
   if (relativePath === SHELL_SUMMARY_PATH) {
     await plugin.loadShellSummaryFromDisk();
     return;
@@ -15,33 +11,7 @@ async function handleProductShellVaultChange(plugin, relativePath) {
   }
 }
 
-async function syncProductShellEvidenceGraphConfig(_plugin, { quiet = true } = {}) {
-  if (!quiet) {
-    new Notice("sync-evidence-graph was removed in W4; open wiki/evidence-graph.md directly.");
-  }
-  return null;
-}
-
-async function maybeRepairProductShellEvidenceGraphFilter(plugin) {
-  const adapter = plugin.app.vault.adapter;
-  const graphPath = ".obsidian/graph.json";
-  if (!(await adapter.exists(graphPath))) {
-    return;
-  }
-  try {
-    const raw = await adapter.read(graphPath);
-    const parsed = JSON.parse(raw);
-    const search = String(parsed.search || "").trim();
-    if (!search || search.includes("wiki/concepts")) {
-      await plugin.syncEvidenceGraphConfig({ quiet: true });
-    }
-  } catch {
-    await plugin.syncEvidenceGraphConfig({ quiet: true });
-  }
-}
-
 async function openProductShellEvidenceGraphView(plugin) {
-  await plugin.syncEvidenceGraphConfig({ quiet: false });
   await plugin.openWorkspacePath("wiki/evidence-graph.md");
   if (plugin.app.commands?.executeCommandById) {
     await plugin.app.commands.executeCommandById("graph:open");

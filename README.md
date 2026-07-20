@@ -24,7 +24,7 @@
 - 治理链：`review / aging / escalation / repair / nightly`
 - 判断层：`decision / judgment`
 - 协议层：单 runtime `general`（领域差异通过 schema / 概念 / judgment 扩展）
-- 执行层：`dry-run / bundle / apply / receipt / revert / audit`
+- 执行层：显式 LLM（`run-ask` / universal `drop` planner）+ deterministic `compile`/`lint` + receipt/audit 闭环
 
 Obsidian 是前端；炼丹炉是整个系统；`aiwiki` 是底层 runtime。Product Shell **仅正式支持 Desktop Obsidian**。
 
@@ -81,8 +81,8 @@ cd ../demo-furnace-vault
 
 `wiki/indexes/*.md`（除手写策略页 [wiki/indexes/README.md](./wiki/indexes/README.md)）是 **compile 生成的派生索引**，不入库。在 vault 内先 `compile`，再打开：
 
-- Obsidian：炉心 / 审阅 / 图谱等索引页（由 compile 写入 `wiki/indexes/`）
-- 本地 HTML：`output/control/furnace-center.html`、`output/control/execution-center.html`、`output/graph/machine-memory.html` 等
+- Obsidian：炉心 / 审阅 / 图谱等索引页（`wiki/indexes/`，由 compile 写入）
+- 机器记忆邻接：`.aiwiki/cache/machine-memory-graph.json`（compile 写入；**HTML 控制面已停写**）
 
 ## 协议与边界
 

@@ -19,7 +19,6 @@ from ..content.io import (
 )
 from ..content.rewrite import load_concept_rewrite_state
 from ..execution.history import load_llm_receipt_history, load_runtime_history
-from ..execution.l3_proposals import list_l3_proposals
 from ..execution.paths import llm_receipt_log_path, run_log_path
 from ..execution.policy import load_execution_receipt_history
 from ..input_router import is_obsidian_open_link
@@ -645,13 +644,10 @@ def shell_dashboard(
                 "label": "Planner blocked",
                 "value": planner.get("counts", {}).get("blocked", 0) if isinstance(planner, dict) else 0,
             },
-            {"id": "l3-proposals", "label": "L3 proposals", "value": review_counts.get("l3_proposal_attention", 0)},
-            {"id": "drift-warnings", "label": "Drift warnings", "value": len(drift_warnings)},
         ],
         "planner_next_action": dict(planner.get("next_action", {})) if isinstance(planner, dict) else {},
         "last_route": dict(route_telemetry.get("last_entry", {})) if isinstance(route_telemetry, dict) else {},
         "recent_runs": list(recent_runs[:4]),
         "recent_receipts": list(recent_receipts[:4]),
-        "drift_warnings": list(drift_warnings[:4]),
         "suggested_next_actions": list(suggested_next_actions[:6]),
     }

@@ -19,7 +19,6 @@ from ..content.io import (
 )
 from ..content.rewrite import load_concept_rewrite_state
 from ..execution.history import load_llm_receipt_history, load_runtime_history
-from ..execution.l3_proposals import list_l3_proposals
 from ..execution.paths import llm_receipt_log_path, run_log_path
 from ..execution.policy import load_execution_receipt_history
 from ..lifecycle.aging import collect_aging_signals
@@ -57,6 +56,7 @@ from ..render.paths import (
     execution_proposal_path,
     furnace_center_html_path,
     machine_memory_graph_html_path,
+    machine_memory_graph_path,
     output_packs_index_path,
     product_shell_html_path,
     review_center_html_path,
@@ -96,10 +96,12 @@ def shell_links(root: Path) -> dict[str, str]:
         "cognitive_history_markdown": "wiki/indexes/cognitive-history.md",
         "execution_audit_markdown": "wiki/indexes/execution-audit.md",
         "graph_view_markdown": "wiki/indexes/graph-view.md",
+        "machine_memory_graph_json": relative_path(root, machine_memory_graph_path(root)),
         "protocols_markdown": "wiki/indexes/protocols.md",
         "domain_pilots_markdown": "wiki/indexes/domain-pilots.md",
         "output_packs_markdown": "wiki/indexes/output-packs.md",
         "agent_workbench_markdown": "wiki/indexes/agent-workbench.md",
+        # Legacy HTML paths (stopped writing); Obsidian indexes + machine-memory-graph.json are primary.
         "furnace_center_html": relative_path(root, furnace_center_html_path(root)),
         "review_center_html": relative_path(root, review_center_html_path(root)),
         "execution_audit_html": relative_path(root, execution_audit_html_path(root)),
@@ -200,7 +202,6 @@ def shell_status_dashboard(root: Path) -> dict[str, Any]:
         "active_protocol": str(summary.get("active_protocol") or DEFAULT_PROTOCOL),
         "dashboard": dict(summary.get("dashboard", {})) if isinstance(summary.get("dashboard"), dict) else {},
         "suggested_next_actions": list(summary.get("suggested_next_actions", [])),
-        "drift_warnings": list(summary.get("drift_warnings", [])),
         "links": dict(summary.get("links", {})) if isinstance(summary.get("links"), dict) else {},
     }
 

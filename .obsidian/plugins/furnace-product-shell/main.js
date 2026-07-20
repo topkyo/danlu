@@ -2320,8 +2320,6 @@ const REVIEW_BUCKET_COPY = {
   escalated_actions: ["处理升级动作", "处理已升级、需要人工确认的动作"],
   escalation_candidates: ["处理升级候选", "确认是否需要人工介入"],
   judgment_review_actions: ["复核研究判断", "处理需要重新判断的结论"],
-  l3_proposals: ["处理 L3 提案", "确认采纳、拒绝或回滚提案"],
-  l3_proposal_attention: ["处理 L3 提案", "确认采纳、拒绝或回滚提案"],
   machine_memory_actions: ["修复机器记忆", "处理可审计的记忆修复动作"],
   overdue_actions: ["处理逾期动作", "确认是否继续执行或关闭"],
   overdue_reviews: ["处理逾期复审", "确认旧判断是否仍成立"],
@@ -2417,45 +2415,6 @@ function buildDriftEntries(summary) {
       summary: message || kindText || "证据已变",
       target: target || kindText,
       timestamp: firstText(item, "detected_at"),
-      protocol: firstText(item, "protocol"),
-    });
-  }
-  return entries;
-}
-
-function buildProposalEntries(summary) {
-  const reviewControls = summary.review_controls;
-  let source = null;
-  if (reviewControls && typeof reviewControls === "object") {
-    source = reviewControls.l3_proposals;
-  } else {
-    source = summary.l3_proposals;
-  }
-  const entries = [];
-  for (const item of dictItems(source)) {
-    if (!item.needs_attention) continue;
-    const proposalId = firstText(item, "proposal_id", "id", "subject_id");
-    const title = firstText(item, "title", "subject", "target_file", "proposal_id") || proposalId;
-    const target = firstText(item, "proposal_path", "path", "target_file", "proposal_id");
-    const timestamp = firstText(
-      item,
-      "updated_at",
-      "created_at",
-      "accepted_at",
-      "rejected_at",
-      "reverted_at",
-      "stale_at",
-      "revert_conflict_at"
-    );
-    if (!title || !target) continue;
-    const kindText = firstText(item, "kind") || "proposal";
-    const state = firstText(item, "state", "current_status") || "pending";
-    entries.push({
-      kind: "proposal",
-      title,
-      summary: `${kindText} 建议等待处理（${state}）`,
-      target,
-      timestamp,
       protocol: firstText(item, "protocol"),
     });
   }
@@ -4956,8 +4915,6 @@ const REVIEW_BUCKET_LABELS = {
   escalated_actions: ["处理升级动作", "处理已升级、需要人工确认的动作"],
   escalation_candidates: ["处理升级候选", "确认是否需要人工介入"],
   judgment_review_actions: ["复核研究判断", "处理需要重新判断的结论"],
-  l3_proposals: ["处理 L3 提案", "确认采纳、拒绝或回滚提案"],
-  l3_proposal_attention: ["处理 L3 提案", "确认采纳、拒绝或回滚提案"],
   machine_memory_actions: ["修复机器记忆", "处理可审计的记忆修复动作"],
   overdue_actions: ["处理逾期动作", "确认是否继续执行或关闭"],
   overdue_reviews: ["处理逾期复审", "确认旧判断是否仍成立"],
@@ -5588,8 +5545,6 @@ function reviewBucketDisplayLabel(plugin, target) {
     case "escalation_candidates": return plugin.t("升级候选");
     case "overdue_actions": return plugin.t("逾期动作");
     case "overdue_reviews": return plugin.t("逾期复审");
-    case "l3_proposals": return plugin.t("L3 提案");
-    case "l3_proposal_attention": return plugin.t("L3 提案需要关注");
     case "drift": return plugin.t("数据漂移");
     default: return plugin.t("待审队列");
   }
@@ -6081,11 +6036,6 @@ function renderRunDetail(plugin, container, record, options) {
     var firstProposalPath = rewriteProposalObjects[0] && rewriteProposalObjects[0].proposalPath ? rewriteProposalObjects[0].proposalPath : rewriteProposalPaths[0];
     var proposalButton = actions.createEl("button", { text: plugin.t("Open proposal") });
     proposalButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.openWorkspacePath(firstProposalPath); }, "Open rewrite proposal: " + firstProposalPath); });
-  }
-
-  if (rewriteProposalPaths.length) {
-    var reviewRewriteButton = actions.createEl("button", { text: plugin.t("Review Rewrite") });
-    reviewRewriteButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.openRewriteFollowup(record); }, "Rewrite follow-up: " + (record.args || record.command)); });
   }
 
   if (record.resultPath) {
@@ -7749,10 +7699,6 @@ async function handleProductShellVaultChange(plugin, relativePath) {
   if (!relativePath) {
     return;
   }
-  if (relativePath === ".obsidian/graph.json" && typeof plugin.maybeRepairEvidenceGraphFilter === "function") {
-    void plugin.maybeRepairEvidenceGraphFilter().catch(() => {});
-    return;
-  }
   if (relativePath === SHELL_SUMMARY_PATH) {
     await plugin.loadShellSummaryFromDisk();
     return;
@@ -7762,33 +7708,7 @@ async function handleProductShellVaultChange(plugin, relativePath) {
   }
 }
 
-async function syncProductShellEvidenceGraphConfig(_plugin, { quiet = true } = {}) {
-  if (!quiet) {
-    new Notice("sync-evidence-graph was removed in W4; open wiki/evidence-graph.md directly.");
-  }
-  return null;
-}
-
-async function maybeRepairProductShellEvidenceGraphFilter(plugin) {
-  const adapter = plugin.app.vault.adapter;
-  const graphPath = ".obsidian/graph.json";
-  if (!(await adapter.exists(graphPath))) {
-    return;
-  }
-  try {
-    const raw = await adapter.read(graphPath);
-    const parsed = JSON.parse(raw);
-    const search = String(parsed.search || "").trim();
-    if (!search || search.includes("wiki/concepts")) {
-      await plugin.syncEvidenceGraphConfig({ quiet: true });
-    }
-  } catch {
-    await plugin.syncEvidenceGraphConfig({ quiet: true });
-  }
-}
-
 async function openProductShellEvidenceGraphView(plugin) {
-  await plugin.syncEvidenceGraphConfig({ quiet: false });
   await plugin.openWorkspacePath("wiki/evidence-graph.md");
   if (plugin.app.commands?.executeCommandById) {
     await plugin.app.commands.executeCommandById("graph:open");
@@ -8756,9 +8676,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
     await this.loadPluginState();
     this.refreshRepoState();
-    if (typeof this.syncEvidenceGraphConfig === "function") {
-      void this.syncEvidenceGraphConfig({ quiet: true }).catch(() => {});
-    }
 
     this.registerView(VIEW_TYPE_FURNACE_CENTER, (leaf) => new FurnaceCenterView(leaf, this));
     this.addSettingTab(new FurnaceProductShellSettingTab(this.app, this));
@@ -9074,14 +8991,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return handleProductShellVaultChange(this, relativePath);
   }
 
-  async syncEvidenceGraphConfig({ quiet = true } = {}) {
-    return syncProductShellEvidenceGraphConfig(this, { quiet });
-  }
-
-  async maybeRepairEvidenceGraphFilter() {
-    return maybeRepairProductShellEvidenceGraphFilter(this);
-  }
-
   async openEvidenceGraphView() {
     return openProductShellEvidenceGraphView(this);
   }
@@ -9295,18 +9204,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   async runDroppedFilesWithAutoAsk({ files, question }) {
     return runProductShellDroppedFilesWithAutoAsk(this, { files, question });
-  }
-
-  async runReportSubgraphCommand({ reportPath }) {
-    new Notice(this.t("Report subgraph was removed in W4; open graph artifacts from output/ manually if needed."));
-  }
-
-  collectReportCandidates() {
-    return [];
-  }
-
-  openReportSubgraphPicker() {
-    this.runReportSubgraphCommand({ reportPath: "" });
   }
 
   async runDropUrlCommand({ url, title }) {

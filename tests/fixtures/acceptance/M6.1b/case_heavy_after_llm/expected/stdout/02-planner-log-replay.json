@@ -1,1 +1,0 @@
-{"duplicate_count": 0, "emitted_by_decision": {"enqueue-heavy": 1, "enqueue-light": 0, "escalate-human": 0, "generate-proposal": 0, "ignore": 0}, "invalid_count": 0, "log_path": ".aiwiki/state/planner-log.jsonl", "new_count": 1, "scanned_count": 1, "signals_path": ".aiwiki/state/signals.jsonl", "skip_examples": [], "status": "ok"}

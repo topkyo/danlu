@@ -20,8 +20,6 @@ const REVIEW_BUCKET_COPY = {
   escalated_actions: ["处理升级动作", "处理已升级、需要人工确认的动作"],
   escalation_candidates: ["处理升级候选", "确认是否需要人工介入"],
   judgment_review_actions: ["复核研究判断", "处理需要重新判断的结论"],
-  l3_proposals: ["处理 L3 提案", "确认采纳、拒绝或回滚提案"],
-  l3_proposal_attention: ["处理 L3 提案", "确认采纳、拒绝或回滚提案"],
   machine_memory_actions: ["修复机器记忆", "处理可审计的记忆修复动作"],
   overdue_actions: ["处理逾期动作", "确认是否继续执行或关闭"],
   overdue_reviews: ["处理逾期复审", "确认旧判断是否仍成立"],
@@ -117,45 +115,6 @@ function buildDriftEntries(summary) {
       summary: message || kindText || "证据已变",
       target: target || kindText,
       timestamp: firstText(item, "detected_at"),
-      protocol: firstText(item, "protocol"),
-    });
-  }
-  return entries;
-}
-
-function buildProposalEntries(summary) {
-  const reviewControls = summary.review_controls;
-  let source = null;
-  if (reviewControls && typeof reviewControls === "object") {
-    source = reviewControls.l3_proposals;
-  } else {
-    source = summary.l3_proposals;
-  }
-  const entries = [];
-  for (const item of dictItems(source)) {
-    if (!item.needs_attention) continue;
-    const proposalId = firstText(item, "proposal_id", "id", "subject_id");
-    const title = firstText(item, "title", "subject", "target_file", "proposal_id") || proposalId;
-    const target = firstText(item, "proposal_path", "path", "target_file", "proposal_id");
-    const timestamp = firstText(
-      item,
-      "updated_at",
-      "created_at",
-      "accepted_at",
-      "rejected_at",
-      "reverted_at",
-      "stale_at",
-      "revert_conflict_at"
-    );
-    if (!title || !target) continue;
-    const kindText = firstText(item, "kind") || "proposal";
-    const state = firstText(item, "state", "current_status") || "pending";
-    entries.push({
-      kind: "proposal",
-      title,
-      summary: `${kindText} 建议等待处理（${state}）`,
-      target,
-      timestamp,
       protocol: firstText(item, "protocol"),
     });
   }

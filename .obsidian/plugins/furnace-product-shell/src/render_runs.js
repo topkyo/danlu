@@ -105,11 +105,6 @@ function renderRunDetail(plugin, container, record, options) {
     proposalButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.openWorkspacePath(firstProposalPath); }, "Open rewrite proposal: " + firstProposalPath); });
   }
 
-  if (rewriteProposalPaths.length) {
-    var reviewRewriteButton = actions.createEl("button", { text: plugin.t("Review Rewrite") });
-    reviewRewriteButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.openRewriteFollowup(record); }, "Rewrite follow-up: " + (record.args || record.command)); });
-  }
-
   if (record.resultPath) {
     var outputButton = actions.createEl("button", { text: plugin.t("Open result") });
     outputButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.openWorkspacePath(record.resultPath); }, "Open result: " + record.resultPath); });

@@ -7,18 +7,12 @@ from pathlib import Path
 import pytest
 
 from tests.acceptance.case_runner import (
-    TRACE_ID,
     _copy_case_and_fix_clock_from,
     _run_cli,
-    _run_drift_scan,
     _run_drop_url,
-    _run_l3_proposal_apply_revert,
-    _run_lane_apply,
-    _run_observe_setup,
 )
 from tests.acceptance.llm_replay import inject_replay_client
 
-FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures" / "acceptance" / "M6.1"
 REFRESH = os.environ.get("AIWIKI_ACCEPTANCE_REFRESH") == "1"
 
 
@@ -116,32 +110,6 @@ def _assert_files_byte_equal(
             )
             continue
         _write_or_compare(golden, actual)
-
-
-def _snapshot_paths(root: Path, prefixes: tuple[str, ...]) -> dict[str, bytes]:  # pragma: no cover - explicit gate
-    snapshot: dict[str, bytes] = {}
-    for prefix in prefixes:
-        base = root / prefix
-        if not base.exists():
-            continue
-        for path in sorted(base.rglob("*")):
-            if path.is_file():
-                snapshot[path.relative_to(root).as_posix()] = path.read_bytes()
-    return snapshot
-
-
-def _read_optional_bytes(path: Path) -> bytes | None:  # pragma: no cover - explicit gate
-    return path.read_bytes() if path.exists() else None
-
-
-def _copy_case_and_fix_clock(  # pragma: no cover - exercised by explicit pytest acceptance gate
-    case_name: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> tuple[Path, Path]:
-    return _copy_case_and_fix_clock_from("M6.1", case_name, tmp_path, monkeypatch)
-
-
-def _run_b1_chain(vault: Path) -> tuple[bytes, bytes, bytes]:  # pragma: no cover - explicit pytest acceptance gate
-    return _run_observe_setup(vault)
 
 
 def test_happy_run_ask_replay(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -293,252 +261,6 @@ def test_w2_compounding_rank_and_suggest_acceptance(  # pragma: no cover - expli
         pytest.fail("Goldens refreshed; rerun without AIWIKI_ACCEPTANCE_REFRESH to verify.")
 
 
-def _assert_lane_receipt_fields(receipts: list[dict[str, object]], primitives: list[str]) -> None:
-    assert [record["primitive"] for record in receipts] == primitives
-    for record in receipts:
-        assert record["kind"] == "execution-receipt"
-        assert record["generated_by"] == "aiwiki-alchemy-lane"
-        assert record["operation"] == "alchemy-lane-primitive"
-        assert record["audit_stream"] == "execution_receipts"
-        assert record["audit_event"] == "execution_receipt_history_append"
-
-
-def test_m61_b1_execute_mode_auto_dry_run_acceptance(  # pragma: no cover - explicit pytest acceptance gate
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    case, vault = _copy_case_and_fix_clock("case_auto_dry_run", tmp_path, monkeypatch)
-
-    stdout_dir = case / "expected" / "stdout"
-    out1, out2, out3 = _run_b1_chain(vault)
-
-    _write_or_compare(stdout_dir / "01-signals-replay.json", out1)
-    _write_or_compare(stdout_dir / "02-planner-log-replay.json", out2)
-    _write_or_compare(stdout_dir / "03-alchemy-auto-dry-run.json", out3)
-
-    signals = _load_jsonl(vault / ".aiwiki/state/signals.jsonl")
-    assert signals
-    assert {record["trace_id"] for record in signals} == {TRACE_ID}
-
-    planner = _load_jsonl(vault / ".aiwiki/state/planner-log.jsonl")
-    assert planner
-    execute_records = [record for record in planner if record.get("mode") == "execute"]
-    assert execute_records
-    assert all(isinstance(record["dedupe_key"], str) and record["dedupe_key"] for record in execute_records)
-
-    auto = json.loads(out3)
-    assert auto["dry_run"] is True
-    assert auto["side_effects_allowed"] is False
-    assert auto.get("status") == "ok"
-    assert not (vault / ".aiwiki/state/execution-receipts.jsonl").exists()
-    assert not (vault / ".aiwiki/state/audit.jsonl").exists()
-
-    _assert_files_byte_equal(
-        vault,
-        case / "expected",
-        [".aiwiki/state/signals.jsonl", ".aiwiki/state/planner-log.jsonl"],
-    )
-    if REFRESH:
-        pytest.fail("Goldens refreshed; rerun without AIWIKI_ACCEPTANCE_REFRESH to verify.")
-
-
-def test_replay_idempotency_and_presentation_acceptance(  # pragma: no cover - explicit pytest acceptance gate
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    case, vault = _copy_case_and_fix_clock("case_idempotency_shell", tmp_path, monkeypatch)
-    stdout_dir = case / "expected" / "stdout"
-    out1, out2, out3 = _run_b1_chain(vault)
-    before_today = _snapshot_paths(vault, ("output/control", ".aiwiki/state", ".aiwiki/staging", "wiki"))
-    shell_summary_path = vault / "output/control/shell-summary.json"
-    shell_summary_before = _read_optional_bytes(shell_summary_path)
-    out4 = _run_cli(vault, ["today"])
-    after_today = _snapshot_paths(vault, ("output/control", ".aiwiki/state", ".aiwiki/staging", "wiki"))
-    assert after_today == before_today
-    assert _read_optional_bytes(shell_summary_path) == shell_summary_before
-
-    signals_first = (vault / ".aiwiki/state/signals.jsonl").read_bytes()
-    planner_first = (vault / ".aiwiki/state/planner-log.jsonl").read_bytes()
-
-    out1b, out2b, out3b = _run_b1_chain(vault)
-    before_today2 = _snapshot_paths(vault, ("output/control", ".aiwiki/state", ".aiwiki/staging", "wiki"))
-    out4b = _run_cli(vault, ["today"])
-    after_today2 = _snapshot_paths(vault, ("output/control", ".aiwiki/state", ".aiwiki/staging", "wiki"))
-
-    assert (vault / ".aiwiki/state/signals.jsonl").read_bytes() == signals_first
-    assert (vault / ".aiwiki/state/planner-log.jsonl").read_bytes() == planner_first
-    assert out4b == out4
-    assert before_today2 == after_today2
-    assert _read_optional_bytes(shell_summary_path) == shell_summary_before
-
-    assert json.loads(out1b)["new_count"] == 0
-    assert json.loads(out2b)["new_count"] == 0
-    out1c, out2c, out3c = _run_b1_chain(vault)
-    out4c = _run_cli(vault, ["today"])
-    assert json.loads(out1c)["new_count"] == 0
-    assert json.loads(out2c)["new_count"] == 0
-    assert out4c == out4b
-    assert (vault / ".aiwiki/state/signals.jsonl").read_bytes() == signals_first
-    assert (vault / ".aiwiki/state/planner-log.jsonl").read_bytes() == planner_first
-    _write_or_compare(stdout_dir / "pass1-01-signals-replay.json", out1)
-    _write_or_compare(stdout_dir / "pass1-02-planner-log-replay.json", out2)
-    _write_or_compare(stdout_dir / "pass1-03-alchemy-auto-dry-run.json", out3)
-    _write_or_compare(stdout_dir / "pass1-04-today.txt", out4)
-    _assert_files_byte_equal(
-        vault, case / "expected", [".aiwiki/state/signals.jsonl", ".aiwiki/state/planner-log.jsonl"]
-    )
-    if REFRESH:
-        pytest.fail("Goldens refreshed; rerun without AIWIKI_ACCEPTANCE_REFRESH to verify.")
-
-
-def test_heavy_primitives_receipt_acceptance(  # pragma: no cover - explicit pytest acceptance gate
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    case, vault = _copy_case_and_fix_clock("case_heavy_primitives", tmp_path, monkeypatch)
-    prompt_before = (vault / "prompts/ask.md").read_bytes()
-    stdout_dir = case / "expected" / "stdout"
-    out1, out2, out3 = _run_b1_chain(vault)
-    out4 = _run_lane_apply(
-        vault,
-        lane="heavy",
-        primitives=["review", "distill", "propose"],
-        note="M6.1 heavy primitives",
-    )
-
-    _write_or_compare(stdout_dir / "01-signals-replay.json", out1)
-    _write_or_compare(stdout_dir / "02-planner-log-replay.json", out2)
-    _write_or_compare(stdout_dir / "03-alchemy-auto-dry-run.json", out3)
-    if not REFRESH:
-        payload = json.loads(out4)
-        assert payload["lane"] == "heavy"
-        assert payload["primitives"] == ["review", "distill", "propose"]
-
-    receipts = _load_jsonl(vault / ".aiwiki/state/execution-receipts.jsonl")
-    assert [record["primitive"] for record in receipts] == ["review", "distill", "propose"]
-    expected = {
-        "review": ("aiwiki-alchemy-review", "alchemy-review-enqueue"),
-        "distill": ("aiwiki-alchemy-distill", "alchemy-distill-refresh"),
-        "propose": ("aiwiki-alchemy-propose", "alchemy-propose-generate"),
-    }
-    for record in receipts:
-        assert record["kind"] == "execution-receipt"
-        assert record["audit_stream"] == "execution_receipts"
-        assert record["audit_event"] == "execution_receipt_history_append"
-        assert (record["generated_by"], record["operation"]) == expected[record["primitive"]]
-
-    audit = _load_jsonl(vault / ".aiwiki/state/audit.jsonl")
-    assert [record["event_type"] for record in audit] == [
-        "alchemy-lane-started",
-        "alchemy-review-enqueue",
-        "alchemy-review-enqueued",
-        "alchemy-distill-refresh",
-        "alchemy-distill-refreshed",
-        "l3-proposal-create",
-        "alchemy-propose-generate",
-        "alchemy-propose-generated",
-        "alchemy-lane-completed",
-    ]
-    assert not {"l3-proposal-apply", "l3-proposal-accept", "judge"} & {record["event_type"] for record in audit}
-    assert all("#L" in str(record["source_ref"]) for record in audit)
-    assert (vault / "prompts/ask.md").read_bytes() == prompt_before
-    assert "aiwiki:alchemy-review-enqueue:start" in (vault / "wiki/indexes/review-queue.md").read_text(encoding="utf-8")
-    assert "distill_history" in (vault / ".aiwiki/staging/elixirs/elixir-b3.md").read_text(encoding="utf-8")
-    assert (vault / ".aiwiki/state/l3-proposals.json").exists()
-    assert list((vault / ".aiwiki/staging/proposals/prompt").glob("*.md"))
-    assert not list((vault / ".aiwiki/staging/proposals/policy").glob("*.md"))
-    assert len(_load_jsonl(vault / ".aiwiki/logs/llm-receipts.jsonl")) == 1
-
-    _assert_files_byte_equal(
-        vault,
-        case / "expected",
-        [
-            ".aiwiki/state/signals.jsonl",
-            ".aiwiki/state/planner-log.jsonl",
-            ".aiwiki/state/execution-receipts.jsonl",
-            ".aiwiki/state/audit.jsonl",
-        ],
-    )
-    if REFRESH:
-        pytest.fail("Goldens refreshed; rerun without AIWIKI_ACCEPTANCE_REFRESH to verify.")
-
-
-def test_heavy_after_llm_invariant(  # pragma: no cover - explicit pytest acceptance gate
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """B3: LLM-origin upstream artifact must not alter deterministic heavy primitive invariants."""
-    case, vault = _copy_case_and_fix_clock_from("M6.1b", "case_heavy_after_llm", tmp_path, monkeypatch)
-    stdout_dir = case / "expected" / "stdout"
-
-    out1, out2, out3 = _run_b1_chain(vault)
-    out4 = _run_lane_apply(
-        vault,
-        lane="heavy",
-        primitives=["review", "distill", "propose"],
-        note="M6.1 heavy primitives",
-    )
-
-    _write_or_compare(stdout_dir / "01-signals-replay.json", out1)
-    _write_or_compare(stdout_dir / "02-planner-log-replay.json", out2)
-    _write_or_compare(stdout_dir / "03-alchemy-auto-dry-run.json", out3)
-    _write_or_compare(stdout_dir / "04-alchemy-heavy-apply.json", out4)
-
-    if not REFRESH:
-        payload = json.loads(out4)
-        assert payload["lane"] == "heavy"
-        assert payload["primitives"] == ["review", "distill", "propose"]
-
-    receipts = _load_jsonl(vault / ".aiwiki/state/execution-receipts.jsonl")
-    primitive_receipts = [record for record in receipts if str(record.get("operation", "")).startswith("alchemy-")]
-    expected_per_primitive = [
-        ("aiwiki-alchemy-review", "alchemy-review-enqueue"),
-        ("aiwiki-alchemy-distill", "alchemy-distill-refresh"),
-        ("aiwiki-alchemy-propose", "alchemy-propose-generate"),
-    ]
-    actual = [
-        (record["generated_by"], record["operation"])
-        for record in primitive_receipts
-        if (record["generated_by"], record["operation"]) in expected_per_primitive
-    ]
-    assert actual == expected_per_primitive, f"primitive receipt sequence mismatch: {actual}"
-
-    audit_events = _load_jsonl(vault / ".aiwiki/state/audit.jsonl")
-    heavy_event_types = [
-        "alchemy-lane-started",
-        "alchemy-review-enqueue",
-        "alchemy-review-enqueued",
-        "alchemy-distill-refresh",
-        "alchemy-distill-refreshed",
-        "l3-proposal-create",
-        "alchemy-propose-generate",
-        "alchemy-propose-generated",
-        "alchemy-lane-completed",
-    ]
-    heavy_events = [
-        record.get("event_type") for record in audit_events if record.get("event_type") in heavy_event_types
-    ]
-    assert heavy_events == heavy_event_types, f"audit envelope mismatch: {heavy_events}"
-
-    audit_text = (vault / ".aiwiki/state/audit.jsonl").read_text(encoding="utf-8")
-    assert "lane_judge" not in audit_text
-    assert "auto_judge" not in audit_text
-    assert "l3-proposal-accept" not in audit_text
-    assert "l3-proposal-apply" not in audit_text
-
-    for record in primitive_receipts:
-        assert record.get("llm_invoked", False) is False, (
-            f"heavy primitive receipt should NOT mark llm_invoked: {record}"
-        )
-
-    _assert_files_byte_equal(
-        vault,
-        case / "expected",
-        [
-            ".aiwiki/state/signals.jsonl",
-            ".aiwiki/state/planner-log.jsonl",
-            ".aiwiki/state/execution-receipts.jsonl",
-            ".aiwiki/state/audit.jsonl",
-        ],
-    )
-    if REFRESH:
-        pytest.fail("Goldens refreshed; rerun without AIWIKI_ACCEPTANCE_REFRESH to verify.")
 
 
 def test_backend_failure_replay(  # pragma: no cover - explicit pytest acceptance gate
@@ -764,33 +486,10 @@ def test_file_back_accepts_path_inside_vault(tmp_path: Path) -> None:
     assert str(result.get("path") or "").startswith("wiki/judgments/")
 
 
-def test_l3_proposal_controls_emit_no_dead_command_hints(  # pragma: no cover - explicit pytest acceptance gate
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from aiwiki.app_shell.controls import l3_proposal_control_object
-
-    proposal = {
-        "proposal_id": "prop-w8",
-        "kind": "metadata_only",
-        "state": "candidate",
-        "target_file": "wiki/judgments/sample.md",
-        "proposal_path": "output/proposals/prop-w8.json",
-        "last_receipt_path": "output/control/execution-receipts/sample.json",
-        "patch": {"kind": "metadata_only"},
-        "review_state": "human_accepted",
-    }
-    control = l3_proposal_control_object(proposal)
-    hints = control.get("command_hints")
-    assert hints == {}
-    serialized = json.dumps(hints)
-    for dead_token in (" review proposal ", " apply ", " revert "):
-        assert dead_token not in f" {serialized} "
-
-
 def test_today_feed_contract(  # pragma: no cover - explicit pytest acceptance gate
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """M6.3 B4: aiwiki today 的 5 section heading + 文案契约。"""
+    """M6.3 B4: aiwiki today 的 section heading + 文案契约。"""
     _case, vault = _copy_case_and_fix_clock_from("M6.3", "case_today_feed", tmp_path, monkeypatch)
     out = _run_cli(vault, ["today"]).decode("utf-8")
 
@@ -798,7 +497,6 @@ def test_today_feed_contract(  # pragma: no cover - explicit pytest acceptance g
         "Today's Reports",
         "Needs Review",
         "Completed Elixirs",
-        "L3 Proposals",
         "Suggested Next Actions",
     ]:
         assert heading in out
@@ -807,7 +505,6 @@ def test_today_feed_contract(  # pragma: no cover - explicit pytest acceptance g
         "(no reports today)",
         "(no pending review)",
         "(no completed elixirs today)",
-        "(no L3 proposals need attention)",
         "(no suggested next actions)",
     ]:
         assert placeholder in out
@@ -819,26 +516,13 @@ def test_today_feed_contract(  # pragma: no cover - explicit pytest acceptance g
 
 
 def test_acceptance_no_stop_line_violations() -> None:
-    """B4 guardrail: acceptance goldens must not contain Stop Line violation keywords.
-
-    Exception: `D/case_l3_proposal_apply_revert/` deliberately exercises the L3
-    governance lane (create → apply → revert), so `l3-proposal-apply` is the
-    expected event/receipt name there, not a Stop Line violation. The case is
-    explicitly opt-in (not part of any nightly happy path) and remains covered
-    by `lane_judge` / `auto_judge` / `l3-proposal-accept` / `hidden_backend`
-    bans, which represent actual policy breaches.
-    """
+    """B4 guardrail: acceptance goldens must not contain Stop Line violation keywords."""
     forbidden = ["lane_judge", "auto_judge", "l3-proposal-accept", "l3-proposal-apply", "hidden_backend"]
     fixtures_root = Path(__file__).parent / "fixtures" / "acceptance"
-    exempt_l3_apply_case = "D/case_l3_proposal_apply_revert"
 
     def _check(path: Path) -> None:
-        rel = path.relative_to(fixtures_root).as_posix()
-        is_l3_apply_case = rel == exempt_l3_apply_case or rel.startswith(exempt_l3_apply_case + "/")
         text = path.read_text(encoding="utf-8", errors="replace")
         for term in forbidden:
-            if term == "l3-proposal-apply" and is_l3_apply_case:
-                continue
             assert term not in text, f"Stop Line violation in {path}: {term}"
 
     for golden in fixtures_root.glob("**/expected/files/*.golden"):
@@ -846,127 +530,6 @@ def test_acceptance_no_stop_line_violations() -> None:
 
     for stdout_file in fixtures_root.glob("**/expected/stdout/*.json"):
         _check(stdout_file)
-
-
-def test_light_primitives_compile_lint_acceptance(  # pragma: no cover - explicit pytest acceptance gate
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    case, vault = _copy_case_and_fix_clock("case_light_primitives_compile_lint", tmp_path, monkeypatch)
-    stdout_dir = case / "expected" / "stdout"
-    out1, out2, out3 = _run_b1_chain(vault)
-    out4 = _run_lane_apply(
-        vault,
-        lane="light",
-        primitives=["compile", "lint"],
-        note="M6.1 light compile+lint",
-    )
-
-    _write_or_compare(stdout_dir / "01-signals-replay.json", out1)
-    _write_or_compare(stdout_dir / "02-planner-log-replay.json", out2)
-    _write_or_compare(stdout_dir / "03-alchemy-auto-dry-run.json", out3)
-    if not REFRESH:
-        assert json.loads(out4)["primitives"] == ["compile", "lint"]
-        assert json.loads(out4)["lane"] == "light"
-
-    receipts = _load_jsonl(vault / ".aiwiki/state/execution-receipts.jsonl")
-    _assert_lane_receipt_fields(receipts, ["compile", "lint"])
-
-    audit = _load_jsonl(vault / ".aiwiki/state/audit.jsonl")
-    assert [record["event_type"] for record in audit] == [
-        "alchemy-lane-started",
-        "alchemy-lane-primitive",
-        "alchemy-lane-primitive",
-        "alchemy-lane-completed",
-    ]
-    assert [record["subject"]["id"] for record in audit] == [
-        "light:all",
-        "light:all:compile",
-        "light:all:lint",
-        "light:all",
-    ]
-    llm_receipts = _load_jsonl(vault / ".aiwiki/logs/llm-receipts.jsonl")
-    assert len(llm_receipts) == 1 and llm_receipts[0]["status"] == "failed"
-
-    _assert_files_byte_equal(
-        vault,
-        case / "expected",
-        [
-            ".aiwiki/state/signals.jsonl",
-            ".aiwiki/state/planner-log.jsonl",
-            ".aiwiki/state/execution-receipts.jsonl",
-            ".aiwiki/state/audit.jsonl",
-        ],
-    )
-    if REFRESH:
-        pytest.fail("Goldens refreshed; rerun without AIWIKI_ACCEPTANCE_REFRESH to verify.")
-
-
-def test_light_primitives_nightly_acceptance(  # pragma: no cover - explicit pytest acceptance gate
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    case, vault = _copy_case_and_fix_clock("case_light_primitives_nightly", tmp_path, monkeypatch)
-    stdout_dir = case / "expected" / "stdout"
-    out1, out2, out3 = _run_b1_chain(vault)
-    out4 = _run_lane_apply(
-        vault,
-        lane="light",
-        primitives=["nightly"],
-        note="M6.1 light nightly",
-    )
-
-    _write_or_compare(stdout_dir / "01-signals-replay.json", out1)
-    _write_or_compare(stdout_dir / "02-planner-log-replay.json", out2)
-    _write_or_compare(stdout_dir / "03-alchemy-auto-dry-run.json", out3)
-    if not REFRESH:
-        payload = json.loads(out4)
-        assert payload["primitives"] == ["nightly"]
-        assert payload["lane"] == "light"
-
-    receipts = _load_jsonl(vault / ".aiwiki/state/execution-receipts.jsonl")
-    _assert_lane_receipt_fields(receipts, ["nightly"])
-    audit = _load_jsonl(vault / ".aiwiki/state/audit.jsonl")
-    assert [record["event_type"] for record in audit] == [
-        "alchemy-lane-started",
-        "nightly",
-        "alchemy-lane-primitive",
-        "alchemy-lane-completed",
-    ]
-    assert [record["subject"]["id"] for record in audit] == ["light:all", "", "light:all:nightly", "light:all"]
-    assert len(_load_jsonl(vault / ".aiwiki/logs/llm-receipts.jsonl")) == 1
-
-    b2a_receipts = _load_jsonl(
-        FIXTURE_ROOT
-        / "case_light_primitives_compile_lint/expected/files/.aiwiki__state__execution-receipts.jsonl.golden"
-    )
-    b2a_audit = _load_jsonl(
-        FIXTURE_ROOT / "case_light_primitives_compile_lint/expected/files/.aiwiki__state__audit.jsonl.golden"
-    )
-    assert set(b2a_receipts[0]) == set(receipts[0])
-    stable = {"kind", "generated_by", "operation", "audit_stream", "audit_event", "lane", "scope", "status", "version"}
-    assert {key: b2a_receipts[0][key] for key in stable} == {key: receipts[0][key] for key in stable}
-    assert {record["event_type"] for record in b2a_audit} == {
-        "alchemy-lane-started",
-        "alchemy-lane-primitive",
-        "alchemy-lane-completed",
-    }
-    assert {record["event_type"] for record in audit if record["event_type"] != "nightly"} == {
-        "alchemy-lane-started",
-        "alchemy-lane-primitive",
-        "alchemy-lane-completed",
-    }
-
-    _assert_files_byte_equal(
-        vault,
-        case / "expected",
-        [
-            ".aiwiki/state/signals.jsonl",
-            ".aiwiki/state/planner-log.jsonl",
-            ".aiwiki/state/execution-receipts.jsonl",
-            ".aiwiki/state/audit.jsonl",
-        ],
-    )
-    if REFRESH:
-        pytest.fail("Goldens refreshed; rerun without AIWIKI_ACCEPTANCE_REFRESH to verify.")
 
 
 def test_metrics_report(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1130,8 +693,6 @@ def test_elixir_stage3_compounding(  # pragma: no cover - explicit pytest accept
 
     if REFRESH:
         pytest.fail("Goldens refreshed; rerun without AIWIKI_ACCEPTANCE_REFRESH=1 to verify byte-stable.")
-
-
 def test_file_back_judgment_preserves_derived_promoted_to(  # pragma: no cover - explicit pytest acceptance gate
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1230,57 +791,6 @@ def test_strict_loader_raises_on_corrupt_state(tmp_path: Path) -> None:
     assert "json decode failed" in ctx.value.reason
 
 
-def test_drift_scan_three_scanners(  # pragma: no cover - explicit pytest acceptance gate
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """B acceptance: drift_scan emits stale / changed-evidence / dependency-break findings.
-
-    Function-level (non-CLI) deterministic fixture covering all three scanners in
-    `aiwiki.drift_scan.drift_scan`. Asserts byte-stable artifacts for
-    `drift-aging.json` (overwrite), `signals.jsonl` (append), `runtime-history.jsonl`
-    (append), and the mirrored `audit.jsonl` record.
-
-    Fixture seeds (see `tests/fixtures/acceptance/B/case_drift_scan/root/`):
-    - `wiki/judgments/jud-stale.md` — `last_reviewed=2025-10-01` (208d before
-      FIXED_NOW=2026-04-27, past 180d STALE_JUDGMENT_DAYS_DEFAULT).
-    - `wiki/elixirs/elixir-changed.md` — citation_snapshots with a wrong digest
-      for `raw/evidence.md` (drifted) + a snapshot pointing at `raw/missing.md`
-      that does not exist on disk (stale_paths).
-    - `wiki/elixirs/elixir-broken.md` — `derived_from` references a judgment
-      path that does not exist on disk (dependency break).
-    """
-    case, vault = _copy_case_and_fix_clock_from("B", "case_drift_scan", tmp_path, monkeypatch)
-
-    result = _run_drift_scan(vault, monkeypatch, now="2026-04-27T00:00:00Z")
-
-    if not REFRESH:
-        assert len(result["stale_judgments"]) >= 1, result
-        assert any(f["judgment_id"] == "jud-stale" for f in result["stale_judgments"])
-        assert len(result["changed_evidence"]) >= 1, result
-        changed = result["changed_evidence"][0]
-        assert changed["asset_id"] == "elixir-changed"
-        assert "raw/evidence.md" in changed["drifted_paths"]
-        assert "raw/missing.md" in changed["stale_paths"]
-        assert len(result["dependency_breaks"]) >= 1, result
-        assert result["dependency_breaks"][0]["elixir_id"] == "elixir-broken"
-        assert result["signals_appended"] >= 3
-        assert result["errors"] == []
-
-    _assert_files_byte_equal(
-        vault,
-        case / "expected",
-        [
-            ".aiwiki/state/drift-aging.json",
-            ".aiwiki/state/signals.jsonl",
-            ".aiwiki/state/runtime-history.jsonl",
-            ".aiwiki/state/audit.jsonl",
-        ],
-    )
-
-    if REFRESH:
-        pytest.fail("Goldens refreshed; rerun without AIWIKI_ACCEPTANCE_REFRESH=1 to verify byte-stable.")
-
-
 def test_drop_url_writes_raw_note_and_logs(  # pragma: no cover - explicit pytest acceptance gate
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1309,63 +819,6 @@ def test_drop_url_writes_raw_note_and_logs(  # pragma: no cover - explicit pytes
         case / "expected",
         [
             result["note_path"],
-            ".aiwiki/state/runtime-history.jsonl",
-            ".aiwiki/state/audit.jsonl",
-        ],
-    )
-
-    if REFRESH:
-        pytest.fail("Goldens refreshed; rerun without AIWIKI_ACCEPTANCE_REFRESH=1 to verify byte-stable.")
-
-
-def test_l3_proposal_apply_then_revert(  # pragma: no cover - explicit pytest acceptance gate
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """D: L3 proposal create → apply → revert three-step chain.
-
-    Function-level (not CLI) to exercise the L3 governance lane explicitly,
-    isolated from nightly happy paths. `_run_l3_proposal_apply_revert` calls
-    `create_l3_proposal`, `apply_l3_proposal`, then `revert_l3_proposal`
-    against `prompts/test-prompt.md`. After revert the target bytes are
-    restored to the original seed, and two execution receipts plus matching
-    runtime-history / audit entries exist.
-
-    `aiwiki.execution.l3_proposals.utc_now` is patched by
-    `_copy_case_and_fix_clock_from` (module-local binding via
-    `from aiwiki.utils.time import utc_now`). `_unique_l3_action_id` is
-    suffix-stable from `proposal_id`, so receipt paths are deterministic.
-    This case is the documented exception to the `l3-proposal-apply`
-    stop-line scan in `test_acceptance_no_stop_line_violations`.
-    """
-    case, vault = _copy_case_and_fix_clock_from("D", "case_l3_proposal_apply_revert", tmp_path, monkeypatch)
-    apply_result, revert_result = _run_l3_proposal_apply_revert(vault)
-
-    assert apply_result["state"] == "accepted"
-    assert apply_result["proposal_id"] == "prop-test-prompt"
-    assert apply_result["receipt_path"].endswith("l3-proposal-apply-prop-test-prompt.json")
-
-    assert revert_result["state"] == "reverted"
-    assert revert_result["proposal_id"] == "prop-test-prompt"
-    assert revert_result["receipt_path"].endswith("l3-proposal-revert-prop-test-prompt.json")
-
-    # Contract hash invariants: revert restores byte-equality (restored_hash ==
-    # apply.before_hash) and the applied state was a real change (after_hash !=
-    # restored_hash). Asserting on the function return values (not just goldens)
-    # makes regressions diagnose-able without diffing 7 files.
-    assert revert_result["restored_hash"] == apply_result["before_hash"]
-    assert apply_result["after_hash"] != revert_result["restored_hash"]
-
-    # Target restored to original bytes after revert.
-    assert (vault / "prompts" / "test-prompt.md").read_text(encoding="utf-8") == "Original prompt body.\n"
-
-    _assert_files_byte_equal(
-        vault,
-        case / "expected",
-        [
-            "prompts/test-prompt.md",
-            ".aiwiki/state/l3-proposals.json",
-            ".aiwiki/state/execution-receipts/l3-proposal-apply-prop-test-prompt.json",
-            ".aiwiki/state/execution-receipts/l3-proposal-revert-prop-test-prompt.json",
             ".aiwiki/state/runtime-history.jsonl",
             ".aiwiki/state/audit.jsonl",
         ],

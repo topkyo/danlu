@@ -32,12 +32,12 @@ kind: "dashboard"
 ## 备用命令
 
 ```bash
-./scripts/aiwiki-launcher.sh shell-status
-./scripts/aiwiki-launcher.sh compile
-./scripts/aiwiki-launcher.sh ask "总结今天的关键变化" --format report
-./scripts/aiwiki-launcher.sh nightly
+./scripts/aiwiki-launcher.sh advanced shell-status
+./scripts/aiwiki-launcher.sh advanced compile
+./scripts/aiwiki-launcher.sh advanced run-ask "总结今天的关键变化" --format report
+./scripts/aiwiki-launcher.sh advanced run-nightly
 ```
 
-写操作遵守单写约束：不要同时在 Obsidian 和终端里各跑一个 `compile / nightly / apply / revert`。
+写操作遵守单写约束：不要同时在 Obsidian 和终端里各跑一个 `compile / run-nightly`。
 
 日常优先用 Product Shell；命令行只作备用。

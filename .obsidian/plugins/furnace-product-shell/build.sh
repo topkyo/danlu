@@ -49,9 +49,4 @@ HEADER
   done
 } > "$OUT"
 
-if grep -q 'void this.syncEvidenceGraphConfig' "$OUT" && ! grep -q 'async syncEvidenceGraphConfig' "$OUT"; then
-  echo "error: $OUT calls syncEvidenceGraphConfig but is missing the method — src/plugin.js not fully included" >&2
-  exit 1
-fi
-
 echo "Built $OUT ($(wc -l < "$OUT") lines)"

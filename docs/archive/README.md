@@ -43,3 +43,6 @@ updated_at: 2026-07-15
 | [Furnace Agentic Debt Autopilot](<./Furnace Agentic Debt Autopilot.md>) | autopilot 在 2026-06 dogfood proof 后无新推进；`scripts/dogfood_maturity_gate.py` 已删；Scorecard / PROGRESS 当前已不依赖 autopilot 路径 |
 | [Furnace Market Scan 2026Q2](<./Furnace Market Scan 2026Q2.md>) | 季度对标（2026 Q2）已过；与活跃 shipped-feature 一线不一致，史料保留 |
 | [Furnace RuntimeClient Mobile Companion Design](<./Furnace RuntimeClient Mobile Companion Design.md>) | 移动 companion implemented-slice 已交付；无独立 iOS 商店包（产品边界），进一步产品形态以后另起 plan |
+| [Furnace First-Principles Evaluation Report 2026-07](<./Furnace First-Principles Evaluation Report 2026-07.md>) | [Post-Cleanup Audit](<../Furnace Post-Cleanup Audit and Next Direction 2026-07.md>) + Scorecard |
+| [plans/](<./plans/>)（W1–W9、ingest-dedup、audit remediation 等） | 已完成执行计划；在途契约见 `docs/specs/2026-07-20-report-delete-provenance-gc.md` |
+| [specs/](<./specs/>)（freeform-ask、compounding、ingest-dedup） | 已落地原则/功能规格史料 |

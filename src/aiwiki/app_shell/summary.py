@@ -16,7 +16,6 @@ from ..content.archive import (
 from ..content.io import collect_recent_output_artifacts, summarize_runtime_event_for_shell
 from ..content.rewrite import load_concept_rewrite_state
 from ..execution.history import load_llm_receipt_history, load_runtime_history
-from ..execution.l3_proposals import list_l3_proposals
 from ..execution.paths import llm_receipt_log_path, run_log_path
 from ..execution.policy import load_execution_receipt_history
 from ..input_router import is_obsidian_open_link
@@ -80,11 +79,7 @@ from ..utils.path import relative_path
 from ..utils.text import tokenize
 from ..utils.time import utc_now
 from .compound_suggest import build_compound_suggest
-from .controls import (
-    rewrite_followup_actions_for_controls,
-    shell_execution_controls,
-    shell_review_controls,
-)
+from .controls import shell_execution_controls, shell_review_controls
 from .helpers import _build_llm_rerun_command, _first_non_empty
 from .meta import (
     shell_capabilities,
@@ -94,29 +89,13 @@ from .meta import (
 )
 from .surfaces import (
     shell_compound_suggest_actions,
-    shell_dashboard,
-    shell_drift_warnings,
     shell_latest_llm_run,
     shell_latest_shell_sync_run,
     shell_llm_health,
     shell_recent_receipts,
     shell_recent_runs,
-    shell_suggested_next_actions,
 )
 from .types import ShellSummary
-
-
-def _load_drift_aging_state(root: Path) -> dict[str, Any]:
-    from ..drift_scan import DRIFT_AGING_REL_PATH
-
-    path = root / DRIFT_AGING_REL_PATH
-    if not path.is_file():
-        return {}
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    return data if isinstance(data, dict) else {}
 
 
 def _build_knowledge_stats(
@@ -339,44 +318,12 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
         "overdue_actions": len(memory.get("health", {}).get("overdue_actions", [])),
         "escalated_actions": len(memory.get("health", {}).get("escalated_actions", [])),
     }
-    review_controls = shell_review_controls(
-        root,
-        queue=queue,
-        aging=aging,
-        active_protocol=protocol_state["active_protocol"],
-        judgment_assets=judgment_assets,
-        counter_evidence_scan=counter_evidence_scan if isinstance(counter_evidence_scan, dict) else {},
-        review_actions=judgment_review_actions if isinstance(judgment_review_actions, list) else [],
-    )
-    l3_review_controls = (
-        list(review_controls.get("l3_proposals", []))
-        if isinstance(review_controls.get("l3_proposals", []), list)
-        else []
-    )
-    review_backlog_counts["l3_proposals"] = len(l3_review_controls)
-    review_backlog_counts["l3_proposal_attention"] = sum(
-        1 for proposal in l3_review_controls if isinstance(proposal, dict) and proposal.get("needs_attention")
-    )
-    execution_controls = shell_execution_controls(root, memory)
-    review_backlog_counts.update(_action_review_backlog_counts(execution_controls))
-    rewrite_followup_actions = rewrite_followup_actions_for_controls(
-        list(review_controls.get("rewrite_proposals", []))
-        if isinstance(review_controls.get("rewrite_proposals", []), list)
-        else []
-    )
     recent_outputs = collect_recent_output_artifacts(root, limit=8)
     recent_receipts = shell_recent_receipts(root, limit=8)
     recent_runs = shell_recent_runs(root, limit=8)
     recent_raw_inputs = _build_recent_raw_inputs(root, limit=8)
-    drift_warnings = shell_drift_warnings(
-        memory,
-        judgment_assets=judgment_assets,
-        compile_state=compile_state,
-        aging_state=_load_drift_aging_state(root),
-    )
     counter_evidence_pages = _counter_evidence_pages_from_memory(counter_evidence_scan)
     metrics_history_delta = _build_metrics_history_delta(root, generated_at)
-    planner_log_preview = _build_planner_log_preview(root)
     compound_suggest = build_compound_suggest(
         root,
         memory=memory,
@@ -385,10 +332,7 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
         counter_evidence_pages=counter_evidence_pages,
     )
     compound_actions = shell_compound_suggest_actions(compound_suggest)
-    suggested_next_actions = compound_actions + shell_suggested_next_actions(
-        review_controls=review_controls,
-        execution_controls=execution_controls,
-    )
+    suggested_next_actions = compound_actions
     latest_llm_run = shell_latest_llm_run(root)
     latest_shell_sync_run = shell_latest_shell_sync_run(root)
     curated_page_roots = shell_curated_page_roots(root)
@@ -437,9 +381,6 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
             "judgment_focus": list(judgment_assets.get("judgment_focus", []))[:8],
             "strong_assets": list(judgment_assets.get("strong_assets", []))[:8],
         },
-        "review_controls": review_controls,
-        "rewrite_followup_actions": rewrite_followup_actions,
-        "execution_controls": execution_controls,
         "planner": planner_state,
         "route_telemetry": route_telemetry,
         "recent_outputs": recent_outputs,
@@ -448,10 +389,8 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
         "recent_raw_inputs": recent_raw_inputs,
         "watcher": _build_watcher_summary(root),
         "search_results": {"query": "", "limit": 0, "result_count": 0, "results": []},
-        "drift_warnings": drift_warnings,
         "counter_evidence_pages": counter_evidence_pages,
         "metrics_history_delta": metrics_history_delta,
-        "planner_log_preview": planner_log_preview,
         "compound_suggest": compound_suggest,
         "suggested_next_actions": suggested_next_actions,
         "nightly": _build_nightly_summary(root, nightly_state),
@@ -460,12 +399,37 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
         "links": shell_links(root),
         "capabilities": shell_capabilities(root),
     }
-    summary["dashboard"] = shell_dashboard(
-        summary,
-        drift_warnings=drift_warnings,
-        suggested_next_actions=suggested_next_actions,
-    )
     return summary
+
+
+def build_review_queue_controls(root: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+    """On-demand review/execution controls for review-queue detail (off shell-summary hot path)."""
+    ensure_layout(root)
+    protocol_state = shell_protocol_state(root)
+    active_protocol = protocol_state["active_protocol"]
+    decisions = collect_curated_pages(root, "decisions", "decision")
+    judgments = collect_curated_pages(root, "judgments", "judgment")
+    queue = review_queue(decisions, judgments, active_protocol=active_protocol)
+    aging = collect_aging_signals(decisions, judgments, active_protocol=active_protocol)
+    judgment_assets = judgment_asset_summary(
+        decisions,
+        judgments,
+        active_protocol=active_protocol,
+    )
+    memory = load_machine_memory(root)
+    counter_evidence_scan = memory.get("health", {}).get("counter_evidence_scan", {})
+    judgment_review_actions = memory.get("health", {}).get("judgment_review_actions", [])
+    review_controls = shell_review_controls(
+        root,
+        queue=queue,
+        aging=aging,
+        active_protocol=active_protocol,
+        judgment_assets=judgment_assets,
+        counter_evidence_scan=counter_evidence_scan if isinstance(counter_evidence_scan, dict) else {},
+        review_actions=judgment_review_actions if isinstance(judgment_review_actions, list) else [],
+    )
+    execution_controls = shell_execution_controls(root, memory)
+    return review_controls, execution_controls
 
 
 _DEAD_SUGGESTED_CLI_TOKENS = (
@@ -604,15 +568,6 @@ def thin_shell_summary_for_persist(summary: ShellSummary) -> ShellSummary:
             if value:
                 thin_links[key] = str(value)
 
-    review_controls = summary.get("review_controls")
-    thin_review: dict[str, Any] = {}
-    if isinstance(review_controls, dict):
-        l3_proposals = review_controls.get("l3_proposals")
-        if isinstance(l3_proposals, list):
-            thin_l3 = [item for item in l3_proposals if isinstance(item, dict) and item.get("needs_attention")][:8]
-            if thin_l3:
-                thin_review["l3_proposals"] = thin_l3
-
     persisted: ShellSummary = {
         "kind": str(summary.get("kind") or "product-shell-summary"),
         "contract_version": int(summary.get("contract_version") or 1),
@@ -629,9 +584,6 @@ def thin_shell_summary_for_persist(summary: ShellSummary) -> ShellSummary:
         else {},
         "counter_evidence_pages": list(summary.get("counter_evidence_pages", []))
         if isinstance(summary.get("counter_evidence_pages"), list)
-        else [],
-        "drift_warnings": list(summary.get("drift_warnings", []))
-        if isinstance(summary.get("drift_warnings"), list)
         else [],
         "compound_suggest": dict(summary.get("compound_suggest", {}))
         if isinstance(summary.get("compound_suggest"), dict)
@@ -653,8 +605,6 @@ def thin_shell_summary_for_persist(summary: ShellSummary) -> ShellSummary:
         "watcher": thin_watcher,
         "links": thin_links,
     }
-    if thin_review:
-        persisted["review_controls"] = thin_review
     return persisted
 
 
@@ -674,21 +624,6 @@ def _filter_shell_route_telemetry(route_telemetry: dict[str, Any]) -> dict[str, 
     else:
         filtered["last_entry"] = dict(entries[0]) if entries else {}
     return filtered
-
-
-def _action_review_backlog_counts(execution_controls: dict[str, Any]) -> dict[str, int]:
-    actions = execution_controls.get("actions") if isinstance(execution_controls, dict) else []
-    action_controls = [item for item in actions if isinstance(item, dict)] if isinstance(actions, list) else []
-    machine_memory_actions = [
-        item for item in action_controls if bool(item.get("can_apply")) or bool(item.get("can_review"))
-    ]
-    ready_actions = [
-        item
-        for item in action_controls
-        if str(item.get("current_status") or item.get("status") or "") == "accepted"
-        and (bool(item.get("can_apply")) or bool(item.get("can_review")) or bool(item.get("can_revert")))
-    ]
-    return {"machine_memory_actions": len(machine_memory_actions), "ready_actions": len(ready_actions)}
 
 
 def _counter_evidence_pages_from_memory(counter_evidence_scan: Any) -> list[dict[str, Any]]:
@@ -789,39 +724,6 @@ def _build_metrics_history_delta(root: Path, generated_at: str) -> dict[str, Any
         }
     except Exception as exc:  # pragma: no cover - best-effort
         return {"available": False, "reason": f"{type(exc).__name__}: {exc}"}
-
-
-def _build_planner_log_preview(root: Path) -> list[dict[str, Any]]:
-    """P0 — 浮出 planner-log 中等待人工决策的 generate-proposal 候选。
-
-    best-effort：planner-log 不存在 → []. 仅返回 eligible+blockers 的 dedup 字段。
-    """
-    try:
-        from aiwiki.execution.l3_proposals import preview_l3_proposal_generation
-
-        result = preview_l3_proposal_generation(root, limit=5)
-    except Exception:  # pragma: no cover - best-effort
-        return []
-    if not isinstance(result, dict):
-        return []
-    candidates = result.get("candidates")
-    if not isinstance(candidates, list):
-        return []
-    out: list[dict[str, Any]] = []
-    for item in candidates:
-        if not isinstance(item, dict):
-            continue
-        out.append(
-            {
-                "signal_id": str(item.get("signal_id") or ""),
-                "proposal_id": str(item.get("proposal_id") or ""),
-                "target_file": str(item.get("target_file") or ""),
-                "decided_at": str(item.get("decided_at") or ""),
-                "eligible": bool(item.get("eligible")),
-                "blockers": [str(b) for b in (item.get("blockers") or []) if isinstance(b, str)],
-            }
-        )
-    return out
 
 
 def _build_metrics_summary(root: Path) -> list[dict[str, object]]:

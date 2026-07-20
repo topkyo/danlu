@@ -34,11 +34,11 @@
 - 主验证入口：`bash scripts/verify.sh [target]`
 - 常用 target：`scripts`、`smoke`、`python-static`、`acceptance`、`llm-integration`、`cli-smoke`、`product-shell-static`、`all`
   - 日常：`scripts` + `python-static` + `smoke`（无 coverage，单次常 ~25s）；用 `bash scripts/verify_target_rules.sh` 按改动路径自动选
-  - `all` 走 `scripts + product-shell-static + cli-smoke + smoke + python-static + acceptance + llm-integration`（常约 1–2 min，**含 acceptance 25 fixture replay + Product Shell Jest 174 + LLM integration 76**）；不含 coverage gate
+  - `all` 走 `scripts + product-shell-static + cli-smoke + smoke + python-static + acceptance + llm-integration`（常约 1–2 min，**含 acceptance 16 fixture replay + Product Shell Jest 174 + LLM integration 76**）；不含 coverage gate
 - 按改动路径建议 target：`bash scripts/verify_target_rules.sh`
 - 已移除：`cache_benchmark.py` / `compile_benchmark.py` / `dogfood_maturity_gate.py` / `agos9_*.sh` 等耗时辅助脚本、`verify.sh` 内的 `coverage run pytest` 段（释放 12 min）以及旧 bundle drift gating；`product-shell-static` 现为 `node --check` + Jest hard-gate（可用 `AIWIKI_SKIP_PRODUCT_SHELL_JS_TESTS=1` 紧急旁路）；脚本侧只保留 vault/runtime/install/uninstall 核心
 - 文档一致性：`bash scripts/docs_consistency_check.sh`
-- `tests/` 范围已收缩到 acceptance-only + llm-integration：`tests/test_acceptance_loop.py` + `tests/acceptance/` + `tests/fixtures/` + `tests/test_llm_integration.py`（76 条 LLM 集成测试，mock backends），由 `bash scripts/verify.sh` 默认 `all` 跑 **25** acceptance tests + **76** llm-integration tests（含 plan/execute / CJK tokenize / distill synthesizer / GitHub raw rewrite / path false-positive 契约）；旧 144 个 pytest 单元测试文件（118 顶层 + 26 `tests/unit/`，约 56k LOC）作为 contract 已 retire，`coverage>=7.6,<8` 已从 dev deps 中移除
+- `tests/` 范围已收缩到 acceptance-only + llm-integration：`tests/test_acceptance_loop.py` + `tests/acceptance/` + `tests/fixtures/` + `tests/test_llm_integration.py`（76 条 LLM 集成测试，mock backends），由 `bash scripts/verify.sh` 默认 `all` 跑 **16** acceptance tests + **76** llm-integration tests（含 plan/execute / CJK tokenize / distill synthesizer / GitHub raw rewrite / path false-positive 契约）；旧 144 个 pytest 单元测试文件（118 顶层 + 26 `tests/unit/`，约 56k LOC）作为 contract 已 retire，`coverage>=7.6,<8` 已从 dev deps 中移除
 
 ## 风格
 
@@ -76,7 +76,7 @@
 - 维持 deterministic baseline + 显式 LLM 执行层；Shell/CLI 默认主路由是 `opencode-api/deepseek-v4-pro`，不自动跨 backend fallback，也不写占位式 deterministic fallback 成功内容。
 - 维持直接投喂入口：万能 `drop <payload>`（默认 LLM plan → deterministic execute；`AIWIKI_LLM_PLANNER=0` 可关）与 typed `drop url|pdf|image|repo|markdown|plan`；legacy `drop-url` / `drop-pdf` / `drop-image` / `drop-repo` 仍为 argv rewrite compat。
 - 维持单协议 runtime：`general` only。
-- 维持治理与执行层（CLI 入口经 W3 后收敛为 `advanced` 子命令或 library API）：`review / aging / escalation / repair / nightly / apply / revert / audit`。
+- 维持治理与执行层（CLI 入口经 W3 后收敛为 `advanced` 子命令或 library API）：`review-page`、`file-back`、金丹 `alchemy-*`、`run-nightly`、`watch`、`trace`、`shell-status` 等；L3 apply/revert、signals/planner-log、apply-action/rewrite/archive 等产品 CLI 已删，library 与 receipt 语义保留。
 - 保持 `raw/ -> wiki/ -> output/` 分层，不引入 hosted service、multi-user sync、heavy RAG infra 或 fine-tuning。
 - Product Shell 正式支持 Desktop Obsidian only；iPad/iOS 不做全功能直移植。
 
@@ -113,7 +113,7 @@
 4. [已落地] 删除纯 facade 文件：`app_content.py`、`app_render.py`、`app_surfaces.py`、`app_memory_surfaces.py`；`app_memory.py`（Round 8 commit `10a6186`）；`app.py` 缩成极薄入口。
 5. compat oracle（如 `tests/test_execution_compat.py`）与仅断言 re-export 的单测：删除或改成 owner 契约测试；[Round 3 已删除 144 pytest 单元测试 / 退休 `tests/unit/`]。
 6. [已落地 2026-07-18 commit `145276a`] legacy hub 下沉（用户显式覆盖原「另一条搬迁线」定案，一次做干净）：`app_utils.py` → `utils/` 子包（io/security/markdown/text/hash/time/path/json_utils/audit）；`app_state.py` → `state/` + owner 子包（compile/state、compile/build、content/material、content/archive、content/rewrite、execution/history、memory/action_state、memory/state、planner/state、lifecycle/knowledge）；`content/memory.py` 拆到 `memory/action_core` + `execution/policy` + `execution/patch_plan` + `execution/repair_plan`；`app_compile.py` ranking 函数迁到 `compile/ranking`。CLI 顶层双注册已取消：只保留 `drop/today/advanced`；`metrics` 经 argv rewrite compat 作为 `advanced` 子命令（见 `cli/legacy_argv.py`）。
-7. [已落地 2026-07-18 P2-9 hub 削薄彻底完成] 全部 `app_*` hub + 4 个巨石一次性削薄至零（facade→删除策略）：`app_compile.py` 删除；`app_lifecycle.py`（866）→ `lifecycle/knowledge.py` + `lifecycle/status.py`；`app_execution.py`（581）→ `execution/receipts.py` + `execution/history.py`；`app_protocol.py`（446）→ `protocol/scaffold.py` + `protocol/state.py` + `protocol/focus_scoring.py` + `protocol/review_windows.py` + 扩展 `protocol/runtime_schema.py` / `protocol/descriptors.py` / `protocol/runtime_config.py` / `state/manifest.py`；`app_cache.py`（857）→ 新 `cache/` 子包（core/sync/query/status/paths）；`app_vault.py`（761）→ 新 `vault/` 子包（templates/plugin/bootstrap）；`app_routing.py`（888）→ `content/material.py` + `content/archive.py` + `compile/ranking.py` + `content/io.py`；`app_compile_ops.py`（717）→ `protocol/state.py` + `render/protocols.py` + `execution/candidates.py` + `render/packs.py`；`app_queries.py`（852）→ `compile/ranking.py` + `compile/content_step.py` + `render/views.py` + `utils/text.py`；`app_memory_query.py`（479）→ `memory/query_routes.py` + `planner/state.py` + `content/concepts.py` + `execution/history.py`；`app_types.py`（302）→ 8 个 per-domain `types.py`（protocol/execution/lifecycle/planner/memory/app_shell/state/compile）；`app_state_paths.py`（279）→ 8 个 per-domain `paths.py` + 扩展 `render/paths.py`；`memory/graph.py`（1868）→ `memory/graph_render.py` + `memory/graph_anchors.py` + `memory/graph_query.py` + `memory/graph_transition.py`；`drop.py`（1806）→ `drop/` 包（common/url/pdf/image/repo/note）；`execution/alchemy.py`（1695）→ `execution/alchemy_helpers.py` + `execution/alchemy_receipts.py` + `execution/alchemy_migration.py` + `execution/alchemy_cleanup.py` + lifecycle 保留；`runner/workflows_ask.py`（1213）→ `runner/workflows_ask_context.py` + `runner/workflows_ask_frontmatter.py` + `runner/workflows_ask_status.py` + `runner/workflows_ask_receipts.py` + orchestration 保留。123 个 importer 全部改直引 owner 模块，9 个 facade + `app_types.py` + `app_state_paths.py` 全部删除。**`app_*` 文件归零**（0 个剩余）。当时验证 acceptance 24 + llm-integration 38 + python-static 全通过（现行口径见上文验证入口：**25** / **65**）。
+7. [已落地 2026-07-18 P2-9 hub 削薄彻底完成] 全部 `app_*` hub + 4 个巨石一次性削薄至零（facade→删除策略）。**`app_*` 文件归零**。现行验证口径见上文验证入口（acceptance **16** + llm-integration **76**）。
 
 ### 禁止
 
@@ -152,6 +152,7 @@
 
 ## 沟通
 
+- **说人话**（全局默认见 `~/.cursor/AGENTS.md`）：先说人听得懂的结论，再补证据；少堆术语与内部代号；命令/路径可保留原文，但要用白话包住含义。
 - 先结论，再证据，再建议。
 - 先回答问题，再做管理操作。
 - 不主动 `git commit` / `git push`，除非用户明确要求；用户说“提交并推送”时，默认直接在当前分支提交并推送。

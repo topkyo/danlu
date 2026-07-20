@@ -15,9 +15,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
     await this.loadPluginState();
     this.refreshRepoState();
-    if (typeof this.syncEvidenceGraphConfig === "function") {
-      void this.syncEvidenceGraphConfig({ quiet: true }).catch(() => {});
-    }
 
     this.registerView(VIEW_TYPE_FURNACE_CENTER, (leaf) => new FurnaceCenterView(leaf, this));
     this.addSettingTab(new FurnaceProductShellSettingTab(this.app, this));
@@ -333,14 +330,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return handleProductShellVaultChange(this, relativePath);
   }
 
-  async syncEvidenceGraphConfig({ quiet = true } = {}) {
-    return syncProductShellEvidenceGraphConfig(this, { quiet });
-  }
-
-  async maybeRepairEvidenceGraphFilter() {
-    return maybeRepairProductShellEvidenceGraphFilter(this);
-  }
-
   async openEvidenceGraphView() {
     return openProductShellEvidenceGraphView(this);
   }
@@ -554,18 +543,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   async runDroppedFilesWithAutoAsk({ files, question }) {
     return runProductShellDroppedFilesWithAutoAsk(this, { files, question });
-  }
-
-  async runReportSubgraphCommand({ reportPath }) {
-    new Notice(this.t("Report subgraph was removed in W4; open graph artifacts from output/ manually if needed."));
-  }
-
-  collectReportCandidates() {
-    return [];
-  }
-
-  openReportSubgraphPicker() {
-    this.runReportSubgraphCommand({ reportPath: "" });
   }
 
   async runDropUrlCommand({ url, title }) {

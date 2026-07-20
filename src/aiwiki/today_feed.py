@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-FeedKind = Literal["decision", "proposal", "report", "elixir", "automation", "action"]
+FeedKind = Literal["decision", "report", "elixir", "automation", "action"]
 FeedAudience = Literal["primary", "operator"]
 
 # 固定优先级：数字越小越靠前。同 priority 内按 timestamp desc。
@@ -20,9 +20,8 @@ _PRIORITY: dict[str, int] = {
     "report": 1,
     "automation": 2,
     "decision": 3,
-    "proposal": 4,
-    "elixir": 5,
-    "action": 6,
+    "elixir": 4,
+    "action": 5,
 }
 
 
@@ -37,8 +36,6 @@ _REVIEW_BUCKET_COPY: dict[str, tuple[str, str]] = {
     "escalated_actions": ("处理升级动作", "处理已升级、需要人工确认的动作"),
     "escalation_candidates": ("处理升级候选", "确认是否需要人工介入"),
     "judgment_review_actions": ("复核研究判断", "处理需要重新判断的结论"),
-    "l3_proposals": ("处理 L3 提案", "确认采纳、拒绝或回滚提案"),
-    "l3_proposal_attention": ("处理 L3 提案", "确认采纳、拒绝或回滚提案"),
     "machine_memory_actions": ("修复机器记忆", "处理可审计的记忆修复动作"),
     "overdue_actions": ("处理逾期动作", "确认是否继续执行或关闭"),
     "overdue_reviews": ("处理逾期复审", "确认旧判断是否仍成立"),
@@ -60,8 +57,6 @@ _PRIMARY_REVIEW_BUCKETS: set[str] = {
 }
 
 _ROUTINE_REVIEW_BUCKETS: set[str] = {
-    "l3_proposal_attention",
-    "l3_proposals",
     "machine_memory_actions",
     "overdue_actions",
     "overdue_reviews",
@@ -105,7 +100,6 @@ def build_today_feed(summary: dict[str, Any], *, audience: FeedAudience = "prima
         entries.extend(_build_decision_entries(summary, audience=audience))
         entries.extend(_build_counter_evidence_entries(summary))
         entries.extend(_build_drift_entries(summary))
-        entries.extend(_build_proposal_entries(summary))
         entries.extend(_build_elixir_entries(summary, today_date))
         entries.extend(_build_metric_alert_entries(summary))
         entries.extend(_build_action_entries(summary, audience=audience))
@@ -245,43 +239,6 @@ def _build_metric_alert_entries(summary: dict[str, Any]) -> list[FeedEntry]:
                 target=f"metric:{key}",
                 timestamp=baseline_ts,
                 protocol="",
-            )
-        )
-    return entries
-
-
-def _build_proposal_entries(summary: dict[str, Any]) -> list[FeedEntry]:
-    review_controls = summary.get("review_controls")
-    source = review_controls.get("l3_proposals") if isinstance(review_controls, dict) else summary.get("l3_proposals")
-    entries: list[FeedEntry] = []
-    for item in _dict_items(source):
-        if not item.get("needs_attention"):
-            continue
-        proposal_id = _first_text(item, "proposal_id", "id", "subject_id")
-        title = _first_text(item, "title", "subject", "target_file", "proposal_id") or proposal_id
-        target = _first_text(item, "proposal_path", "path", "target_file", "proposal_id")
-        timestamp = _first_text(
-            item,
-            "updated_at",
-            "created_at",
-            "accepted_at",
-            "rejected_at",
-            "reverted_at",
-            "stale_at",
-            "revert_conflict_at",
-        )
-        if not title or not target:
-            continue
-        kind_text = _first_text(item, "kind") or "proposal"
-        state = _first_text(item, "state", "current_status") or "pending"
-        entries.append(
-            FeedEntry(
-                kind="proposal",
-                title=title,
-                summary=f"{kind_text} 建议等待处理（{state}）",
-                target=target,
-                timestamp=timestamp,
-                protocol=_first_text(item, "protocol"),
             )
         )
     return entries
