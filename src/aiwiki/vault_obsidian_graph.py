@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from .content.page_sections import CONCEPT_LINKS, upsert_page_section
 from .utils.io import render_json_document, write_if_changed
 from .utils.markdown import parse_frontmatter, upsert_markdown_section
 
@@ -261,7 +262,7 @@ def apply_plain_concept_links_section(text: str) -> str:
         )
     else:
         return strip_concept_wikilinks(text)
-    updated = upsert_markdown_section(text, "Concept Links", section)
+    updated = upsert_page_section(text, CONCEPT_LINKS, section)
     return strip_concept_wikilinks(updated)
 
 

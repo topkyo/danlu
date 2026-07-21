@@ -1,0 +1,12 @@
+{
+  "backend": "opencode-api",
+  "model": "stub-model",
+  "prompt_hash": "4e99a7252025e639",
+  "response_id": "stub-response-id",
+  "response_text": "---\nkind: output\nformat: report\ngenerated_by: aiwiki-ask\n---\n\n# Stub\n\n## 结论\nCompounding rank replay.\n\n## 关键证据\n- wiki/judgments/compounding-thesis.md\n- wiki/elixirs/compounding-elixir.md\n\n## 引用\n- wiki/sources/compounding-source.md\n",
+  "sequence": 1,
+  "usage": {
+    "input_tokens": 10,
+    "output_tokens": 20
+  }
+}

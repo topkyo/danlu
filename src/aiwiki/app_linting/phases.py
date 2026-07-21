@@ -93,6 +93,7 @@ from ..content.memory import (
     remove_stale_generated_markdown_files,
 )
 from ..content.outputs import classify_recurring_output_kind
+from ..content.page_sections import CONFLICT_SIGNALS, EVIDENCE_GAPS, page_has_section
 from ..content.paths import (
     active_corpora_state_path,
     archive_candidates_state_path,
@@ -788,8 +789,8 @@ def _lint_governance_phase(context: _LintContext) -> None:
             context.add("warn", page, "Concept page kind is missing or incorrect.")
         if concept_summary_is_placeholder(content):
             context.add("warn", page, "Concept page still contains the fallback summary.")
-        for section in ("## Conflict Signals", "## Evidence Gaps"):
-            if section not in content:
+        for section in (CONFLICT_SIGNALS, EVIDENCE_GAPS):
+            if not page_has_section(content, section):
                 context.add("warn", page, f"Concept page is missing section `{section}`.")
         source_pages = frontmatter.get("source_pages", [])
         if not source_pages:
@@ -825,7 +826,7 @@ def _lint_governance_phase(context: _LintContext) -> None:
                         page,
                         "Concept page with `hardness >= medium` should be grounded by at least 3 source pages.",
                     )
-                conflict_section = preserved_section(content, "Conflict Signals", "")
+                conflict_section = preserved_section(content, CONFLICT_SIGNALS, "")
                 if "当前没有显式冲突信号" in conflict_section:
                     context.add(
                         "warn",

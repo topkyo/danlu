@@ -304,35 +304,35 @@ def render_source_page_with_state(
             "",
             f"# {entry['title']}",
             "",
-            "## Source Record",
-            f"- Source type: `{entry['source_type']}`",
-            f"- Original path: `{entry['original_path']}`",
-            f"- Stored path: `{entry['stored_path']}`",
-            f"- Imported at: `{entry['imported_at']}`",
-            f"- Updated at: `{entry.get('updated_at') or entry['imported_at']}`",
-            f"- SHA256: `{entry['sha256']}`",
+            "## 来源记录",
+            f"- 来源类型：`{entry['source_type']}`",
+            f"- 原始路径：`{entry['original_path']}`",
+            f"- 存储路径：`{entry['stored_path']}`",
+            f"- 入库时间：`{entry['imported_at']}`",
+            f"- 更新时间：`{entry.get('updated_at') or entry['imported_at']}`",
+            f"- SHA256：`{entry['sha256']}`",
             "",
             "## 原料文件",
             *raw_material_lines,
             "",
-            "## Summary",
+            "## 摘要",
             summary,
             "",
-            "## Concept Links",
+            "## 概念链接",
             *concept_links,
             "",
-            "## Enrichment TODO",
-            "- Refresh concept links when new sources shift the synthesis.",
-            "- Add backlinks from derived outputs that cite this page.",
-            "- Preserve provenance when replacing placeholder text.",
+            "## 充实待办",
+            "- 有新来源改变综合判断时，刷新概念链接。",
+            "- 为引用本页的派生输出补上反向链接。",
+            "- 替换占位正文时保留 provenance。",
             "",
-            "## Preview",
+            "## 预览",
             "```text",
             preview,
             "```",
             "",
-            "## Citation Anchor",
-            f"- Cite this page as `wiki/sources/{entry['id']}.md`.",
+            "## 引用锚点",
+            f"- 引用本页请写 `wiki/sources/{entry['id']}.md`。",
         ]
     )
     return body + "\n"
@@ -341,11 +341,15 @@ def render_source_page_with_state(
 def preserved_section(markdown: str, heading: str, fallback: str) -> str:
     if not markdown:
         return fallback
-    match = re.search(rf"(?ms)^## {re.escape(heading)}\n(.*?)(?=^## |\Z)", markdown)
-    if not match:
-        return fallback
-    section = match.group(1).strip()
-    return section or fallback
+    from .page_sections import section_candidates
+
+    for name in section_candidates(heading):
+        match = re.search(rf"(?ms)^## {re.escape(name)}\n(.*?)(?=^## |\Z)", markdown)
+        if not match:
+            continue
+        section = match.group(1).strip()
+        return section or fallback
+    return fallback
 
 
 def normalized_markdown_section_lines(markdown: str, heading: str) -> list[str]:

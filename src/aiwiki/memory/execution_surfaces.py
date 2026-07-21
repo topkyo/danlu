@@ -616,7 +616,7 @@ def render_concept_quality(memory: dict[str, Any]) -> str:
             )
             if proposal.get("rewrite_strategy"):
                 lines.append(f"  - strategy: {proposal['rewrite_strategy']}")
-    lines.extend(["", "## Conflict Signals"])
+    lines.extend(["", "## 冲突信号"])
     if not conflict_signals:
         lines.append("- 当前没有显式概念冲突信号。")
     else:
@@ -626,7 +626,7 @@ def render_concept_quality(memory: dict[str, Any]) -> str:
                 f" | signal `{signal.get('label', 'n/a')}`"
                 f" | sources `{', '.join(signal.get('source_pages', [])) or 'none'}`"
             )
-    lines.extend(["", "## Evidence Gaps"])
+    lines.extend(["", "## 证据缺口"])
     if not gap_signals:
         lines.append("- 当前没有显式证据缺口。")
     else:

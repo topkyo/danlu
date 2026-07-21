@@ -30,12 +30,12 @@ PATCH_PLAN_TEMPLATES: dict[str, dict[str, Any]] = {
         "roles": {
             "source": {
                 "mode": "update",
-                "sections": ("Related Concepts", "Summary", "Citations"),
+                "sections": ("概念链接", "摘要", "引用"),
                 "summary": "在来源页补 concept 引用，并保留 raw/source provenance。",
             },
             "concept": {
                 "mode": "update",
-                "sections": ("Related Sources", "Summary", "Related Concepts"),
+                "sections": ("相关来源", "摘要", "相关概念"),
                 "summary": "把来源页纳入概念页，并更新 grounded synthesis。",
             },
             "state": {
@@ -50,12 +50,12 @@ PATCH_PLAN_TEMPLATES: dict[str, dict[str, Any]] = {
         "roles": {
             "source": {
                 "mode": "update",
-                "sections": ("Summary", "Related Concepts", "Citations"),
+                "sections": ("摘要", "概念链接", "引用"),
                 "summary": "从来源页抽出候选概念并补引用。",
             },
             "concept": {
                 "mode": "update",
-                "sections": ("Related Sources", "Summary"),
+                "sections": ("相关来源", "摘要"),
                 "summary": "优先把来源接到已有稳定概念，而不是盲目新建概念。",
             },
             "index": {
@@ -70,7 +70,7 @@ PATCH_PLAN_TEMPLATES: dict[str, dict[str, Any]] = {
         "roles": {
             "concept": {
                 "mode": "update",
-                "sections": ("Summary", "Related Sources", "Related Concepts"),
+                "sections": ("摘要", "相关来源", "相关概念"),
                 "summary": "补来源覆盖、显式有限证据，并更新相关概念边界。",
             },
             "index": {
@@ -85,7 +85,7 @@ PATCH_PLAN_TEMPLATES: dict[str, dict[str, Any]] = {
         "roles": {
             "concept": {
                 "mode": "rewrite",
-                "sections": ("Summary", "Related Sources", "Related Concepts"),
+                "sections": ("摘要", "相关来源", "相关概念"),
                 "summary": "缩窄概念边界、保留拆分说明，并给出后续子概念方向。",
             },
             "index": {
@@ -100,7 +100,7 @@ PATCH_PLAN_TEMPLATES: dict[str, dict[str, Any]] = {
         "roles": {
             "concept": {
                 "mode": "review",
-                "sections": ("Summary", "Related Concepts", "Related Sources"),
+                "sections": ("摘要", "相关概念", "相关来源"),
                 "summary": "补 bridge maintenance note，明确为什么这个桥接概念还成立。",
             },
             "index": {
@@ -115,7 +115,7 @@ PATCH_PLAN_TEMPLATES: dict[str, dict[str, Any]] = {
         "roles": {
             "other": {
                 "mode": "semi-auto-apply",
-                "sections": ("frontmatter", "Citations"),
+                "sections": ("frontmatter", "引用"),
                 "summary": "重建 citation_snapshots，让 review / drift 检测重新收敛。",
             },
         },
@@ -156,14 +156,14 @@ def patch_sections_for_action(kind: str, role: str) -> tuple[str, ...]:
     if role in roles:
         return tuple(roles[role].get("sections", ()))
     fallback = {
-        "source": ("Summary", "Citations"),
-        "concept": ("Summary", "Related Sources", "Related Concepts"),
+        "source": ("摘要", "概念链接", "引用"),
+        "concept": ("摘要", "相关来源", "相关概念"),
         "index": ("Status", "Open Questions"),
         "state": ("state",),
-        "output": ("Summary",),
-        "other": ("Summary",),
+        "output": ("摘要",),
+        "other": ("摘要",),
     }
-    return fallback.get(role, ("Summary",))
+    return fallback.get(role, ("摘要",))
 
 
 def patch_summary_for_action(kind: str, role: str) -> str:

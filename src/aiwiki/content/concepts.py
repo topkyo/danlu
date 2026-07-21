@@ -614,7 +614,7 @@ def render_concept_page(record: dict[str, Any], compiled_at: str, existing_page:
     related_source_lines = [
         f"- `{entry['title']}`（`wiki/sources/{entry['id']}.md`）"
         for entry in sorted(record["entries"], key=lambda item: item["title"].lower())
-    ] or ["- No related source pages yet."]
+    ] or ["- 暂无相关来源页。"]
     related_concepts = record.get("related_slugs", [])
     related_concept_lines = [
         f"- `{record_for_slug['title']}`（`wiki/concepts/{record_for_slug['slug']}.md`）"
@@ -622,7 +622,7 @@ def render_concept_page(record: dict[str, Any], compiled_at: str, existing_page:
             [record["record_lookup"][slug] for slug in related_concepts if slug in record["record_lookup"]],
             key=lambda item: item["title"].lower(),
         )
-    ] or ["- No related concepts yet."]
+    ] or ["- 暂无相关概念。"]
     frontmatter_data: dict[str, Any] = {
         "id": f"concept-{record['slug']}",
         "kind": "concept",
@@ -649,7 +649,7 @@ def render_concept_page(record: dict[str, Any], compiled_at: str, existing_page:
         "",
         f"# {record['title']}",
         "",
-        "## Summary",
+        "## 摘要",
         summary,
         "",
         "## 阅读全文",
@@ -658,24 +658,24 @@ def render_concept_page(record: dict[str, Any], compiled_at: str, existing_page:
         "## 材料摘录",
         *(material_excerpt or ["- 暂无自动摘录；请打开「阅读全文」中的来源页或原料文件。"]),
         "",
-        "## Related Sources",
+        "## 相关来源",
         *related_source_lines,
         "",
-        "## Related Concepts",
+        "## 相关概念",
         *related_concept_lines,
         "",
-        "## Causal Network",
+        "## 因果网络",
         *render_concept_causal_lines(causal_links, record.get("record_lookup", {})),
         "",
-        "## Conflict Signals",
+        "## 冲突信号",
         *render_concept_conflict_lines(source_contexts),
         "",
-        "## Evidence Gaps",
+        "## 证据缺口",
         *render_concept_gap_lines(source_contexts),
         "",
-        "## Maintenance Notes",
-        "- Promote stable findings here instead of repeating the same synthesis across source pages.",
-        "- Keep contradictions and missing evidence explicit.",
+        "## 维护说明",
+        "- 稳定结论写在这里，避免在多篇来源页重复同一综合。",
+        "- 矛盾与缺失证据保持显式可见。",
     ]
     return "\n".join(lines) + "\n"
 

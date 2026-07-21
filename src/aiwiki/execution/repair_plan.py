@@ -376,7 +376,7 @@ def repair_execution_proposals(
             "summary": "补 source/concept 双向链接，并检查概念摘要是否需要吸收新证据。",
             "edits": [
                 "在 source page 里补 concept 引用或相关链接。",
-                "在 concept page 的 Related Sources 里加入该 source page。",
+                "在 concept page 的 相关来源 里加入该 source page。",
                 "如果来源提供新证据，重写 concept 摘要并保持 provenance。",
             ],
         },
