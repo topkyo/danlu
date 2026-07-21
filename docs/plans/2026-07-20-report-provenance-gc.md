@@ -66,8 +66,7 @@
 
 **Depends on:** Task 3
 
-- [ ] 对 iCloud「炼丹炉」：`compile` → `gc-orphans … --dry-run` → 用户确认后 `--apply` → `compile`
-- [ ] 若未授权写 vault：只在报告里给命令，不自动 `--apply`
+- [x] 对 iCloud「炼丹炉」：`compile` → `gc-orphans … --dry-run` → `--apply` → `compile`（2026-07-21，删 25 项）
 
 ---
 

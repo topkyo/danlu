@@ -113,7 +113,7 @@
 4. [已落地] 删除纯 facade 文件：`app_content.py`、`app_render.py`、`app_surfaces.py`、`app_memory_surfaces.py`；`app_memory.py`（Round 8 commit `10a6186`）；`app.py` 缩成极薄入口。
 5. compat oracle（如 `tests/test_execution_compat.py`）与仅断言 re-export 的单测：删除或改成 owner 契约测试；[Round 3 已删除 144 pytest 单元测试 / 退休 `tests/unit/`]。
 6. [已落地 2026-07-18 commit `145276a`] legacy hub 下沉：CLI 顶层只保留 `drop/today/advanced`；**无**顶层旧命令 argv rewrite（`cli/legacy_argv.py` 已删除）。
-7. [已落地 2026-07-18 P2-9 hub 削薄彻底完成] 全部 `app_*` hub + 4 个巨石一次性削薄至零（facade→删除策略）。**`app_*` 文件归零**。现行验证口径见上文验证入口（acceptance **16** + llm-integration **76**）。
+7. [已落地 2026-07-18 P2-9 hub 削薄彻底完成] 全部 `app_*` hub + 4 个巨石一次性削薄至零（facade→删除策略）。**`app_*` 文件归零**。现行验证口径见上文验证入口（acceptance **17** + llm-integration **76**）。
 
 ### 禁止
 
