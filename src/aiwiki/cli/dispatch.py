@@ -16,6 +16,7 @@ from ..execution.ask import (
     ask_question,
     file_back,
 )
+from ..execution.gc_orphans import run_gc_orphans
 from ..execution.review import review_page
 from ..execution.runtime_surfaces import (
     shell_status,
@@ -309,6 +310,18 @@ def _handle_ops(args: argparse.Namespace, root: Path) -> tuple[object, str | Non
             process_initial=not args.skip_initial,
             max_cycles=args.max_cycles,
         )
+    elif args.handler_command == "gc-orphans":
+        result = run_gc_orphans(
+            root,
+            apply=bool(getattr(args, "gc_apply", False)),
+            judgments=bool(getattr(args, "judgments", False)),
+            derived=bool(getattr(args, "derived", False)),
+            elixirs=bool(getattr(args, "elixirs", False)),
+            force_degraded=bool(getattr(args, "force_degraded", False)),
+            noise_concepts=bool(getattr(args, "noise_concepts", False)),
+            misdrops=bool(getattr(args, "misdrops", False)),
+            force=bool(getattr(args, "force", False)),
+        )
     else:
         raise ValueError(f"Unsupported command: {args.handler_command}")
     return _out(result, text_output)
@@ -369,6 +382,7 @@ _RUNTIME_WORKFLOW_HANDLERS = {
 _OPS_HANDLERS = {
     "llm-check": _handle_ops,
     "watch": _handle_ops,
+    "gc-orphans": _handle_ops,
 }
 
 _HANDLERS = {

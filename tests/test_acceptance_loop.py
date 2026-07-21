@@ -826,3 +826,131 @@ def test_drop_url_writes_raw_note_and_logs(  # pragma: no cover - explicit pytes
 
     if REFRESH:
         pytest.fail("Goldens refreshed; rerun without AIWIKI_ACCEPTANCE_REFRESH=1 to verify byte-stable.")
+
+
+def test_provenance_scrub_and_gc_orphans(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """KISS C2: compile scrub + advanced gc-orphans dry-run/apply."""
+    from aiwiki.utils.markdown import parse_frontmatter
+
+    vault = tmp_path / "vault"
+    for rel in (
+        "raw/inbox",
+        "wiki/sources",
+        "wiki/concepts",
+        "wiki/judgments",
+        "wiki/derived",
+        "wiki/elixirs",
+        "output/reports",
+        ".aiwiki/state",
+    ):
+        (vault / rel).mkdir(parents=True, exist_ok=True)
+
+    (vault / "wiki" / "sources" / "source-alive.md").write_text(
+        "---\nkind: source\nid: source-alive\nsource_files:\n  - raw/inbox/alive.md\n---\n\n# Alive source\n",
+        encoding="utf-8",
+    )
+    (vault / "raw" / "inbox" / "alive.md").write_text("# alive\n", encoding="utf-8")
+
+    # broken: only dead report refs
+    (vault / "wiki" / "judgments" / "judgment-broken.md").write_text(
+        "---\nkind: judgment\nid: judgment-broken\nsource_files:\n  - output/reports/missing-report.md\n---\n\n# Broken\n",
+        encoding="utf-8",
+    )
+    # degraded: dead report + live source
+    (vault / "wiki" / "judgments" / "judgment-degraded.md").write_text(
+        "---\nkind: judgment\nid: judgment-degraded\nsource_files:\n  - output/reports/missing-report.md\n  - wiki/sources/source-alive.md\n---\n\n# Degraded\n",
+        encoding="utf-8",
+    )
+    # noise concept + hub protected
+    (vault / "wiki" / "concepts" / "because.md").write_text(
+        "---\nkind: concept\nslug: because\n---\n\n# because\n",
+        encoding="utf-8",
+    )
+    (vault / "wiki" / "concepts" / "llm.md").write_text(
+        "---\nkind: concept\nslug: llm\n---\n\n# llm\n",
+        encoding="utf-8",
+    )
+    # misdrop
+    (vault / "raw" / "inbox" / "vphone-aio-note.md").write_text(
+        "# vphone-aio junk\n34306/vphone\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr("aiwiki.clock.utc_now", lambda: __import__("datetime").datetime(2026, 7, 20, tzinfo=__import__("datetime").timezone.utc))
+    _run_cli(vault, ["advanced", "compile"])
+
+    broken_fm = parse_frontmatter((vault / "wiki" / "judgments" / "judgment-broken.md").read_text(encoding="utf-8"))
+    degraded_fm = parse_frontmatter((vault / "wiki" / "judgments" / "judgment-degraded.md").read_text(encoding="utf-8"))
+    assert broken_fm.get("provenance_status") == "broken"
+    assert "output/reports/missing-report.md" not in (broken_fm.get("source_files") or [])
+    assert degraded_fm.get("provenance_status") == "degraded"
+    assert "wiki/sources/source-alive.md" in (degraded_fm.get("source_files") or [])
+
+    summary = json.loads(_run_cli(vault, ["advanced", "shell-status"]).decode("utf-8"))
+    counts = summary.get("review_backlog_counts") or {}
+    assert counts.get("provenance_broken", 0) >= 1
+    assert counts.get("provenance_degraded", 0) >= 1
+
+    dry = json.loads(
+        _run_cli(
+            vault,
+            [
+                "advanced",
+                "gc-orphans",
+                "--judgments",
+                "--noise-concepts",
+                "--misdrops",
+            ],
+        ).decode("utf-8")
+    )
+    dry_paths = {item["path"] for item in dry.get("candidates") or []}
+    assert "wiki/judgments/judgment-broken.md" in dry_paths
+    assert "wiki/judgments/judgment-degraded.md" not in dry_paths
+    assert "wiki/concepts/because.md" in dry_paths
+    assert "wiki/concepts/llm.md" not in dry_paths
+    assert any("vphone" in path for path in dry_paths)
+
+    forced = json.loads(
+        _run_cli(
+            vault,
+            [
+                "advanced",
+                "gc-orphans",
+                "--judgments",
+                "--force-degraded",
+            ],
+        ).decode("utf-8")
+    )
+    forced_paths = {item["path"] for item in forced.get("candidates") or []}
+    assert "wiki/judgments/judgment-degraded.md" in forced_paths
+
+    applied = json.loads(
+        _run_cli(
+            vault,
+            [
+                "advanced",
+                "gc-orphans",
+                "--apply",
+                "--judgments",
+                "--noise-concepts",
+                "--misdrops",
+            ],
+        ).decode("utf-8")
+    )
+    assert applied.get("dry_run") is False
+    assert not (vault / "wiki" / "judgments" / "judgment-broken.md").exists()
+    assert (vault / "wiki" / "judgments" / "judgment-degraded.md").exists()
+    assert not (vault / "wiki" / "concepts" / "because.md").exists()
+    assert (vault / "wiki" / "concepts" / "llm.md").exists()
+
+    # Second compile must keep broken/degraded sticky (do not flip back to ok).
+    (vault / "wiki" / "judgments" / "judgment-sticky.md").write_text(
+        "---\nkind: judgment\nid: judgment-sticky\nsource_files:\n  - output/reports/gone.md\n---\n\n# Sticky\n",
+        encoding="utf-8",
+    )
+    _run_cli(vault, ["advanced", "compile"])
+    sticky1 = parse_frontmatter((vault / "wiki" / "judgments" / "judgment-sticky.md").read_text(encoding="utf-8"))
+    assert sticky1.get("provenance_status") == "broken"
+    _run_cli(vault, ["advanced", "compile"])
+    sticky2 = parse_frontmatter((vault / "wiki" / "judgments" / "judgment-sticky.md").read_text(encoding="utf-8"))
+    assert sticky2.get("provenance_status") == "broken"

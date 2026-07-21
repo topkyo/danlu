@@ -1,7 +1,7 @@
 # Report Provenance Scrub + Explicit GC（KISS）
 
 **Date:** 2026-07-20  
-**Status:** Approved direction (C2 + ①′) → **scope tightened for KISS** (chat: 不扩张要收紧)
+**Status:** Implemented 2026-07-21（compile scrub + `gc-orphans` + ①′；dogfood 清炉已跑）
 
 ## Goal（只做三件事）
 

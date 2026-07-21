@@ -266,6 +266,49 @@ def _register_advanced_parsers(subparsers: argparse._SubParsersAction) -> None:
     review_queue_parser.add_argument("--json", action="store_true", help="Structured JSON output.")
     review_queue_parser.set_defaults(handler_command="review-queue")
 
+    gc_orphans_parser = subparsers.add_parser(
+        "gc-orphans",
+        help="显式 GC：清 broken file-back / 噪音概念 / 误投（默认 dry-run）。",
+    )
+    apply_group = gc_orphans_parser.add_mutually_exclusive_group()
+    apply_group.add_argument(
+        "--dry-run",
+        dest="gc_apply",
+        action="store_false",
+        help="只列候选（默认）。",
+    )
+    apply_group.add_argument(
+        "--apply",
+        dest="gc_apply",
+        action="store_true",
+        help="删除候选并写 execution receipt。",
+    )
+    gc_orphans_parser.set_defaults(gc_apply=False)
+    gc_orphans_parser.add_argument("--judgments", action="store_true", help="纳入 wiki/judgments。")
+    gc_orphans_parser.add_argument("--derived", action="store_true", help="纳入 wiki/derived。")
+    gc_orphans_parser.add_argument("--elixirs", action="store_true", help="纳入 wiki/elixirs。")
+    gc_orphans_parser.add_argument(
+        "--force-degraded",
+        action="store_true",
+        help="file-back 类同时删除 provenance_status=degraded。",
+    )
+    gc_orphans_parser.add_argument(
+        "--noise-concepts",
+        action="store_true",
+        help="删除噪音概念（词表∪singleton，白名单 hub 除外）。",
+    )
+    gc_orphans_parser.add_argument(
+        "--misdrops",
+        action="store_true",
+        help="删除 vphone 等误投指纹匹配的 raw/sources。",
+    )
+    gc_orphans_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="misdrop 仍被 judgment 引用时仍删 source。",
+    )
+    gc_orphans_parser.set_defaults(handler_command="gc-orphans")
+
     subparsers.add_parser("lint", help="Run deterministic lint checks against the wiki.")
     run_nightly_parser = subparsers.add_parser(
         "run-nightly",

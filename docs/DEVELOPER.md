@@ -42,7 +42,7 @@ related_docs:
 | Layer | Commands |
 |---|---|
 | `primary` | `drop`, `today`, `advanced` |
-| `advanced` | compile、lint、run-ask、file-back、review-page、watch、run-nightly、金丹链、metrics、trace、shell-status、llm-check 等（`advanced --help`） |
+| `advanced` | compile、lint、run-ask、file-back、review-page、watch、run-nightly、金丹链、metrics、trace、shell-status、llm-check、gc-orphans 等（`advanced --help`） |
 
 ## 验证
 
@@ -56,7 +56,7 @@ bash scripts/docs_consistency_check.sh
 
 | Target | 内容 |
 |---|---|
-| `acceptance` | **16** tests — `tests/test_acceptance_loop.py`（`case_*` fixture + path safety 等） |
+| `acceptance` | **17** tests — `tests/test_acceptance_loop.py`（`case_*` fixture + path safety + provenance GC 等） |
 | `llm-integration` | **76** tests — `tests/test_llm_integration.py`（mock backends） |
 | `product-shell-static` | `node --check` + Jest **173** hard-gate |
 | 其余 | scripts、cli-smoke、smoke、python-static |
@@ -86,6 +86,7 @@ W3 已删 `run-compile` / `run-lint` 与 AgentOS governance CLI。`auto_adopt.py
 
 1. **证据关系链（用户默认）**：Obsidian Graph — `output/reports` → `wiki/sources` → `raw/inbox`（+ 可选 judgment）。`compile` 会恢复 `.obsidian/graph.json`。
 2. **机器记忆（维护用）**：`.aiwiki/cache/machine-memory-graph.json`（compile 写入的邻接导出）+ `.aiwiki/state/` 内 machine-memory JSON。**HTML 图谱（`output/graph/machine-memory.html`）已停写**；历史路径可能仍存在于 vault 模板，勿再当主维护入口。
+3. **删报告后**：compile scrub 死 `output/reports` 引用并写 `provenance_status`；清炉用 `aiwiki advanced gc-orphans`（默认 dry-run，见 spec）。
 
 详见 `wiki/indexes/README.md`（indexes 由 compile 生成）。
 

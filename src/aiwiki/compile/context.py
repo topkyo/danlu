@@ -80,6 +80,9 @@ class CompileContext:
     dirty_domain_pilot_protocols: list[str] = field(default_factory=list)
     clean_domain_pilot_protocols: list[str] = field(default_factory=list)
     cache_status: dict[str, Any] = field(default_factory=dict)
+    provenance_degraded: int = 0
+    provenance_broken: int = 0
+    provenance_dead_report_refs_stripped: int = 0
 
     def write_index_artifact(self, destination: Path, content: str) -> int:
         wrote, dirty = write_if_changed_ignoring_timestamps(destination, content)

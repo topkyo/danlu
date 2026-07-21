@@ -22,6 +22,7 @@ from ..input_router import is_obsidian_open_link
 from ..lifecycle.aging import collect_aging_signals
 from ..lifecycle.knowledge import knowledge_lifecycle_governance_summary, load_knowledge_lifecycle_state
 from ..lifecycle.paths import nightly_health_state_path
+from ..lifecycle.provenance_scrub import count_provenance_statuses
 from ..lifecycle.status import (
     action_transition_profile,
     archive_transition_profile,
@@ -300,6 +301,7 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
     counter_evidence_scan = memory.get("health", {}).get("counter_evidence_scan", {})
     judgment_review_actions = memory.get("health", {}).get("judgment_review_actions", [])
     nightly_state = load_json_document(nightly_health_state_path(root))
+    provenance_counts = count_provenance_statuses(root)
     review_backlog_counts = {
         "pending_decisions": len(queue["pending_decisions"]),
         "pending_judgments": len(queue["pending_judgments"]),
@@ -317,6 +319,8 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
         "ready_actions": memory.get("health", {}).get("repair_plan", {}).get("counts", {}).get("ready", 0),
         "overdue_actions": len(memory.get("health", {}).get("overdue_actions", [])),
         "escalated_actions": len(memory.get("health", {}).get("escalated_actions", [])),
+        "provenance_degraded": int(provenance_counts.get("provenance_degraded") or 0),
+        "provenance_broken": int(provenance_counts.get("provenance_broken") or 0),
     }
     recent_outputs = collect_recent_output_artifacts(root, limit=8)
     recent_receipts = shell_recent_receipts(root, limit=8)

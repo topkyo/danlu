@@ -11,6 +11,7 @@ from .content_step import compile_content_phase
 from .context import CompileContext, start_compile_context
 from .output_step import compile_output_phase
 from .persist_step import finalize_compile_phase
+from .provenance_step import compile_provenance_scrub_phase
 from .runtime_step import compile_runtime_phase
 
 CompileStep = Callable[[CompileContext], None]
@@ -27,6 +28,7 @@ def compile_wiki(root: Path, *, force_cache_rebuild: bool = False) -> dict[str, 
 def _compile_steps() -> tuple[CompileStep, ...]:
     return (
         compile_content_phase,
+        compile_provenance_scrub_phase,
         compile_runtime_phase,
         compile_output_phase,
     )
