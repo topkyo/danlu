@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,13 @@ _CURATED_REL_DIRS = (
     "wiki/derived",
     "wiki/elixirs",
 )
+# Paths in prose / backticks / markdown links — capture the report path only.
+_BODY_REPORT_PATH = re.compile(
+    r"(?<![A-Za-z0-9_./-])"
+    r"(output/reports/[A-Za-z0-9._/-]+\.md)"
+    r"(?![A-Za-z0-9_./-])"
+)
+_BODY_DEAD_REPORT_REPLACEMENT = "（报告已删除）"
 
 
 def is_report_ref(value: str) -> bool:
@@ -77,11 +85,32 @@ def classify_after_strip(root: Path, kept_paths: list[str], *, had_dead_reports:
     return "broken"
 
 
+def scrub_body_dead_reports(root: Path, body: str) -> tuple[str, list[str]]:
+    """Replace missing output/reports/... paths in markdown body with a short note."""
+    stripped: list[str] = []
+
+    def _replace(match: re.Match[str]) -> str:
+        path = match.group(1).replace("\\", "/")
+        if path_exists_in_root(root, path):
+            return match.group(0)
+        stripped.append(path)
+        return _BODY_DEAD_REPORT_REPLACEMENT
+
+    rewritten = _BODY_REPORT_PATH.sub(_replace, body)
+    return rewritten, stripped
+
+
 def scrub_page_text(root: Path, text: str) -> tuple[str, dict[str, Any]]:
     """Scrub one markdown page. Returns (new_text, meta)."""
     frontmatter = parse_frontmatter(text)
+    body = strip_frontmatter(text)
+    new_body, body_stripped = scrub_body_dead_reports(root, body)
+
     if not frontmatter:
-        return text, {"changed": False, "status": "ok", "stripped": []}
+        if not body_stripped:
+            return text, {"changed": False, "status": "ok", "stripped": []}
+        rewritten = new_body if new_body.endswith("\n") else new_body + "\n"
+        return rewritten, {"changed": True, "status": "ok", "stripped": body_stripped}
 
     stripped_all: list[str] = []
     source_files = frontmatter_string_list(frontmatter, "source_files")
@@ -95,8 +124,9 @@ def scrub_page_text(root: Path, text: str) -> tuple[str, dict[str, Any]]:
     stripped_all.extend(stripped_sf)
     stripped_all.extend(stripped_df)
     stripped_all.extend(stripped_cit)
+    stripped_all.extend(body_stripped)
 
-    had_dead = bool(stripped_all)
+    had_dead = bool(stripped_sf or stripped_df or stripped_cit)
     previous_status = str(frontmatter.get("provenance_status") or "").strip()
     if had_dead:
         status = classify_after_strip(
@@ -112,35 +142,41 @@ def scrub_page_text(root: Path, text: str) -> tuple[str, dict[str, Any]]:
             new_source == source_files
             and new_derived == derived_from
             and (not isinstance(citations, list) or new_citations == citation_list)
+            and not body_stripped
         ):
             return text, {"changed": False, "status": previous_status or "ok", "stripped": []}
         status = previous_status or "ok"
 
-    changed = (
+    fm_changed = (
         new_source != source_files
         or new_derived != derived_from
         or (isinstance(citations, list) and new_citations != citation_list)
         or previous_status != status
         or had_dead
     )
-    if not changed:
+    if not fm_changed and not body_stripped:
         return text, {"changed": False, "status": previous_status or status, "stripped": []}
 
-    frontmatter["source_files"] = new_source
-    if "derived_from" in frontmatter or new_derived:
-        frontmatter["derived_from"] = new_derived
-    if isinstance(citations, list) or stripped_cit:
-        frontmatter["citations"] = new_citations
-    if had_dead or previous_status in {"degraded", "broken"} or status in {"degraded", "broken"}:
-        frontmatter["provenance_status"] = status
-    elif previous_status:
-        frontmatter["provenance_status"] = status
+    if fm_changed:
+        frontmatter["source_files"] = new_source
+        if "derived_from" in frontmatter or new_derived:
+            frontmatter["derived_from"] = new_derived
+        if isinstance(citations, list) or stripped_cit:
+            frontmatter["citations"] = new_citations
+        if had_dead or previous_status in {"degraded", "broken"} or status in {"degraded", "broken"}:
+            frontmatter["provenance_status"] = status
+        elif previous_status:
+            frontmatter["provenance_status"] = status
 
-    body = strip_frontmatter(text)
-    rendered = render_frontmatter(frontmatter) + ("\n\n" + body if body.strip() else "\n")
+    rendered = render_frontmatter(frontmatter) + ("\n\n" + new_body if new_body.strip() else "\n")
     if not rendered.endswith("\n"):
         rendered += "\n"
-    return rendered, {"changed": True, "status": status, "stripped": stripped_all}
+    return rendered, {
+        "changed": True,
+        "status": status if fm_changed or previous_status else (previous_status or "ok"),
+        "stripped": stripped_all,
+        "body_stripped": body_stripped,
+    }
 
 
 def iter_curated_pages(root: Path) -> list[Path]:
@@ -202,6 +238,7 @@ __all__ = [
     "is_report_ref",
     "iter_curated_pages",
     "path_exists_in_root",
+    "scrub_body_dead_reports",
     "scrub_curated_pages",
     "scrub_page_text",
 ]

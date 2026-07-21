@@ -86,7 +86,8 @@ W3 已删 `run-compile` / `run-lint` 与 AgentOS governance CLI。`auto_adopt.py
 
 1. **证据关系链（用户默认）**：Obsidian Graph — `output/reports` → `wiki/sources` → `raw/inbox`（+ 可选 judgment）。`compile` 会恢复 `.obsidian/graph.json`。
 2. **机器记忆（维护用）**：`.aiwiki/cache/machine-memory-graph.json`（compile 写入的邻接导出）+ `.aiwiki/state/` 内 machine-memory JSON。**HTML 图谱（`output/graph/machine-memory.html`）已停写**；历史路径可能仍存在于 vault 模板，勿再当主维护入口。
-3. **删报告后**：compile scrub 死 `output/reports` 引用并写 `provenance_status`；清炉用 `aiwiki advanced gc-orphans`（默认 dry-run，见 spec）。
+3. **删报告后**：compile scrub 死 `output/reports` 引用（frontmatter + 正文）并写 `provenance_status`；清炉用 `aiwiki advanced gc-orphans`（默认 dry-run，见 spec）。
+4. **概念硬度**：`hardness: soft|medium|hard`。≤1 个 source 的概念 compile 强制 `soft`；≥4 sources 的过载概念 lint 告警（拆分走 repair backlog / `split-overloaded-concept`）。勿手工把噪音概念升到 medium+。
 
 详见 `wiki/indexes/README.md`（indexes 由 compile 生成）。
 

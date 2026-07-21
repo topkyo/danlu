@@ -595,6 +595,9 @@ def render_concept_page(record: dict[str, Any], compiled_at: str, existing_page:
     )
     causal_links = parse_causal_links(existing_frontmatter) if not source_changed else []
     source_pages = concept_source_pages(record)
+    # Thin / noisy concepts stay soft even if an old medium/hard value lingered.
+    if len(source_pages) <= 1:
+        hardness = "soft"
     render_signature = str(record.get("render_signature") or concept_render_signature(record["root"], record))
     source_contexts = [
         load_source_page_context(record["root"], f"wiki/sources/{entry_id}.md") for entry_id in record["entry_ids"]

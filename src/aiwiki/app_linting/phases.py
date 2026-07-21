@@ -837,6 +837,20 @@ def _lint_governance_phase(context: _LintContext) -> None:
             if not candidate.exists():
                 context.add("error", page, f"Concept page references missing source page: `{source_page}`.")
 
+    memory = context.pack_memory if isinstance(getattr(context, "pack_memory", None), dict) else load_machine_memory(context.root)
+    health = memory.get("health") if isinstance(memory, dict) else {}
+    overloaded = health.get("overloaded_concept_slugs") if isinstance(health, dict) else []
+    if isinstance(overloaded, list):
+        overloaded_set = {str(slug).strip() for slug in overloaded if str(slug).strip()}
+        for page in concept_pages:
+            slug = page.stem
+            if slug in overloaded_set:
+                context.add(
+                    "warn",
+                    page,
+                    "Concept is overloaded (≥4 sources); consider splitting via repair backlog / split-overloaded-concept.",
+                )
+
 
 def _lint_curated_phase(context: _LintContext) -> None:
     for group, expected_kind in (

@@ -858,7 +858,26 @@ def test_provenance_scrub_and_gc_orphans(tmp_path: Path, monkeypatch: pytest.Mon
     )
     # degraded: dead report + live source
     (vault / "wiki" / "judgments" / "judgment-degraded.md").write_text(
-        "---\nkind: judgment\nid: judgment-degraded\nsource_files:\n  - output/reports/missing-report.md\n  - wiki/sources/source-alive.md\n---\n\n# Degraded\n",
+        "---\nkind: judgment\nid: judgment-degraded\nsource_files:\n  - output/reports/missing-report.md\n  - wiki/sources/source-alive.md\n---\n\n# Degraded\n\nFiled from: `output/reports/missing-report.md`\n",
+        encoding="utf-8",
+    )
+    # citations-only dead report
+    (vault / "wiki" / "judgments" / "judgment-citations.md").write_text(
+        "---\nkind: judgment\nid: judgment-citations\ncitations:\n  - output/reports/missing-report.md\n  - wiki/sources/source-alive.md\nsource_files:\n  - wiki/sources/source-alive.md\n---\n\n# Citations\n",
+        encoding="utf-8",
+    )
+    # elixir whose judgment anchor will be GC'd
+    (vault / "wiki" / "elixirs" / "elixir-orphan.md").write_text(
+        "---\nkind: elixir\nid: elixir-orphan\nderived_from:\n  - wiki/judgments/judgment-broken.md\n---\n\n# Orphan elixir\n",
+        encoding="utf-8",
+    )
+    # misdrop source still referenced by a judgment → blocked unless --force
+    (vault / "wiki" / "sources" / "source-vphone-aio.md").write_text(
+        "---\nkind: source\nid: source-vphone-aio\ntitle: vphone-aio\nsource_files:\n  - raw/inbox/vphone-aio-note.md\n---\n\n# vphone-aio\n",
+        encoding="utf-8",
+    )
+    (vault / "wiki" / "judgments" / "judgment-keeps-vphone.md").write_text(
+        "---\nkind: judgment\nid: judgment-keeps-vphone\nsource_files:\n  - wiki/sources/source-vphone-aio.md\n---\n\n# Keeps vphone\n",
         encoding="utf-8",
     )
     # noise concept + hub protected
@@ -885,6 +904,14 @@ def test_provenance_scrub_and_gc_orphans(tmp_path: Path, monkeypatch: pytest.Mon
     assert "output/reports/missing-report.md" not in (broken_fm.get("source_files") or [])
     assert degraded_fm.get("provenance_status") == "degraded"
     assert "wiki/sources/source-alive.md" in (degraded_fm.get("source_files") or [])
+    degraded_body = (vault / "wiki" / "judgments" / "judgment-degraded.md").read_text(encoding="utf-8")
+    assert "output/reports/missing-report.md" not in degraded_body
+    assert "（报告已删除）" in degraded_body
+
+    citations_fm = parse_frontmatter((vault / "wiki" / "judgments" / "judgment-citations.md").read_text(encoding="utf-8"))
+    assert citations_fm.get("provenance_status") == "degraded"
+    assert "output/reports/missing-report.md" not in (citations_fm.get("citations") or [])
+    assert "wiki/sources/source-alive.md" in (citations_fm.get("citations") or [])
 
     summary = json.loads(_run_cli(vault, ["advanced", "shell-status"]).decode("utf-8"))
     counts = summary.get("review_backlog_counts") or {}
@@ -909,6 +936,25 @@ def test_provenance_scrub_and_gc_orphans(tmp_path: Path, monkeypatch: pytest.Mon
     assert "wiki/concepts/because.md" in dry_paths
     assert "wiki/concepts/llm.md" not in dry_paths
     assert any("vphone" in path for path in dry_paths)
+    assert "wiki/elixirs/elixir-orphan.md" not in dry_paths  # need --elixirs
+
+    blocked = json.loads(
+        _run_cli(
+            vault,
+            ["advanced", "gc-orphans", "--misdrops"],
+        ).decode("utf-8")
+    )
+    blocked_paths = {item["path"] for item in blocked.get("blocked") or []}
+    assert "wiki/sources/source-vphone-aio.md" in blocked_paths
+
+    elixir_dry = json.loads(
+        _run_cli(
+            vault,
+            ["advanced", "gc-orphans", "--judgments", "--elixirs"],
+        ).decode("utf-8")
+    )
+    elixir_paths = {item["path"] for item in elixir_dry.get("candidates") or []}
+    assert "wiki/elixirs/elixir-orphan.md" in elixir_paths
 
     forced = json.loads(
         _run_cli(
@@ -932,6 +978,7 @@ def test_provenance_scrub_and_gc_orphans(tmp_path: Path, monkeypatch: pytest.Mon
                 "gc-orphans",
                 "--apply",
                 "--judgments",
+                "--elixirs",
                 "--noise-concepts",
                 "--misdrops",
             ],
@@ -939,9 +986,20 @@ def test_provenance_scrub_and_gc_orphans(tmp_path: Path, monkeypatch: pytest.Mon
     )
     assert applied.get("dry_run") is False
     assert not (vault / "wiki" / "judgments" / "judgment-broken.md").exists()
+    assert not (vault / "wiki" / "elixirs" / "elixir-orphan.md").exists()
     assert (vault / "wiki" / "judgments" / "judgment-degraded.md").exists()
     assert not (vault / "wiki" / "concepts" / "because.md").exists()
     assert (vault / "wiki" / "concepts" / "llm.md").exists()
+    assert (vault / "wiki" / "sources" / "source-vphone-aio.md").exists()  # blocked without --force
+
+    forced_misdrop = json.loads(
+        _run_cli(
+            vault,
+            ["advanced", "gc-orphans", "--apply", "--misdrops", "--force"],
+        ).decode("utf-8")
+    )
+    assert "wiki/sources/source-vphone-aio.md" in (forced_misdrop.get("deleted_paths") or [])
+    assert not (vault / "wiki" / "sources" / "source-vphone-aio.md").exists()
 
     # Second compile must keep broken/degraded sticky (do not flip back to ok).
     (vault / "wiki" / "judgments" / "judgment-sticky.md").write_text(
