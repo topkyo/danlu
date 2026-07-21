@@ -465,7 +465,7 @@ def _render_today_text(feed: list[FeedEntry], summary: dict[str, object]) -> str
         [
             "Advanced",
             "Run `aiwiki advanced ...` for system status, receipts, audit, repair, and debugging.",
-            "Run `aiwiki advanced metrics` for knowledge compounding metrics.",
+            "Periodic diagnostics: `aiwiki advanced metrics` (compounding snapshot; not a daily path).",
         ]
     )
     return "\n".join(lines)

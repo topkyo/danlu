@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from aiwiki.runner.local_stats import clean_report_reference_question, extract_report_reference_paths
+from aiwiki.runner.report_refs import clean_report_reference_question, extract_report_reference_paths
 from aiwiki.state.manifest import load_manifest
 from aiwiki.utils.markdown import strip_frontmatter
 

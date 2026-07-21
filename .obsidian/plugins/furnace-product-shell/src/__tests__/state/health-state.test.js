@@ -110,8 +110,8 @@ test("recordLlmHealthFromRun preserves an explicit empty fallback command overri
       backend: "opencode-api",
       model: "deepseek-v4-pro",
       finishedAt: "2026-06-20T08:00:00Z",
-      fallbackCommand: "ask",
-      fallbackFrom: "ask",
+      fallbackCommand: "run-ask",
+      fallbackFrom: "run-ask",
     },
     {
       status: "warning",
@@ -135,7 +135,7 @@ test("normalizeLlmHealthState lets camel-case empty fallback command override le
   expect(plugin.normalizeLlmHealthState({
     status: "degraded",
     fallbackCommand: "",
-    fallback_command: "ask",
+    fallback_command: "run-ask",
   })).toMatchObject({
     status: "degraded",
     fallbackCommand: "",
@@ -152,7 +152,7 @@ test("latestLlmRun lets camel-case empty fallback lineage override legacy snake-
         fallbackFrom: "",
         fallback_from: "run-ask",
         fallbackCommand: "",
-        fallback_command: "ask",
+        fallback_command: "run-ask",
       },
     },
   });
@@ -173,7 +173,7 @@ test("latestLlmRun still normalizes legacy-only fallback lineage", () => {
       latest_llm_run: {
         event: "run-ask-frontdoor",
         delivery_mode: "deterministic-fallback",
-        fallback_from: "run-ask",
+        fallback_from: "ask",
         fallback_command: "ask",
       },
     },
@@ -183,7 +183,7 @@ test("latestLlmRun still normalizes legacy-only fallback lineage", () => {
   expect(plugin.latestLlmRun()).toMatchObject({
     command: "run-ask-frontdoor",
     deliveryMode: "deterministic-fallback",
-    fallbackFrom: "run-ask",
+    fallbackFrom: "ask",
     fallbackCommand: "ask",
   });
 });

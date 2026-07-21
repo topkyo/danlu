@@ -13,7 +13,6 @@ from ..app_shell import build_shell_summary, rewrite_followup_payload_for_paths
 from ..compile.pipeline import compile_wiki
 from ..drop import drop_image, drop_note, drop_pdf, drop_repo, drop_url
 from ..execution.ask import (
-    ask_question,
     file_back,
 )
 from ..execution.gc_orphans import run_gc_orphans
@@ -142,7 +141,7 @@ def _handle_drop_plan(args: argparse.Namespace, root: Path) -> tuple[object, str
     if isinstance(result, AskSignal):
         ask_payload = result.get("payload") or payload
         _reject_path_like_ask(str(ask_payload))
-        ask_result = ask_question(root, ask_payload, "report")
+        ask_result = run_ask(root, str(ask_payload), "report")
         return _out(_maybe_auto_process(root, ask_result, args))
     return _out(_maybe_auto_process(root, result, args))
 
@@ -150,7 +149,11 @@ def _handle_drop_plan(args: argparse.Namespace, root: Path) -> tuple[object, str
 def _dispatch_fallback_route(
     root: Path, payload: str, title: str | None, args: argparse.Namespace
 ) -> tuple[object, str | None]:
-    """Deterministic fallback: use classify_universal_input and call the matching drop_*."""
+    """Deterministic typed-drop fallback when the LLM planner is unavailable.
+
+    Question-shaped payloads use ``run-ask`` (LLM required); there is no empty
+    deterministic ask CLI shell.
+    """
     decision = classify_universal_input(payload)
     routed_payload = decision.payload
     if decision.route == UniversalRoute.URL:
@@ -165,7 +168,7 @@ def _dispatch_fallback_route(
         result = drop_note(root, routed_payload, title=title)
     else:  # ASK
         _reject_path_like_ask(routed_payload)
-        result = ask_question(root, routed_payload, "report")
+        result = run_ask(root, routed_payload, "report")
     return _out(_maybe_auto_process(root, result, args))
 
 
@@ -205,11 +208,6 @@ def _handle_live_surface(args: argparse.Namespace, root: Path) -> tuple[object, 
 
 
 def _handle_ask_family(args: argparse.Namespace, root: Path) -> tuple[object, str | None]:
-    if args.handler_command == "ask":
-        ask_kwargs = {"no_cache": args.no_cache}
-        if getattr(args, "corpus", None) is not None:
-            ask_kwargs["corpus_id_override"] = args.corpus
-        return _out(ask_question(root, args.question, args.format, **ask_kwargs))
     if args.handler_command == "run-ask":
         ask_kwargs = {
             "lean": args.lean,
@@ -355,7 +353,6 @@ _LIVE_SURFACE_HANDLERS = {
 }
 
 _ASK_HANDLERS = {
-    "ask": _handle_ask_family,
     "run-ask": _handle_ask_family,
     "run-ask-submit": _handle_ask_family,
     "run-ask-resume": _handle_ask_family,
@@ -400,7 +397,7 @@ _HANDLERS = {
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
-    # Universal drop may emit `advanced ask` / typed drop subcommands.
+    # Universal drop may emit `advanced run-ask` / typed drop subcommands.
     argv = _rewrite_universal_drop_argv(argv)
     args = parser.parse_args(argv)
     root = _resolve_vault_root(args)

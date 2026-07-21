@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from aiwiki.runner.local_stats import OUTPUT_OBSIDIAN_CSSCLASS, OUTPUT_REPORT_LEAF_CSSCLASS
+from aiwiki.runner.report_refs import OUTPUT_OBSIDIAN_CSSCLASS, OUTPUT_REPORT_LEAF_CSSCLASS
 from aiwiki.utils.io import atomic_write_text
 from aiwiki.utils.markdown import parse_frontmatter, render_frontmatter, strip_frontmatter
 

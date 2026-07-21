@@ -777,7 +777,7 @@ def furnace_quick_commands(
 ) -> list[str]:
     _ = (active_protocol, apply_ready_actions, apply_ready_rewrites)
     commands = [
-        'PYTHONPATH=src python3 -m aiwiki.cli --root . advanced ask "对当前主题做协议化总结" --format report',
+        'PYTHONPATH=src python3 -m aiwiki.cli --root . advanced run-ask "对当前主题做协议化总结" --format report',
         "PYTHONPATH=src python3 -m aiwiki.cli --root . advanced compile",
         "PYTHONPATH=src python3 -m aiwiki.cli --root . advanced run-nightly",
         "PYTHONPATH=src python3 -m aiwiki.cli --root . advanced review-queue --json",

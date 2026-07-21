@@ -3,7 +3,7 @@
 const RUNTIME_CLIENT_DESKTOP_LAUNCHER = "desktop-launcher";
 const RUNTIME_CLIENT_VAULT_QUEUE = "vault-queue";
 const VAULT_QUEUE_DIR = ".aiwiki/queue";
-const VAULT_QUEUE_SUPPORTED_COMMANDS = new Set(["ask", "run-ask", "run-ask-submit", "drop"]);
+const VAULT_QUEUE_SUPPORTED_COMMANDS = new Set(["run-ask", "run-ask-submit", "drop"]);
 
 function normalizeRuntimeClientMode(value) {
   return value === RUNTIME_CLIENT_VAULT_QUEUE ? RUNTIME_CLIENT_VAULT_QUEUE : RUNTIME_CLIENT_DESKTOP_LAUNCHER;
@@ -28,7 +28,7 @@ class DesktopLauncherClient {
   }
 
   async ask(request) {
-    return this.exec(runtimeClientRequestArgs("ask", request));
+    return this.exec(runtimeClientRequestArgs("run-ask", request));
   }
 
   async drop(request) {
@@ -54,20 +54,20 @@ class VaultQueueClient {
       return this.readSummary();
     }
     if (!VAULT_QUEUE_SUPPORTED_COMMANDS.has(command)) {
-      throw new Error(`Vault queue runtime cannot execute ${command || "empty command"}; only shell-status is read-only and ask/drop/note are queued.`);
+      throw new Error(`Vault queue runtime cannot execute ${command || "empty command"}; only shell-status is read-only and run-ask/drop/note are queued.`);
     }
     return this.enqueue(runtimeClientQueueKind(argv), { argv });
   }
 
   async ask(request) {
-    return this.enqueue("ask", { request });
+    return this.enqueue("ask", { request, argv: runtimeClientRequestArgs("run-ask", request) });
   }
 
   async drop(request) {
     const payload = request && typeof request === "object" ? request : {};
     const kind = String(payload.kind || "markdown").trim().toLowerCase();
     const argv = runtimeClientRequestArgs("drop", payload);
-    if (!kind || kind === "markdown" || kind === "md" || kind === "note") {
+    if (!kind || kind === "markdown" || kind === "note") {
       return this.enqueue("note", { request: payload, argv });
     }
     return this.enqueue("drop", { request: payload, argv });
@@ -110,9 +110,9 @@ class VaultQueueClient {
 
 function runtimeClientRequestArgs(command, request) {
   const payload = request && typeof request === "object" ? request : {};
-  if (command === "ask") {
+  if (command === "ask" || command === "run-ask" || command === "run-ask-submit") {
     const question = String(payload.question || "").trim();
-    const args = ["ask", question];
+    const args = [command === "ask" ? "run-ask" : command, question];
     if (payload.format) args.push("--format", String(payload.format));
     return args;
   }
@@ -133,7 +133,7 @@ function runtimeClientQueueKind(argv) {
   }
   if (command === "drop") {
     const subcommand = String(argv[1] || "").trim();
-    if (!subcommand || subcommand === "markdown" || subcommand === "md" || subcommand === "note") {
+    if (!subcommand || subcommand === "markdown" || subcommand === "note") {
       return "note";
     }
     return "drop";

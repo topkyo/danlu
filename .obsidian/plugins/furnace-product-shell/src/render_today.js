@@ -524,7 +524,7 @@ function hydratePendingArtifactSnippet(plugin, snippetEl, entry) {
 
 function pendingSubmissionSnippetFallback(plugin, entry) {
   const target = String(entry && entry.reconcileTarget || "");
-  if (pendingSubmissionIsDegraded(entry)) return plugin.t("LLM 未完成；这是保留 provenance 的本地恢复产物，可打开检查上下文后重试。");
+  if (pendingSubmissionIsDegraded(entry)) return plugin.t("LLM 未完成；这是失败说明（非最终答案），可打开查看后重试。");
   if (target === "outputs") return plugin.t("报告已写入本地文件；摘要加载中…");
   if (target === "receipts") return plugin.t("回执已写入控制层，可用于审计与回滚追踪。");
   if (target === "raw") {
@@ -538,7 +538,7 @@ function pendingSubmissionSnippetFallback(plugin, entry) {
 
 function pendingSubmissionArtifactKind(plugin, entry) {
   const target = String(entry && entry.reconcileTarget || "");
-  if (pendingSubmissionIsDegraded(entry)) return plugin.t("恢复产物 Artifact");
+  if (pendingSubmissionIsDegraded(entry)) return plugin.t("失败说明 Artifact");
   if (target === "outputs") return plugin.t("本地报告 Artifact");
   if (target === "receipts") return plugin.t("执行回执 Receipt");
   if (target === "raw") return plugin.t("原料 Raw Input");
@@ -557,9 +557,9 @@ function pendingSubmissionArtifactMeta(plugin, entry) {
 function pendingSubmissionStageLabel(plugin, entry) {
   const status = String(entry && entry.status || "running");
   const pureMaterial = isPureMaterialPendingEntry(entry);
-  if (status === "degraded") return plugin.t("LLM 未完成，已保留恢复产物");
+  if (status === "degraded") return plugin.t("LLM 未完成，已保留失败说明");
   if (status === "done") {
-    if (pendingSubmissionIsDegraded(entry)) return plugin.t("LLM 未完成，已保留恢复产物");
+    if (pendingSubmissionIsDegraded(entry)) return plugin.t("LLM 未完成，已保留失败说明");
     if (entry && entry.reconcileTarget === "receipts") return plugin.t("已记录回执");
     if (entry && entry.reconcileTarget === "raw") return plugin.t("已收料");
     return plugin.t("报告已生成");
@@ -581,7 +581,7 @@ function pendingSubmissionStageLabel(plugin, entry) {
 
 function pendingSubmissionResultTitle(plugin, entry) {
   const target = String(entry && entry.reconcileTarget || "");
-  if (pendingSubmissionIsDegraded(entry)) return plugin.t("恢复产物已就绪");
+  if (pendingSubmissionIsDegraded(entry)) return plugin.t("失败说明已就绪");
   if (target === "outputs") return plugin.t("报告卡片已就绪");
   if (target === "receipts") return plugin.t("回执已就绪");
   if (target === "raw") return plugin.t("原料已入库");

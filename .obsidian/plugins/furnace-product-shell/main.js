@@ -281,7 +281,6 @@ const ZH_TEXT = {
   "Nothing to copy.": "没有可复制的内容。",
   "Clipboard is not available in this environment.": "当前环境不支持剪贴板。",
   "Copied to clipboard.": "已复制到剪贴板。",
-  "LLM backend unavailable; retried with deterministic ask.": "LLM 后端当前不可用，已自动回退到 deterministic ask。",
   "LLM health": "LLM 状态",
   Sync: "同步",
   "Configured route": "当前模型",
@@ -294,15 +293,12 @@ const ZH_TEXT = {
   "Current route changed since the last recorded ask.": "当前路由已经和最近一次记录的 Ask 不同。",
   degraded: "降级",
   warning: "警告",
-  "Deterministic fallback": "本地兜底",
-  "Deterministic fallback active": "已使用本地兜底",
   "Recent run-ask succeeded.": "最近一次 run-ask 成功完成。",
   "Latest run-ask succeeded.": "最近一次 run-ask 成功完成。",
-  "Recent run-ask fell back to deterministic ask.": "最近一次 run-ask 已回退到 deterministic ask。",
+  "Recent run-ask fell back to deterministic scaffold (legacy receipt).": "最近一次 run-ask 命中历史 deterministic-fallback receipt（路径已退役）。",
   "Latest run-ask produced an LLM failure notice.": "最近一次 run-ask 生成了 LLM 失败说明。",
-  "LLM timed out or failed; only deterministic fallback is available.": "LLM 超时或失败；当前只有本地兜底结果。",
-  "LLM timed out; deterministic fallback only.": "LLM 超时；仅生成了本地兜底结果。",
-  "LLM timed out; deterministic fallback only. Open the artifact for local context, then retry or switch model.": "LLM 超时；仅生成了本地兜底结果。可打开产物查看本地上下文，再重试或切换模型。",
+  "LLM timed out or failed before producing an answer.": "LLM 超时或失败，未产出答案。",
+  "LLM timed out or failed. Open the failure notice for details, then retry or switch model.": "LLM 超时或失败。可打开失败说明查看细节，再重试或切换模型。",
   "LLM timed out; no substantive answer was generated. Try again or switch model.": "LLM 超时，未生成实质回答。请重试或切换模型。",
   "Latest run-ask failed before producing an LLM result.": "最近一次 run-ask 在生成 LLM 结果前失败。",
   available: "可用",
@@ -3434,7 +3430,7 @@ module.exports = { execLauncher, runUiAction, normalizeLauncherArgv };
 const RUNTIME_CLIENT_DESKTOP_LAUNCHER = "desktop-launcher";
 const RUNTIME_CLIENT_VAULT_QUEUE = "vault-queue";
 const VAULT_QUEUE_DIR = ".aiwiki/queue";
-const VAULT_QUEUE_SUPPORTED_COMMANDS = new Set(["ask", "run-ask", "run-ask-submit", "drop"]);
+const VAULT_QUEUE_SUPPORTED_COMMANDS = new Set(["run-ask", "run-ask-submit", "drop"]);
 
 function normalizeRuntimeClientMode(value) {
   return value === RUNTIME_CLIENT_VAULT_QUEUE ? RUNTIME_CLIENT_VAULT_QUEUE : RUNTIME_CLIENT_DESKTOP_LAUNCHER;
@@ -3459,7 +3455,7 @@ class DesktopLauncherClient {
   }
 
   async ask(request) {
-    return this.exec(runtimeClientRequestArgs("ask", request));
+    return this.exec(runtimeClientRequestArgs("run-ask", request));
   }
 
   async drop(request) {
@@ -3485,20 +3481,20 @@ class VaultQueueClient {
       return this.readSummary();
     }
     if (!VAULT_QUEUE_SUPPORTED_COMMANDS.has(command)) {
-      throw new Error(`Vault queue runtime cannot execute ${command || "empty command"}; only shell-status is read-only and ask/drop/note are queued.`);
+      throw new Error(`Vault queue runtime cannot execute ${command || "empty command"}; only shell-status is read-only and run-ask/drop/note are queued.`);
     }
     return this.enqueue(runtimeClientQueueKind(argv), { argv });
   }
 
   async ask(request) {
-    return this.enqueue("ask", { request });
+    return this.enqueue("ask", { request, argv: runtimeClientRequestArgs("run-ask", request) });
   }
 
   async drop(request) {
     const payload = request && typeof request === "object" ? request : {};
     const kind = String(payload.kind || "markdown").trim().toLowerCase();
     const argv = runtimeClientRequestArgs("drop", payload);
-    if (!kind || kind === "markdown" || kind === "md" || kind === "note") {
+    if (!kind || kind === "markdown" || kind === "note") {
       return this.enqueue("note", { request: payload, argv });
     }
     return this.enqueue("drop", { request: payload, argv });
@@ -3541,9 +3537,9 @@ class VaultQueueClient {
 
 function runtimeClientRequestArgs(command, request) {
   const payload = request && typeof request === "object" ? request : {};
-  if (command === "ask") {
+  if (command === "ask" || command === "run-ask" || command === "run-ask-submit") {
     const question = String(payload.question || "").trim();
-    const args = ["ask", question];
+    const args = [command === "ask" ? "run-ask" : command, question];
     if (payload.format) args.push("--format", String(payload.format));
     return args;
   }
@@ -3564,7 +3560,7 @@ function runtimeClientQueueKind(argv) {
   }
   if (command === "drop") {
     const subcommand = String(argv[1] || "").trim();
-    if (!subcommand || subcommand === "markdown" || subcommand === "md" || subcommand === "note") {
+    if (!subcommand || subcommand === "markdown" || subcommand === "note") {
       return "note";
     }
     return "drop";
@@ -5289,7 +5285,7 @@ function hydratePendingArtifactSnippet(plugin, snippetEl, entry) {
 
 function pendingSubmissionSnippetFallback(plugin, entry) {
   const target = String(entry && entry.reconcileTarget || "");
-  if (pendingSubmissionIsDegraded(entry)) return plugin.t("LLM 未完成；这是保留 provenance 的本地恢复产物，可打开检查上下文后重试。");
+  if (pendingSubmissionIsDegraded(entry)) return plugin.t("LLM 未完成；这是失败说明（非最终答案），可打开查看后重试。");
   if (target === "outputs") return plugin.t("报告已写入本地文件；摘要加载中…");
   if (target === "receipts") return plugin.t("回执已写入控制层，可用于审计与回滚追踪。");
   if (target === "raw") {
@@ -5303,7 +5299,7 @@ function pendingSubmissionSnippetFallback(plugin, entry) {
 
 function pendingSubmissionArtifactKind(plugin, entry) {
   const target = String(entry && entry.reconcileTarget || "");
-  if (pendingSubmissionIsDegraded(entry)) return plugin.t("恢复产物 Artifact");
+  if (pendingSubmissionIsDegraded(entry)) return plugin.t("失败说明 Artifact");
   if (target === "outputs") return plugin.t("本地报告 Artifact");
   if (target === "receipts") return plugin.t("执行回执 Receipt");
   if (target === "raw") return plugin.t("原料 Raw Input");
@@ -5322,9 +5318,9 @@ function pendingSubmissionArtifactMeta(plugin, entry) {
 function pendingSubmissionStageLabel(plugin, entry) {
   const status = String(entry && entry.status || "running");
   const pureMaterial = isPureMaterialPendingEntry(entry);
-  if (status === "degraded") return plugin.t("LLM 未完成，已保留恢复产物");
+  if (status === "degraded") return plugin.t("LLM 未完成，已保留失败说明");
   if (status === "done") {
-    if (pendingSubmissionIsDegraded(entry)) return plugin.t("LLM 未完成，已保留恢复产物");
+    if (pendingSubmissionIsDegraded(entry)) return plugin.t("LLM 未完成，已保留失败说明");
     if (entry && entry.reconcileTarget === "receipts") return plugin.t("已记录回执");
     if (entry && entry.reconcileTarget === "raw") return plugin.t("已收料");
     return plugin.t("报告已生成");
@@ -5346,7 +5342,7 @@ function pendingSubmissionStageLabel(plugin, entry) {
 
 function pendingSubmissionResultTitle(plugin, entry) {
   const target = String(entry && entry.reconcileTarget || "");
-  if (pendingSubmissionIsDegraded(entry)) return plugin.t("恢复产物已就绪");
+  if (pendingSubmissionIsDegraded(entry)) return plugin.t("失败说明已就绪");
   if (target === "outputs") return plugin.t("报告卡片已就绪");
   if (target === "receipts") return plugin.t("回执已就绪");
   if (target === "raw") return plugin.t("原料已入库");
@@ -7271,7 +7267,7 @@ function buildProductShellLlmHealthOverrides(record) {
         ? "LLM completed via model retry."
         : "Recent run-ask succeeded.",
     source: "run-ask",
-    fallbackCommand: failureNotice ? (record.fallbackCommand || "ask") : String((record && record.fallbackCommand) || ""),
+    fallbackCommand: failureNotice ? (record.fallbackCommand || "run-ask") : String((record && record.fallbackCommand) || ""),
     backendRequested: record.backendRequested,
     backendEffective: record.backendEffective,
     modelSelected: record.modelSelected,
@@ -7287,7 +7283,7 @@ function buildProductShellFailedLlmHealthOverrides(record, error) {
     status: "degraded",
     reason: truncateText(error && (error.message || error.stderr || error.stdout) || "LLM backend unavailable", 240),
     source: "run-ask",
-    fallbackCommand: "ask",
+    fallbackCommand: "run-ask",
     backendRequested: record.backendRequested,
     backendEffective: record.backendEffective,
     modelSelected: record.modelSelected,
@@ -8006,9 +8002,9 @@ async function runProductShellPluginCommand(plugin, label, args, options = {}) {
       runContext,
       rewriteProposalSummary: plugin.rewriteProposalSummary({ rewriteProposalPaths: runContext.rewriteProposalPaths }),
       fallbackSummary: result.payload && (result.payload.primary_error || result.payload.fallback_reason)
-        || plugin.t("LLM timed out; deterministic fallback only."),
+        || plugin.t("LLM timed out or failed before producing an answer."),
       successSummary: runContext.primaryPath || runContext.receiptPath || plugin.t("Command completed successfully."),
-      degradedNotice: plugin.t("LLM timed out; deterministic fallback only. Open the artifact for local context, then retry or switch model."),
+      degradedNotice: plugin.t("LLM timed out or failed. Open the failure notice for details, then retry or switch model."),
       successNotice: `${plugin.t(label)} ${plugin.t("completed")}.`,
     });
     completedState.events.forEach((event) => appendRunEvent(record, event.stage, event.summary, event.status));

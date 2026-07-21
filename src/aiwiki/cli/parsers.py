@@ -66,16 +66,6 @@ def _converge_default_help_surface(subparsers: argparse._SubParsersAction) -> No
 def _register_advanced_parsers(subparsers: argparse._SubParsersAction) -> None:
     """Register operator commands under the advanced drawer."""
 
-    metrics_parser = subparsers.add_parser("metrics", help="炼丹炉知识复利指标")
-    metrics_parser.add_argument("--json", action="store_true", help="JSON 输出")
-    metrics_parser.add_argument(
-        "--delta",
-        choices=["7d", "30d"],
-        default=None,
-        help="对比 7 天前 / 30 天前 baseline（基于 .aiwiki/state/metrics-history.jsonl）",
-    )
-    metrics_parser.set_defaults(handler_command="metrics")
-
     trace_parser = subparsers.add_parser(
         "trace",
         help="证据链追溯：输入资产 ID（raw / source / judgment / decision / elixir / proposal / receipt action_id），输出 provenance 树。",
@@ -122,9 +112,6 @@ def _register_advanced_parsers(subparsers: argparse._SubParsersAction) -> None:
         "shell-status",
         help="Write and return the Product Shell summary contract for front-end workbench integrations.",
     )
-
-    ask_parser = subparsers.add_parser("ask", help="Generate a query artifact grounded in the wiki.")
-    _configure_ask_parser(ask_parser)
 
     run_ask_parser = subparsers.add_parser(
         "run-ask",
@@ -370,6 +357,21 @@ def _register_advanced_parsers(subparsers: argparse._SubParsersAction) -> None:
         type=int,
         help="Stop after N polling cycles. Useful for tests and short-lived runs.",
     )
+
+    # Diagnostic / periodic — keep after daily operator verbs so help lists it last.
+    metrics_parser = subparsers.add_parser(
+        "metrics",
+        help="诊断：知识复利指标快照（非日常主路径；需要复盘时再跑）。",
+    )
+    metrics_parser.add_argument("--json", action="store_true", help="JSON 输出")
+    metrics_parser.add_argument(
+        "--delta",
+        choices=["7d", "30d"],
+        default=None,
+        help="对比 7 天前 / 30 天前 baseline（基于 .aiwiki/state/metrics-history.jsonl）",
+    )
+    metrics_parser.set_defaults(handler_command="metrics")
+
     _set_handler_command_defaults(subparsers)
 
 
@@ -403,7 +405,6 @@ def _register_drop_subcommand_parsers(subparsers: argparse._SubParsersAction) ->
 
     drop_markdown_parser = subparsers.add_parser(
         "markdown",
-        aliases=("md",),
         help="Capture inline markdown/text or copy a local markdown/text file into raw/inbox without metadata wrapping.",
     )
     _configure_drop_note_parser(drop_markdown_parser)
@@ -495,22 +496,6 @@ def _configure_drop_note_parser(parser: argparse.ArgumentParser) -> None:
         help="Allow note ingestion even when credential-like content is detected.",
     )
     _add_auto_flags(parser)
-
-
-def _configure_ask_parser(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("question", help="Research question to package.")
-    parser.add_argument(
-        "--format",
-        choices=("report",),
-        default="report",
-        help="Output artifact format.",
-    )
-    parser.add_argument(
-        "--no-cache",
-        action="store_true",
-        help="Bypass volatile SQLite query cache and force deterministic JSON scan.",
-    )
-    parser.add_argument("--corpus", help="Optional active corpus id to reuse across ask rounds.")
 
 
 def _add_auto_flags(parser: argparse.ArgumentParser) -> None:

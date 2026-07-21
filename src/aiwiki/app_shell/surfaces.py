@@ -291,8 +291,8 @@ def shell_llm_health(root: Path, llm_status: dict[str, Any], *, latest_llm_run: 
     fallback_command = str(latest_llm_run.get("fallback_command") or "")
     if delivery_mode == "deterministic-fallback":
         status = "degraded"
-        reason = "Recent run-ask fell back to deterministic ask."
-        fallback_command = fallback_command or "ask"
+        reason = "Recent run-ask fell back to deterministic scaffold (legacy receipt)."
+        fallback_command = fallback_command or "run-ask"
     elif delivery_mode == "skipped":
         reason = f"Recent {str(latest_llm_run.get('event') or 'LLM run')} skipped (no LLM invocation)."
     elif delivery_mode == "llm-fallback-chain":

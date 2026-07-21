@@ -833,8 +833,8 @@ test("degraded output card hides quote action and keeps recovery semantics", asy
   context.renderTodayFeed(plugin, container);
   await flushAsyncWork();
 
-  expect(container.textContent).toContain("恢复产物已就绪");
-  expect(container.textContent).toContain("恢复产物 Artifact");
+  expect(container.textContent).toContain("失败说明已就绪");
+  expect(container.textContent).toContain("失败说明 Artifact");
   expect(container.textContent).toContain("打开产物");
   expect(container.textContent).toContain("重试");
   expect(container.textContent).not.toContain("引用此报告追问");

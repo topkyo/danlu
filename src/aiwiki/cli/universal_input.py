@@ -1,7 +1,7 @@
 """Universal-input rewrite for the aiwiki CLI.
 
 Encapsulates the rules that translate top-level `drop <payload>` invocations
-into typed subcommands (`drop url|pdf|image|repo|markdown`) or the `ask` command,
+into typed subcommands (`drop url|pdf|image|repo|markdown`) or `advanced run-ask`,
 based on payload classification. See EP-001/EP-003a/EP-003c history for the
 fail-loud rejection path for ambiguous local-path-like payloads.
 """
@@ -14,7 +14,7 @@ import sys
 
 from ..input_router import UniversalRoute, classify_universal_input, rewrite_github_raw_url
 
-_DROP_TYPED_SUBCOMMANDS = {"url", "pdf", "image", "repo", "markdown", "md", "note", "plan"}
+_DROP_TYPED_SUBCOMMANDS = {"url", "pdf", "image", "repo", "markdown", "note", "plan"}
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 
 
@@ -138,8 +138,8 @@ def _rewrite_universal_drop_argv(argv: list[str] | None) -> list[str] | None:
     if decision.route == UniversalRoute.ASK:
         if _looks_like_local_path(routed_payload):
             _reject_ambiguous_path_ask(routed_payload)
-        # Ask lives under advanced after primary-surface cleanup.
-        rewritten[drop_index:] = ["advanced", "ask", routed_payload, *rest]
+        # Questions require LLM run-ask — no deterministic empty-shell CLI.
+        rewritten[drop_index:] = ["advanced", "run-ask", routed_payload, *rest]
     else:
         if decision.route == UniversalRoute.URL:
             routed_payload = rewrite_github_raw_url(routed_payload) or routed_payload

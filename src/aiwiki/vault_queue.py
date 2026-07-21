@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .drop import drop_note
-from .execution.ask import ask_question
+from .runner.workflows import run_ask
 from .utils.io import atomic_write_text
 from .utils.path import relative_path
 from .utils.time import utc_now
@@ -182,7 +182,7 @@ def _execute_queue_item(root: Path, item: dict[str, Any]) -> dict[str, Any]:
         kind == "drop"
         and _queue_argv(item)[:2]
         and _queue_argv(item)[0] == "drop"
-        and _queue_argv(item)[1] in {"markdown", "md", "note"}
+        and _queue_argv(item)[1] in {"markdown", "note"}
     ):
         return _execute_note_item(root, item)
     if kind == "drop":
@@ -218,16 +218,14 @@ def _execute_ask_item(root: Path, item: dict[str, Any]) -> dict[str, Any]:
     argv = _queue_argv(item)
     question = str(request.get("question") or "").strip()
     output_format = str(request.get("format") or "report").strip() or "report"
-    protocol = str(request.get("protocol") or "").strip() or None
     if argv:
         parsed = _parse_ask_argv(argv)
         question = parsed.get("question", question)
         output_format = parsed.get("format", output_format)
-        protocol = parsed.get("protocol", protocol)
     if not question:
         raise ValueError("Vault queue ask requires a question.")
-    result = ask_question(root, question, output_format, protocol=protocol)
-    return {"action": "ask", "execution_mode": "deterministic", **result}
+    result = run_ask(root, question, output_format)
+    return {"action": "run-ask", "execution_mode": "llm", **result}
 
 
 def _queue_payload(item: dict[str, Any]) -> dict[str, Any]:

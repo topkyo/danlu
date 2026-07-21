@@ -107,9 +107,9 @@ async function runProductShellPluginCommand(plugin, label, args, options = {}) {
       runContext,
       rewriteProposalSummary: plugin.rewriteProposalSummary({ rewriteProposalPaths: runContext.rewriteProposalPaths }),
       fallbackSummary: result.payload && (result.payload.primary_error || result.payload.fallback_reason)
-        || plugin.t("LLM timed out; deterministic fallback only."),
+        || plugin.t("LLM timed out or failed before producing an answer."),
       successSummary: runContext.primaryPath || runContext.receiptPath || plugin.t("Command completed successfully."),
-      degradedNotice: plugin.t("LLM timed out; deterministic fallback only. Open the artifact for local context, then retry or switch model."),
+      degradedNotice: plugin.t("LLM timed out or failed. Open the failure notice for details, then retry or switch model."),
       successNotice: `${plugin.t(label)} ${plugin.t("completed")}.`,
     });
     completedState.events.forEach((event) => appendRunEvent(record, event.stage, event.summary, event.status));

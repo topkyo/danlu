@@ -195,7 +195,7 @@ def render_machine_memory_index(memory: dict[str, Any]) -> str:
         "- repair 计划页：`wiki/indexes/machine-memory-repair-plan.md`",
         "",
         "## 查询加速",
-        "- `ask` 和 `run-ask` 先用机器记忆 term index 做第一轮查询规划。",
+        "- `run-ask` 先用机器记忆 term index 做第一轮查询规划。",
         "- source-to-concept 和 concept-to-concept 边会在组装 prompt 前扩展候选范围。",
         "- 查询规划还会提取最短图路径和触达分量，支持更深的检索。",
         "- 图谱导出主要给 agent / tooling 使用，不建议直接人工修改。",

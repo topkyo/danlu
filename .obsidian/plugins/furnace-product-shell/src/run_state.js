@@ -375,7 +375,7 @@ function buildProductShellLlmHealthOverrides(record) {
         ? "LLM completed via model retry."
         : "Recent run-ask succeeded.",
     source: "run-ask",
-    fallbackCommand: failureNotice ? (record.fallbackCommand || "ask") : String((record && record.fallbackCommand) || ""),
+    fallbackCommand: failureNotice ? (record.fallbackCommand || "run-ask") : String((record && record.fallbackCommand) || ""),
     backendRequested: record.backendRequested,
     backendEffective: record.backendEffective,
     modelSelected: record.modelSelected,
@@ -391,7 +391,7 @@ function buildProductShellFailedLlmHealthOverrides(record, error) {
     status: "degraded",
     reason: truncateText(error && (error.message || error.stderr || error.stdout) || "LLM backend unavailable", 240),
     source: "run-ask",
-    fallbackCommand: "ask",
+    fallbackCommand: "run-ask",
     backendRequested: record.backendRequested,
     backendEffective: record.backendEffective,
     modelSelected: record.modelSelected,

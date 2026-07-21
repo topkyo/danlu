@@ -42,7 +42,8 @@ related_docs:
 | Layer | Commands |
 |---|---|
 | `primary` | `drop`, `today`, `advanced` |
-| `advanced` | compile、lint、run-ask、file-back、review-page、watch、run-nightly、金丹链、metrics、trace、shell-status、llm-check、gc-orphans 等（`advanced --help`） |
+| `advanced` | **日常/运维**：compile、lint、run-ask*、file-back、review-page、watch、run-nightly、gc-orphans、金丹链、shell-status、llm-check、trace… |
+| `诊断` | `metrics`（复利指标快照；非日常主路径，复盘时再跑） |
 
 ## 验证
 

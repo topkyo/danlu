@@ -64,14 +64,14 @@ Elixir 的头部需要包含最小化的生命周期与血缘标记：
 aiwiki advanced alchemy-start <corpus-id> --topic "主题"
 
 # 2. 多轮迭代（自动串联前轮 output）
-aiwiki advanced ask "首问" --corpus <id>
-aiwiki advanced ask "追问1" --corpus <id>
-aiwiki advanced ask "追问2" --corpus <id>
+aiwiki advanced run-ask "首问" --corpus <id>
+aiwiki advanced run-ask "追问1" --corpus <id>
+aiwiki advanced run-ask "追问2" --corpus <id>
 
 # 3. 中途评估与资料补充
 aiwiki drop url <url>
 aiwiki drop pdf <file>
-aiwiki advanced ask "补料后重炼" --corpus <id>
+aiwiki advanced run-ask "补料后重炼" --corpus <id>
 
 # 4. 显式凝丹（生成 elixir candidate）
 aiwiki advanced alchemy-distill <elixir-id> --question "..."
