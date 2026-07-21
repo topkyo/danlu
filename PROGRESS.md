@@ -14,6 +14,8 @@
 
 ## 当前动态
 
+- 2026-07-21 (**provenance body scrub + concept soft/overload**)：正文死 `output/reports` →「（报告已删除）」；GC acceptance 边界加厚；≤1 source 概念强制 soft；overload lint warn。
+
 - 2026-07-21 (**report provenance scrub + gc-orphans**)：落地 KISS spec——compile 剥离死 `output/reports` 并 sticky 标 `provenance_status`；`advanced gc-orphans` dry-run/`--apply`+receipt；①′ HTML 停写保持。acceptance **17**。dogfood：compile → GC apply（degraded file-back + 噪音概念 + vphone 误投）→ recompile。
 
 - 2026-07-20 (**ingest dedup + drop UX**)：同规范化 URL 默认复用 raw（`--refresh` 重抓）；Shell 纯投料「已收料」不暗示报告。Spec/plan：`docs/specs|plans/2026-07-20-ingest-dedup-and-drop-ux.md`。验证：acceptance **25** + llm-integration **76**。
