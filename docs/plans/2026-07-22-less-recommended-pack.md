@@ -14,10 +14,10 @@
 **Depends on:** none  
 **Files:** Product Shell `build.sh` / bundle order, `constants.js` or i18n, `render_runs.js` importers, Jest
 
-- [ ] 确认 `render_runs.js` 是否仍被默认 Furnace Center 路径引用；若仅死面，移出默认 `build.sh` 拼接（或删未用 export）
-- [ ] 清理明显已退役 Review/Execution 中心的 i18n 死键（只删确认无引用的）
-- [ ] rebuild `main.js`；`bash scripts/verify.sh product-shell-static`
-- [ ] Commit: `chore: Shell 去掉 runs 死面与僵尸 i18n`
+- [x] 确认 `render_runs.js` 是否仍被默认 Furnace Center 路径引用；若仅死面，移出默认 `build.sh` 拼接（或删未用 export）
+- [x] 清理明显已退役 Review/Execution 中心的 i18n 死键（只删确认无引用的）
+- [x] rebuild `main.js`；`bash scripts/verify.sh product-shell-static`
+- [x] Commit: `chore: Shell 去掉 runs 死面与僵尸 i18n`
 
 ## Task 2: SoT 枚举并成一处
 
@@ -43,10 +43,10 @@
 **Depends on:** none  
 **Files:** `cli/parsers.py`, `cli/dispatch.py`, 文档/help 若提及
 
-- [ ] 在 `advanced` 下增加 `alchemy` 父命令，子命令 start/distill/finalize/promote/revert/demote
-- [ ] **保留**旧 `alchemy-start` 等为 compat alias（argv rewrite 或双注册），避免砸脚本
-- [ ] help 默认展示新树；verify python-static + acceptance（若有 alchemy fixture）
-- [ ] Commit: `feat: advanced alchemy 子树（保留旧命令 compat）`
+- [x] 在 `advanced` 下增加 `alchemy` 父命令，子命令 start/distill/finalize/promote/revert/demote
+- [x] **保留**旧 `alchemy-start` 等为 compat alias（argv rewrite 或双注册），避免砸脚本
+- [x] help 默认展示新树；verify python-static + acceptance（若有 alchemy fixture）
+- [x] Commit: `feat: advanced alchemy 子树（保留旧命令 compat）`
 
 ## Task 5: 收口
 

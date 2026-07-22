@@ -7,6 +7,19 @@ from pathlib import Path
 
 PRIMARY_SURFACE_COMMANDS: tuple[str, ...] = ("drop", "today", "advanced")
 
+_ALCHEMY_SUBCOMMAND_HANDLERS: dict[str, str] = {
+    "start": "alchemy-start",
+    "distill": "alchemy-distill",
+    "finalize": "alchemy-finalize",
+    "promote": "alchemy-promote",
+    "revert": "alchemy-revert",
+    "demote": "alchemy-demote",
+}
+
+_ALCHEMY_COMPAT_COMMANDS: frozenset[str] = frozenset(
+    {"alchemy-" + name for name in _ALCHEMY_SUBCOMMAND_HANDLERS}
+)
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -148,46 +161,13 @@ def _register_advanced_parsers(subparsers: argparse._SubParsersAction) -> None:
     file_back_parser.add_argument("artifact", help="Path to a markdown artifact.")
     file_back_parser.add_argument("--title", help="Optional filed-back title.")
 
-    alchemy_start_parser = subparsers.add_parser("alchemy-start", help="Start a new elixir from a corpus.")
-    alchemy_start_parser.add_argument("corpus_id")
-    alchemy_start_parser.add_argument("--topic", required=True)
-    alchemy_start_parser.add_argument(
-        "--include-elixir", type=str, default=None, help="可选：额外包含的金丹 id，多个用逗号分隔。"
+    alchemy_parser = subparsers.add_parser(
+        "alchemy",
+        help="金丹生命周期：start / distill / finalize / promote / revert / demote。",
     )
-
-    alchemy_distill_parser = subparsers.add_parser("alchemy-distill", help="Distill an existing draft elixir.")
-    alchemy_distill_parser.add_argument("elixir_id")
-    alchemy_distill_parser.add_argument("--question", required=True)
-    alchemy_distill_parser.add_argument(
-        "--include-elixir", type=str, default=None, help="可选：额外包含的金丹 id，多个用逗号分隔。"
-    )
-
-    alchemy_finalize_parser = subparsers.add_parser(
-        "alchemy-finalize",
-        help="Finalize a draft/distilling elixir into candidate state.",
-    )
-    alchemy_finalize_parser.add_argument("--elixir-id", required=True)
-
-    alchemy_promote_parser = subparsers.add_parser(
-        "alchemy-promote",
-        help="Promote a candidate elixir into settled with receipt+tombstone.",
-    )
-    alchemy_promote_parser.add_argument("--elixir-id", required=True)
-    alchemy_promote_parser.add_argument("--note", default=None)
-
-    alchemy_revert_parser = subparsers.add_parser(
-        "alchemy-revert",
-        help="Revert the latest elixir promote from settled back to candidate.",
-    )
-    alchemy_revert_parser.add_argument("--elixir-id", required=True)
-    alchemy_revert_parser.add_argument("--note", default=None)
-
-    alchemy_demote_parser = subparsers.add_parser(
-        "alchemy-demote",
-        help="Demote a settled elixir back to candidate using current settled content.",
-    )
-    alchemy_demote_parser.add_argument("--elixir-id", required=True)
-    alchemy_demote_parser.add_argument("--note", default=None)
+    alchemy_subparsers = alchemy_parser.add_subparsers(dest="alchemy_command", required=True)
+    _register_alchemy_subcommand_parsers(alchemy_subparsers)
+    _register_alchemy_compat_aliases(subparsers)
 
     review_parser = subparsers.add_parser(
         "review-page",
@@ -334,10 +314,140 @@ def _register_advanced_parsers(subparsers: argparse._SubParsersAction) -> None:
     metrics_parser.set_defaults(handler_command="metrics")
 
     _set_handler_command_defaults(subparsers)
+    _converge_advanced_help_surface(subparsers)
 
 
-def _set_handler_command_defaults(subparsers: argparse._SubParsersAction, handler_command: str | None = None) -> None:
+def _register_alchemy_subcommand_parsers(subparsers: argparse._SubParsersAction) -> None:
+    start_parser = subparsers.add_parser("start", help="Start a new elixir from a corpus.")
+    _configure_alchemy_start_parser(start_parser)
+
+    distill_parser = subparsers.add_parser("distill", help="Distill an existing draft elixir.")
+    _configure_alchemy_distill_parser(distill_parser)
+
+    finalize_parser = subparsers.add_parser(
+        "finalize",
+        help="Finalize a draft/distilling elixir into candidate state.",
+    )
+    _configure_alchemy_finalize_parser(finalize_parser)
+
+    promote_parser = subparsers.add_parser(
+        "promote",
+        help="Promote a candidate elixir into settled with receipt+tombstone.",
+    )
+    _configure_alchemy_promote_parser(promote_parser)
+
+    revert_parser = subparsers.add_parser(
+        "revert",
+        help="Revert the latest elixir promote from settled back to candidate.",
+    )
+    _configure_alchemy_revert_parser(revert_parser)
+
+    demote_parser = subparsers.add_parser(
+        "demote",
+        help="Demote a settled elixir back to candidate using current settled content.",
+    )
+    _configure_alchemy_demote_parser(demote_parser)
+
+
+def _register_alchemy_compat_aliases(subparsers: argparse._SubParsersAction) -> None:
+    alchemy_start_parser = subparsers.add_parser(
+        "alchemy-start",
+        help=argparse.SUPPRESS,
+    )
+    _configure_alchemy_start_parser(alchemy_start_parser)
+
+    alchemy_distill_parser = subparsers.add_parser(
+        "alchemy-distill",
+        help=argparse.SUPPRESS,
+    )
+    _configure_alchemy_distill_parser(alchemy_distill_parser)
+
+    alchemy_finalize_parser = subparsers.add_parser(
+        "alchemy-finalize",
+        help=argparse.SUPPRESS,
+    )
+    _configure_alchemy_finalize_parser(alchemy_finalize_parser)
+
+    alchemy_promote_parser = subparsers.add_parser(
+        "alchemy-promote",
+        help=argparse.SUPPRESS,
+    )
+    _configure_alchemy_promote_parser(alchemy_promote_parser)
+
+    alchemy_revert_parser = subparsers.add_parser(
+        "alchemy-revert",
+        help=argparse.SUPPRESS,
+    )
+    _configure_alchemy_revert_parser(alchemy_revert_parser)
+
+    alchemy_demote_parser = subparsers.add_parser(
+        "alchemy-demote",
+        help=argparse.SUPPRESS,
+    )
+    _configure_alchemy_demote_parser(alchemy_demote_parser)
+
+
+def _configure_alchemy_start_parser(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("corpus_id")
+    parser.add_argument("--topic", required=True)
+    parser.add_argument(
+        "--include-elixir", type=str, default=None, help="可选：额外包含的金丹 id，多个用逗号分隔。"
+    )
+
+
+def _configure_alchemy_distill_parser(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("elixir_id")
+    parser.add_argument("--question", required=True)
+    parser.add_argument(
+        "--include-elixir", type=str, default=None, help="可选：额外包含的金丹 id，多个用逗号分隔。"
+    )
+
+
+def _configure_alchemy_finalize_parser(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--elixir-id", required=True)
+
+
+def _configure_alchemy_promote_parser(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--elixir-id", required=True)
+    parser.add_argument("--note", default=None)
+
+
+def _configure_alchemy_revert_parser(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--elixir-id", required=True)
+    parser.add_argument("--note", default=None)
+
+
+def _configure_alchemy_demote_parser(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--elixir-id", required=True)
+    parser.add_argument("--note", default=None)
+
+
+def _converge_advanced_help_surface(subparsers: argparse._SubParsersAction) -> None:
+    """Hide flat alchemy-* compat aliases from default advanced help."""
+    subparsers._choices_actions = [  # type: ignore[attr-defined]
+        action
+        for action in subparsers._choices_actions  # type: ignore[attr-defined]
+        if getattr(action, "dest", "") not in _ALCHEMY_COMPAT_COMMANDS
+    ]
+    visible = [action.dest for action in subparsers._choices_actions]  # type: ignore[attr-defined]
+    subparsers.metavar = "{" + ",".join(visible) + "}"
+
+
+def _set_handler_command_defaults(
+    subparsers: argparse._SubParsersAction,
+    handler_command: str | None = None,
+    *,
+    alchemy_leaves: bool = False,
+) -> None:
     for name, choice in subparsers.choices.items():
+        if alchemy_leaves and name in _ALCHEMY_SUBCOMMAND_HANDLERS:
+            choice.set_defaults(handler_command=_ALCHEMY_SUBCOMMAND_HANDLERS[name])
+            continue
+        if name == "alchemy" and not alchemy_leaves:
+            for action in choice._actions:
+                if isinstance(action, argparse._SubParsersAction):
+                    _set_handler_command_defaults(action, alchemy_leaves=True)
+            continue
         canonical_command = handler_command or name
         choice.set_defaults(handler_command=canonical_command)
         for action in choice._actions:

@@ -141,9 +141,10 @@ Ask 只产出 `output/reports/*.md` 自由 Markdown 报告（CLI 仅接受 `--fo
 ./scripts/aiwiki-launcher.sh advanced run-nightly
 
 # 启动 / 蒸馏 / 定稿金丹（跨周期 reusable thesis）
-./scripts/aiwiki-launcher.sh advanced alchemy-start --help
-./scripts/aiwiki-launcher.sh advanced alchemy-distill --help
-./scripts/aiwiki-launcher.sh advanced alchemy-finalize --help
+# 推荐：`advanced alchemy start|distill|finalize|promote|revert|demote`；旧 `alchemy-*` 仍可用作 compat。
+./scripts/aiwiki-launcher.sh advanced alchemy start --help
+./scripts/aiwiki-launcher.sh advanced alchemy distill --help
+./scripts/aiwiki-launcher.sh advanced alchemy finalize --help
 ```
 
 ## 单 runtime 协议
