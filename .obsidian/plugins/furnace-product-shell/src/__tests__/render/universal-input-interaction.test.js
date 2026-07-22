@@ -721,6 +721,89 @@ test("ask pending card uses generic generation language", () => {
   expect(container.textContent).not.toContain("长程报告");
 });
 
+test("ask pending running card shows soft hint after 15 seconds", () => {
+  const context = loadRenderContext();
+  const container = document.createElement("div");
+  const now = Date.parse("2026-05-13T09:00:20.000Z");
+  const realNow = Date.now;
+  Date.now = jest.fn(() => now);
+  try {
+    context.renderTodayFeed(
+      makePlugin({
+        pendingSubmissions: [
+          {
+            id: "ask-running-old",
+            status: "running",
+            displayText: "请总结这篇文章",
+            startedAt: "2026-05-13T09:00:00.000Z",
+            retryArgs: { kind: "auto-ask", format: "report" },
+          },
+        ],
+      }),
+      container
+    );
+    expect(container.textContent).toContain("仍在生成，请稍候");
+    expect(container.querySelector(".furnace-ask-pending-soft-hint")).toBeTruthy();
+  } finally {
+    Date.now = realNow;
+  }
+});
+
+test("ask pending running card hides soft hint before 15 seconds", () => {
+  const context = loadRenderContext();
+  const container = document.createElement("div");
+  const now = Date.parse("2026-05-13T09:00:10.000Z");
+  const realNow = Date.now;
+  Date.now = jest.fn(() => now);
+  try {
+    context.renderTodayFeed(
+      makePlugin({
+        pendingSubmissions: [
+          {
+            id: "ask-running-fresh",
+            status: "running",
+            displayText: "请总结这篇文章",
+            startedAt: "2026-05-13T09:00:00.000Z",
+            retryArgs: { kind: "auto-ask", format: "report" },
+          },
+        ],
+      }),
+      container
+    );
+    expect(container.textContent).not.toContain("仍在生成，请稍候");
+    expect(container.querySelector(".furnace-ask-pending-soft-hint")).toBeNull();
+  } finally {
+    Date.now = realNow;
+  }
+});
+
+test("pure material pending card never shows ask soft hint", () => {
+  const context = loadRenderContext();
+  const container = document.createElement("div");
+  const now = Date.parse("2026-05-13T09:01:00.000Z");
+  const realNow = Date.now;
+  Date.now = jest.fn(() => now);
+  try {
+    context.renderTodayFeed(
+      makePlugin({
+        pendingSubmissions: [
+          {
+            id: "material-running",
+            status: "running",
+            displayText: "https://example.com/article",
+            startedAt: "2026-05-13T09:00:00.000Z",
+            retryArgs: { kind: "material", payload: "https://example.com/article" },
+          },
+        ],
+      }),
+      container
+    );
+    expect(container.textContent).not.toContain("仍在生成，请稍候");
+  } finally {
+    Date.now = realNow;
+  }
+});
+
 test("renderTodayFeed covers no-summary empty-feed and pending branches", () => {
   const context = loadRenderContext();
 

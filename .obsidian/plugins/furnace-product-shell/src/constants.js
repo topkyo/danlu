@@ -118,6 +118,7 @@ const ZH_TEXT = {
   "Report generation can take several minutes; keep this card open and refresh status if needed.": "报告生成可能需要几分钟；保留这张卡片，必要时刷新状态。",
   "已有进行中的提问，请等待完成后再试。": "已有进行中的提问，请等待完成后再试。",
   "正在生成": "正在生成",
+  "仍在生成，请稍候": "仍在生成，请稍候",
   "Latest run-ask failed without deterministic fallback.": "最近一次 run-ask 失败，且没有进入 deterministic fallback。",
   "LLM failure notice active": "LLM 失败说明已启用",
   "No Product Shell ask has been recorded yet.": "当前还没有 Product Shell Ask 记录。",

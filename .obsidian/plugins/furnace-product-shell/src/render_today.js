@@ -269,11 +269,51 @@ function renderTodayEmptyCta(plugin, parentEl, viewRoot) {
   });
 }
 
+const ASK_PENDING_SOFT_HINT_MS = 15 * 1000;
+
+function pendingSubmissionElapsedMs(entry, now = Date.now()) {
+  const startedMs = Date.parse(entry && entry.startedAt || "");
+  return Number.isFinite(startedMs) ? Math.max(0, now - startedMs) : 0;
+}
+
+function shouldShowAskPendingSoftHint(entry, now = Date.now()) {
+  const status = String(entry && entry.status || "running");
+  if (status !== "running" && status !== "received") return false;
+  if (isPureMaterialPendingEntry(entry)) return false;
+  return pendingSubmissionElapsedMs(entry, now) >= ASK_PENDING_SOFT_HINT_MS;
+}
+
+function scheduleAskPendingSoftHintRefresh(plugin, items, now = Date.now()) {
+  if (!plugin || typeof plugin.refreshOpenViews !== "function") return;
+  if (plugin._askPendingSoftHintTimer) {
+    clearTimeout(plugin._askPendingSoftHintTimer);
+    plugin._askPendingSoftHintTimer = null;
+  }
+  let nextDelay = null;
+  for (const entry of items) {
+    const status = String(entry && entry.status || "running");
+    if (status !== "running" && status !== "received") continue;
+    if (isPureMaterialPendingEntry(entry)) continue;
+    const elapsed = pendingSubmissionElapsedMs(entry, now);
+    if (elapsed >= ASK_PENDING_SOFT_HINT_MS) continue;
+    const startedMs = Date.parse(entry && entry.startedAt || "");
+    if (!Number.isFinite(startedMs)) continue;
+    const delay = ASK_PENDING_SOFT_HINT_MS - elapsed;
+    if (nextDelay === null || delay < nextDelay) nextDelay = delay;
+  }
+  if (nextDelay === null || nextDelay <= 0) return;
+  plugin._askPendingSoftHintTimer = setTimeout(() => {
+    plugin._askPendingSoftHintTimer = null;
+    plugin.refreshOpenViews();
+  }, nextDelay + 50);
+}
+
 // R88 #2: 渲染"处理中"卡片（runtime-only pending submissions）
 function renderPendingSubmissionsGroup(plugin, section) {
   const items = Array.isArray(plugin.pendingSubmissions) ? plugin.pendingSubmissions : [];
   if (!items.length) return;
   const groupEl = section.createDiv({ cls: "furnace-today-feed-group furnace-conversation-stream" });
+  const renderNow = Date.now();
   for (const entry of items) {
     const streamItem = groupEl.createDiv({ cls: "furnace-conversation-item" });
 
@@ -300,6 +340,12 @@ function renderPendingSubmissionsGroup(plugin, section) {
     }
 
     aiBubble.createDiv({ cls: "furnace-bubble-status-text", text: statusLabel });
+    if (shouldShowAskPendingSoftHint(entry, renderNow)) {
+      aiBubble.createDiv({
+        cls: "furnace-bubble-hint furnace-ask-pending-soft-hint",
+        text: plugin.t("仍在生成，请稍候"),
+      });
+    }
     renderPendingProgressSteps(plugin, aiBubble, entry);
 
     if (entry.status === "failed") {
@@ -478,6 +524,7 @@ function renderPendingSubmissionsGroup(plugin, section) {
       doneBtn.addEventListener("click", () => plugin.removePendingSubmission(entry.id));
     }
   }
+  scheduleAskPendingSoftHintRefresh(plugin, items, renderNow);
 }
 
 function renderPendingProgressSteps(plugin, aiBubble, entry) {
@@ -497,8 +544,7 @@ function pendingSubmissionProgressSteps(plugin, entry) {
   if (isPureMaterialPendingEntry(entry)) {
     return [plugin.t("正在收料"), plugin.t("写入 raw/"), plugin.t("已收料")];
   }
-  const startedMs = Date.parse(entry && entry.startedAt || "");
-  const elapsed = Number.isFinite(startedMs) ? Math.max(0, Date.now() - startedMs) : 0;
+  const elapsed = pendingSubmissionElapsedMs(entry);
   if (entry && entry.status === "received") {
     return [plugin.t("已接收请求"), plugin.t("等待产物写入"), plugin.t("刷新后关联报告")];
   }
