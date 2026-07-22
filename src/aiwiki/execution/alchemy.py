@@ -69,7 +69,6 @@ from .alchemy_helpers import (
     _settled_path,
     _validate_source_outputs,
     _validate_state_for_path,
-    _write_atomic_text,
     _write_elixir_markdown,
     list_promoted_outputs_for_corpus,
     validate_promote_gate,
@@ -389,9 +388,9 @@ def promote_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> di
     settled_snapshot = _snapshot_file_bytes(settled_path)  # expected None: gate above ensured non-existence
     candidate_snapshot = _snapshot_file_bytes(candidate_path)  # expected non-None: gate above ensured candidate exists
 
-    _write_atomic_text(settled_path, settled_text)
+    atomic_write_text(settled_path, settled_text)
     try:
-        _write_atomic_text(candidate_path, tombstone_text)
+        atomic_write_text(candidate_path, tombstone_text)
     except Exception as exc:
         try:
             _restore_file_bytes(settled_path, settled_snapshot)
@@ -534,7 +533,7 @@ def revert_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> Pat
     candidate_frontmatter.pop(_PROMOTION_TS_FIELD, None)
     candidate_text = _render_elixir_document(candidate_frontmatter, tombstone_body)
 
-    _write_atomic_text(candidate_path, candidate_text)
+    atomic_write_text(candidate_path, candidate_text)
     try:
         settled_path.unlink()
     except Exception as exc:
@@ -625,7 +624,7 @@ def demote_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> Pat
         )
         dependency_breaks = []
 
-    _write_atomic_text(candidate_path, demoted_text)
+    atomic_write_text(candidate_path, demoted_text)
     try:
         settled_path.unlink()
     except Exception as exc:

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 from datetime import timedelta, timezone
 from pathlib import Path
@@ -12,6 +11,7 @@ from typing import Any
 
 from ..content.material import load_active_corpora_state
 from ..protocol.runtime_config import PROTOCOL_ELIXIR_REVIEW_DAYS
+from ..utils.io import atomic_write_text
 from ..utils.markdown import parse_frontmatter, strip_frontmatter
 from ..utils.path import relative_path
 from .candidates import load_output_candidates_state
@@ -534,13 +534,7 @@ def _write_elixir_markdown(path: Path, *, frontmatter: dict[str, Any], body: str
     serializable = dict(frontmatter)
     serializable["distill_history_json"] = json.dumps(serializable.pop("distill_history", []), ensure_ascii=False)
     content = _render_inserted_frontmatter(serializable) + body
-    _write_atomic_text(path, content)
-
-
-def _write_atomic_text(path: Path, content: str) -> None:
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(content, encoding="utf-8")
-    os.replace(tmp, path)
+    atomic_write_text(path, content)
 
 
 def _render_elixir_document(frontmatter: dict[str, Any], body: str) -> str:

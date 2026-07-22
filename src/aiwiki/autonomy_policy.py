@@ -34,7 +34,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 
-from .utils.io import runtime_write_operation
+from .utils.io import atomic_write_text, runtime_write_operation
 
 POLICY_RELATIVE = Path(".aiwiki") / "state" / "autonomy-policy.json"
 POLICY_SCHEMA_VERSION = 3
@@ -190,10 +190,10 @@ def set_flag(root: Path, flag: str, value: bool) -> AutonomyPolicy:
     payload = {**_policy_payload(base_policy), **flags}
     payload["schema_version"] = POLICY_SCHEMA_VERSION
     path = policy_path(root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    os.replace(tmp, path)
+    atomic_write_text(
+        path,
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+    )
     return AutonomyPolicy(**{**_policy_payload(base_policy), **flags})
 
 

@@ -9,7 +9,7 @@ from typing import Any
 
 from ..execution.receipts import compute_file_sha256
 from ..render.paths import execution_receipts_dir
-from ..utils.io import _restore_snapshots, _snapshot_file_bytes
+from ..utils.io import _restore_snapshots, _snapshot_file_bytes, atomic_write_text
 from ..utils.path import relative_path
 from .alchemy_helpers import (
     CANDIDATE_ELIXIR_DIR,
@@ -22,7 +22,6 @@ from .alchemy_helpers import (
     _resolve_elixir_id,
     _settled_path,
     _validate_state_for_path,
-    _write_atomic_text,
 )
 from .alchemy_receipts import _persist_receipt_transactionally
 
@@ -159,7 +158,7 @@ def apply_legacy_elixir_migration(root: Path, *, limit: int = 50, note: str | No
         for plan in plans:
             candidate_path = plan["candidate_path"]
             candidate_path.parent.mkdir(parents=True, exist_ok=True)
-            _write_atomic_text(candidate_path, plan["content"])
+            atomic_write_text(candidate_path, plan["content"])
             _validate_state_for_path(root, "superseded", candidate_path)
             migrated.append(
                 {
