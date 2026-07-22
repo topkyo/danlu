@@ -14,9 +14,11 @@
 
 ## 当前动态
 
+- 2026-07-22 (**多尺子全量复评**)：Ask sync 后四路审计 — Local Eng **9.05**；Live 维 **7.0**（Gate not-yet，估算加权 ~8.3）；Commercial **7.8**；Ask 架构 A/B **8.0**。报告：`docs/archive/Furnace Multi-Ruler Reassessment 2026-07-22.md`；Scorecard 已刷新（acceptance 17 / Jest 179 / llm 76）。
+
 - 2026-07-22 (**Ask follow-ups · 收口**)：dogfood 基线（ask 25s/43s + mid drop，`/tmp/ask-dogfood-baseline.md`）；读侧 background 过滤与 pending `jobId` 已删；sync ask ≥15s「仍在生成」软提示；Post-Cleanup/Go-Live SoT 已对齐。计划：`docs/plans/2026-07-22-ask-followups.md`。
 
-- 2026-07-22 (**Ask sync chat · 删除 submit/resume**)：Shell 提问改同步 `run-ask` + 单飞；删除 `run-ask-submit`/`run-ask-resume`/`background.py`/longRunning poller。审查修 P0：`excludePendingId` 避免 push 后自挡。Dogfood：清 `background-jobs/`、移骨架 `图片内容是.md`、同步 vault `main.js`。读侧仍过滤历史 `background_status=running` 僵尸。Spec/plan：`docs/specs|plans/2026-07-22-ask-sync-chat.md`。验证：`verify.sh all` PASS（Jest 176 / acceptance 17 / llm 76）。
+- 2026-07-22 (**Ask sync chat · 删除 submit/resume**)：Shell 提问改同步 `run-ask` + 单飞；删除 `run-ask-submit`/`run-ask-resume`/`background.py`/longRunning poller。审查修 P0：`excludePendingId` 避免 push 后自挡。Dogfood：清 `background-jobs/`、移骨架报告、同步 vault `main.js`。Spec/plan：`docs/specs|plans/2026-07-22-ask-sync-chat.md`。验证：`verify.sh all` PASS。
 
 - 2026-07-21 (**fix: background resume CLI + early-exit 收口**)：`spawn_background_resume` 改为 `advanced run-ask-resume`（修 8a48253 删 legacy 后漏改 spawn）；子进程秒退或 spawn `OSError` 时写 job/artifact `failed`，避免 UI 永久「报告生成中」。**已被上条退役 supersede。**
 
