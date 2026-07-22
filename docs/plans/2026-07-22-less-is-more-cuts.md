@@ -51,9 +51,9 @@
 
 **Depends on:** Task 1–4
 
-- [ ] `PROGRESS.md` 记一笔；勾选本 plan
-- [ ] rebuild `main.js`；同步 dogfood vault plugin（若本机 vault 可写）
-- [ ] **Final:** `bash scripts/verify.sh all`
+- [x] `PROGRESS.md` 记一笔；勾选本 plan
+- [x] rebuild `main.js`；同步 dogfood vault plugin（若本机 vault 可写）
+- [x] **Final:** `bash scripts/verify.sh all`
 
 ## Deferred（本轮不做）
 

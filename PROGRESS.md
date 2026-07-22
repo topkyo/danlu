@@ -14,6 +14,8 @@
 
 ## 当前动态
 
+- 2026-07-22 (**Less-is-More cuts**)：Ask 成功直写 done；pending 去假进度；Today 主栏仅报告；清 no-op nightly/auto_adopt env。计划：`docs/plans/2026-07-22-less-is-more-cuts.md`。
+
 - 2026-07-22 (**Less-is-More 复评**)：四路审计加权 **7.1**（Surface 7.9 / Code 7.0 / UX 6.8 / Docs 6.0）。热路径已瘦；主债在 Shell 幽灵 pending、advanced+env、SoT 三套重叠。报告：`docs/archive/Furnace Less-is-More Reassessment 2026-07-22.md`。
 
 - 2026-07-22 (**多尺子全量复评**)：Ask sync 后四路审计 — Local Eng **9.05**；Live 维 **7.0**（Gate not-yet，估算加权 ~8.3）；Commercial **7.8**；Ask 架构 A/B **8.0**。报告：`docs/archive/Furnace Multi-Ruler Reassessment 2026-07-22.md`；Scorecard 已刷新（acceptance 17 / Jest 179 / llm 76）。
