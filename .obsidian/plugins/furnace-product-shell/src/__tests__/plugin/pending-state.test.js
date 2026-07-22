@@ -35,7 +35,7 @@ test("pending entry creation and persistence keep degradation metadata", () => {
       deliveryMode: "deterministic-fallback",
       backgroundStatus: "degraded",
       artifactQuality: "degraded",
-      retryArgs: { longRunning: true },
+      retryArgs: { kind: "auto-ask", format: "report" },
     },
   });
 
@@ -65,7 +65,7 @@ test("pending entry transitions preserve terminal and retry contracts", () => {
     id: "pending-1",
     displayText: "Run report",
     startedAt: "2026-05-25T00:00:00Z",
-    opts: { retryArgs: { jobId: "job-1", runId: "run-1", runNotesPath: "notes.md", longRunning: true } },
+    opts: { retryArgs: { runId: "run-1", runNotesPath: "notes.md", kind: "auto-ask", format: "report" } },
   });
 
   expect(context.markPendingSubmissionEntryReceived(entry, "2026-05-25T00:00:01Z")).toBe(true);
@@ -92,7 +92,21 @@ test("pending entry transitions preserve terminal and retry contracts", () => {
     artifactQuality: "",
     _stale: false,
   });
-  expect(entry.retryArgs).toMatchObject({ jobId: "", runId: "", runNotesPath: "", longRunning: true });
+  expect(entry.retryArgs).toMatchObject({ runId: "", runNotesPath: "", kind: "auto-ask", format: "report" });
+});
+
+test("pendingHasActiveAsk ignores pure material drops but blocks active ask cards", () => {
+  const context = loadPendingStateContext();
+  const pending = [
+    { id: "material", status: "running", retryArgs: { kind: "material", payload: "https://example.com" } },
+    { id: "ask", status: "received", retryArgs: { kind: "auto-ask", question: "Q", format: "report" } },
+  ];
+
+  expect(context.pendingHasActiveAsk([pending[0]])).toBe(false);
+  expect(context.pendingHasActiveAsk(pending)).toBe(true);
+  expect(context.pendingHasActiveAsk([{ id: "done", status: "done", retryArgs: { kind: "auto-ask" } }])).toBe(false);
+  expect(context.pendingHasActiveAsk(pending, "ask")).toBe(false);
+  expect(context.pendingHasActiveAsk(pending, "material")).toBe(true);
 });
 
 test("pure material reconcile ignores recent outputs and matches raw only", () => {

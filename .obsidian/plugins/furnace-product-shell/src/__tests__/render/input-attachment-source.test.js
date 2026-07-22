@@ -239,13 +239,14 @@ describe("Universal Input attachment source handling", () => {
     expect(inferAutoAskFormat("引用报告：output/reports/foo.md\n请生成一份研究报告，包含证据链", [])).toBe("report");
   });
 
-  test("built main routes report auto ask through background submit", () => {
+  test("built main always routes ask through sync run-ask", () => {
     const bundleSrc = fs.readFileSync(path.resolve(__dirname, "../../../main.js"), "utf8");
+    const askSpecBlock = bundleSrc.match(/function buildAskCommandSpec\([\s\S]*?\n\}/);
 
-    expect(bundleSrc).toMatch(/function buildAskCommandSpec/);
-    expect(bundleSrc).toMatch(/const longRunning = mode === "run-ask" && finalFormat === "report"/);
-    expect(bundleSrc).toMatch(/const command = longRunning \? "run-ask-submit" : mode/);
-    expect(bundleSrc).toMatch(/backgroundSubmit: longRunning/);
+    expect(askSpecBlock).not.toBeNull();
+    expect(askSpecBlock[0]).toMatch(/const command = mode === "run-ask" \? "run-ask" : mode/);
+    expect(askSpecBlock[0]).not.toMatch(/run-ask-submit/);
+    expect(askSpecBlock[0]).not.toMatch(/backgroundSubmit/);
   });
 
   test("buildAutoAskQuestion includes material paths and user question", () => {

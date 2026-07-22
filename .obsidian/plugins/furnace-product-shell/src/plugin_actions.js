@@ -8,12 +8,16 @@ async function runProductShellUniversalInputCommand(plugin, { payload, title }) 
   return await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
 }
 
-async function runProductShellAskCommand(plugin, { question, format, mode }) {
+async function runProductShellAskCommand(plugin, { question, format, mode, excludePendingId }) {
+  if (pendingHasActiveAsk(plugin.pendingSubmissions, excludePendingId)) {
+    new Notice(plugin.t("已有进行中的提问，请等待完成后再试。"));
+    return;
+  }
   const spec = buildAskCommandSpec({ question, format, mode });
   return await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
 }
 
-async function runProductShellDroppedPayloadsWithAutoAsk(plugin, { payloads, question }) {
+async function runProductShellDroppedPayloadsWithAutoAsk(plugin, { payloads, question, excludePendingId }) {
   const normalizedPayloads = Array.isArray(payloads)
     ? payloads
       .map((payload) => {
@@ -39,7 +43,6 @@ async function runProductShellDroppedPayloadsWithAutoAsk(plugin, { payloads, que
     : "";
   let runNotesPath = "";
   let runId = "";
-  let jobId = "";
   let askFormat = "";
   if (normalizedQuestion) {
     askFormat = inferAutoAskFormat(normalizedQuestion, normalizedMaterialPaths);
@@ -47,10 +50,10 @@ async function runProductShellDroppedPayloadsWithAutoAsk(plugin, { payloads, que
       question: askQuestion,
       format: askFormat,
       mode: "run-ask",
+      excludePendingId,
     });
     runNotesPath = String(askPayload && askPayload.run_notes_path || "");
     runId = String(askPayload && askPayload.run_id || "");
-    jobId = String(askPayload && askPayload.job_id || "");
   }
   return {
     materialPaths: normalizedMaterialPaths,
@@ -58,7 +61,6 @@ async function runProductShellDroppedPayloadsWithAutoAsk(plugin, { payloads, que
     askFormat,
     runNotesPath,
     runId,
-    jobId,
   };
 }
 
@@ -72,7 +74,7 @@ function completeProductShellPendingMaterialDrop(plugin, id, materialPaths) {
   return false;
 }
 
-async function runProductShellDroppedFilesWithAutoAsk(plugin, { files, question }) {
+async function runProductShellDroppedFilesWithAutoAsk(plugin, { files, question, excludePendingId }) {
   const normalizedFiles = Array.isArray(files)
     ? files
       .map((file) => ({
@@ -84,6 +86,7 @@ async function runProductShellDroppedFilesWithAutoAsk(plugin, { files, question 
   return await plugin.runDroppedPayloadsWithAutoAsk({
     payloads: normalizedFiles.map((file) => ({ path: file.path, title: file.name })),
     question,
+    excludePendingId,
   });
 }
 

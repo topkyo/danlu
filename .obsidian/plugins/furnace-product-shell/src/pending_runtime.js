@@ -30,9 +30,6 @@ function commitPendingSubmissionRuntimeChange(plugin, opts = {}) {
   if (opts.refresh !== false && typeof plugin.refreshOpenViews === "function") {
     plugin.refreshOpenViews();
   }
-  if (opts.poller !== false && typeof plugin.updateLongRunningPoller === "function") {
-    plugin.updateLongRunningPoller();
-  }
 }
 
 function pushPendingSubmissionRuntime(plugin, displayText, opts = {}) {
@@ -94,7 +91,6 @@ function updatePendingSubmissionRuntimeRetryArgs(plugin, id, retryArgs) {
   entry.retryArgs = retryArgs && typeof retryArgs === "object" ? retryArgs : null;
   if (retryArgs && typeof retryArgs === "object") {
     updatePendingSubmissionRuntimeRunNotes(plugin, id, retryArgs.runNotesPath, retryArgs.runId, { save: false, refresh: false });
-    if (retryArgs.jobId) entry.jobId = String(retryArgs.jobId || "");
   }
   commitPendingSubmissionRuntimeChange(plugin);
 }
@@ -103,48 +99,14 @@ function updatePendingSubmissionRuntimeRunNotes(plugin, id, runNotesPath, runId,
   const entry = findPendingSubmissionRuntimeEntry(plugin, id);
   if (!entry) return;
   updatePendingSubmissionEntryRunNotes(entry, runNotesPath, runId);
-  commitPendingSubmissionRuntimeChange(plugin, { save: opts.save, refresh: opts.refresh, poller: false });
+  commitPendingSubmissionRuntimeChange(plugin, { save: opts.save, refresh: opts.refresh });
 }
 
 function updatePendingSubmissionRuntimeArtifactMeta(plugin, id, meta, opts = {}) {
   const entry = findPendingSubmissionRuntimeEntry(plugin, id);
   if (!entry || !meta || typeof meta !== "object") return;
   updatePendingSubmissionEntryArtifactMeta(entry, meta);
-  commitPendingSubmissionRuntimeChange(plugin, { save: opts.save, refresh: opts.refresh, poller: false });
-}
-
-function updateProductShellLongRunningPoller(plugin) {
-  if (pendingHasActiveLongRunning(plugin && plugin.pendingSubmissions)) {
-    plugin.startLongRunningPoller();
-  } else {
-    plugin.stopLongRunningPoller();
-  }
-}
-
-function startProductShellLongRunningPoller(plugin) {
-  if (!plugin || plugin.longRunningPollTimer) return;
-  plugin.longRunningPollTimer = window.setInterval(() => {
-    if (!pendingHasActiveLongRunning(plugin.pendingSubmissions)) {
-      plugin.stopLongRunningPoller();
-      return;
-    }
-    if (plugin.longRunningPollRefreshInFlight) {
-      return;
-    }
-    plugin.longRunningPollRefreshInFlight = true;
-    Promise.resolve(plugin.refreshShellSummarySilently())
-      .catch(() => {})
-      .finally(() => {
-        plugin.longRunningPollRefreshInFlight = false;
-      });
-  }, 15000);
-}
-
-function stopProductShellLongRunningPoller(plugin) {
-  if (!plugin || !plugin.longRunningPollTimer) return;
-  window.clearInterval(plugin.longRunningPollTimer);
-  plugin.longRunningPollTimer = null;
-  plugin.longRunningPollRefreshInFlight = false;
+  commitPendingSubmissionRuntimeChange(plugin, { save: opts.save, refresh: opts.refresh });
 }
 
 function productShellLastSummaryRefreshLabel(plugin) {
@@ -176,5 +138,4 @@ function reconcilePendingSubmissionsRuntime(plugin, summary) {
     plugin.updatePendingSubmissionArtifactMeta(hit.id, hit.meta || {}, { save: false, refresh: false });
     plugin.markPendingSubmissionDone(hit.id, hit.target, hit.path);
   }
-  updateProductShellLongRunningPoller(plugin);
 }

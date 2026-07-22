@@ -184,6 +184,7 @@ function makePlugin(overrides = {}) {
     },
     getLastSummaryRefreshLabel: () => "刚刚",
     refreshShellSummaryCommand: jest.fn().mockResolvedValue(undefined),
+    hasActiveAskPending: jest.fn(() => false),
     pushPendingSubmission: jest.fn(() => "pending-1"),
     markPendingSubmissionReceived: jest.fn((id) => {
       const entry = (overrides.pendingSubmissions || []).find((item) => item && item.id === id);
@@ -438,6 +439,7 @@ test("file-only submission completes as raw material instead of staying queued",
   expect(plugin.runDroppedFilesWithAutoAsk).toHaveBeenCalledWith({
     files: [{ path: "/tmp/image.png", name: "image.png" }],
     question: "",
+    excludePendingId: "pending-1",
   });
   expect(plugin.runAskCommand).not.toHaveBeenCalled();
   expect(plugin.completePendingMaterialDrop).toHaveBeenCalledWith("pending-1", ["raw/inbox/image.md", "raw/assets/image.png"]);
@@ -468,7 +470,7 @@ test("pure material pending card shows 已收料 and never 排队生成报告", 
   expect(container.textContent).not.toContain("已接收，正在排队生成报告");
 });
 
-test("ask pending received card still shows report queue copy", () => {
+test("ask pending received card shows generic generation copy", () => {
   const context = loadRenderContext();
   const plugin = makePlugin({
     pendingSubmissions: [
@@ -485,7 +487,8 @@ test("ask pending received card still shows report queue copy", () => {
 
   context.renderTodayFeed(plugin, container);
 
-  expect(container.textContent).toContain("已接收，正在排队生成报告");
+  expect(container.textContent).toContain("正在生成");
+  expect(container.textContent).not.toContain("长程报告");
 });
 
 test("pure material failure card uses 投料失败 title", () => {
@@ -537,6 +540,7 @@ test("plain question goes through run-ask instead of deterministic universal dro
     question: "问你个问题，你是什么大模型？",
     format: "report",
     mode: "run-ask",
+    excludePendingId: "pending-1",
   });
   expect(plugin.updatePendingSubmissionRetryArgs).toHaveBeenCalledWith("pending-1", expect.objectContaining({
     kind: "auto-ask",
@@ -574,6 +578,7 @@ test("ctrl enter submits the composer through the form path", async () => {
     question: "请回答这个问题",
     format: "report",
     mode: "run-ask",
+    excludePendingId: "pending-1",
   });
   expect(plugin.markPendingSubmissionReceived).toHaveBeenCalledWith("pending-1");
   expect(textarea.value).toBe("");
@@ -636,10 +641,11 @@ test("plain question ignores stale persisted format and stays report", async () 
     question: "你是什么大模型？",
     format: "report",
     mode: "run-ask",
+    excludePendingId: "pending-1",
   });
 });
 
-test("explicit report question is marked as long running", async () => {
+test("explicit report question uses sync ask pending metadata", async () => {
   const context = loadRenderContext();
   const plugin = makePlugin({
     runAskCommand: jest.fn().mockResolvedValue({ run_notes_path: "output/control/runs/report/thinking.md", run_id: "ask-report" }),
@@ -659,13 +665,14 @@ test("explicit report question is marked as long running", async () => {
     question: "请生成一份深度报告",
     format: "report",
     mode: "run-ask",
+    excludePendingId: "pending-1",
   });
   expect(plugin.pushPendingSubmission).toHaveBeenCalledWith("请生成一份深度报告", expect.objectContaining({
-    retryArgs: expect.objectContaining({ format: "report", longRunning: true }),
+    retryArgs: expect.objectContaining({ format: "report", kind: "auto-ask" }),
   }));
 });
 
-test("material question updates long running flag from final inferred format", async () => {
+test("material question stores final inferred format without long running flag", async () => {
   const context = loadRenderContext();
   const plugin = makePlugin({
     runDroppedPayloadsWithAutoAsk: jest.fn().mockResolvedValue({
@@ -689,11 +696,10 @@ test("material question updates long running flag from final inferred format", a
 
   expect(plugin.updatePendingSubmissionRetryArgs).toHaveBeenCalledWith("pending-1", expect.objectContaining({
     format: "report",
-    longRunning: true,
   }));
 });
 
-test("long running pending card uses report progress language", () => {
+test("ask pending card uses generic generation language", () => {
   const context = loadRenderContext();
   const container = document.createElement("div");
 
@@ -705,16 +711,16 @@ test("long running pending card uses report progress language", () => {
           status: "received",
           displayText: "请生成一份深度报告",
           startedAt: "2026-05-13T09:00:00Z",
-          retryArgs: { kind: "auto-ask", format: "report", longRunning: true },
+          retryArgs: { kind: "auto-ask", format: "report" },
         },
       ],
     }),
     container
   );
 
-  expect(container.textContent).toContain("长程报告生成中，可稍后刷新");
-  expect(container.textContent).toContain("已接收长程报告任务");
-  expect(container.textContent).toContain("LLM 正在生成结构化报告");
+  expect(container.textContent).toContain("正在生成");
+  expect(container.textContent).toContain("已接收请求");
+  expect(container.textContent).not.toContain("长程报告");
 });
 
 test("renderTodayFeed covers no-summary empty-feed and pending branches", () => {
@@ -842,7 +848,7 @@ test("degraded output card hides quote action and keeps recovery semantics", asy
   expect(container.querySelector(".furnace-pending-open-report-btn").textContent).toBe("打开产物");
 });
 
-test("degraded output retry clears stale run id and records new background job", async () => {
+test("degraded output retry clears stale run id and records new sync ask metadata", async () => {
   const context = loadRenderContext();
   const plugin = makePlugin({
     shellSummary: {
@@ -868,7 +874,7 @@ test("degraded output retry clears stale run id and records new background job",
       },
     ],
   });
-  plugin.runAskCommand = jest.fn().mockResolvedValue({ job_id: "job-new", run_id: "new-run", run_notes_path: "output/control/runs/new/thinking.md" });
+  plugin.runAskCommand = jest.fn().mockResolvedValue({ run_id: "new-run", run_notes_path: "output/control/runs/new/thinking.md" });
   const container = document.createElement("div");
 
   context.renderTodayFeed(plugin, container);
@@ -876,18 +882,15 @@ test("degraded output retry clears stale run id and records new background job",
   container.querySelector(".furnace-pending-retry-report-btn").click();
   await flushAsyncWork();
 
-  expect(plugin.runAskCommand).toHaveBeenCalledWith(expect.objectContaining({ question: "重试问题", format: "report", mode: "run-ask" }));
+  expect(plugin.runAskCommand).toHaveBeenCalledWith(expect.objectContaining({ question: "重试问题", format: "report", mode: "run-ask", excludePendingId: "done-degraded" }));
   expect(plugin.pendingSubmissions[0]).toEqual(expect.objectContaining({
     status: "received",
-    jobId: "job-new",
     runId: "new-run",
     runNotesPath: "output/control/runs/new/thinking.md",
   }));
   expect(plugin.pendingSubmissions[0].retryArgs).toEqual(expect.objectContaining({
-    jobId: "job-new",
     runId: "new-run",
     runNotesPath: "output/control/runs/new/thinking.md",
-    longRunning: true,
   }));
 });
 
@@ -897,7 +900,6 @@ test("reconcile pending report prefers run_id and stores delivery metadata", () 
   Object.assign(plugin, makePlugin());
   plugin.savePluginState = jest.fn();
   plugin.refreshOpenViews = jest.fn();
-  plugin.updateLongRunningPoller = jest.fn();
   plugin.pendingSubmissions = [
     {
       id: "p-report",
@@ -906,7 +908,7 @@ test("reconcile pending report prefers run_id and stores delivery metadata", () 
       displayText: "生成报告",
       startedAt: "2026-05-13T08:59:00Z",
       runId: "ask-report-1",
-      retryArgs: { runId: "ask-report-1", longRunning: true, format: "report" },
+      retryArgs: { runId: "ask-report-1", format: "report", kind: "auto-ask" },
     },
   ];
 
@@ -1007,11 +1009,12 @@ test("openWorkspacePath notices when file exists but Obsidian did not index it",
   ]);
 });
 
-test("runAskCommand uses background submit for report mode", async () => {
+test("runAskCommand uses sync run-ask for report mode", async () => {
   const context = loadRenderContext();
   const plugin = new context.FurnaceProductShellPlugin();
   plugin.t = (text) => text;
-  plugin.runPluginCommand = jest.fn().mockResolvedValue({ payload: { kind: "run-ask-background-job", job_id: "job-1" } });
+  plugin.pendingSubmissions = [];
+  plugin.runPluginCommand = jest.fn().mockResolvedValue({ report_path: "output/reports/r.md" });
 
   const payload = await plugin.runAskCommand({
     question: "请生成一份深度报告",
@@ -1020,11 +1023,85 @@ test("runAskCommand uses background submit for report mode", async () => {
   });
 
   expect(plugin.runPluginCommand).toHaveBeenCalledWith(
-    expect.stringContaining("Long Report"),
-    ["run-ask-submit", "请生成一份深度报告", "--format", "report", "--lean"],
-    expect.objectContaining({ refreshAfter: true, longRunning: true, backgroundSubmit: true })
+    expect.stringContaining("Ask"),
+    ["run-ask", "请生成一份深度报告", "--format", "report", "--lean"],
+    expect.objectContaining({ refreshAfter: true })
   );
-  expect(payload).toEqual({ payload: { kind: "run-ask-background-job", job_id: "job-1" } });
+  expect(payload).toEqual({ report_path: "output/reports/r.md" });
+});
+
+test("runAskCommand rejects a second ask while one is active", async () => {
+  const context = loadRenderContext();
+  const plugin = new context.FurnaceProductShellPlugin();
+  plugin.t = (text) => text;
+  plugin.pendingSubmissions = [
+    {
+      id: "ask-active",
+      status: "running",
+      retryArgs: { kind: "auto-ask", question: "first", format: "report" },
+    },
+  ];
+  plugin.runPluginCommand = jest.fn();
+
+  const payload = await plugin.runAskCommand({
+    question: "second question",
+    format: "report",
+    mode: "run-ask",
+  });
+
+  expect(plugin.runPluginCommand).not.toHaveBeenCalled();
+  expect(payload).toBeUndefined();
+  expect(context.__notices).toContain("已有进行中的提问，请等待完成后再试。");
+});
+
+test("runAskCommand still allows ask while only material drop is active", async () => {
+  const context = loadRenderContext();
+  const plugin = new context.FurnaceProductShellPlugin();
+  plugin.t = (text) => text;
+  plugin.pendingSubmissions = [
+    {
+      id: "material-active",
+      status: "running",
+      retryArgs: { kind: "material", payload: "https://example.com" },
+    },
+  ];
+  plugin.runPluginCommand = jest.fn().mockResolvedValue({ report_path: "output/reports/r.md" });
+
+  await plugin.runAskCommand({
+    question: "follow up question",
+    format: "report",
+    mode: "run-ask",
+  });
+
+  expect(plugin.runPluginCommand).toHaveBeenCalledTimes(1);
+});
+
+test("runAskCommand excludes its own pending card (no self-block after push)", async () => {
+  const context = loadRenderContext();
+  const plugin = new context.FurnaceProductShellPlugin();
+  plugin.t = (text) => text;
+  plugin.savePluginState = jest.fn();
+  plugin.pendingSubmissions = [
+    {
+      id: "self-ask",
+      status: "running",
+      retryArgs: { kind: "auto-ask", question: "自问", askQuestion: "自问", format: "report" },
+    },
+  ];
+  plugin.runPluginCommand = jest.fn().mockResolvedValue({ report_path: "output/reports/r.md", run_id: "ask-1" });
+
+  expect(plugin.hasActiveAskPending()).toBe(true);
+
+  const payload = await plugin.runAskCommand({
+    question: "自问",
+    format: "report",
+    mode: "run-ask",
+    excludePendingId: "self-ask",
+  });
+
+  expect(plugin.runPluginCommand).toHaveBeenCalledTimes(1);
+  expect(payload).toEqual({ report_path: "output/reports/r.md", run_id: "ask-1" });
+  expect(context.__notices).not.toContain("已有进行中的提问，请等待完成后再试。");
 });
 
 test("shell summary fixture builds today DOM headings and furnace center keeps only primary entry surfaces", () => {

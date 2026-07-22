@@ -14,6 +14,12 @@
 
 ## 当前动态
 
+- 2026-07-22 (**Ask sync chat · 删除 submit/resume**)：Shell 提问改同步 `run-ask` + 单飞；删除 `run-ask-submit`/`run-ask-resume`/`background.py`/longRunning poller。审查修 P0：`excludePendingId` 避免 push 后自挡。Dogfood：清 `background-jobs/`、移骨架 `图片内容是.md`、同步 vault `main.js`。读侧仍过滤历史 `background_status=running` 僵尸。Spec/plan：`docs/specs|plans/2026-07-22-ask-sync-chat.md`。验证：`verify.sh all` PASS（Jest 176 / acceptance 17 / llm 76）。
+
+- 2026-07-21 (**fix: background resume CLI + early-exit 收口**)：`spawn_background_resume` 改为 `advanced run-ask-resume`（修 8a48253 删 legacy 后漏改 spawn）；子进程秒退或 spawn `OSError` 时写 job/artifact `failed`，避免 UI 永久「报告生成中」。**已被上条退役 supersede。**
+
+- 2026-07-21 (**自用打磨 · wiki 页中文段名**)：source/concept compile 写出中文 `##` 标题与空态；`preserved_section` / upsert / lint 兼容旧英文段名；acceptance prompt_hash 刷新。不做 Shell 清炉入口；nightly reconciliation / L3 revert partial 继续 defer。
+
 - 2026-07-21 (**provenance body scrub + concept soft/overload**)：正文死 `output/reports` →「（报告已删除）」；GC acceptance 边界加厚；≤1 source 概念强制 soft；overload lint warn。
 
 - 2026-07-21 (**report provenance scrub + gc-orphans**)：落地 KISS spec——compile 剥离死 `output/reports` 并 sticky 标 `provenance_status`；`advanced gc-orphans` dry-run/`--apply`+receipt；①′ HTML 停写保持。acceptance **17**。dogfood：compile → GC apply（degraded file-back + 噪音概念 + vphone 误投）→ recompile。

@@ -308,13 +308,8 @@ const ZH_TEXT = {
   "Backup LLM route ready: {count}/{total}": "备用 LLM 路由就绪：{count}/{total}",
   "Backup LLM route not ready.": "备用 LLM 路由未就绪。",
   "Report generation can take several minutes; keep this card open and refresh status if needed.": "报告生成可能需要几分钟；保留这张卡片，必要时刷新状态。",
-  "Long Report": "长程报告",
-  "Long report task": "长程报告任务",
-  "已接收长程报告任务": "已接收长程报告任务",
-  "LLM 正在生成结构化报告": "LLM 正在生成结构化报告",
-  "完成后会写入本地报告": "完成后会写入本地报告",
-  "长程报告生成中，可稍后刷新": "长程报告生成中，可稍后刷新",
-  "长程报告可能已完成，刷新看看": "长程报告可能已完成，刷新看看",
+  "已有进行中的提问，请等待完成后再试。": "已有进行中的提问，请等待完成后再试。",
+  "正在生成": "正在生成",
   "Latest run-ask failed without deterministic fallback.": "最近一次 run-ask 失败，且没有进入 deterministic fallback。",
   "LLM failure notice active": "LLM 失败说明已启用",
   "No Product Shell ask has been recorded yet.": "当前还没有 Product Shell Ask 记录。",
@@ -1595,20 +1590,17 @@ function buildUniversalInputCommandSpec({ payload, title }) {
 
 function buildAskCommandSpec({ question, format, mode }) {
   const finalFormat = "report";
-  const longRunning = mode === "run-ask" && finalFormat === "report";
-  const command = longRunning ? "run-ask-submit" : mode;
+  const command = mode === "run-ask" ? "run-ask" : mode;
   const args = [command, question, "--format", finalFormat];
   if (mode === "run-ask") {
     args.push("--lean");
   }
   return {
     args,
-    labelKey: longRunning ? "Long Report" : "Ask",
+    labelKey: "Ask",
     labelSubject: question,
     options: {
       refreshAfter: true,
-      longRunning,
-      backgroundSubmit: longRunning,
     },
   };
 }
@@ -1903,9 +1895,14 @@ function updatePendingSubmissionEntryArtifactMeta(entry, meta) {
   return changed;
 }
 
-function pendingHasActiveLongRunning(pendingSubmissions) {
+function pendingHasActiveAsk(pendingSubmissions, excludeId = "") {
   if (!Array.isArray(pendingSubmissions)) return false;
-  return pendingSubmissions.some((entry) => entry && (entry.status === "running" || entry.status === "received") && entry.retryArgs && entry.retryArgs.longRunning);
+  const skip = String(excludeId || "").trim();
+  return pendingSubmissions.some((entry) => {
+    if (!entry || (entry.status !== "running" && entry.status !== "received")) return false;
+    if (skip && String(entry.id || "") === skip) return false;
+    return !isPureMaterialPendingEntry(entry);
+  });
 }
 
 function isPureMaterialPendingEntry(entry) {
@@ -2085,9 +2082,6 @@ function commitPendingSubmissionRuntimeChange(plugin, opts = {}) {
   if (opts.refresh !== false && typeof plugin.refreshOpenViews === "function") {
     plugin.refreshOpenViews();
   }
-  if (opts.poller !== false && typeof plugin.updateLongRunningPoller === "function") {
-    plugin.updateLongRunningPoller();
-  }
 }
 
 function pushPendingSubmissionRuntime(plugin, displayText, opts = {}) {
@@ -2149,7 +2143,6 @@ function updatePendingSubmissionRuntimeRetryArgs(plugin, id, retryArgs) {
   entry.retryArgs = retryArgs && typeof retryArgs === "object" ? retryArgs : null;
   if (retryArgs && typeof retryArgs === "object") {
     updatePendingSubmissionRuntimeRunNotes(plugin, id, retryArgs.runNotesPath, retryArgs.runId, { save: false, refresh: false });
-    if (retryArgs.jobId) entry.jobId = String(retryArgs.jobId || "");
   }
   commitPendingSubmissionRuntimeChange(plugin);
 }
@@ -2158,48 +2151,14 @@ function updatePendingSubmissionRuntimeRunNotes(plugin, id, runNotesPath, runId,
   const entry = findPendingSubmissionRuntimeEntry(plugin, id);
   if (!entry) return;
   updatePendingSubmissionEntryRunNotes(entry, runNotesPath, runId);
-  commitPendingSubmissionRuntimeChange(plugin, { save: opts.save, refresh: opts.refresh, poller: false });
+  commitPendingSubmissionRuntimeChange(plugin, { save: opts.save, refresh: opts.refresh });
 }
 
 function updatePendingSubmissionRuntimeArtifactMeta(plugin, id, meta, opts = {}) {
   const entry = findPendingSubmissionRuntimeEntry(plugin, id);
   if (!entry || !meta || typeof meta !== "object") return;
   updatePendingSubmissionEntryArtifactMeta(entry, meta);
-  commitPendingSubmissionRuntimeChange(plugin, { save: opts.save, refresh: opts.refresh, poller: false });
-}
-
-function updateProductShellLongRunningPoller(plugin) {
-  if (pendingHasActiveLongRunning(plugin && plugin.pendingSubmissions)) {
-    plugin.startLongRunningPoller();
-  } else {
-    plugin.stopLongRunningPoller();
-  }
-}
-
-function startProductShellLongRunningPoller(plugin) {
-  if (!plugin || plugin.longRunningPollTimer) return;
-  plugin.longRunningPollTimer = window.setInterval(() => {
-    if (!pendingHasActiveLongRunning(plugin.pendingSubmissions)) {
-      plugin.stopLongRunningPoller();
-      return;
-    }
-    if (plugin.longRunningPollRefreshInFlight) {
-      return;
-    }
-    plugin.longRunningPollRefreshInFlight = true;
-    Promise.resolve(plugin.refreshShellSummarySilently())
-      .catch(() => {})
-      .finally(() => {
-        plugin.longRunningPollRefreshInFlight = false;
-      });
-  }, 15000);
-}
-
-function stopProductShellLongRunningPoller(plugin) {
-  if (!plugin || !plugin.longRunningPollTimer) return;
-  window.clearInterval(plugin.longRunningPollTimer);
-  plugin.longRunningPollTimer = null;
-  plugin.longRunningPollRefreshInFlight = false;
+  commitPendingSubmissionRuntimeChange(plugin, { save: opts.save, refresh: opts.refresh });
 }
 
 function productShellLastSummaryRefreshLabel(plugin) {
@@ -2231,7 +2190,6 @@ function reconcilePendingSubmissionsRuntime(plugin, summary) {
     plugin.updatePendingSubmissionArtifactMeta(hit.id, hit.meta || {}, { save: false, refresh: false });
     plugin.markPendingSubmissionDone(hit.id, hit.target, hit.path);
   }
-  updateProductShellLongRunningPoller(plugin);
 }
 
 // --- src/context_state.js ---
@@ -3430,7 +3388,7 @@ module.exports = { execLauncher, runUiAction, normalizeLauncherArgv };
 const RUNTIME_CLIENT_DESKTOP_LAUNCHER = "desktop-launcher";
 const RUNTIME_CLIENT_VAULT_QUEUE = "vault-queue";
 const VAULT_QUEUE_DIR = ".aiwiki/queue";
-const VAULT_QUEUE_SUPPORTED_COMMANDS = new Set(["run-ask", "run-ask-submit", "drop"]);
+const VAULT_QUEUE_SUPPORTED_COMMANDS = new Set(["run-ask", "drop"]);
 
 function normalizeRuntimeClientMode(value) {
   return value === RUNTIME_CLIENT_VAULT_QUEUE ? RUNTIME_CLIENT_VAULT_QUEUE : RUNTIME_CLIENT_DESKTOP_LAUNCHER;
@@ -3537,7 +3495,7 @@ class VaultQueueClient {
 
 function runtimeClientRequestArgs(command, request) {
   const payload = request && typeof request === "object" ? request : {};
-  if (command === "ask" || command === "run-ask" || command === "run-ask-submit") {
+  if (command === "ask" || command === "run-ask") {
     const question = String(payload.question || "").trim();
     const args = [command === "ask" ? "run-ask" : command, question];
     if (payload.format) args.push("--format", String(payload.format));
@@ -3555,7 +3513,7 @@ function normalizeRuntimeClientArgv(args) {
 
 function runtimeClientQueueKind(argv) {
   const command = argv[0] || "";
-  if (command === "ask" || command === "run-ask" || command === "run-ask-submit") {
+  if (command === "ask" || command === "run-ask") {
     return "ask";
   }
   if (command === "drop") {
@@ -4534,6 +4492,20 @@ function renderUniversalInput(plugin, container) {
     // R88: 立即推一个"处理中"卡片到 Today，构成视觉闭环
     let pendingId = "";
     try {
+      // Single-flight: block a new ask while one is active; pure material drops stay allowed.
+      const materialQuestionPreview = splitTextMaterialQuestion(value);
+      const willAsk = filesToProcess.length > 0
+        ? Boolean(normalizedQuestion)
+        : Boolean(materialQuestionPreview)
+          || (
+            Boolean(normalizedQuestion)
+            && !isObsidianOpenLink(normalizedQuestion)
+            && !looksLikeUniversalMaterialPayload(normalizedQuestion)
+          );
+      if (willAsk && typeof plugin.hasActiveAskPending === "function" && plugin.hasActiveAskPending()) {
+        new Notice(plugin.t("已有进行中的提问，请等待完成后再试。"));
+        return;
+      }
       if (filesToProcess.length > 0) {
         const resolvedFiles = [];
         for (const file of filesToProcess) {
@@ -4548,7 +4520,6 @@ function renderUniversalInput(plugin, container) {
           question: normalizedQuestion,
           materialPaths: [],
           askQuestion: "",
-          longRunning: inferAutoAskFormat(normalizedQuestion, []) === "report",
         };
         pendingId = plugin.pushPendingSubmission(pendingDisplay, {
           title: normalizedQuestion,
@@ -4557,6 +4528,7 @@ function renderUniversalInput(plugin, container) {
         const flowResult = await plugin.runDroppedFilesWithAutoAsk({
           files: resolvedFiles.map((f) => ({ path: f.source, name: f.name })),
           question: normalizedQuestion,
+          excludePendingId: pendingId,
         });
         if (pendingId) {
           const finalFormat = String(flowResult && flowResult.askFormat || retryArgs.format || "");
@@ -4565,10 +4537,8 @@ function renderUniversalInput(plugin, container) {
             materialPaths: Array.isArray(flowResult && flowResult.materialPaths) ? flowResult.materialPaths : [],
             askQuestion: String(flowResult && flowResult.askQuestion || ""),
             format: finalFormat,
-            longRunning: finalFormat === "report",
             runNotesPath: String(flowResult && flowResult.runNotesPath || ""),
             runId: String(flowResult && flowResult.runId || ""),
-            jobId: String(flowResult && flowResult.jobId || ""),
           });
           if (!normalizedQuestion) {
             materialDropCompleted = Boolean(
@@ -4598,7 +4568,6 @@ function renderUniversalInput(plugin, container) {
             question: materialQuestion.question,
             materialPaths: [],
             askQuestion: "",
-            longRunning: inferAutoAskFormat(materialQuestion.question, []) === "report",
           };
           pendingId = plugin.pushPendingSubmission(value, {
             title: materialQuestion.question,
@@ -4607,6 +4576,7 @@ function renderUniversalInput(plugin, container) {
           const flowResult = await plugin.runDroppedPayloadsWithAutoAsk({
             payloads: [materialQuestion.payload],
             question: materialQuestion.question,
+            excludePendingId: pendingId,
           });
           if (pendingId) {
             const finalFormat = String(flowResult && flowResult.askFormat || retryArgs.format || "");
@@ -4615,10 +4585,8 @@ function renderUniversalInput(plugin, container) {
               materialPaths: Array.isArray(flowResult && flowResult.materialPaths) ? flowResult.materialPaths : [],
               askQuestion: String(flowResult && flowResult.askQuestion || ""),
               format: finalFormat,
-              longRunning: finalFormat === "report",
               runNotesPath: String(flowResult && flowResult.runNotesPath || ""),
               runId: String(flowResult && flowResult.runId || ""),
-              jobId: String(flowResult && flowResult.jobId || ""),
             });
           }
         } else if (looksLikeUniversalMaterialPayload(normalizedQuestion)) {
@@ -4648,7 +4616,6 @@ function renderUniversalInput(plugin, container) {
             question: normalizedQuestion,
             askQuestion: normalizedQuestion,
             format: askFormat,
-            longRunning: askFormat === "report",
           };
           pendingId = plugin.pushPendingSubmission(value, {
             title: normalizedQuestion,
@@ -4658,13 +4625,13 @@ function renderUniversalInput(plugin, container) {
             question: normalizedQuestion,
             format: askFormat,
             mode: "run-ask",
+            excludePendingId: pendingId,
           });
           if (pendingId) {
             plugin.updatePendingSubmissionRetryArgs(pendingId, {
               ...retryArgs,
               runNotesPath: String(askPayload && askPayload.run_notes_path || ""),
               runId: String(askPayload && askPayload.run_id || ""),
-              jobId: String(askPayload && askPayload.job_id || ""),
             });
           }
         }
@@ -5084,6 +5051,7 @@ function renderPendingSubmissionsGroup(plugin, section) {
             const flowResult = await plugin.runDroppedFilesWithAutoAsk({
               files: args.files,
               question: args.question || "",
+              excludePendingId: entry.id,
             });
             const finalFormat = String(flowResult && flowResult.askFormat || args.format || "");
             plugin.updatePendingSubmissionRetryArgs(entry.id, {
@@ -5091,7 +5059,6 @@ function renderPendingSubmissionsGroup(plugin, section) {
               materialPaths: Array.isArray(flowResult && flowResult.materialPaths) ? flowResult.materialPaths : Array.isArray(args.materialPaths) ? args.materialPaths : [],
               askQuestion: String(flowResult && flowResult.askQuestion || args.askQuestion || ""),
               format: finalFormat,
-              longRunning: finalFormat === "report",
               runNotesPath: String(flowResult && flowResult.runNotesPath || args.runNotesPath || ""),
               runId: String(flowResult && flowResult.runId || args.runId || ""),
             });
@@ -5105,12 +5072,14 @@ function renderPendingSubmissionsGroup(plugin, section) {
               format: args.format || "report",
               mode: "run-ask",
               protocol: args.protocol || "",
+              excludePendingId: entry.id,
             });
           } else if (args.kind === "material-question") {
             const flowResult = await plugin.runDroppedPayloadsWithAutoAsk({
               payloads: [args.payload || ""],
               question: args.question || "",
               protocol: args.protocol || "",
+              excludePendingId: entry.id,
             });
             const finalFormat = String(flowResult && flowResult.askFormat || args.format || "");
             plugin.updatePendingSubmissionRetryArgs(entry.id, {
@@ -5118,7 +5087,6 @@ function renderPendingSubmissionsGroup(plugin, section) {
               materialPaths: Array.isArray(flowResult && flowResult.materialPaths) ? flowResult.materialPaths : Array.isArray(args.materialPaths) ? args.materialPaths : [],
               askQuestion: String(flowResult && flowResult.askQuestion || args.askQuestion || ""),
               format: finalFormat,
-              longRunning: finalFormat === "report",
               runNotesPath: String(flowResult && flowResult.runNotesPath || args.runNotesPath || ""),
               runId: String(flowResult && flowResult.runId || args.runId || ""),
             });
@@ -5142,6 +5110,7 @@ function renderPendingSubmissionsGroup(plugin, section) {
                 format: args.format || inferAutoAskFormat(retryText, []),
                 mode: "run-ask",
                 protocol: args.protocol || "",
+                excludePendingId: entry.id,
               });
             }
           }
@@ -5208,13 +5177,12 @@ function renderPendingSubmissionsGroup(plugin, section) {
                 format: args.format || "report",
                 mode: "run-ask",
                 protocol: args.protocol || "",
+                excludePendingId: entry.id,
               });
               if (retryPayload && typeof plugin.updatePendingSubmissionRetryArgs === "function") {
                 plugin.updatePendingSubmissionRetryArgs(entry.id, Object.assign({}, args, {
-                  jobId: retryPayload.job_id || retryPayload.jobId || "",
                   runId: retryPayload.run_id || retryPayload.runId || "",
                   runNotesPath: retryPayload.run_notes_path || retryPayload.runNotesPath || "",
-                  longRunning: true,
                 }));
               }
               plugin.markPendingSubmissionReceived(entry.id);
@@ -5254,9 +5222,6 @@ function renderPendingProgressSteps(plugin, aiBubble, entry) {
 }
 
 function pendingSubmissionProgressSteps(plugin, entry) {
-  if (entry && entry.retryArgs && entry.retryArgs.longRunning) {
-    return [plugin.t("已接收长程报告任务"), plugin.t("LLM 正在生成结构化报告"), plugin.t("完成后会写入本地报告")];
-  }
   if (isPureMaterialPendingEntry(entry)) {
     return [plugin.t("正在收料"), plugin.t("写入 raw/"), plugin.t("已收料")];
   }
@@ -5329,10 +5294,7 @@ function pendingSubmissionStageLabel(plugin, entry) {
     if (pureMaterial) {
       return entry && entry._stale ? plugin.t("可能已完成，刷新看看") : plugin.t("正在收料");
     }
-    if (entry && entry.retryArgs && entry.retryArgs.longRunning) {
-      return entry._stale ? plugin.t("长程报告可能已完成，刷新看看") : plugin.t("长程报告生成中，可稍后刷新");
-    }
-    return entry && entry._stale ? plugin.t("可能已完成，刷新看看") : plugin.t("已接收，正在排队生成报告");
+    return entry && entry._stale ? plugin.t("可能已完成，刷新看看") : plugin.t("正在生成");
   }
   if (status === "failed") return plugin.t("失败");
   if (status === "escalated") return plugin.t("需要人工确认");
@@ -7023,7 +6985,7 @@ function productShellRunPayloadBoolean(payload, key, fallback = false) {
 }
 
 function isProductShellAskRun(record) {
-  return record && (record.command === "run-ask" || record.command === "run-ask-resume");
+  return record && record.command === "run-ask";
 }
 
 function productShellRunPayloadDeliveryMode(payload) {
@@ -7075,22 +7037,6 @@ function buildProductShellRunResultContext(result) {
     rewriteFollowupActions,
     rewriteProposalPaths,
     rewriteProposalSlugs,
-  };
-}
-
-function buildProductShellBackgroundRunUpdates({ result, primaryPath }) {
-  const payload = result && result.payload && typeof result.payload === "object" ? result.payload : {};
-  return {
-    status: "received",
-    exitCode: 0,
-    jobId: String(payload.job_id || ""),
-    resultPath: primaryPath,
-    runId: String(payload.run_id || ""),
-    runNotesPath: String(payload.run_notes_path || ""),
-    stdoutSummary: truncateText(result && result.stdout),
-    stderrSummary: truncateText(result && result.stderr),
-    stdoutRaw: trimDiagnosticText(result && result.stdout),
-    stderrRaw: trimDiagnosticText(result && result.stderr),
   };
 }
 
@@ -7758,12 +7704,16 @@ async function runProductShellUniversalInputCommand(plugin, { payload, title }) 
   return await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
 }
 
-async function runProductShellAskCommand(plugin, { question, format, mode }) {
+async function runProductShellAskCommand(plugin, { question, format, mode, excludePendingId }) {
+  if (pendingHasActiveAsk(plugin.pendingSubmissions, excludePendingId)) {
+    new Notice(plugin.t("已有进行中的提问，请等待完成后再试。"));
+    return;
+  }
   const spec = buildAskCommandSpec({ question, format, mode });
   return await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
 }
 
-async function runProductShellDroppedPayloadsWithAutoAsk(plugin, { payloads, question }) {
+async function runProductShellDroppedPayloadsWithAutoAsk(plugin, { payloads, question, excludePendingId }) {
   const normalizedPayloads = Array.isArray(payloads)
     ? payloads
       .map((payload) => {
@@ -7789,7 +7739,6 @@ async function runProductShellDroppedPayloadsWithAutoAsk(plugin, { payloads, que
     : "";
   let runNotesPath = "";
   let runId = "";
-  let jobId = "";
   let askFormat = "";
   if (normalizedQuestion) {
     askFormat = inferAutoAskFormat(normalizedQuestion, normalizedMaterialPaths);
@@ -7797,10 +7746,10 @@ async function runProductShellDroppedPayloadsWithAutoAsk(plugin, { payloads, que
       question: askQuestion,
       format: askFormat,
       mode: "run-ask",
+      excludePendingId,
     });
     runNotesPath = String(askPayload && askPayload.run_notes_path || "");
     runId = String(askPayload && askPayload.run_id || "");
-    jobId = String(askPayload && askPayload.job_id || "");
   }
   return {
     materialPaths: normalizedMaterialPaths,
@@ -7808,7 +7757,6 @@ async function runProductShellDroppedPayloadsWithAutoAsk(plugin, { payloads, que
     askFormat,
     runNotesPath,
     runId,
-    jobId,
   };
 }
 
@@ -7822,7 +7770,7 @@ function completeProductShellPendingMaterialDrop(plugin, id, materialPaths) {
   return false;
 }
 
-async function runProductShellDroppedFilesWithAutoAsk(plugin, { files, question }) {
+async function runProductShellDroppedFilesWithAutoAsk(plugin, { files, question, excludePendingId }) {
   const normalizedFiles = Array.isArray(files)
     ? files
       .map((file) => ({
@@ -7834,6 +7782,7 @@ async function runProductShellDroppedFilesWithAutoAsk(plugin, { files, question 
   return await plugin.runDroppedPayloadsWithAutoAsk({
     payloads: normalizedFiles.map((file) => ({ path: file.path, title: file.name })),
     question,
+    excludePendingId,
   });
 }
 
@@ -7934,14 +7883,6 @@ async function rerunProductShellPluginRecord(plugin, record) {
 async function runProductShellPluginCommand(plugin, label, args, options = {}) {
   const record = plugin.createRunRecord(label, args);
   appendRunEvent(record, "Executing", args.join(" "), "running");
-  if (options.longRunning) {
-    appendRunEvent(
-      record,
-      "Long report task",
-      plugin.t("Report generation can take several minutes; keep this card open and refresh status if needed."),
-      "running"
-    );
-  }
   plugin.updateRunRecord(record, {});
   try {
     const result = await plugin.executeRuntimeCommand(args);
@@ -7980,21 +7921,6 @@ async function runProductShellPluginCommand(plugin, label, args, options = {}) {
       await plugin.refreshShellSummarySilently();
     }
     const llm = plugin.currentLlmSelection();
-    if (options.backgroundSubmit && result.payload && result.payload.kind === "run-ask-background-job") {
-      appendRunEvent(
-        record,
-        "Background job submitted",
-        result.payload.job_id || result.payload.path || plugin.t("Long report job accepted."),
-        "running"
-      );
-      plugin.updateRunRecord(record, buildProductShellBackgroundRunUpdates({ result, primaryPath: runContext.primaryPath }));
-      plugin.persistRunLog(record, { stdoutRaw: result.stdout, stderrRaw: result.stderr });
-      plugin.updateLongRunningPoller();
-      if (options.notice !== false) {
-        new Notice(plugin.t("Long report job accepted. The report card will update after background completion."));
-      }
-      return result.payload;
-    }
     const completedState = buildProductShellCompletedRunState({
       record,
       result,
@@ -8483,8 +8409,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     this.settings = Object.assign({}, DEFAULT_SETTINGS);
     this.pluginState = { recentRuns: [] };
     this.pendingSubmissions = []; // R89: 持久化 + runtime; status: running | received | done | failed | degraded; { id, payloadFingerprint, displayText, status, startedAt, finishedAt, error, reconcileTarget }
-    this.longRunningPollTimer = null;
-    this.longRunningPollRefreshInFlight = false;
     this.shellSummary = null;
     this.repoState = { valid: false, root: "", launcherPath: "", missingPaths: ["vault-root"] };
     this.openViews = new Set();
@@ -8530,13 +8454,11 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     }));
 
     await this.loadShellSummaryFromDisk();
-    this.updateLongRunningPoller();
 
     this.updateStatusBar();
   }
 
   async onunload() {
-    this.stopLongRunningPoller();
     if (this._vaultChangeTimer) {
       clearTimeout(this._vaultChangeTimer);
       this._vaultChangeTimer = null;
@@ -8962,20 +8884,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return updatePendingSubmissionRuntimeArtifactMeta(this, id, meta, opts);
   }
 
-  hasActiveLongRunningPending() {
-    return pendingHasActiveLongRunning(this.pendingSubmissions);
-  }
-
-  updateLongRunningPoller() {
-    return updateProductShellLongRunningPoller(this);
-  }
-
-  startLongRunningPoller() {
-    return startProductShellLongRunningPoller(this);
-  }
-
-  stopLongRunningPoller() {
-    return stopProductShellLongRunningPoller(this);
+  hasActiveAskPending() {
+    return pendingHasActiveAsk(this.pendingSubmissions);
   }
 
   getLastSummaryRefreshLabel() {
@@ -8990,20 +8900,20 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return runProductShellUniversalInputCommand(this, { payload, title });
   }
 
-  async runAskCommand({ question, format, mode }) {
-    return runProductShellAskCommand(this, { question, format, mode });
+  async runAskCommand({ question, format, mode, excludePendingId }) {
+    return runProductShellAskCommand(this, { question, format, mode, excludePendingId });
   }
 
-  async runDroppedPayloadsWithAutoAsk({ payloads, question }) {
-    return runProductShellDroppedPayloadsWithAutoAsk(this, { payloads, question });
+  async runDroppedPayloadsWithAutoAsk({ payloads, question, excludePendingId }) {
+    return runProductShellDroppedPayloadsWithAutoAsk(this, { payloads, question, excludePendingId });
   }
 
   completePendingMaterialDrop(id, materialPaths) {
     return completeProductShellPendingMaterialDrop(this, id, materialPaths);
   }
 
-  async runDroppedFilesWithAutoAsk({ files, question }) {
-    return runProductShellDroppedFilesWithAutoAsk(this, { files, question });
+  async runDroppedFilesWithAutoAsk({ files, question, excludePendingId }) {
+    return runProductShellDroppedFilesWithAutoAsk(this, { files, question, excludePendingId });
   }
 
   async runDropUrlCommand({ url, title }) {

@@ -278,30 +278,8 @@ test("run state helpers build command result context from payload artifacts", ()
   });
 });
 
-test("run state helpers build background and failed updates", () => {
+test("run state helpers build failed updates", () => {
   const context = loadRunStateContext();
-
-  const background = context.buildProductShellBackgroundRunUpdates({
-    primaryPath: "output/reports/pending.md",
-    result: {
-      payload: {
-        job_id: "job-1",
-        run_id: "run-1",
-        run_notes_path: "output/control/runs/run-1/thinking.md",
-      },
-      stdout: "submitted",
-      stderr: "",
-    },
-  });
-  expect(background).toMatchObject({
-    status: "received",
-    exitCode: 0,
-    jobId: "job-1",
-    runId: "run-1",
-    runNotesPath: "output/control/runs/run-1/thinking.md",
-    resultPath: "output/reports/pending.md",
-    stdoutSummary: "submitted",
-  });
 
   const failed = context.buildProductShellFailedRunUpdates({
     code: "7",

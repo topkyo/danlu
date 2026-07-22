@@ -107,6 +107,20 @@ function renderUniversalInput(plugin, container) {
     // R88: 立即推一个"处理中"卡片到 Today，构成视觉闭环
     let pendingId = "";
     try {
+      // Single-flight: block a new ask while one is active; pure material drops stay allowed.
+      const materialQuestionPreview = splitTextMaterialQuestion(value);
+      const willAsk = filesToProcess.length > 0
+        ? Boolean(normalizedQuestion)
+        : Boolean(materialQuestionPreview)
+          || (
+            Boolean(normalizedQuestion)
+            && !isObsidianOpenLink(normalizedQuestion)
+            && !looksLikeUniversalMaterialPayload(normalizedQuestion)
+          );
+      if (willAsk && typeof plugin.hasActiveAskPending === "function" && plugin.hasActiveAskPending()) {
+        new Notice(plugin.t("已有进行中的提问，请等待完成后再试。"));
+        return;
+      }
       if (filesToProcess.length > 0) {
         const resolvedFiles = [];
         for (const file of filesToProcess) {
@@ -121,7 +135,6 @@ function renderUniversalInput(plugin, container) {
           question: normalizedQuestion,
           materialPaths: [],
           askQuestion: "",
-          longRunning: inferAutoAskFormat(normalizedQuestion, []) === "report",
         };
         pendingId = plugin.pushPendingSubmission(pendingDisplay, {
           title: normalizedQuestion,
@@ -130,6 +143,7 @@ function renderUniversalInput(plugin, container) {
         const flowResult = await plugin.runDroppedFilesWithAutoAsk({
           files: resolvedFiles.map((f) => ({ path: f.source, name: f.name })),
           question: normalizedQuestion,
+          excludePendingId: pendingId,
         });
         if (pendingId) {
           const finalFormat = String(flowResult && flowResult.askFormat || retryArgs.format || "");
@@ -138,10 +152,8 @@ function renderUniversalInput(plugin, container) {
             materialPaths: Array.isArray(flowResult && flowResult.materialPaths) ? flowResult.materialPaths : [],
             askQuestion: String(flowResult && flowResult.askQuestion || ""),
             format: finalFormat,
-            longRunning: finalFormat === "report",
             runNotesPath: String(flowResult && flowResult.runNotesPath || ""),
             runId: String(flowResult && flowResult.runId || ""),
-            jobId: String(flowResult && flowResult.jobId || ""),
           });
           if (!normalizedQuestion) {
             materialDropCompleted = Boolean(
@@ -171,7 +183,6 @@ function renderUniversalInput(plugin, container) {
             question: materialQuestion.question,
             materialPaths: [],
             askQuestion: "",
-            longRunning: inferAutoAskFormat(materialQuestion.question, []) === "report",
           };
           pendingId = plugin.pushPendingSubmission(value, {
             title: materialQuestion.question,
@@ -180,6 +191,7 @@ function renderUniversalInput(plugin, container) {
           const flowResult = await plugin.runDroppedPayloadsWithAutoAsk({
             payloads: [materialQuestion.payload],
             question: materialQuestion.question,
+            excludePendingId: pendingId,
           });
           if (pendingId) {
             const finalFormat = String(flowResult && flowResult.askFormat || retryArgs.format || "");
@@ -188,10 +200,8 @@ function renderUniversalInput(plugin, container) {
               materialPaths: Array.isArray(flowResult && flowResult.materialPaths) ? flowResult.materialPaths : [],
               askQuestion: String(flowResult && flowResult.askQuestion || ""),
               format: finalFormat,
-              longRunning: finalFormat === "report",
               runNotesPath: String(flowResult && flowResult.runNotesPath || ""),
               runId: String(flowResult && flowResult.runId || ""),
-              jobId: String(flowResult && flowResult.jobId || ""),
             });
           }
         } else if (looksLikeUniversalMaterialPayload(normalizedQuestion)) {
@@ -221,7 +231,6 @@ function renderUniversalInput(plugin, container) {
             question: normalizedQuestion,
             askQuestion: normalizedQuestion,
             format: askFormat,
-            longRunning: askFormat === "report",
           };
           pendingId = plugin.pushPendingSubmission(value, {
             title: normalizedQuestion,
@@ -231,13 +240,13 @@ function renderUniversalInput(plugin, container) {
             question: normalizedQuestion,
             format: askFormat,
             mode: "run-ask",
+            excludePendingId: pendingId,
           });
           if (pendingId) {
             plugin.updatePendingSubmissionRetryArgs(pendingId, {
               ...retryArgs,
               runNotesPath: String(askPayload && askPayload.run_notes_path || ""),
               runId: String(askPayload && askPayload.run_id || ""),
-              jobId: String(askPayload && askPayload.job_id || ""),
             });
           }
         }

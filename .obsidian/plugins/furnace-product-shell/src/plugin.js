@@ -6,8 +6,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     this.settings = Object.assign({}, DEFAULT_SETTINGS);
     this.pluginState = { recentRuns: [] };
     this.pendingSubmissions = []; // R89: 持久化 + runtime; status: running | received | done | failed | degraded; { id, payloadFingerprint, displayText, status, startedAt, finishedAt, error, reconcileTarget }
-    this.longRunningPollTimer = null;
-    this.longRunningPollRefreshInFlight = false;
     this.shellSummary = null;
     this.repoState = { valid: false, root: "", launcherPath: "", missingPaths: ["vault-root"] };
     this.openViews = new Set();
@@ -53,13 +51,11 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     }));
 
     await this.loadShellSummaryFromDisk();
-    this.updateLongRunningPoller();
 
     this.updateStatusBar();
   }
 
   async onunload() {
-    this.stopLongRunningPoller();
     if (this._vaultChangeTimer) {
       clearTimeout(this._vaultChangeTimer);
       this._vaultChangeTimer = null;
@@ -485,20 +481,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return updatePendingSubmissionRuntimeArtifactMeta(this, id, meta, opts);
   }
 
-  hasActiveLongRunningPending() {
-    return pendingHasActiveLongRunning(this.pendingSubmissions);
-  }
-
-  updateLongRunningPoller() {
-    return updateProductShellLongRunningPoller(this);
-  }
-
-  startLongRunningPoller() {
-    return startProductShellLongRunningPoller(this);
-  }
-
-  stopLongRunningPoller() {
-    return stopProductShellLongRunningPoller(this);
+  hasActiveAskPending() {
+    return pendingHasActiveAsk(this.pendingSubmissions);
   }
 
   getLastSummaryRefreshLabel() {
@@ -513,20 +497,20 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return runProductShellUniversalInputCommand(this, { payload, title });
   }
 
-  async runAskCommand({ question, format, mode }) {
-    return runProductShellAskCommand(this, { question, format, mode });
+  async runAskCommand({ question, format, mode, excludePendingId }) {
+    return runProductShellAskCommand(this, { question, format, mode, excludePendingId });
   }
 
-  async runDroppedPayloadsWithAutoAsk({ payloads, question }) {
-    return runProductShellDroppedPayloadsWithAutoAsk(this, { payloads, question });
+  async runDroppedPayloadsWithAutoAsk({ payloads, question, excludePendingId }) {
+    return runProductShellDroppedPayloadsWithAutoAsk(this, { payloads, question, excludePendingId });
   }
 
   completePendingMaterialDrop(id, materialPaths) {
     return completeProductShellPendingMaterialDrop(this, id, materialPaths);
   }
 
-  async runDroppedFilesWithAutoAsk({ files, question }) {
-    return runProductShellDroppedFilesWithAutoAsk(this, { files, question });
+  async runDroppedFilesWithAutoAsk({ files, question, excludePendingId }) {
+    return runProductShellDroppedFilesWithAutoAsk(this, { files, question, excludePendingId });
   }
 
   async runDropUrlCommand({ url, title }) {

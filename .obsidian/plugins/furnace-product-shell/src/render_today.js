@@ -323,6 +323,7 @@ function renderPendingSubmissionsGroup(plugin, section) {
             const flowResult = await plugin.runDroppedFilesWithAutoAsk({
               files: args.files,
               question: args.question || "",
+              excludePendingId: entry.id,
             });
             const finalFormat = String(flowResult && flowResult.askFormat || args.format || "");
             plugin.updatePendingSubmissionRetryArgs(entry.id, {
@@ -330,7 +331,6 @@ function renderPendingSubmissionsGroup(plugin, section) {
               materialPaths: Array.isArray(flowResult && flowResult.materialPaths) ? flowResult.materialPaths : Array.isArray(args.materialPaths) ? args.materialPaths : [],
               askQuestion: String(flowResult && flowResult.askQuestion || args.askQuestion || ""),
               format: finalFormat,
-              longRunning: finalFormat === "report",
               runNotesPath: String(flowResult && flowResult.runNotesPath || args.runNotesPath || ""),
               runId: String(flowResult && flowResult.runId || args.runId || ""),
             });
@@ -344,12 +344,14 @@ function renderPendingSubmissionsGroup(plugin, section) {
               format: args.format || "report",
               mode: "run-ask",
               protocol: args.protocol || "",
+              excludePendingId: entry.id,
             });
           } else if (args.kind === "material-question") {
             const flowResult = await plugin.runDroppedPayloadsWithAutoAsk({
               payloads: [args.payload || ""],
               question: args.question || "",
               protocol: args.protocol || "",
+              excludePendingId: entry.id,
             });
             const finalFormat = String(flowResult && flowResult.askFormat || args.format || "");
             plugin.updatePendingSubmissionRetryArgs(entry.id, {
@@ -357,7 +359,6 @@ function renderPendingSubmissionsGroup(plugin, section) {
               materialPaths: Array.isArray(flowResult && flowResult.materialPaths) ? flowResult.materialPaths : Array.isArray(args.materialPaths) ? args.materialPaths : [],
               askQuestion: String(flowResult && flowResult.askQuestion || args.askQuestion || ""),
               format: finalFormat,
-              longRunning: finalFormat === "report",
               runNotesPath: String(flowResult && flowResult.runNotesPath || args.runNotesPath || ""),
               runId: String(flowResult && flowResult.runId || args.runId || ""),
             });
@@ -381,6 +382,7 @@ function renderPendingSubmissionsGroup(plugin, section) {
                 format: args.format || inferAutoAskFormat(retryText, []),
                 mode: "run-ask",
                 protocol: args.protocol || "",
+                excludePendingId: entry.id,
               });
             }
           }
@@ -447,13 +449,12 @@ function renderPendingSubmissionsGroup(plugin, section) {
                 format: args.format || "report",
                 mode: "run-ask",
                 protocol: args.protocol || "",
+                excludePendingId: entry.id,
               });
               if (retryPayload && typeof plugin.updatePendingSubmissionRetryArgs === "function") {
                 plugin.updatePendingSubmissionRetryArgs(entry.id, Object.assign({}, args, {
-                  jobId: retryPayload.job_id || retryPayload.jobId || "",
                   runId: retryPayload.run_id || retryPayload.runId || "",
                   runNotesPath: retryPayload.run_notes_path || retryPayload.runNotesPath || "",
-                  longRunning: true,
                 }));
               }
               plugin.markPendingSubmissionReceived(entry.id);
@@ -493,9 +494,6 @@ function renderPendingProgressSteps(plugin, aiBubble, entry) {
 }
 
 function pendingSubmissionProgressSteps(plugin, entry) {
-  if (entry && entry.retryArgs && entry.retryArgs.longRunning) {
-    return [plugin.t("已接收长程报告任务"), plugin.t("LLM 正在生成结构化报告"), plugin.t("完成后会写入本地报告")];
-  }
   if (isPureMaterialPendingEntry(entry)) {
     return [plugin.t("正在收料"), plugin.t("写入 raw/"), plugin.t("已收料")];
   }
@@ -568,10 +566,7 @@ function pendingSubmissionStageLabel(plugin, entry) {
     if (pureMaterial) {
       return entry && entry._stale ? plugin.t("可能已完成，刷新看看") : plugin.t("正在收料");
     }
-    if (entry && entry.retryArgs && entry.retryArgs.longRunning) {
-      return entry._stale ? plugin.t("长程报告可能已完成，刷新看看") : plugin.t("长程报告生成中，可稍后刷新");
-    }
-    return entry && entry._stale ? plugin.t("可能已完成，刷新看看") : plugin.t("已接收，正在排队生成报告");
+    return entry && entry._stale ? plugin.t("可能已完成，刷新看看") : plugin.t("正在生成");
   }
   if (status === "failed") return plugin.t("失败");
   if (status === "escalated") return plugin.t("需要人工确认");

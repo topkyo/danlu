@@ -223,9 +223,14 @@ function updatePendingSubmissionEntryArtifactMeta(entry, meta) {
   return changed;
 }
 
-function pendingHasActiveLongRunning(pendingSubmissions) {
+function pendingHasActiveAsk(pendingSubmissions, excludeId = "") {
   if (!Array.isArray(pendingSubmissions)) return false;
-  return pendingSubmissions.some((entry) => entry && (entry.status === "running" || entry.status === "received") && entry.retryArgs && entry.retryArgs.longRunning);
+  const skip = String(excludeId || "").trim();
+  return pendingSubmissions.some((entry) => {
+    if (!entry || (entry.status !== "running" && entry.status !== "received")) return false;
+    if (skip && String(entry.id || "") === skip) return false;
+    return !isPureMaterialPendingEntry(entry);
+  });
 }
 
 function isPureMaterialPendingEntry(entry) {

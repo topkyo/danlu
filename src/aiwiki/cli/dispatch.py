@@ -33,7 +33,7 @@ from ..runner.alchemy import (
 )
 from ..runner.automation import watch_inbox
 from ..runner.clients import llm_probe, llm_status
-from ..runner.workflows import run_ask, run_ask_resume, run_ask_submit, run_nightly
+from ..runner.workflows import run_ask, run_nightly
 from ..vault.bootstrap import bootstrap_new_vault
 from ..vault.plugin import sync_product_shell_plugin
 from .dispatch_helpers import (
@@ -217,18 +217,6 @@ def _handle_ask_family(args: argparse.Namespace, root: Path) -> tuple[object, st
         if hasattr(args, "corpus") and args.corpus is not None:
             ask_kwargs["corpus_id_override"] = args.corpus
         return _out(run_ask(root, args.question, args.format, **ask_kwargs))
-    if args.handler_command == "run-ask-submit":
-        ask_kwargs = {
-            "lean": args.lean,
-            "timeout_seconds": args.timeout,
-            "no_cache": args.no_cache,
-            "spawn": not args.no_spawn,
-        }
-        if hasattr(args, "corpus") and args.corpus is not None:
-            ask_kwargs["corpus_id_override"] = args.corpus
-        return _out(run_ask_submit(root, args.question, args.format, **ask_kwargs))
-    if args.handler_command == "run-ask-resume":
-        return _out(run_ask_resume(root, args.job_id))
     raise ValueError(f"Unsupported command: {args.handler_command}")
 
 
@@ -354,8 +342,6 @@ _LIVE_SURFACE_HANDLERS = {
 
 _ASK_HANDLERS = {
     "run-ask": _handle_ask_family,
-    "run-ask-submit": _handle_ask_family,
-    "run-ask-resume": _handle_ask_family,
 }
 
 _ALCHEMY_HANDLERS = {

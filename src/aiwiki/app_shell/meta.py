@@ -154,8 +154,6 @@ def shell_capabilities(root: Path) -> dict[str, Any]:
             ],
             "p2": [
                 "trace",
-                "run-ask-submit",
-                "run-ask-resume",
                 "metrics",
                 "alchemy-start",
                 "alchemy-distill",

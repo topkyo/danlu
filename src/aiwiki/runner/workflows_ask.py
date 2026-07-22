@@ -1,6 +1,6 @@
-"""LLM-backed ask workflows: run-ask and background jobs.
+"""LLM-backed ask workflows: synchronous run-ask.
 
-This module is the orchestration entry point for run-ask and background resume.
+This module is the orchestration entry point for run-ask.
 Helper logic lives in ``workflows_ask_context`` / ``workflows_ask_frontmatter`` /
 ``workflows_ask_status`` / ``workflows_ask_receipts``.
 """
@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from aiwiki.execution.ask import ask_question
 from aiwiki.execution.paths import run_notes_path as run_notes_file_path
 from aiwiki.execution.run_notes import run_id_for_artifact, write_run_notes, write_run_notes_frontmatter
 from aiwiki.input_router import is_obsidian_open_link
@@ -20,13 +21,6 @@ from aiwiki.memory.state import load_machine_memory
 from aiwiki.notify import notify_report_generated
 from aiwiki.protocol.scaffold import ensure_layout
 from aiwiki.render.views import build_ask_used_refs
-from aiwiki.runner.background import (
-    job_manifest_path,
-    new_job_id,
-    spawn_background_resume,
-    update_job_manifest,
-    write_job_manifest,
-)
 from aiwiki.runner.clients import (
     _append_fallback_stage,
     _client_backend_name,
@@ -71,8 +65,6 @@ from aiwiki.runner.workflows_ask_receipts import (
 )
 from aiwiki.runner.workflows_ask_status import (
     _mark_run_ask_artifact_degraded,
-    _mark_run_ask_background_artifact_complete,
-    _mark_run_ask_background_artifact_submitted,
     _run_ask_failure_llm_status,
 )
 from aiwiki.utils.io import (
@@ -80,12 +72,7 @@ from aiwiki.utils.io import (
     _snapshot_file_bytes,
     atomic_write_text,
     runtime_write_lock,
-    runtime_write_operation,
 )
-from aiwiki.utils.path import relative_path
-from aiwiki.utils.time import utc_now
-
-from ..execution.ask import ask_question
 
 
 def _complete_run_ask_artifact(
@@ -102,7 +89,6 @@ def _complete_run_ask_artifact(
     backend_compat: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     backend_compat = dict(backend_compat or {})
-    background_job_id = str(artifact.get("background_job_id") or "")
 
     def _stamped_record(base_event: dict[str, Any], llm_audit: dict[str, Any], **kwargs: Any) -> None:
         if backend_compat:
@@ -378,7 +364,6 @@ def _complete_run_ask_artifact(
                 usage=result.usage,
                 raw_response_path=_raw_response_path(root, result),
             )
-            _mark_run_ask_background_artifact_complete(target, status="completed", job_id=background_job_id)
             run_notes = write_run_notes(
                 root,
                 run_id=run_id,
@@ -412,14 +397,13 @@ def _complete_run_ask_artifact(
                 output_format=output_format,
                 protocol=str(artifact.get("protocol") or ""),
                 delivery_mode="llm-complete",
-                run_ask_path="background-resume" if background_job_id else "report",
+                run_ask_path="report",
                 extra={
                     "backend_effective": backend_effective,
                     "model_final": model_final,
                     "fallback_stage": fallback_stage,
                     "response_id": result.response_id,
                     "usage": result.usage,
-                    "background_job_id": background_job_id or "",
                     **provenance_event_fields,
                 },
             )
@@ -448,138 +432,6 @@ def _complete_run_ask_artifact(
             "no_cache": no_cache,
         }
         return payload
-
-
-@runtime_write_operation
-def run_ask_submit(
-    root: Path,
-    question: str,
-    output_format: str,
-    protocol: str | None = None,
-    *,
-    lean: bool = False,
-    timeout_seconds: int | None = None,
-    no_cache: bool = False,
-    corpus_id_override: str | None = None,
-    spawn: bool = True,
-) -> dict[str, Any]:
-    """Prepare a long-running report job and optionally spawn background resume."""
-
-    ensure_layout(root)
-    if is_obsidian_open_link(question):
-        raise ValueError("obsidian open links are navigation targets, not questions")
-    if output_format != "report":
-        raise ValueError("run-ask-submit is only supported for report output.")
-    if timeout_seconds is not None and timeout_seconds <= 0:
-        raise ValueError("run-ask-submit timeout_seconds must be greater than 0.")
-    effective_timeout_seconds = _effective_run_ask_timeout(output_format, timeout_seconds)
-
-    from aiwiki.runner.preflight import preflight_check_backend_chain
-
-    backend_compat = preflight_check_backend_chain(root)
-    material_refs = _material_hint_paths(question)
-    material_refs.extend(_quoted_report_material_refs(root, question))
-    material_refs = list(dict.fromkeys(material_refs))
-    clean_question = _clean_report_reference_question(question) if material_refs else question
-    ask_kwargs = {"protocol": protocol, "no_cache": no_cache, "write_graph_anchors": False, "notify": False}
-    if corpus_id_override is not None:
-        ask_kwargs["corpus_id_override"] = corpus_id_override
-    artifact = ask_question(root, clean_question, output_format, **ask_kwargs)
-    if material_refs:
-        artifact["material_refs"] = material_refs
-    job_id = new_job_id("ask-report")
-    artifact["background_job_id"] = job_id
-    artifact["background_status"] = "submitted"
-    if artifact.get("path"):
-        _mark_run_ask_background_artifact_submitted(root / str(artifact["path"]), job_id=job_id)
-    now = utc_now()
-    manifest = {
-        "kind": "run-ask-background-job",
-        "version": 1,
-        "job_id": job_id,
-        "status": "submitted",
-        "created_at": now,
-        "updated_at": now,
-        "question": clean_question,
-        "raw_question": question,
-        "output_format": output_format,
-        "protocol": protocol or "",
-        "lean": lean,
-        "timeout_seconds": effective_timeout_seconds,
-        "no_cache": no_cache,
-        "corpus_id_override": corpus_id_override or "",
-        "artifact": artifact,
-        "path": str(artifact.get("path") or ""),
-        "run_id": str(artifact.get("run_id") or ""),
-        "run_notes_path": str(artifact.get("run_notes_path") or ""),
-        "backend_preflight": backend_compat,
-    }
-    if material_refs:
-        manifest["material_refs"] = material_refs
-    write_job_manifest(root, manifest)
-    _refresh_shell_summary_fail_soft(root)
-    spawn_result = spawn_background_resume(root, job_id) if spawn else {}
-    if spawn_result:
-        if artifact.get("path"):
-            _mark_run_ask_background_artifact_submitted(root / str(artifact["path"]), job_id=job_id, status="running")
-        artifact["background_status"] = "running"
-        manifest["artifact"] = artifact
-        manifest.update({"status": "running", "spawn": spawn_result, "updated_at": utc_now()})
-        write_job_manifest(root, manifest)
-        _refresh_shell_summary_fail_soft(root)
-    submitted_payload: dict[str, Any] = {
-        "kind": "run-ask-background-job",
-        "status": "submitted",
-        "job_id": job_id,
-        "path": manifest["path"],
-        "run_id": manifest["run_id"],
-        "run_notes_path": manifest["run_notes_path"],
-        "format": output_format,
-        "protocol": str(artifact.get("protocol") or protocol or ""),
-        "question": clean_question,
-        "raw_question": question,
-        "backend_preflight": backend_compat,
-        "spawn": spawn_result,
-        "job_manifest_path": relative_path(root, job_manifest_path(root, job_id)),
-    }
-    if material_refs:
-        submitted_payload["material_refs"] = material_refs
-    return submitted_payload
-
-
-def run_ask_resume(root: Path, job_id: str, client: SupportsComplete | None = None) -> dict[str, Any]:
-    """Resume a background ask job. LLM runs outside the write lock (see _complete_run_ask_artifact)."""
-    manifest = update_job_manifest(root, job_id, status="running")
-    try:
-        payload = _complete_run_ask_artifact(
-            root,
-            artifact=dict(manifest.get("artifact") or {}),
-            question=str(manifest.get("question") or ""),
-            output_format=str(manifest.get("output_format") or "report"),
-            protocol=str(manifest.get("protocol") or "") or None,
-            client=client,
-            lean=bool(manifest.get("lean")),
-            timeout_seconds=manifest.get("timeout_seconds")
-            if isinstance(manifest.get("timeout_seconds"), int)
-            else None,
-            no_cache=bool(manifest.get("no_cache")),
-            backend_compat=dict(manifest.get("backend_preflight") or {}),
-        )
-    except Exception as exc:
-        update_job_manifest(root, job_id, status="failed", error=str(exc))
-        _refresh_shell_summary_fail_soft(root)
-        raise
-    update_job_manifest(
-        root,
-        job_id,
-        status=str(payload.get("status") or "completed"),
-        result=payload,
-        path=str(payload.get("path") or manifest.get("path") or ""),
-        run_id=str(payload.get("run_id") or manifest.get("run_id") or ""),
-        run_notes_path=str(payload.get("run_notes_path") or manifest.get("run_notes_path") or ""),
-    )
-    _refresh_shell_summary_fail_soft(root)
-    return {"job_id": job_id, **payload}
 
 
 def run_ask(

@@ -80,28 +80,3 @@ def _mark_run_ask_artifact_degraded(
     if references:
         lines.extend(["", "## 可用上下文", references])
     atomic_write_text(target, "\n".join(lines).rstrip() + "\n")
-
-
-def _mark_run_ask_background_artifact_submitted(target: Path, *, job_id: str, status: str = "submitted") -> None:
-    current = target.read_text(encoding="utf-8", errors="replace") if target.exists() else ""
-    frontmatter = parse_frontmatter(current)
-    frontmatter.update(
-        {
-            "background_job_id": job_id,
-            "background_status": status,
-            "delivery_mode": "background-pending",
-            "llm_status": "pending",
-        }
-    )
-    body = strip_frontmatter(current)
-    atomic_write_text(target, render_frontmatter(frontmatter).rstrip() + "\n\n" + body.lstrip())
-
-
-def _mark_run_ask_background_artifact_complete(target: Path, *, status: str, job_id: str = "") -> None:
-    current = target.read_text(encoding="utf-8", errors="replace") if target.exists() else ""
-    frontmatter = parse_frontmatter(current)
-    if job_id:
-        frontmatter["background_job_id"] = job_id
-    frontmatter["background_status"] = status
-    body = strip_frontmatter(current)
-    atomic_write_text(target, render_frontmatter(frontmatter).rstrip() + "\n\n" + body.lstrip())

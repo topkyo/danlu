@@ -22,20 +22,17 @@ function buildUniversalInputCommandSpec({ payload, title }) {
 
 function buildAskCommandSpec({ question, format, mode }) {
   const finalFormat = "report";
-  const longRunning = mode === "run-ask" && finalFormat === "report";
-  const command = longRunning ? "run-ask-submit" : mode;
+  const command = mode === "run-ask" ? "run-ask" : mode;
   const args = [command, question, "--format", finalFormat];
   if (mode === "run-ask") {
     args.push("--lean");
   }
   return {
     args,
-    labelKey: longRunning ? "Long Report" : "Ask",
+    labelKey: "Ask",
     labelSubject: question,
     options: {
       refreshAfter: true,
-      longRunning,
-      backgroundSubmit: longRunning,
     },
   };
 }

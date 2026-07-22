@@ -67,7 +67,7 @@ test("VaultQueueClient enqueues ask without reporting execution success", async 
   };
 
   const client = context.createRuntimeClient(plugin);
-  const result = await client.exec(["run-ask-submit", "What changed?", "--format", "report"]);
+  const result = await client.exec(["run-ask", "What changed?", "--format", "report"]);
 
   expect(client).toBeInstanceOf(context.VaultQueueClient);
   expect(result.payload.status).toBe("queued");
@@ -78,7 +78,7 @@ test("VaultQueueClient enqueues ask without reporting execution success", async 
     kind: "ask",
     status: "pending",
     source: "companion",
-    payload: { argv: ["run-ask-submit", "What changed?", "--format", "report"] },
+    payload: { argv: ["run-ask", "What changed?", "--format", "report"] },
   });
   expect(queued.id).toBe(result.payload.id);
   expect(queued.created_at).toEqual(expect.any(String));

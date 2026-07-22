@@ -39,14 +39,6 @@ async function rerunProductShellPluginRecord(plugin, record) {
 async function runProductShellPluginCommand(plugin, label, args, options = {}) {
   const record = plugin.createRunRecord(label, args);
   appendRunEvent(record, "Executing", args.join(" "), "running");
-  if (options.longRunning) {
-    appendRunEvent(
-      record,
-      "Long report task",
-      plugin.t("Report generation can take several minutes; keep this card open and refresh status if needed."),
-      "running"
-    );
-  }
   plugin.updateRunRecord(record, {});
   try {
     const result = await plugin.executeRuntimeCommand(args);
@@ -85,21 +77,6 @@ async function runProductShellPluginCommand(plugin, label, args, options = {}) {
       await plugin.refreshShellSummarySilently();
     }
     const llm = plugin.currentLlmSelection();
-    if (options.backgroundSubmit && result.payload && result.payload.kind === "run-ask-background-job") {
-      appendRunEvent(
-        record,
-        "Background job submitted",
-        result.payload.job_id || result.payload.path || plugin.t("Long report job accepted."),
-        "running"
-      );
-      plugin.updateRunRecord(record, buildProductShellBackgroundRunUpdates({ result, primaryPath: runContext.primaryPath }));
-      plugin.persistRunLog(record, { stdoutRaw: result.stdout, stderrRaw: result.stderr });
-      plugin.updateLongRunningPoller();
-      if (options.notice !== false) {
-        new Notice(plugin.t("Long report job accepted. The report card will update after background completion."));
-      }
-      return result.payload;
-    }
     const completedState = buildProductShellCompletedRunState({
       record,
       result,

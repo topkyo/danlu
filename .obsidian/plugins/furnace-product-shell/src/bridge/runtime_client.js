@@ -3,7 +3,7 @@
 const RUNTIME_CLIENT_DESKTOP_LAUNCHER = "desktop-launcher";
 const RUNTIME_CLIENT_VAULT_QUEUE = "vault-queue";
 const VAULT_QUEUE_DIR = ".aiwiki/queue";
-const VAULT_QUEUE_SUPPORTED_COMMANDS = new Set(["run-ask", "run-ask-submit", "drop"]);
+const VAULT_QUEUE_SUPPORTED_COMMANDS = new Set(["run-ask", "drop"]);
 
 function normalizeRuntimeClientMode(value) {
   return value === RUNTIME_CLIENT_VAULT_QUEUE ? RUNTIME_CLIENT_VAULT_QUEUE : RUNTIME_CLIENT_DESKTOP_LAUNCHER;
@@ -110,7 +110,7 @@ class VaultQueueClient {
 
 function runtimeClientRequestArgs(command, request) {
   const payload = request && typeof request === "object" ? request : {};
-  if (command === "ask" || command === "run-ask" || command === "run-ask-submit") {
+  if (command === "ask" || command === "run-ask") {
     const question = String(payload.question || "").trim();
     const args = [command === "ask" ? "run-ask" : command, question];
     if (payload.format) args.push("--format", String(payload.format));
@@ -128,7 +128,7 @@ function normalizeRuntimeClientArgv(args) {
 
 function runtimeClientQueueKind(argv) {
   const command = argv[0] || "";
-  if (command === "ask" || command === "run-ask" || command === "run-ask-submit") {
+  if (command === "ask" || command === "run-ask") {
     return "ask";
   }
   if (command === "drop") {

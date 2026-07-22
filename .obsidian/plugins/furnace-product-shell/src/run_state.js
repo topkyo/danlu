@@ -131,7 +131,7 @@ function productShellRunPayloadBoolean(payload, key, fallback = false) {
 }
 
 function isProductShellAskRun(record) {
-  return record && (record.command === "run-ask" || record.command === "run-ask-resume");
+  return record && record.command === "run-ask";
 }
 
 function productShellRunPayloadDeliveryMode(payload) {
@@ -183,22 +183,6 @@ function buildProductShellRunResultContext(result) {
     rewriteFollowupActions,
     rewriteProposalPaths,
     rewriteProposalSlugs,
-  };
-}
-
-function buildProductShellBackgroundRunUpdates({ result, primaryPath }) {
-  const payload = result && result.payload && typeof result.payload === "object" ? result.payload : {};
-  return {
-    status: "received",
-    exitCode: 0,
-    jobId: String(payload.job_id || ""),
-    resultPath: primaryPath,
-    runId: String(payload.run_id || ""),
-    runNotesPath: String(payload.run_notes_path || ""),
-    stdoutSummary: truncateText(result && result.stdout),
-    stderrSummary: truncateText(result && result.stderr),
-    stdoutRaw: trimDiagnosticText(result && result.stdout),
-    stderrRaw: trimDiagnosticText(result && result.stderr),
   };
 }
 
