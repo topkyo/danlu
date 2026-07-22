@@ -14,7 +14,9 @@
 
 ## 当前动态
 
-- 2026-07-22 (**shell less cuts**)：去掉 pending received/soft-hint；删死 modal/未用 Today builder/无引用 i18n；删 vault-queue 仅留 desktop launcher；Jest **174**。
+- 2026-07-22（shell settings less · batch 3）：Base URL 与 Feishu/WeCom webhook 收进默认折叠 `<details>`；主设置页顺序 Language → Connection → LLM → Integrations → Developer；Jest **169**。
+
+- 2026-07-22（shell less cuts）：去掉 pending received/soft-hint；删死 modal/未用 Today builder/无引用 i18n；删 vault-queue 仅留 desktop launcher；Jest **169**（此前文档误记 174）。
 
 - 2026-07-22 (**eng-debt radar**)：统一 alchemy/autonomy atomic write；CLI dispatch lazy import；multipart HTTP→CompletionResult 集成测；verify 计数对齐 acceptance **17** / llm **77** / Jest **180**。
 
