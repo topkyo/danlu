@@ -111,30 +111,19 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
     }
 
     if (selectedProfile.baseUrlSetting) {
-      const endpointDetails = containerEl.createEl("details", {
-        cls: "furnace-settings-fold furnace-settings-fold-endpoint",
-      });
-      endpointDetails.createEl("summary", {
-        cls: "furnace-settings-fold-summary",
-        text: t("Advanced endpoint"),
-      });
-      const endpointBody = endpointDetails.createDiv({ cls: "furnace-settings-fold-body" });
-      endpointBody.createEl("p", {
-        text: t("Optional override for the provider endpoint."),
-        cls: "setting-item-description",
-      });
-      new Setting(endpointBody)
+      new Setting(containerEl)
         .setName(t("Base URL"))
         .setDesc(t("Override the provider endpoint. Leave empty to use the provider profile default."))
-        .addText((text) =>
+        .addText((text) => {
           text
             .setPlaceholder(selectedProfile.defaultBaseUrl || "")
             .setValue(this.plugin.settings[selectedProfile.baseUrlSetting] || "")
             .onChange(async (value) => {
               this.plugin.settings[selectedProfile.baseUrlSetting] = String(value || "").trim();
               await this.plugin.savePluginState();
-            })
-        );
+            });
+          text.inputEl.autocomplete = "off";
+        });
     }
 
     if (selectedProfile.cliHint) {

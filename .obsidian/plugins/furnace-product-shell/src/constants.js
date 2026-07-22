@@ -48,8 +48,6 @@ const ZH_TEXT = {
   "API key": "API Key",
   "Stored only in local Obsidian plugin data. New runs use the key saved here and ignore stale LLM environment variables.": "仅存放在本机 Obsidian 插件数据中。新的运行会使用这里保存的 key，并忽略旧的 LLM 环境变量。",
   "Base URL": "Base URL",
-  "Advanced endpoint": "高级 endpoint",
-  "Optional override for the provider endpoint.": "可选：覆盖 provider endpoint。",
   "Override the provider endpoint. Leave empty to use the provider profile default.": "覆盖 provider endpoint。留空则使用 provider profile 默认值。",
   "Integrations (advanced)": "集成（高级）",
   "CLI session": "CLI 会话",

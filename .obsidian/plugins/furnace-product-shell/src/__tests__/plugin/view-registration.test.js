@@ -72,7 +72,7 @@ test("public command palette keeps only the Furnace entrypoint", () => {
   }
 });
 
-test("settings trim removes recentRunsLimit and groups developer diagnostics", () => {
+test("settings trim removes recentRunsLimit + Advanced endpoint fold and groups developer diagnostics", () => {
   const settingsSrc = fs.readFileSync(
     path.resolve(__dirname, "../../settings.js"),
     "utf8"
@@ -91,9 +91,9 @@ test("settings trim removes recentRunsLimit and groups developer diagnostics", (
   );
 
   expect(settingsSrc).not.toMatch(/recentRunsLimit/);
+  expect(settingsSrc).not.toMatch(/Advanced endpoint/);
   expect(settingsSrc).toMatch(/Developer \/ diagnostics/);
   expect(settingsSrc).toMatch(/Developer diagnostics/);
-  expect(settingsSrc).toMatch(/createEl\("details"[\s\S]+Advanced endpoint/);
   expect(settingsSrc).toMatch(/createEl\("details"[\s\S]+Integrations \(advanced\)/);
   expect(settingsSrc).not.toMatch(/text: t\("Notifications"\)/);
   const langSectionStart = settingsSrc.indexOf("Language & Appearance");
