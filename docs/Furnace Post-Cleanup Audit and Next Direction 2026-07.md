@@ -2,7 +2,7 @@
 title: "炼丹炉 Post-Cleanup 全量审计与下一步方向"
 kind: "plan"
 status: "active"
-updated_at: "2026-07-15"
+updated_at: "2026-07-22"
 based_on:
   - "docs/archive/Furnace Commercial Grade Cleanup Plan 2026-07.md（executed-reviewed-pass）"
   - "docs/AGOS-9-Scorecard.md"
@@ -24,7 +24,7 @@ supersedes: []
 | 指标 | 当前值 | 来源 |
 |---|---|---|
 | Runtime | `src/aiwiki` **155** `.py` / **~62k LOC** | `find` + `wc`（2026-07-18） |
-| Tests | acceptance **16** + llm-integration **76** + Jest **174**（2026-07-20 ingest dedup）；表内历史快照曾为 24/168、65 | `pytest` + `npm test` |
+| Tests | acceptance **17** + llm-integration **76** + Jest **176**（2026-07-22 Ask sync-chat）；表内历史快照曾为 24/168、16/174、65 | `pytest` + `npm test` |
 | Top hubs | `memory/graph.py` 1758 / `drop.py` 1747 / `execution/alchemy.py` 1680 / `auto_adopt` **DELETED** / `app_state` 1221 | `wc -l` |
 | `except Exception` | **~116**（↓ from 172）；裸 `except Exception: pass` **0** | ripgrep |
 | AgentOS Scorecard | **Local Engineering Gate 9.05**；Live Dogfood **not-yet** | `docs/AGOS-9-Scorecard.md` |
@@ -129,6 +129,8 @@ supersedes: []
 
 **最优解不是再扫 cleanup**，而是把 Phase5 延期表立项为独立 go-live 计划并执行。
 
+**2026-07-22 定案（Ask sync-chat）**：Ask 仅同步 `run-ask` + Shell 单飞；`run-ask-submit` / `run-ask-resume` / `runner/background.py` 已退役。**下一焦点仍是 WS 商业化 / go-live 打磨**（WS1–WS6 残留项），**不扩后台任务 / background job 体系**。
+
 ---
 
 ## 6. 执行计划：Commercial Go-Live + Hygiene
@@ -146,6 +148,7 @@ supersedes: []
 - 不引入 hosted multi-user / heavy RAG / fine-tuning
 - 不把 AgentOS 9.05 写成「商业就绪 9 分」
 - 不扩 L3 无人值守自治
+- 不恢复或扩展 Ask background submit/resume / longRunning poller（2026-07-22 已退役）
 
 ---
 
@@ -226,7 +229,7 @@ bash scripts/verify.sh scripts
 bash scripts/verify.sh python-static
 bash scripts/verify.sh smoke
 bash scripts/verify.sh cli-smoke
-# Product Shell：`product-shell-static` = node --check + Jest hard-gate（168 tests）
+# Product Shell：`product-shell-static` = node --check + Jest hard-gate（~176 tests）
 # 紧急旁路：AIWIKI_SKIP_PRODUCT_SHELL_JS_TESTS=1
 # go-live 文档门禁：
 ! git grep -E 'commercial@example\.com|support@example\.com' -- LICENSE docs/commercial/
@@ -245,7 +248,7 @@ Review gate：编码 PR 独立 read-only reviewer（correctness / scope / missin
 - [x] 商业 EULA 或等价书面许可流程可指向真实材料（`docs/commercial/EULA.md`；待正式法律审阅）
 - [x] INSTALL 存在一条非开发者可完成的安装路径（`pip install -e .` 预览；PyPI `pip install aiwiki` 仍待发布）
 - [x] Demo 对外 checklist 可跑通且合规（fixture + README checklist；截图/录屏媒体可选待补）
-- [x] Jest 在 release CI 为 hard-gate（`verify.sh product-shell-static`；168 passed）
+- [x] Jest 在 release CI 为 hard-gate（`verify.sh product-shell-static`；~176 passed）
 - [x] PROGRESS / docs Active Plans / Architecture 无断链 SoT 指针
 - [ ] 商业审计综合可诚实宣称 ≥ **8.0（可售门槛）**；AgentOS 分数不混标 — 触点/EULA/询价/安装预览已齐后复评；正式法律签收与 PyPI 发布可再抬一档
 
@@ -261,6 +264,7 @@ Review gate：编码 PR 独立 read-only reviewer（correctness / scope / missin
 
 ## 11. 更新记录
 
+- 2026-07-22：Ask sync-chat 收口 — `run-ask-submit` / `run-ask-resume` / `runner/background.py` 退役；Ask = 同步 `run-ask` + Shell 单飞。§1 测试快照刷新为 acceptance **17** / llm-integration **76** / Jest **176**；§5/§6 明确下一焦点仍为 Commercial Go-Live 打磨，不扩 background job。
 - 2026-07-15：Commercial Go-Live 执行波 — WS1（邮箱/询价/EULA）、WS2（`pip install -e .` 预览 + v0.4.0 + launcher 优先 console script）、WS3（对外 checklist）、WS5（Jest hard-gate + alchemy atomic_write）、LLM-Wiki 叙事补丁；PyPI 正式发布与 EULA 法律签收仍 open。
 - 2026-07-15：初版。基于 Cleanup executed-reviewed-pass 后再审计；现场 scripts/python-static/smoke/docs PASS；立项 Commercial Go-Live WS1–WS6。
 - 2026-07-15：同 PR 落地 WS4 子集 — D4/D8/D10/D11 marked **fixed**；缺陷表增加「本 PR」列避免与修复矛盾。

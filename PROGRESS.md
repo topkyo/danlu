@@ -14,6 +14,8 @@
 
 ## 当前动态
 
+- 2026-07-22 (**Ask follow-ups · Go-Live SoT 对齐**)：Post-Cleanup 审计 SoT 记 Ask background 退役与测试计数刷新；follow-ups 计划 `docs/plans/2026-07-22-ask-followups.md` — Task 2（读侧 background 过滤 + 去 jobId）、Task 3（sync ask 软提示）仍待收口。
+
 - 2026-07-22 (**Ask sync chat · 删除 submit/resume**)：Shell 提问改同步 `run-ask` + 单飞；删除 `run-ask-submit`/`run-ask-resume`/`background.py`/longRunning poller。审查修 P0：`excludePendingId` 避免 push 后自挡。Dogfood：清 `background-jobs/`、移骨架 `图片内容是.md`、同步 vault `main.js`。读侧仍过滤历史 `background_status=running` 僵尸。Spec/plan：`docs/specs|plans/2026-07-22-ask-sync-chat.md`。验证：`verify.sh all` PASS（Jest 176 / acceptance 17 / llm 76）。
 
 - 2026-07-21 (**fix: background resume CLI + early-exit 收口**)：`spawn_background_resume` 改为 `advanced run-ask-resume`（修 8a48253 删 legacy 后漏改 spawn）；子进程秒退或 spawn `OSError` 时写 job/artifact `failed`，避免 UI 永久「报告生成中」。**已被上条退役 supersede。**
