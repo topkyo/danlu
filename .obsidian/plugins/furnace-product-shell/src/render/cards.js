@@ -18,11 +18,6 @@ function renderFeedCard(plugin, container, entry) {
 }
 
 function renderReportCard(plugin, cardEl, entry) {
-  const isUnread = isReportUnread(plugin, entry);
-  if (isUnread) {
-    cardEl.addClass("furnace-report-unread");
-  }
-
   const actions = cardEl.createDiv({ cls: "furnace-feed-card-actions" });
   const suggest = entry.compound_suggest || entry.compoundSuggest;
   if (suggest && typeof suggest === "object") {
@@ -108,12 +103,6 @@ function renderAutomationCard(plugin, cardEl, entry) {
   var pill = cardEl.createDiv({ cls: "furnace-auto-state-pill " + stateClass, text: stateLabel });
 }
 
-function isReportUnread(plugin, entry) {
-  const lastViewed = plugin.settings && plugin.settings.lastViewedTimestamp;
-  if (!lastViewed || !entry.timestamp) return false;
-  return entry.timestamp > lastViewed;
-}
-
 module.exports = {
   renderFeedCard,
   renderReportCard,
@@ -121,5 +110,4 @@ module.exports = {
   renderAutomationCard,
   renderCompoundSuggestActionCard,
   renderCompoundSuggestActions,
-  isReportUnread,
 };

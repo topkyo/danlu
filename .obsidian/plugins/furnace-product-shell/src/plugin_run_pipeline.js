@@ -109,11 +109,6 @@ async function refreshProductShellSummarySilently(plugin) {
 
 function processProductShellSummaryUpdates(plugin, summary) {
   plugin.reconcilePendingSubmissions(summary);
-  const update = knownReportIdsUpdateFromSummary(summary, plugin.settings.lastKnownReportIds);
-  if (update.shouldSave) {
-    plugin.settings.lastKnownReportIds = update.ids;
-    void plugin.savePluginState();
-  }
 }
 
 async function refreshProductShellSummaryCommand(plugin) {

@@ -162,7 +162,6 @@ function makePlugin(overrides = {}) {
     pendingSubmissions: [],
     pluginState: { recentRuns: [] },
     settings: {
-      onboardingShown: true,
       showAdvancedCommands: false,
       advancedSectionsExpanded: {},
       locale: "zh",
@@ -518,11 +517,9 @@ test("plain question goes through run-ask instead of deterministic universal dro
   const context = loadRenderContext();
   const plugin = makePlugin({
     settings: {
-      onboardingShown: true,
       showAdvancedCommands: false,
       advancedSectionsExpanded: {},
       locale: "zh",
-      defaultAskFormat: "note",
     },
     runAskCommand: jest.fn().mockResolvedValue({
       report_path: "output/reports/ask.md",
@@ -632,11 +629,9 @@ test("plain question ignores stale persisted format and stays report", async () 
   const context = loadRenderContext();
   const plugin = makePlugin({
     settings: {
-      onboardingShown: true,
       showAdvancedCommands: false,
       advancedSectionsExpanded: {},
       locale: "zh",
-      defaultAskFormat: "report",
     },
   });
   const container = document.createElement("div");

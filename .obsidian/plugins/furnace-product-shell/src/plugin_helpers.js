@@ -74,31 +74,6 @@ function normalizeRelativePathList(value) {
   );
 }
 
-function knownReportIdsUpdateFromSummary(summary, lastKnownReportIds) {
-  if (!summary || !Array.isArray(summary.recent_outputs)) {
-    return { shouldSave: false, ids: [] };
-  }
-  const outputs = summary.recent_outputs.filter((item) => item && typeof item === "object");
-  const currentIds = outputs.map((item) => item.path || item.title || item.created_at).filter(Boolean);
-  const lastIds = Array.isArray(lastKnownReportIds) ? lastKnownReportIds.filter(Boolean) : [];
-
-  if (!currentIds.length) {
-    return { shouldSave: true, ids: [] };
-  }
-
-  if (!lastIds.length && outputs.length > 0) {
-    return { shouldSave: true, ids: currentIds };
-  }
-
-  const newIds = currentIds.filter((id) => !lastIds.includes(id));
-  if (newIds.length) {
-    return { shouldSave: true, ids: currentIds };
-  }
-
-  const changedOrderOrLength = currentIds.length !== lastIds.length || currentIds.some((id, index) => id !== lastIds[index]);
-  return { shouldSave: changedOrderOrLength, ids: changedOrderOrLength ? currentIds : lastIds };
-}
-
 function normalizeWorkspaceRelativePath(relativePath) {
   const normalized = String(relativePath || "").trim();
   if (!normalized || path.isAbsolute(normalized)) {

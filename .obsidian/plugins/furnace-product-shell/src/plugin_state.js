@@ -5,9 +5,14 @@ async function loadProductShellPluginState(plugin) {
   const rawSettings = data.settings && typeof data.settings === "object" ? data.settings : {};
   plugin.rawPluginData = data;
   plugin.settings = Object.assign({}, DEFAULT_SETTINGS, rawSettings);
-  if (plugin.settings.defaultAskFormat !== "report") {
-    plugin.settings.defaultAskFormat = "report";
-  }
+  const legacyDefaultAskFormatMigrated = Object.prototype.hasOwnProperty.call(plugin.settings, "defaultAskFormat");
+  delete plugin.settings.defaultAskFormat;
+  const legacyLastViewedTimestampMigrated = Object.prototype.hasOwnProperty.call(plugin.settings, "lastViewedTimestamp");
+  delete plugin.settings.lastViewedTimestamp;
+  const legacyLastKnownReportIdsMigrated = Object.prototype.hasOwnProperty.call(plugin.settings, "lastKnownReportIds");
+  delete plugin.settings.lastKnownReportIds;
+  const legacyOnboardingShownMigrated = Object.prototype.hasOwnProperty.call(plugin.settings, "onboardingShown");
+  delete plugin.settings.onboardingShown;
   const selectedProfile = llmProviderProfile(plugin.settings.llmBackend);
   const llmBackendMigrated = plugin.settings.llmBackend !== selectedProfile.value;
   plugin.settings.llmBackend = selectedProfile.value;
@@ -40,22 +45,20 @@ async function loadProductShellPluginState(plugin) {
   const migratedEnabledChannels = normalizeEnabledChannels(rawEnabledChannels);
   const enabledChannelsMigrated = JSON.stringify(plugin.settings.enabledChannels || []) !== JSON.stringify(migratedEnabledChannels);
   plugin.settings.enabledChannels = migratedEnabledChannels;
-  const migratedLastViewedTimestamp = normalizeLastViewedTimestamp(plugin.settings.lastViewedTimestamp);
-  const lastViewedTimestampMigrated = plugin.settings.lastViewedTimestamp !== migratedLastViewedTimestamp;
-  plugin.settings.lastViewedTimestamp = migratedLastViewedTimestamp;
   plugin.pendingSubmissions = plugin.hydratePendingSubmissions(plugin.settings.persistedPendingSubmissions);
   const recentRuns = normalizeProductShellRecentRuns(data.recentRuns);
   const llmHealth = data.llmHealth && typeof data.llmHealth === "object" ? data.llmHealth : null;
   plugin.pluginState = { recentRuns, llmHealth };
   plugin.trimRecentRuns();
-  const defaultAskFormatMigrated = rawSettings.defaultAskFormat !== "report";
   if (
     feishuWebhookUrlMigrated
     || wecomWebhookUrlMigrated
     || enabledChannelsMigrated
-    || lastViewedTimestampMigrated
+    || legacyDefaultAskFormatMigrated
+    || legacyLastViewedTimestampMigrated
+    || legacyLastKnownReportIdsMigrated
+    || legacyOnboardingShownMigrated
     || legacyLlmSettingsMigrated
-    || defaultAskFormatMigrated
     || llmBackendMigrated
     || legacyRuntimeClientModeMigrated
     || legacyShowHtmlShortcutsMigrated

@@ -199,7 +199,6 @@ const DEFAULT_PROTOCOLS = ["general"];
 const DEFAULT_LOCALE = "zh";
 const DEFAULT_SETTINGS = {
   launcherPath: "scripts/aiwiki-launcher.sh",
-  defaultAskFormat: "report",
   recentRunsLimit: 8,
   showAdvancedCommands: false,
   locale: DEFAULT_LOCALE,
@@ -216,9 +215,6 @@ const DEFAULT_SETTINGS = {
   feishuWebhookUrl: "",
   wecomWebhookUrl: "",
   enabledChannels: [],
-  lastViewedTimestamp: "",
-  lastKnownReportIds: [],
-  onboardingShown: false,
   // R91: Advanced 子 section 折叠态持久化；默认全折叠以降首屏认知负担
   advancedSectionsExpanded: { status: false, history: false },
 };
@@ -315,14 +311,7 @@ const ZH_TEXT = {
   "launcher {launcher} · root {root}": "launcher {launcher} · 根目录 {root}",
   Fallback: "回退",
   "Capture Material": "投文字材料",
-  "欢迎使用炼丹炉": "欢迎使用炼丹炉",
   投料: "投料",
-  "拖入 URL、PDF 或图片，或直接在输入框提问": "拖入 URL、PDF、Markdown 或图片，或直接在输入框提问",
-  等待编译: "等待编译",
-  "炉子会自动处理原料，抽概念、建关联": "炉子会自动处理原料，抽概念、建关联",
-  看报告: "看报告",
-  "每天回到炉子，Today 里就是你需要看的": "每天回到炉子，Today 里就是你需要看的",
-  "知道了，开始使用": "知道了，开始使用",
   "新反证待审": "新反证待审",
   "判断需要复核": "判断需要复核",
   "机器记忆待修复": "机器记忆待修复",
@@ -347,7 +336,6 @@ const ZH_TEXT = {
   空闲: "空闲",
   "Language & Appearance": "语言与外观",
   "Furnace Connection": "炉子连接",
-  "Ask Defaults": "Ask 默认行为",
   "LLM Configuration": "LLM 配置",
   Notifications: "通知",
   "刷新炉子": "刷新炉子",
@@ -1253,16 +1241,6 @@ function reviewObjectMetaText(control, locale = DEFAULT_LOCALE) {
   return parts.join(" | ");
 }
 
-function normalizeLastViewedTimestamp(value) {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return new Date(value).toISOString();
-  }
-  if (typeof value === "string" && value.trim()) {
-    return value;
-  }
-  return "";
-}
-
 function normalizeEnabledChannels(value) {
   const allowed = new Set(["feishu", "wecom"]);
   const items = Array.isArray(value) ? value : [];
@@ -1319,22 +1297,6 @@ function localDateLabel(date) {
   const month = String(target.getMonth() + 1).padStart(2, "0");
   const day = String(target.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
-}
-
-function isReportUnread(report, lastViewedTimestamp) {
-  const createdAt = reportDate(report && report.created_at);
-  if (!createdAt) {
-    return false;
-  }
-  const normalizedLastViewed = normalizeLastViewedTimestamp(lastViewedTimestamp);
-  if (!normalizedLastViewed) {
-    return true;
-  }
-  const lastViewed = reportDate(normalizedLastViewed);
-  if (!lastViewed) {
-    return true;
-  }
-  return createdAt.getTime() > lastViewed.getTime();
 }
 
 function splitReportsByLocalDate(reports, options = {}) {
@@ -2695,11 +2657,6 @@ function renderFeedCard(plugin, container, entry) {
 }
 
 function renderReportCard(plugin, cardEl, entry) {
-  const isUnread = isReportUnread(plugin, entry);
-  if (isUnread) {
-    cardEl.addClass("furnace-report-unread");
-  }
-
   const actions = cardEl.createDiv({ cls: "furnace-feed-card-actions" });
   const suggest = entry.compound_suggest || entry.compoundSuggest;
   if (suggest && typeof suggest === "object") {
@@ -2785,12 +2742,6 @@ function renderAutomationCard(plugin, cardEl, entry) {
   var pill = cardEl.createDiv({ cls: "furnace-auto-state-pill " + stateClass, text: stateLabel });
 }
 
-function isReportUnread(plugin, entry) {
-  const lastViewed = plugin.settings && plugin.settings.lastViewedTimestamp;
-  if (!lastViewed || !entry.timestamp) return false;
-  return entry.timestamp > lastViewed;
-}
-
 module.exports = {
   renderFeedCard,
   renderReportCard,
@@ -2798,7 +2749,6 @@ module.exports = {
   renderAutomationCard,
   renderCompoundSuggestActionCard,
   renderCompoundSuggestActions,
-  isReportUnread,
 };
 
 // --- src/settings.js ---
@@ -4804,31 +4754,6 @@ function normalizeRelativePathList(value) {
   );
 }
 
-function knownReportIdsUpdateFromSummary(summary, lastKnownReportIds) {
-  if (!summary || !Array.isArray(summary.recent_outputs)) {
-    return { shouldSave: false, ids: [] };
-  }
-  const outputs = summary.recent_outputs.filter((item) => item && typeof item === "object");
-  const currentIds = outputs.map((item) => item.path || item.title || item.created_at).filter(Boolean);
-  const lastIds = Array.isArray(lastKnownReportIds) ? lastKnownReportIds.filter(Boolean) : [];
-
-  if (!currentIds.length) {
-    return { shouldSave: true, ids: [] };
-  }
-
-  if (!lastIds.length && outputs.length > 0) {
-    return { shouldSave: true, ids: currentIds };
-  }
-
-  const newIds = currentIds.filter((id) => !lastIds.includes(id));
-  if (newIds.length) {
-    return { shouldSave: true, ids: currentIds };
-  }
-
-  const changedOrderOrLength = currentIds.length !== lastIds.length || currentIds.some((id, index) => id !== lastIds[index]);
-  return { shouldSave: changedOrderOrLength, ids: changedOrderOrLength ? currentIds : lastIds };
-}
-
 function normalizeWorkspaceRelativePath(relativePath) {
   const normalized = String(relativePath || "").trim();
   if (!normalized || path.isAbsolute(normalized)) {
@@ -6100,9 +6025,14 @@ async function loadProductShellPluginState(plugin) {
   const rawSettings = data.settings && typeof data.settings === "object" ? data.settings : {};
   plugin.rawPluginData = data;
   plugin.settings = Object.assign({}, DEFAULT_SETTINGS, rawSettings);
-  if (plugin.settings.defaultAskFormat !== "report") {
-    plugin.settings.defaultAskFormat = "report";
-  }
+  const legacyDefaultAskFormatMigrated = Object.prototype.hasOwnProperty.call(plugin.settings, "defaultAskFormat");
+  delete plugin.settings.defaultAskFormat;
+  const legacyLastViewedTimestampMigrated = Object.prototype.hasOwnProperty.call(plugin.settings, "lastViewedTimestamp");
+  delete plugin.settings.lastViewedTimestamp;
+  const legacyLastKnownReportIdsMigrated = Object.prototype.hasOwnProperty.call(plugin.settings, "lastKnownReportIds");
+  delete plugin.settings.lastKnownReportIds;
+  const legacyOnboardingShownMigrated = Object.prototype.hasOwnProperty.call(plugin.settings, "onboardingShown");
+  delete plugin.settings.onboardingShown;
   const selectedProfile = llmProviderProfile(plugin.settings.llmBackend);
   const llmBackendMigrated = plugin.settings.llmBackend !== selectedProfile.value;
   plugin.settings.llmBackend = selectedProfile.value;
@@ -6135,22 +6065,20 @@ async function loadProductShellPluginState(plugin) {
   const migratedEnabledChannels = normalizeEnabledChannels(rawEnabledChannels);
   const enabledChannelsMigrated = JSON.stringify(plugin.settings.enabledChannels || []) !== JSON.stringify(migratedEnabledChannels);
   plugin.settings.enabledChannels = migratedEnabledChannels;
-  const migratedLastViewedTimestamp = normalizeLastViewedTimestamp(plugin.settings.lastViewedTimestamp);
-  const lastViewedTimestampMigrated = plugin.settings.lastViewedTimestamp !== migratedLastViewedTimestamp;
-  plugin.settings.lastViewedTimestamp = migratedLastViewedTimestamp;
   plugin.pendingSubmissions = plugin.hydratePendingSubmissions(plugin.settings.persistedPendingSubmissions);
   const recentRuns = normalizeProductShellRecentRuns(data.recentRuns);
   const llmHealth = data.llmHealth && typeof data.llmHealth === "object" ? data.llmHealth : null;
   plugin.pluginState = { recentRuns, llmHealth };
   plugin.trimRecentRuns();
-  const defaultAskFormatMigrated = rawSettings.defaultAskFormat !== "report";
   if (
     feishuWebhookUrlMigrated
     || wecomWebhookUrlMigrated
     || enabledChannelsMigrated
-    || lastViewedTimestampMigrated
+    || legacyDefaultAskFormatMigrated
+    || legacyLastViewedTimestampMigrated
+    || legacyLastKnownReportIdsMigrated
+    || legacyOnboardingShownMigrated
     || legacyLlmSettingsMigrated
-    || defaultAskFormatMigrated
     || llmBackendMigrated
     || legacyRuntimeClientModeMigrated
     || legacyShowHtmlShortcutsMigrated
@@ -6688,11 +6616,6 @@ async function refreshProductShellSummarySilently(plugin) {
 
 function processProductShellSummaryUpdates(plugin, summary) {
   plugin.reconcilePendingSubmissions(summary);
-  const update = knownReportIdsUpdateFromSummary(summary, plugin.settings.lastKnownReportIds);
-  if (update.shouldSave) {
-    plugin.settings.lastKnownReportIds = update.ids;
-    void plugin.savePluginState();
-  }
 }
 
 async function refreshProductShellSummaryCommand(plugin) {

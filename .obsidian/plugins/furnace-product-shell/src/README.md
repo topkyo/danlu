@@ -9,9 +9,6 @@ The AgentOS shell surface is intentionally narrow:
 1. **Today Feed** — user-visible outputs, review prompts, and non-degraded activity from the runtime summary.
 2. **Universal Input** — the only default input surface; accepts URLs, file drags, raw text notes, and questions through `runUniversalInputCommand`.
 
-Unread reports are local UI state based on `lastViewedTimestamp`: unread cards show
-a small dot and stronger title weight, without Notice or Badge behavior.
-
 Universal Input owns URL/file/question routing. Legacy DropZone and start-guide surfaces are not part of the default shell.
 
 Advanced is gated by `showAdvancedCommands` and is limited to diagnostics/history

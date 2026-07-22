@@ -7,7 +7,6 @@ const DEFAULT_PROTOCOLS = ["general"];
 const DEFAULT_LOCALE = "zh";
 const DEFAULT_SETTINGS = {
   launcherPath: "scripts/aiwiki-launcher.sh",
-  defaultAskFormat: "report",
   recentRunsLimit: 8,
   showAdvancedCommands: false,
   locale: DEFAULT_LOCALE,
@@ -24,9 +23,6 @@ const DEFAULT_SETTINGS = {
   feishuWebhookUrl: "",
   wecomWebhookUrl: "",
   enabledChannels: [],
-  lastViewedTimestamp: "",
-  lastKnownReportIds: [],
-  onboardingShown: false,
   // R91: Advanced 子 section 折叠态持久化；默认全折叠以降首屏认知负担
   advancedSectionsExpanded: { status: false, history: false },
 };
@@ -123,14 +119,7 @@ const ZH_TEXT = {
   "launcher {launcher} · root {root}": "launcher {launcher} · 根目录 {root}",
   Fallback: "回退",
   "Capture Material": "投文字材料",
-  "欢迎使用炼丹炉": "欢迎使用炼丹炉",
   投料: "投料",
-  "拖入 URL、PDF 或图片，或直接在输入框提问": "拖入 URL、PDF、Markdown 或图片，或直接在输入框提问",
-  等待编译: "等待编译",
-  "炉子会自动处理原料，抽概念、建关联": "炉子会自动处理原料，抽概念、建关联",
-  看报告: "看报告",
-  "每天回到炉子，Today 里就是你需要看的": "每天回到炉子，Today 里就是你需要看的",
-  "知道了，开始使用": "知道了，开始使用",
   "新反证待审": "新反证待审",
   "判断需要复核": "判断需要复核",
   "机器记忆待修复": "机器记忆待修复",
@@ -155,7 +144,6 @@ const ZH_TEXT = {
   空闲: "空闲",
   "Language & Appearance": "语言与外观",
   "Furnace Connection": "炉子连接",
-  "Ask Defaults": "Ask 默认行为",
   "LLM Configuration": "LLM 配置",
   Notifications: "通知",
   "刷新炉子": "刷新炉子",

@@ -23,56 +23,6 @@ function loadPluginHelpersContext() {
   return context;
 }
 
-test("known report id update ignores invalid summaries", () => {
-  const context = loadPluginHelpersContext();
-
-  expect(context.knownReportIdsUpdateFromSummary(null, ["old"])).toEqual({ shouldSave: false, ids: [] });
-  expect(context.knownReportIdsUpdateFromSummary({}, ["old"])).toEqual({ shouldSave: false, ids: [] });
-});
-
-test("known report id update tracks empty and first report lists", () => {
-  const context = loadPluginHelpersContext();
-
-  expect(context.knownReportIdsUpdateFromSummary({ recent_outputs: [] }, ["old"])).toEqual({
-    shouldSave: true,
-    ids: [],
-  });
-  expect(context.knownReportIdsUpdateFromSummary({
-    recent_outputs: [
-      { path: "output/reports/a.md" },
-      { title: "Report B" },
-      { created_at: "2026-05-25T00:00:00Z" },
-      null,
-    ],
-  }, [])).toEqual({
-    shouldSave: true,
-    ids: ["output/reports/a.md", "Report B", "2026-05-25T00:00:00Z"],
-  });
-});
-
-test("known report id update saves new ids and order changes only when needed", () => {
-  const context = loadPluginHelpersContext();
-
-  expect(context.knownReportIdsUpdateFromSummary({
-    recent_outputs: [{ path: "a" }, { path: "b" }],
-  }, ["a", "b"])).toEqual({
-    shouldSave: false,
-    ids: ["a", "b"],
-  });
-  expect(context.knownReportIdsUpdateFromSummary({
-    recent_outputs: [{ path: "b" }, { path: "a" }],
-  }, ["a", "b"])).toEqual({
-    shouldSave: true,
-    ids: ["b", "a"],
-  });
-  expect(context.knownReportIdsUpdateFromSummary({
-    recent_outputs: [{ path: "a" }, { path: "c" }],
-  }, ["a", "b"])).toEqual({
-    shouldSave: true,
-    ids: ["a", "c"],
-  });
-});
-
 test("workspace snippet path resolver rejects empty, absolute, and escaping paths", () => {
   const context = loadPluginHelpersContext();
   const root = path.resolve("/tmp/furnace-vault");

@@ -366,16 +366,6 @@ function reviewObjectMetaText(control, locale = DEFAULT_LOCALE) {
   return parts.join(" | ");
 }
 
-function normalizeLastViewedTimestamp(value) {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return new Date(value).toISOString();
-  }
-  if (typeof value === "string" && value.trim()) {
-    return value;
-  }
-  return "";
-}
-
 function normalizeEnabledChannels(value) {
   const allowed = new Set(["feishu", "wecom"]);
   const items = Array.isArray(value) ? value : [];
@@ -432,22 +422,6 @@ function localDateLabel(date) {
   const month = String(target.getMonth() + 1).padStart(2, "0");
   const day = String(target.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
-}
-
-function isReportUnread(report, lastViewedTimestamp) {
-  const createdAt = reportDate(report && report.created_at);
-  if (!createdAt) {
-    return false;
-  }
-  const normalizedLastViewed = normalizeLastViewedTimestamp(lastViewedTimestamp);
-  if (!normalizedLastViewed) {
-    return true;
-  }
-  const lastViewed = reportDate(normalizedLastViewed);
-  if (!lastViewed) {
-    return true;
-  }
-  return createdAt.getTime() > lastViewed.getTime();
 }
 
 function splitReportsByLocalDate(reports, options = {}) {
