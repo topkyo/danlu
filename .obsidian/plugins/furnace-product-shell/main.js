@@ -199,7 +199,6 @@ const DEFAULT_PROTOCOLS = ["general"];
 const DEFAULT_LOCALE = "zh";
 const DEFAULT_SETTINGS = {
   launcherPath: "scripts/aiwiki-launcher.sh",
-  runtimeClientMode: "desktop-launcher",
   defaultAskFormat: "report",
   recentRunsLimit: 8,
   showAdvancedCommands: false,
@@ -232,10 +231,6 @@ const ZH_TEXT = {
   English: "英文",
   "Aiwiki launcher": "Aiwiki 启动器",
   "Vault-local or absolute launcher path. This vault may point at an external runtime root.": "vault 内相对路径或绝对 launcher 路径。这个 vault 可以指向外部 runtime root。",
-  "Runtime client mode": "运行客户端模式",
-  "Desktop launcher runs the local aiwiki runtime. Vault queue only writes .aiwiki/queue requests for desktop drain; it does not execute commands.": "Desktop launcher 会运行本机 aiwiki runtime。Vault queue 只写入 .aiwiki/queue 请求等待桌面端 drain，不执行命令。",
-  "Desktop launcher": "桌面启动器",
-  "Vault queue companion": "Vault 队列 companion",
   "Recent runs limit": "最近运行保留数",
   "How many plugin-triggered runs to keep in the Product Shell.": "Product Shell 中保留多少条插件触发的运行记录。",
   "Show advanced commands": "显示高级命令",
@@ -797,8 +792,6 @@ const ZH_TEXT = {
   " | llm degraded": " | LLM 已降级",
   "Cannot re-run this entry because argv was not recorded.": "这条记录没有保存 argv，暂时无法重新运行。",
   "Command completed successfully.": "命令已成功完成。",
-  "Queued for desktop drain: {path}": "已加入桌面端待处理队列：{path}",
-  "Queued for desktop drain. This is not a completed runtime execution.": "已加入桌面端待处理队列。这不是已完成的 runtime 执行。",
   "Working directory": "工作目录",
   "Arguments": "参数",
   "Fallback from": "回退来源",
@@ -2630,22 +2623,11 @@ module.exports = { execLauncher, runUiAction, normalizeLauncherArgv };
 
 // --- src/bridge/runtime_client.js ---
 
-// Bridge: runtime client abstraction for desktop launcher and vault queue.
+// Bridge: runtime client for desktop launcher.
 
 const RUNTIME_CLIENT_DESKTOP_LAUNCHER = "desktop-launcher";
-const RUNTIME_CLIENT_VAULT_QUEUE = "vault-queue";
-const VAULT_QUEUE_DIR = ".aiwiki/queue";
-const VAULT_QUEUE_SUPPORTED_COMMANDS = new Set(["run-ask", "drop"]);
-
-function normalizeRuntimeClientMode(value) {
-  return value === RUNTIME_CLIENT_VAULT_QUEUE ? RUNTIME_CLIENT_VAULT_QUEUE : RUNTIME_CLIENT_DESKTOP_LAUNCHER;
-}
 
 function createRuntimeClient(plugin) {
-  const mode = normalizeRuntimeClientMode(plugin && plugin.settings && plugin.settings.runtimeClientMode);
-  if (mode === RUNTIME_CLIENT_VAULT_QUEUE) {
-    return new VaultQueueClient(plugin);
-  }
   return new DesktopLauncherClient(plugin);
 }
 
@@ -2672,74 +2654,6 @@ class DesktopLauncherClient {
   }
 }
 
-class VaultQueueClient {
-  constructor(plugin) {
-    this.plugin = plugin;
-    this.mode = RUNTIME_CLIENT_VAULT_QUEUE;
-    this.queueDir = VAULT_QUEUE_DIR;
-  }
-
-  async exec(args) {
-    const argv = normalizeRuntimeClientArgv(args);
-    const command = argv[0] || "";
-    if (command === "shell-status") {
-      return this.readSummary();
-    }
-    if (!VAULT_QUEUE_SUPPORTED_COMMANDS.has(command)) {
-      throw new Error(`Vault queue runtime cannot execute ${command || "empty command"}; only shell-status is read-only and run-ask/drop/note are queued.`);
-    }
-    return this.enqueue(runtimeClientQueueKind(argv), { argv });
-  }
-
-  async ask(request) {
-    return this.enqueue("ask", { request, argv: runtimeClientRequestArgs("run-ask", request) });
-  }
-
-  async drop(request) {
-    const payload = request && typeof request === "object" ? request : {};
-    const kind = String(payload.kind || "markdown").trim().toLowerCase();
-    const argv = runtimeClientRequestArgs("drop", payload);
-    if (!kind || kind === "markdown" || kind === "note") {
-      return this.enqueue("note", { request: payload, argv });
-    }
-    return this.enqueue("drop", { request: payload, argv });
-  }
-
-  async readSummary() {
-    const payload = await readVaultJson(this.plugin, SHELL_SUMMARY_PATH);
-    const stdout = payload ? `${JSON.stringify(payload, null, 2)}\n` : "";
-    return { stdout, stderr: "", payload, code: 0 };
-  }
-
-  async enqueue(kind, payload) {
-    const normalizedKind = kind === "ask" || kind === "note" ? kind : "drop";
-    const id = createVaultQueueId();
-    const queuePath = `${this.queueDir}/${id}.json`;
-    const item = {
-      version: 1,
-      id,
-      kind: normalizedKind,
-      created_at: new Date().toISOString(),
-      payload: payload && typeof payload === "object" ? payload : {},
-      status: "pending",
-      source: "companion",
-    };
-    await writeVaultJson(this.plugin, queuePath, item);
-    const result = {
-      kind: "vault-queue",
-      status: "queued",
-      queue_path: queuePath,
-      id,
-    };
-    return {
-      stdout: `${JSON.stringify(result, null, 2)}\n`,
-      stderr: "",
-      payload: result,
-      code: 0,
-    };
-  }
-}
-
 function runtimeClientRequestArgs(command, request) {
   const payload = request && typeof request === "object" ? request : {};
   if (command === "ask" || command === "run-ask") {
@@ -2754,110 +2668,9 @@ function runtimeClientRequestArgs(command, request) {
   return args;
 }
 
-function normalizeRuntimeClientArgv(args) {
-  return Array.isArray(args) ? args.map((value) => String(value || "")) : [];
-}
-
-function runtimeClientQueueKind(argv) {
-  const command = argv[0] || "";
-  if (command === "ask" || command === "run-ask") {
-    return "ask";
-  }
-  if (command === "drop") {
-    const subcommand = String(argv[1] || "").trim();
-    if (!subcommand || subcommand === "markdown" || subcommand === "note") {
-      return "note";
-    }
-    return "drop";
-  }
-  return "drop";
-}
-
-function createVaultQueueId() {
-  const cryptoApi = typeof globalThis !== "undefined" && globalThis.crypto ? globalThis.crypto : null;
-  if (cryptoApi && typeof cryptoApi.randomUUID === "function") {
-    return cryptoApi.randomUUID();
-  }
-  return `queue-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
-}
-
-function vaultAdapter(plugin) {
-  return plugin && plugin.app && plugin.app.vault && plugin.app.vault.adapter
-    ? plugin.app.vault.adapter
-    : null;
-}
-
-async function ensureVaultDir(plugin, dirPath) {
-  const adapter = vaultAdapter(plugin);
-  if (adapter && typeof adapter.mkdir === "function") {
-    const parts = String(dirPath || "").split("/").filter(Boolean);
-    let current = "";
-    for (const part of parts) {
-      current = current ? `${current}/${part}` : part;
-      if (typeof adapter.exists === "function" && await adapter.exists(current)) {
-        continue;
-      }
-      try {
-        await adapter.mkdir(current);
-      } catch (error) {
-        if (!(typeof adapter.exists === "function" && await adapter.exists(current))) {
-          throw error;
-        }
-      }
-    }
-    return;
-  }
-  const root = pluginVaultRoot(plugin);
-  if (!root) {
-    throw new Error("Vault root is unavailable; cannot create vault queue.");
-  }
-  nodeFs().mkdirSync(nodePath().join(root, dirPath), { recursive: true });
-}
-
-async function writeVaultJson(plugin, relativePath, value) {
-  const content = `${JSON.stringify(value, null, 2)}\n`;
-  const dir = relativePath.split("/").slice(0, -1).join("/");
-  if (dir) {
-    await ensureVaultDir(plugin, dir);
-  }
-  const adapter = vaultAdapter(plugin);
-  if (adapter && typeof adapter.write === "function") {
-    await adapter.write(relativePath, content);
-    return;
-  }
-  const root = pluginVaultRoot(plugin);
-  if (!root) {
-    throw new Error("Vault root is unavailable; cannot write vault queue item.");
-  }
-  nodeFs().writeFileSync(nodePath().join(root, relativePath), content, "utf8");
-}
-
-async function readVaultJson(plugin, relativePath) {
-  let text = "";
-  const adapter = vaultAdapter(plugin);
-  if (adapter && typeof adapter.read === "function") {
-    if (typeof adapter.exists === "function" && !(await adapter.exists(relativePath))) {
-      return null;
-    }
-    text = await adapter.read(relativePath);
-  } else {
-    const root = pluginVaultRoot(plugin);
-    if (!root) return null;
-    const absolute = nodePath().join(root, relativePath);
-    if (!nodeFs().existsSync(absolute)) return null;
-    text = nodeFs().readFileSync(absolute, "utf8");
-  }
-  if (!String(text || "").trim()) {
-    return null;
-  }
-  return JSON.parse(text);
-}
-
 module.exports = {
   DesktopLauncherClient,
-  VaultQueueClient,
   createRuntimeClient,
-  normalizeRuntimeClientMode,
 };
 
 // --- src/render/cards.js ---
@@ -3054,21 +2867,6 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
             this.plugin.settings.launcherPath = String(value || "").trim() || DEFAULT_SETTINGS.launcherPath;
             await this.plugin.savePluginState();
             this.plugin.refreshRepoState();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName(t("Runtime client mode"))
-      .setDesc(t("Desktop launcher runs the local aiwiki runtime. Vault queue only writes .aiwiki/queue requests for desktop drain; it does not execute commands."))
-      .addDropdown((dropdown) =>
-        dropdown
-          .addOption("desktop-launcher", t("Desktop launcher"))
-          .addOption("vault-queue", t("Vault queue companion"))
-          .setValue(normalizeRuntimeClientMode(this.plugin.settings.runtimeClientMode))
-          .onChange(async (value) => {
-            this.plugin.settings.runtimeClientMode = normalizeRuntimeClientMode(value);
-            await this.plugin.savePluginState();
-            this.plugin.refreshOpenViews();
           })
       );
 
@@ -6308,9 +6106,8 @@ async function loadProductShellPluginState(plugin) {
   const selectedProfile = llmProviderProfile(plugin.settings.llmBackend);
   const llmBackendMigrated = plugin.settings.llmBackend !== selectedProfile.value;
   plugin.settings.llmBackend = selectedProfile.value;
-  const migratedRuntimeClientMode = normalizeRuntimeClientMode(plugin.settings.runtimeClientMode);
-  const runtimeClientModeMigrated = plugin.settings.runtimeClientMode !== migratedRuntimeClientMode;
-  plugin.settings.runtimeClientMode = migratedRuntimeClientMode;
+  const legacyRuntimeClientModeMigrated = Object.prototype.hasOwnProperty.call(plugin.settings, "runtimeClientMode");
+  delete plugin.settings.runtimeClientMode;
   const legacyShowHtmlShortcutsMigrated = Object.prototype.hasOwnProperty.call(plugin.settings, "showHtmlShortcuts");
   delete plugin.settings.showHtmlShortcuts;
   const legacyDefaultAskModeMigrated = Object.prototype.hasOwnProperty.call(plugin.settings, "defaultAskMode");
@@ -6355,7 +6152,7 @@ async function loadProductShellPluginState(plugin) {
     || legacyLlmSettingsMigrated
     || defaultAskFormatMigrated
     || llmBackendMigrated
-    || runtimeClientModeMigrated
+    || legacyRuntimeClientModeMigrated
     || legacyShowHtmlShortcutsMigrated
     || legacyDefaultAskModeMigrated
     || advancedSectionsExpandedMigrated
@@ -6825,31 +6622,6 @@ async function runProductShellPluginCommand(plugin, label, args, options = {}) {
   try {
     const result = await plugin.executeRuntimeCommand(args);
     const runContext = buildProductShellRunResultContext(result);
-    if (result.payload && result.payload.kind === "vault-queue" && result.payload.status === "queued") {
-      const queuePath = String(result.payload.queue_path || "");
-      appendRunEvent(
-        record,
-        "Queued",
-        queuePath || plugin.t("Queued for desktop drain. This is not a completed runtime execution."),
-        "running"
-      );
-      plugin.updateRunRecord(record, {
-        status: "running",
-        exitCode: 0,
-        finishedAt: "",
-        resultPath: queuePath,
-        stdoutSummary: truncateText(result.stdout),
-        stderrSummary: truncateText(result.stderr),
-        stdoutRaw: trimDiagnosticText(result.stdout),
-        stderrRaw: trimDiagnosticText(result.stderr),
-        deliveryMode: "vault-queue",
-      });
-      plugin.persistRunLog(record, { stdoutRaw: result.stdout, stderrRaw: result.stderr });
-      if (options.notice !== false) {
-        new Notice(plugin.t("Queued for desktop drain: {path}", { path: queuePath }));
-      }
-      return result.payload;
-    }
     if (options.updateSummaryFromPayload && result.payload && result.payload.kind === "product-shell-summary") {
       plugin.shellSummary = result.payload;
       plugin.processShellSummaryUpdates(plugin.shellSummary);
