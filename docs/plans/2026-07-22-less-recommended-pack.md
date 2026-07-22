@@ -34,9 +34,9 @@
 **Depends on:** none  
 **Files:** `PROGRESS.md`
 
-- [ ] 保留：SoT 引用 + 当前动态（近几条）+ 改进方向段
-- [ ] Round-by-round 超长历史：移到 `docs/archive/rounds/` 新快照文件，或折叠为「详见 archive」指针（不丢 git 历史）
-- [ ] Commit: `docs: PROGRESS 瘦身为 head + 改进方向`
+- [x] 保留：SoT 引用 + 当前动态（近几条）+ 改进方向段
+- [x] Round-by-round 超长历史：移到 `docs/archive/rounds/` 新快照文件，或折叠为「详见 archive」指针（不丢 git 历史）
+- [x] Commit: `docs: PROGRESS 瘦身为 head + 改进方向`
 
 ## Task 4: alchemy CLI 轻归组（P1-4 缩小版）
 
@@ -50,6 +50,6 @@
 
 ## Task 5: 收口
 
-- [ ] 更新 `docs/plans/2026-07-22-less-is-more-cuts.md` Deferred 注明收口包已做
-- [ ] PROGRESS 记一笔；vault 同步 `main.js`（若 Shell 有改）
-- [ ] `bash scripts/verify.sh all`
+- [x] 更新 `docs/plans/2026-07-22-less-is-more-cuts.md` Deferred 注明收口包已做
+- [x] PROGRESS 记一笔；vault 同步 `main.js`（若 Shell 有改）
+- [x] `bash scripts/verify.sh all`

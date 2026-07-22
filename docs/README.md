@@ -34,16 +34,16 @@ updated_at: 2026-07-22
 | 文档 | 角色 |
 |---|---|
 | [Furnace Post-Cleanup Audit and Next Direction 2026-07](<./Furnace Post-Cleanup Audit and Next Direction 2026-07.md>) | **当前执行计划**：Commercial Go-Live WS1–WS6 |
-| [Less-is-More 推荐收口包](<./plans/2026-07-22-less-recommended-pack.md>) | **在途**：Shell 死面 / SoT 枚举 / PROGRESS 瘦身 / alchemy 轻归组 |
 
 > Commercial Grade Cleanup Plan 2026-07 已归档（`executed-reviewed-pass`），见下方 Archived。
-> W1–W9 / ingest-dedup / audit remediation / report-provenance / ask-sync / less-is-more cuts 等已完成 plan → 下方 Delivered 或 [docs/archive/plans/](<./archive/plans/>)。
+> W1–W9 / ingest-dedup / audit remediation / report-provenance / ask-sync / less-is-more 等已完成 plan → 下方 Delivered 或 [docs/archive/plans/](<./archive/plans/>)。
 > Investing Demo Pack（`delivered-fixture`）见下方 Delivered specs。
 
 ## Delivered specs（已交付，非活跃执行）
 
 | 文档 | 角色 |
 |---|---|
+| [Less-is-More 推荐收口包](<./plans/2026-07-22-less-recommended-pack.md>) | 已落地：Shell runs 死面 / SoT 单枚举 / PROGRESS 瘦身 / `advanced alchemy` 子树 |
 | [Furnace Investing Demo Pack Spec](<./Furnace Investing Demo Pack Spec.md>) + [Demo Pack fixture](<../demos/investing-demo-pack/README.md>) | 商业 demo 规格与已交付 fixture（截图/录屏资产见 Go-Live WS3） |
 | [Ingest dedup + Drop UX](<./archive/specs/2026-07-20-ingest-dedup-and-drop-ux.md>) | 已落地：URL 投料幂等 + Shell「已收料」语义 |
 | [Report Provenance GC](<./specs/2026-07-20-report-delete-provenance-gc.md>) + [plan](<./plans/2026-07-20-report-provenance-gc.md>) | 已落地：compile provenance scrub + `advanced gc-orphans` + 停写机器记忆 HTML |

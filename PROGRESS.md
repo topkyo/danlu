@@ -14,6 +14,8 @@
 
 ## 当前动态
 
+- 2026-07-22 (**Less 推荐收口包**)：去掉 Shell runs 死面+僵尸 i18n；SoT Active 单枚举；PROGRESS 瘦身；`advanced alchemy` 子树（旧 alchemy-* compat）。计划：`docs/plans/2026-07-22-less-recommended-pack.md`。
+
 - 2026-07-22 (**Less-is-More cuts**)：Ask 成功直写 done；pending 去假进度；Today 主栏仅报告；清 no-op nightly/auto_adopt env。计划：`docs/plans/2026-07-22-less-is-more-cuts.md`。
 
 - 2026-07-22 (**Less-is-More 复评**)：四路审计加权 **7.1**（Surface 7.9 / Code 7.0 / UX 6.8 / Docs 6.0）。热路径已瘦；主债在 Shell 幽灵 pending、advanced+env、SoT 三套重叠。报告：`docs/archive/Furnace Less-is-More Reassessment 2026-07-22.md`。
