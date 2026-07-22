@@ -1393,6 +1393,30 @@
   margin-top: 4px;
 }
 
+.furnace-settings-fold {
+  margin: 12px 0 4px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 0 8px 4px;
+}
+
+.furnace-settings-fold-summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9em;
+  padding: 8px 4px;
+  color: var(--text-muted);
+  list-style: none;
+}
+
+.furnace-settings-fold-summary::-webkit-details-marker {
+  display: none;
+}
+
+.furnace-settings-fold-body {
+  padding: 0 4px 4px;
+}
+
 /* ========================================================================== */
 /* Modal polish (Phase A — Round 63)                                           */
 /* ========================================================================== */

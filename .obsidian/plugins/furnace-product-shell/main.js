@@ -240,7 +240,10 @@ const ZH_TEXT = {
   "API key": "API Key",
   "Stored only in local Obsidian plugin data. New runs use the key saved here and ignore stale LLM environment variables.": "仅存放在本机 Obsidian 插件数据中。新的运行会使用这里保存的 key，并忽略旧的 LLM 环境变量。",
   "Base URL": "Base URL",
+  "Advanced endpoint": "高级 endpoint",
+  "Optional override for the provider endpoint.": "可选：覆盖 provider endpoint。",
   "Override the provider endpoint. Leave empty to use the provider profile default.": "覆盖 provider endpoint。留空则使用 provider profile 默认值。",
+  "Integrations (advanced)": "集成（高级）",
   "CLI session": "CLI 会话",
   "This backend uses a local CLI login/session. API key fields are not used.": "该后端已不再作为 Product Shell 后端使用。",
   "LLM settings saved. New runs will use the updated configuration.": "LLM 设置已保存。新的运行将使用更新后的配置。",
@@ -2865,7 +2868,19 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
     }
 
     if (selectedProfile.baseUrlSetting) {
-      new Setting(containerEl)
+      const endpointDetails = containerEl.createEl("details", {
+        cls: "furnace-settings-fold furnace-settings-fold-endpoint",
+      });
+      endpointDetails.createEl("summary", {
+        cls: "furnace-settings-fold-summary",
+        text: t("Advanced endpoint"),
+      });
+      const endpointBody = endpointDetails.createDiv({ cls: "furnace-settings-fold-body" });
+      endpointBody.createEl("p", {
+        text: t("Optional override for the provider endpoint."),
+        cls: "setting-item-description",
+      });
+      new Setting(endpointBody)
         .setName(t("Base URL"))
         .setDesc(t("Override the provider endpoint. Leave empty to use the provider profile default."))
         .addText((text) =>
@@ -2889,15 +2904,21 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
       });
     }
 
-    // ── 通知（webhook） ──────────────────────────────
-    // ── Notifications ────────────────────────────────
-    containerEl.createEl("h3", { cls: "furnace-settings-section", text: t("Notifications") });
-    containerEl.createEl("p", {
+    // ── Integrations (advanced) ────────────────────
+    const integrationsDetails = containerEl.createEl("details", {
+      cls: "furnace-settings-fold furnace-settings-fold-integrations",
+    });
+    integrationsDetails.createEl("summary", {
+      cls: "furnace-settings-fold-summary",
+      text: t("Integrations (advanced)"),
+    });
+    const integrationsBody = integrationsDetails.createDiv({ cls: "furnace-settings-fold-body" });
+    integrationsBody.createEl("p", {
       text: t("Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports."),
       cls: "setting-item-description",
     });
 
-    new Setting(containerEl)
+    new Setting(integrationsBody)
       .setName(t("Feishu webhook URL"))
       .setDesc(t("Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports."))
       .addText((text) => {
@@ -2911,7 +2932,7 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
         text.inputEl.autocomplete = "off";
       });
 
-    new Setting(containerEl)
+    new Setting(integrationsBody)
       .setName(t("WeCom webhook URL"))
       .setDesc(t("Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports."))
       .addText((text) => {
@@ -2936,7 +2957,7 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
       await this.plugin.savePluginState();
     };
 
-    new Setting(containerEl)
+    new Setting(integrationsBody)
       .setName(t("Enable Feishu"))
       .addToggle((toggle) =>
         toggle.setValue(normalizeEnabledChannels(this.plugin.settings.enabledChannels).includes("feishu")).onChange(async (value) => {
@@ -2944,7 +2965,7 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
         })
       );
 
-    new Setting(containerEl)
+    new Setting(integrationsBody)
       .setName(t("Enable WeCom"))
       .addToggle((toggle) =>
         toggle.setValue(normalizeEnabledChannels(this.plugin.settings.enabledChannels).includes("wecom")).onChange(async (value) => {

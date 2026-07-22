@@ -93,6 +93,9 @@ test("settings trim removes recentRunsLimit and groups developer diagnostics", (
   expect(settingsSrc).not.toMatch(/recentRunsLimit/);
   expect(settingsSrc).toMatch(/Developer \/ diagnostics/);
   expect(settingsSrc).toMatch(/Developer diagnostics/);
+  expect(settingsSrc).toMatch(/createEl\("details"[\s\S]+Advanced endpoint/);
+  expect(settingsSrc).toMatch(/createEl\("details"[\s\S]+Integrations \(advanced\)/);
+  expect(settingsSrc).not.toMatch(/text: t\("Notifications"\)/);
   const langSectionStart = settingsSrc.indexOf("Language & Appearance");
   const langSectionEnd = settingsSrc.indexOf("Furnace Connection");
   expect(settingsSrc.slice(langSectionStart, langSectionEnd)).not.toMatch(/showAdvancedCommands/);

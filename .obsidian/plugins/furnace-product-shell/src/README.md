@@ -15,8 +15,9 @@ Advanced is gated by `showAdvancedCommands` and is limited to diagnostics/histor
 and refresh. Runtime write operations such as compile/nightly/protocol/apply/revert
 are not registered as Product Shell command-palette entries.
 
-Phase B preview: Feishu / WeCom webhook URLs will be configured in plugin settings,
-then bridged to the runtime through environment variables for report notifications.
+Optional Feishu / WeCom webhook notifications are configured under **Integrations (advanced)**
+in plugin settings (collapsed by default). URLs and channel toggles are stored locally and
+bridged to the runtime through environment variables for new report notifications only.
 
 ## Module layout
 
