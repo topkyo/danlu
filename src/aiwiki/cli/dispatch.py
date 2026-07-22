@@ -8,34 +8,6 @@ import os
 import sys
 from pathlib import Path
 
-from ..app_linting.core import lint_wiki
-from ..app_shell import build_shell_summary, rewrite_followup_payload_for_paths
-from ..compile.pipeline import compile_wiki
-from ..drop import drop_image, drop_note, drop_pdf, drop_repo, drop_url
-from ..execution.ask import (
-    file_back,
-)
-from ..execution.gc_orphans import run_gc_orphans
-from ..execution.review import review_page
-from ..execution.runtime_surfaces import (
-    shell_status,
-)
-from ..executor import AskSignal, execute_plan
-from ..input_planner import PlannerError, plan_input
-from ..input_router import UniversalRoute, classify_universal_input
-from ..runner.alchemy import (
-    run_alchemy_demote,
-    run_alchemy_distill,
-    run_alchemy_finalize,
-    run_alchemy_promote,
-    run_alchemy_revert,
-    run_alchemy_start,
-)
-from ..runner.automation import watch_inbox
-from ..runner.clients import llm_probe, llm_status
-from ..runner.workflows import run_ask, run_nightly
-from ..vault.bootstrap import bootstrap_new_vault
-from ..vault.plugin import sync_product_shell_plugin
 from .dispatch_helpers import (
     _flatten_model_retry_args,
     _maybe_auto_process,
@@ -74,6 +46,9 @@ def _out(result: object, text_output: str | None = None) -> tuple[object, str | 
 
 
 def _handle_vault_admin(args: argparse.Namespace, root: Path) -> tuple[object, str | None]:
+    from ..vault.bootstrap import bootstrap_new_vault
+    from ..vault.plugin import sync_product_shell_plugin
+
     if args.handler_command == "new-vault":
         return _out(bootstrap_new_vault(root, Path(args.target).resolve(), force=args.force))
     if args.handler_command == "sync-product-shell":
@@ -82,6 +57,8 @@ def _handle_vault_admin(args: argparse.Namespace, root: Path) -> tuple[object, s
 
 
 def _handle_drop(args: argparse.Namespace, root: Path) -> tuple[object, str | None]:
+    from ..drop import drop_image, drop_note, drop_pdf, drop_repo, drop_url
+
     refresh = bool(getattr(args, "refresh", False))
     if args.handler_command == "drop-url":
         result = drop_url(root, args.url, title=args.title, refresh=refresh)
@@ -129,6 +106,10 @@ def _handle_drop_plan(args: argparse.Namespace, root: Path) -> tuple[object, str
     typed drop_* handler. This keeps `drop <payload>` working offline and
     when the LLM is unavailable.
     """
+    from ..executor import AskSignal, execute_plan
+    from ..input_planner import PlannerError, plan_input
+    from ..runner.workflows import run_ask
+
     payload = args.payload
     title = getattr(args, "title", None)
     try:
@@ -154,6 +135,10 @@ def _dispatch_fallback_route(
     Question-shaped payloads use ``run-ask`` (LLM required); there is no empty
     deterministic ask CLI shell.
     """
+    from ..drop import drop_image, drop_note, drop_pdf, drop_repo, drop_url
+    from ..input_router import UniversalRoute, classify_universal_input
+    from ..runner.workflows import run_ask
+
     decision = classify_universal_input(payload)
     routed_payload = decision.payload
     if decision.route == UniversalRoute.URL:
@@ -173,6 +158,10 @@ def _dispatch_fallback_route(
 
 
 def _handle_compile_family(args: argparse.Namespace, root: Path) -> tuple[object, str | None]:
+    from ..app_shell import rewrite_followup_payload_for_paths
+    from ..compile.pipeline import compile_wiki
+    from ..execution.ask import file_back
+
     if args.handler_command == "compile":
         result = compile_wiki(root)
         rewrite_state = result.get("concept_rewrite") or {}
@@ -203,11 +192,15 @@ def _handle_live_surface(args: argparse.Namespace, root: Path) -> tuple[object, 
     if args.handler_command == "metrics":
         return metrics_command(root, as_json=args.json, delta=args.delta)
     if args.handler_command == "shell-status":
+        from ..execution.runtime_surfaces import shell_status
+
         return _out(shell_status(root))
     raise ValueError(f"Unsupported command: {args.handler_command}")
 
 
 def _handle_ask_family(args: argparse.Namespace, root: Path) -> tuple[object, str | None]:
+    from ..runner.workflows import run_ask
+
     if args.handler_command == "run-ask":
         ask_kwargs = {
             "lean": args.lean,
@@ -221,6 +214,15 @@ def _handle_ask_family(args: argparse.Namespace, root: Path) -> tuple[object, st
 
 
 def _handle_alchemy(args: argparse.Namespace, root: Path) -> tuple[object, str | None]:
+    from ..runner.alchemy import (
+        run_alchemy_demote,
+        run_alchemy_distill,
+        run_alchemy_finalize,
+        run_alchemy_promote,
+        run_alchemy_revert,
+        run_alchemy_start,
+    )
+
     if args.handler_command == "alchemy-start":
         include_elixir_ids = None
         if args.include_elixir is not None:
@@ -251,6 +253,8 @@ def _handle_alchemy(args: argparse.Namespace, root: Path) -> tuple[object, str |
 
 
 def _handle_review_lifecycle(args: argparse.Namespace, root: Path) -> tuple[object, str | None]:
+    from ..execution.review import review_page
+
     if args.handler_command == "review-page":
         if not args.page:
             raise ValueError("Provide a review page path.")
@@ -267,6 +271,9 @@ def _handle_review_lifecycle(args: argparse.Namespace, root: Path) -> tuple[obje
 
 
 def _handle_runtime_workflows(args: argparse.Namespace, root: Path) -> tuple[object, str | None]:
+    from ..app_linting.core import lint_wiki
+    from ..runner.workflows import run_nightly
+
     if args.handler_command == "lint":
         result = lint_wiki(root)
     elif args.handler_command == "run-nightly":
@@ -279,6 +286,8 @@ def _handle_runtime_workflows(args: argparse.Namespace, root: Path) -> tuple[obj
 def _handle_ops(args: argparse.Namespace, root: Path) -> tuple[object, str | None]:
     text_output = None
     if args.handler_command == "llm-check":
+        from ..runner.clients import llm_probe, llm_status
+
         result = (
             llm_probe(root, probe_all=args.probe_all, timeout_seconds=args.probe_timeout)
             if args.probe or args.probe_all
@@ -289,6 +298,8 @@ def _handle_ops(args: argparse.Namespace, root: Path) -> tuple[object, str | Non
 
             text_output = render_llm_check_human(result)
     elif args.handler_command == "watch":
+        from ..runner.automation import watch_inbox
+
         result = watch_inbox(
             root,
             interval_seconds=args.interval,
@@ -297,6 +308,8 @@ def _handle_ops(args: argparse.Namespace, root: Path) -> tuple[object, str | Non
             max_cycles=args.max_cycles,
         )
     elif args.handler_command == "gc-orphans":
+        from ..execution.gc_orphans import run_gc_orphans
+
         result = run_gc_orphans(
             root,
             apply=bool(getattr(args, "gc_apply", False)),

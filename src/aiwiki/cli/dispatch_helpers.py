@@ -6,11 +6,12 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from ..app_shell.summary import build_review_queue_controls, build_shell_summary
-from ..runner.automation import auto_process_once
-from ..today_feed import FeedEntry, build_today_feed, priority_for_kind
 from .parsers import build_parser
+
+if TYPE_CHECKING:
+    from ..today_feed import FeedEntry
 
 
 def _flatten_model_retry_args(values: list[str]) -> list[str]:
@@ -31,6 +32,9 @@ _flatten_model_fallback_args = _flatten_model_retry_args
 
 
 def today_command(root: Path, *, as_json: bool = False) -> int:
+    from ..app_shell.summary import build_shell_summary
+    from ..today_feed import build_today_feed
+
     summary = build_shell_summary(root)
     feed = build_today_feed(summary)
     if as_json:
@@ -174,6 +178,8 @@ def _review_queue_detail_buckets(
     root: Path,
     summary: dict[str, object],
 ) -> dict[str, list[dict[str, object]]]:
+    from ..app_shell.summary import build_review_queue_controls
+
     buckets: dict[str, list[dict[str, object]]] = {}
     review_controls, execution_controls = build_review_queue_controls(root)
     counts = summary.get("review_backlog_counts")
@@ -230,6 +236,9 @@ def review_queue_command(
     as_json: bool = False,
 ) -> int:
     """P4-16a: review-queue — 桶化展示 needs_review，与 today 共用 build_today_feed。"""
+    from ..app_shell.summary import build_shell_summary
+    from ..today_feed import build_today_feed
+
     summary = build_shell_summary(root)
     feed = build_today_feed(summary, audience="operator")
     decisions = [e for e in feed if e.kind == "decision"]
@@ -290,6 +299,8 @@ def _today_feed_to_json(feed: list[FeedEntry], summary: dict[str, object]) -> di
     Bucket key 与 _render_today_text 的 section 对齐：
     - todays_reports / automation_status / needs_review / completed_elixirs / suggested_next_actions
     """
+    from ..today_feed import priority_for_kind
+
     buckets: dict[str, list[FeedEntry]] = {
         "report": [],
         "automation": [],
@@ -480,6 +491,8 @@ def _format_feed_entry_line(entry: FeedEntry) -> str:
 def _maybe_auto_process(root: Path, result: dict[str, object], args: argparse.Namespace) -> dict[str, object]:
     if getattr(args, "no_auto", False):
         return result
+    from ..runner.automation import auto_process_once
+
     auto_result = auto_process_once(root)
     return {
         **result,
