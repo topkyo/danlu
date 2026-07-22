@@ -2,14 +2,14 @@
 title: "Furnace Product Shell SoT"
 kind: "spec"
 status: "active"
-updated_at: "2026-07-15"
+updated_at: "2026-07-22"
 ---
 
 # Furnace Product Shell SoT
 
 *Obsidian 插件 UI 层事实源；炼丹炉"一个输入端 + 一个输出端"原则的可视化呈现*
 *Status: Active SoT, decision points resolved (§10)*
-*Last updated: 2026-07-14*
+*Last updated: 2026-07-22*
 
 ## Platform boundary（2026-07）
 
@@ -32,7 +32,7 @@ updated_at: "2026-07-15"
 - **Advanced / 更多工具不是删除**：高级视图仍保留给操作者排障和治理，只是不占据默认首屏。
 - **UI 不拥有 runtime state**：Product Shell 只通过 launcher CLI 与 `output/control/shell-summary.json` 读取 shell-facing contract。
 - **UI 不新增 SoT 字段**：本文档不引入任何新的事实字段、schema 字段或 runtime contract。
-- **不扩 `shell-summary`**：§6 已论证未读状态、按日分组和通知机制均可在插件本地 settings / 内存中闭环计算。
+- **不扩 `shell-summary`**：§6 已论证按日分组与通知均可在插件本地 settings / 内存或 Notifier 侧闭环；**不做**插件内未读视觉态、不新增 runtime 未读字段。
 - **不隐式调度 backend**：UI 可以显示显式选择的 backend / model，但不得替用户自动切换。
 - **不绕过审计闭环**：UI 层触发的执行仍必须走既有 CLI、receipt、review / apply / revert / audit 边界。
 
@@ -82,22 +82,21 @@ updated_at: "2026-07-15"
 ```
 
 ### 交互流图
-- **通知流**：runtime 写出新报告 → Notifier 推送飞书 / 企业微信 webhook → 用户在 IM 中收到提醒 → 回到 vault 打开报告 Markdown → UI 内对应卡片按 `last_viewed_timestamp` 更新视觉态。
+- **通知流**：runtime 写出新报告 → Notifier 推送飞书 / 企业微信 webhook → 用户在 IM 中收到提醒 → 回到 vault 打开报告 Markdown（Today 列表按时间序呈现，**无**未读加粗/圆点视觉态）。
 - **输入流**：用户在 Universal Input 输入问题或材料 → 提交 → 界面显示 running / received / done / failed / degraded 状态 → 完成后，可交付输出进入 Today Feed。
 - **投喂流**：用户拖拽文件或粘贴 URL 到 Universal Input → CLI universal `drop <payload>`（默认 LLM planner → deterministic executor；`AIWIKI_LLM_PLANNER=0` 退回确定性分类）→ 进度提示 → 完成后进入输出列表。
 
 ### 组件清单
 - **TodayFeed**：默认输出端，只展示可交付输出、确认项和非降级活动。
 - **UniversalInput**：默认输入端，统一 URL / PDF / Markdown / repo / question。
-- **ReportCard** (借鉴 Notion)：清晰的 block 卡片，带标题和状态小徽章，注重阅读舒缓感；未读项做轻量视觉区分（加粗 / 左侧圆点）。
+- **ReportCard** (借鉴 Notion)：清晰的 block 卡片，带标题和状态小徽章，注重阅读舒缓感；**不做**未读加粗 / 左侧圆点。
 - **AdvancedDrawer**：仅在 `showAdvancedCommands` 启用后出现，收纳 diagnostics/history 与 refresh（W8：不含 Review/Execution/Runs 视图）。
 - **Notifier**（非 UI 组件，运行态侧 / sidecar）：飞书 + 企业微信 webhook 推送抽象，订阅"新报告生成"事件。
 
 ### 状态机
-- `has-unread`: Today's Reports 顶部未读卡片做加粗 / 圆点视觉区分。
-- `all-read`: 界面安静，留白。
 - `running`: Universal Input pending card 呈现温和的进度/呼吸态。
 - `error-need-attention`: 仅当严重错误且需要用户干预时，展示在列表最上方（不弹 Notice，不发 webhook）。
+- （已废弃）`has-unread` / `all-read`：不再维护插件内未读视觉态；新报告靠 IM 通知 + Today 时间序发现。
 
 ## 4. 风格选择：Linear 骨架 + Raycast 输入 + Notion 报告
 
@@ -125,7 +124,7 @@ updated_at: "2026-07-15"
 - 用户本来就在 IM 里活动，触达可靠。
 - webhook 是无状态推送，不需要鉴权服务器、不需要轮询，符合 local-first 边界。
 - 飞书 / 企业微信都接受纯文本 JSON POST，实现成本极低。
-- 多渠道并行不互斥，用户可在 settings 任填一个或两个 webhook URL。
+- 多渠道并行不互斥，用户可在 settings 任填一个或两个 webhook URL；**URL 非空即启用该渠道**（无独立 enable toggle）。
 
 ### 5.2 触发时机
 
@@ -150,15 +149,15 @@ updated_at: "2026-07-15"
 - **Vault 内 Unread Badge**：需用户主动打开 vault 才看见，且 Badge 状态机会扩大 UI 概念数量。
 - **系统桌面通知（Electron Notification）**：跨平台不稳定，Linux 权限坑多，打扰强度过强。
 
-> Vault 内的"Today's Reports"列表本身已经隐式呈现了未读状态（按时间倒序、新报告置顶），不需要单独的 Badge 元素。
+> Vault 内的"Today's Reports"列表按时间倒序、新报告置顶；**不**再做未读 Badge / 加粗圆点。离开屏幕场景靠 IM webhook。
 
 ## 6. `shell-summary` contract 边界
 
 为支持"通知+极简"范式，检视现有 contract 字段：
 - `today_reports` 或近期的执行记录：**无需扩展**（现有执行历史/产出列表字段可通过插件端按日期截取和 Group By 实时计算）。
-- `last_viewed_timestamp`：**存在插件本地 settings**，不入 runtime contract。用于在 UI 内对"Today's Reports"做未读视觉区分（如加粗 / 圆点），但**不弹任何 Badge 组件**。
+- **不做** `last_viewed_timestamp` / 插件内未读字段（2026-07-22 Settings Slim A：文档与代码均废弃）。
 
-**结论**：**严格守住底线，无需扩展 runtime `shell-summary` 字段**，符合 KISS 原则。所有按日分组逻辑均在插件 `render.js` / `views.js` 内存和本地 plugin settings 中闭环计算；外部通知由独立 Notifier 模块在 runtime 侧或 sidecar 触发，不污染 UI 层 contract。
+**结论**：**严格守住底线，无需扩展 runtime `shell-summary` 字段**，符合 KISS 原则。按日分组在插件内存闭环；外部通知由 Notifier 在 runtime 侧触发；**无**未读视觉态。
 
 ## 7. 迁移路径
 
@@ -183,18 +182,23 @@ updated_at: "2026-07-15"
 - **DOM 测试破坏**：现有 `.obsidian/plugins/furnace-product-shell/` 下如果存在 UI 强相关的测试用例，可能会失败。
   - *缓解*：如果存在测试，需同步更新 selector。
 
-## 9. 实施建议
+## 9. Settings schema（本地插件 data）
 
-- 推荐作为单一 milestone (**M-PS.1**) 一次性落地 Phase A + Phase B，避免 UI 改造和通知机制拆分。因为通知和极简布局是强耦合的产品整体，拆分会导致用户感知撕裂。
-- 预计修改文件：`plugin.js` / `render.js` / `views.js` / `styles.css` / `settings.js` / `README.md`，预估 delta 代码量约 800–1000 行。
-- 新增 settings schema 字段（仅本地）：
-  - `feishu_webhook_url: string`（可空）
-  - `wecom_webhook_url: string`（可空）
-  - `enabled_channels: ("feishu" | "wecom")[]`
-  - `last_viewed_timestamp: string`（ISO8601，UI 内部用）
-- 测试验证重点：主题切换下的色彩令牌（token）表现、新旧报告列表的读取与渲染、Advanced 抽屉的折叠展开、webhook 推送成功 / 失败两种路径下的 audit 事件落地。
+完整默认集以 `.obsidian/plugins/furnace-product-shell/src/constants.js` 的 `DEFAULT_SETTINGS` 为准。通知相关（Integrations）：
 
-## 10. 已拍板决策（2026-04-27）
+- `feishuWebhookUrl: string`（可空；**非空即启用**飞书渠道）
+- `wecomWebhookUrl: string`（可空；**非空即启用**企微渠道）
+
+**已移除（勿再文档化）：**
+
+- `enabledChannels` / `enabled_channels`（渠道启用以 URL 有无为唯一真相源）
+- `lastViewedTimestamp` / `last_viewed_timestamp`（不做插件内未读视觉态）
+
+其它仍保留（A 档，非本轮清理目标）：`launcherPath`、`showAdvancedCommands`、`locale`、`llmBackend` / `llmModel`、各 provider `llm*ApiKey` / `llm*BaseUrl`、`advancedSectionsExpanded`。
+
+测试验证重点：Integrations 仅 webhook 文本框；launcher env 由非空 URL 推导 `AIWIKI_NOTIFY_ENABLED_CHANNELS`；webhook 推送成功 / 失败路径下的 `notify_failed` audit。
+
+## 10. 已拍板决策（2026-04-27；2026-07-22 修订未读）
 
 > **实施状态（2026-05-24）**：M-PS.1 之后的 AgentOS 收敛已完成默认面更新：首屏为 Today Feed + Universal Input；AskBox / DropZone 已吸收到 Universal Input，Advanced 仅在 `showAdvancedCommands` 下作为 diagnostics/history 入口出现（W8：无 Review/Execution/Runs 视图注册）。Phase B 的飞书 / 企业微信 webhook Notifier、插件 env bridge、`run-ask` report hook 和 notifier tests 继续保留。
 
@@ -202,13 +206,15 @@ updated_at: "2026-07-15"
 
 1. **通知机制：飞书 + 企业微信 webhook 外部推送**
    - 弃用 Obsidian Notice、Vault Unread Badge、桌面系统通知三条路径。
-   - 理由：用户离开屏幕场景下只有 IM 推送可靠触达；webhook 实现 KISS。
-   - 详见 §5。
+   - 渠道启用：对应 webhook URL 非空即启用（无独立 `enabledChannels` toggle）。
+   - 理由：用户离开屏幕场景下只有 IM 推送可靠触达；webhook + URL 单一真相源实现 KISS。
+   - 详见 §5 / §9。
 
-2. **未读状态存储：本地 settings `last_viewed_timestamp`**
+2. **废弃插件内未读视觉态（2026-07-22）**
    - 不扩展 runtime `shell-summary` contract。
-   - UI 内对未读报告做轻量视觉区分（加粗 / 圆点），不引入 Badge 组件。
-   - 详见 §6 / §9。
+   - **不**恢复 `lastViewedTimestamp`；**不**做未读加粗 / 圆点。
+   - 发现新报告：外部 IM 通知 + Today 时间序足够。
+   - 详见 §6 / §9；spec：`docs/specs/2026-07-22-product-shell-settings-slim.md`。
 
 3. **不做老用户 Onboarding 引导**
    - 升级后不弹一次性提示框。
@@ -219,7 +225,6 @@ updated_at: "2026-07-15"
    - Phase A (UI) 与 Phase B (Notifier) 在同一 milestone 内顺序落地，不拆成两个独立 milestone。
    - 理由：通知与极简 UI 是产品体验整体，拆分会导致用户感知撕裂。
    - 详见 §9。
-
 ## 11. 与 SoT 的对齐说明
 
 M-PS.1 实施后，Product Shell 仍只作为 surface / trigger 运行；Notifier 是 runtime 边界上的显式 webhook 出口，仅在报告生成后发送提醒，失败写可审计 `notify_failed` 记录且不污染 report / receipt / shell-summary。
