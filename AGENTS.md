@@ -32,6 +32,7 @@
 ## 验证入口
 
 - 主验证入口：`bash scripts/verify.sh [target]`
+- build + 同步 Product Shell 到 dogfood vault：`bash scripts/sync_product_shell_to_vault.sh`（`build.sh` 重建 `main.js`，并把 vault 端的 `main.js` / `styles.css` 重新 link 到仓库；`manifest.json` / `data.json` 保持本地不动；vault 路径可被 `FURNACE_DOGFOOD_VAULT` 覆盖）
 - 常用 target：`scripts`、`smoke`、`python-static`、`acceptance`、`llm-integration`、`cli-smoke`、`product-shell-static`、`all`
   - 日常：`scripts` + `python-static` + `smoke`（无 coverage，单次常 ~25s）；用 `bash scripts/verify_target_rules.sh` 按改动路径自动选
   - `all` 走 `scripts + product-shell-static + cli-smoke + smoke + python-static + acceptance + llm-integration`（常约 1–2 min，**含 acceptance 17 fixture replay + Product Shell Jest 169 + LLM integration 77**）；不含 coverage gate
