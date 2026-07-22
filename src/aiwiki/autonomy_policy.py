@@ -9,33 +9,21 @@ The policy file lives at ``.aiwiki/state/autonomy-policy.json``::
       "disable_alchemy_auto": false,
       "disable_l3_generate": false,
       "disable_external_llm": false,
-      "auto_apply_light": true,
-      # legacy/unused after W3/W9: nightly no longer calls runner auto_adopt
-      "auto_adopt_l1": true,
-      "auto_adopt_l2": true,
-      "auto_adopt_l3": true,
-      "auto_adopt_judgments": true,
-      "auto_apply_heavy_semantic": true,
-      "auto_adopt_core_l3": false,
-      "max_l3_apply_per_run": 1,
-      "judgment_review_limit": 5,
       "require_clean_before_hash": true,
       "auto_revert_on_verify_failure": true
     }
 
 Backward-compat by design:
 
-- File missing  → agentic default: non-core LLM-governed automation on, core
-  prompt/policy/schema writes still proposal-only.
+- File missing  → agentic default with automation enabled unless a disable flag is set.
 - File malformed/unreadable → fail closed with load_error so CLIs can surface
   why automation is disabled.
 - Env override ``AIWIKI_DISABLE_AUTOMATION=1`` disables all automation.
+- Legacy ``auto_adopt_*`` / ``auto_apply_*`` / ``max_l3_apply_per_run`` /
+  ``judgment_review_limit`` keys in old JSON are ignored (no-op after W3/W9).
 
-Nightly autonomy, external LLM gating, and governed apply receipts all read this
-module so the local runtime has one policy source for automation boundaries.
-
-``auto_adopt_*`` flags remain in schema for legacy state JSON but are unused after
-W3/W9 (nightly no longer calls ``runner.auto_adopt``).
+External LLM gating and governed apply receipts read this module so the local
+runtime has one policy source for automation boundaries.
 """
 
 from __future__ import annotations
@@ -72,16 +60,6 @@ class AutonomyPolicy:
     disable_alchemy_auto: bool = False
     disable_l3_generate: bool = False
     disable_external_llm: bool = False
-    auto_apply_light: bool = True
-    # legacy/unused after W3/W9: kept for old autonomy-policy.json compatibility
-    auto_adopt_l1: bool = True
-    auto_adopt_l2: bool = True
-    auto_adopt_l3: bool = True
-    auto_adopt_judgments: bool = True
-    auto_apply_heavy_semantic: bool = True
-    auto_adopt_core_l3: bool = False
-    max_l3_apply_per_run: int = 1
-    judgment_review_limit: int = 5
     require_clean_before_hash: bool = True
     auto_revert_on_verify_failure: bool = True
     load_error: str | None = None
@@ -116,7 +94,6 @@ def load_policy(root: Path, *, env: Mapping[str, str] | None = None) -> Autonomy
     profile = str(_profile_override(env) or raw.get("autonomy_profile") or DEFAULT_AUTONOMY_PROFILE)
     if profile not in KNOWN_AUTONOMY_PROFILES:
         return _disabled_policy(f"unsupported autonomy_profile: {profile}")
-    profile_defaults = _profile_defaults(profile)
     return AutonomyPolicy(
         schema_version=POLICY_SCHEMA_VERSION,
         autonomy_profile=profile,
@@ -124,17 +101,6 @@ def load_policy(root: Path, *, env: Mapping[str, str] | None = None) -> Autonomy
         disable_alchemy_auto=bool(raw.get("disable_alchemy_auto", False)),
         disable_l3_generate=bool(raw.get("disable_l3_generate", False)),
         disable_external_llm=bool(raw.get("disable_external_llm", False)),
-        auto_apply_light=bool(raw.get("auto_apply_light", profile_defaults["auto_apply_light"])),
-        auto_adopt_l1=bool(raw.get("auto_adopt_l1", profile_defaults["auto_adopt_l1"])),
-        auto_adopt_l2=bool(raw.get("auto_adopt_l2", profile_defaults["auto_adopt_l2"])),
-        auto_adopt_l3=bool(raw.get("auto_adopt_l3", profile_defaults["auto_adopt_l3"])),
-        auto_adopt_judgments=bool(raw.get("auto_adopt_judgments", profile_defaults["auto_adopt_judgments"])),
-        auto_apply_heavy_semantic=bool(
-            raw.get("auto_apply_heavy_semantic", profile_defaults["auto_apply_heavy_semantic"])
-        ),
-        auto_adopt_core_l3=bool(raw.get("auto_adopt_core_l3", profile_defaults["auto_adopt_core_l3"])),
-        max_l3_apply_per_run=_positive_int(raw.get("max_l3_apply_per_run"), 1),
-        judgment_review_limit=_positive_int(raw.get("judgment_review_limit"), 5),
         require_clean_before_hash=bool(raw.get("require_clean_before_hash", True)),
         auto_revert_on_verify_failure=bool(raw.get("auto_revert_on_verify_failure", True)),
     )
@@ -149,54 +115,17 @@ def _profile_override(env: Mapping[str, str] | None = None) -> str | None:
 
 
 def _default_policy_for_profile(profile: str) -> AutonomyPolicy:
-    return AutonomyPolicy(autonomy_profile=profile, **_profile_defaults(profile))
+    return AutonomyPolicy(autonomy_profile=profile)
 
 
 def _disabled_policy(reason: str) -> AutonomyPolicy:
     return AutonomyPolicy(
-        auto_apply_light=False,
-        auto_adopt_l1=False,
-        auto_adopt_l2=False,
-        auto_adopt_l3=False,
-        auto_adopt_judgments=False,
-        auto_apply_heavy_semantic=False,
-        auto_adopt_core_l3=False,
         disable_lane_apply=True,
         disable_alchemy_auto=True,
         disable_l3_generate=True,
         disable_external_llm=True,
         load_error=reason,
     )
-
-
-def _positive_int(value: object, default: int) -> int:
-    try:
-        parsed = int(str(value).strip()) if value is not None else default
-    except (TypeError, ValueError):
-        return default
-    return parsed if parsed > 0 else default
-
-
-def _profile_defaults(profile: str) -> dict[str, bool]:
-    if profile == "agentic":
-        return {
-            "auto_apply_light": True,
-            "auto_adopt_l1": True,
-            "auto_adopt_l2": True,
-            "auto_adopt_l3": True,
-            "auto_adopt_judgments": True,
-            "auto_apply_heavy_semantic": True,
-            "auto_adopt_core_l3": False,
-        }
-    return {
-        "auto_apply_light": True,
-        "auto_adopt_l1": True,
-        "auto_adopt_l2": True,
-        "auto_adopt_l3": False,
-        "auto_adopt_judgments": True,
-        "auto_apply_heavy_semantic": False,
-        "auto_adopt_core_l3": False,
-    }
 
 
 def _env_global_override(env: Mapping[str, str] | None) -> bool:
@@ -276,78 +205,9 @@ def _policy_payload(policy: AutonomyPolicy) -> dict[str, object]:
         "disable_alchemy_auto": bool(policy.disable_alchemy_auto),
         "disable_l3_generate": bool(policy.disable_l3_generate),
         "disable_external_llm": bool(policy.disable_external_llm),
-        "auto_apply_light": bool(policy.auto_apply_light),
-        "auto_adopt_l1": bool(policy.auto_adopt_l1),
-        "auto_adopt_l2": bool(policy.auto_adopt_l2),
-        "auto_adopt_l3": bool(policy.auto_adopt_l3),
-        "auto_adopt_judgments": bool(policy.auto_adopt_judgments),
-        "auto_apply_heavy_semantic": bool(policy.auto_apply_heavy_semantic),
-        "auto_adopt_core_l3": bool(policy.auto_adopt_core_l3),
-        "max_l3_apply_per_run": int(policy.max_l3_apply_per_run),
-        "judgment_review_limit": int(policy.judgment_review_limit),
         "require_clean_before_hash": bool(policy.require_clean_before_hash),
         "auto_revert_on_verify_failure": bool(policy.auto_revert_on_verify_failure),
     }
-
-
-def _env_flag_value(name: str, env: Mapping[str, str] | None) -> bool | None:
-    source = env if env is not None else os.environ
-    if name not in source:
-        return None
-    return source.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
-
-
-def nightly_autonomy_flags(root: Path, *, env: Mapping[str, str] | None = None) -> dict[str, bool]:
-    """Effective default-autonomy flags for run-nightly.
-
-    Env variables remain explicit overrides. Missing env values fall back to the
-    v3 policy profile, whose default is agentic: non-core semantic work is
-    LLM-governed by default, while core prompt/policy/schema writes remain
-    proposal-only. Corrupt policy or the global kill switch fail closed.
-    """
-
-    policy = load_policy(root, env=env)
-    globally_disabled = _env_global_override(env) or policy.load_error is not None
-    defaults = {
-        "auto_apply_light": bool(policy.auto_apply_light),
-        "auto_adopt_l1": bool(policy.auto_adopt_l1),
-        "auto_adopt_l2": bool(policy.auto_adopt_l2),
-        "auto_adopt_l3": bool(policy.auto_adopt_l3),
-        "auto_adopt_judgments": bool(policy.auto_adopt_judgments),
-        "auto_apply_heavy_semantic": bool(policy.auto_apply_heavy_semantic),
-        "auto_adopt_core_l3": bool(policy.auto_adopt_core_l3),
-    }
-    env_names = {
-        "auto_apply_light": "AIWIKI_NIGHTLY_AUTO_APPLY_LIGHT",
-        "auto_adopt_l1": "AIWIKI_NIGHTLY_AUTO_ADOPT_L1",
-        "auto_adopt_l2": "AIWIKI_NIGHTLY_AUTO_ADOPT_L2",
-        "auto_adopt_l3": "AIWIKI_NIGHTLY_AUTO_ADOPT_L3",
-        "auto_adopt_judgments": "AIWIKI_NIGHTLY_AUTO_ADOPT_JUDGMENTS",
-        "auto_apply_heavy_semantic": "AIWIKI_NIGHTLY_AUTO_APPLY_HEAVY_SEMANTIC",
-        "auto_adopt_core_l3": "AIWIKI_NIGHTLY_AUTO_ADOPT_CORE_L3",
-    }
-    effective: dict[str, bool] = {}
-    for key, env_name in env_names.items():
-        override = _env_flag_value(env_name, env)
-        effective[key] = defaults[key] if override is None else override
-    if globally_disabled or policy.disable_lane_apply:
-        effective["auto_apply_light"] = False
-        effective["auto_apply_heavy_semantic"] = False
-    if globally_disabled or policy.disable_alchemy_auto:
-        effective["auto_apply_light"] = False
-        effective["auto_adopt_l1"] = False
-        effective["auto_adopt_l2"] = False
-        effective["auto_adopt_l3"] = False
-        effective["auto_adopt_judgments"] = False
-        effective["auto_apply_heavy_semantic"] = False
-        effective["auto_adopt_core_l3"] = False
-    if globally_disabled or policy.disable_l3_generate:
-        effective["auto_adopt_l3"] = False
-        effective["auto_adopt_core_l3"] = False
-    if globally_disabled or policy.disable_external_llm:
-        effective["auto_adopt_judgments"] = False
-        effective["auto_apply_heavy_semantic"] = False
-    return effective
 
 
 def policy_status(root: Path, *, env: Mapping[str, str] | None = None) -> dict:
