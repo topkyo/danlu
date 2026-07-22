@@ -225,7 +225,6 @@ const DEFAULT_SETTINGS = {
 };
 const ZH_TEXT = {
   "Advanced": "更多工具",
-  "Review {review_count} · execution {execution_count} · recent runs {run_count}": "待审 {review_count} · 待执行 {execution_count} · 运行记录 {run_count}",
   "Furnace Product Shell": "炼丹炉 Product Shell",
   "UI language": "界面语言",
   "Default display language for the Product Shell UI. Command palette labels refresh after reloading Obsidian.": "Product Shell 默认显示语言。修改后，命令面板标签需要重载 Obsidian 才会刷新。",
@@ -393,54 +392,6 @@ const ZH_TEXT = {
   "来源": "来源",
   "结果数量": "结果数量",
   "跳过视觉分析": "跳过视觉分析",
-  待决策: "待决策",
-  待判断: "待判断",
-  逾期审阅: "逾期审阅",
-  已升级: "已升级",
-  概念积压: "概念积压",
-  待审概念: "待审概念",
-  需回访概念: "需回访概念",
-  已退役概念: "已退役概念",
-  "下一个审阅": "下一个审阅",
-  "当前没有待审阅项。": "当前没有待审阅项。",
-  "批处理建议": "批处理建议",
-  "暂无批处理建议。": "暂无批处理建议。",
-  "判断资产": "判断资产",
-  强资产: "强资产",
-  需关注页: "需关注页",
-  缺反证: "缺反证",
-  缺失效条件: "缺失效条件",
-  缺审阅历史: "缺审阅历史",
-  引用漂移: "引用漂移",
-  "决策页": "决策页",
-  "当前没有待审决策页。": "当前没有待审决策页。",
-  "判断页": "判断页",
-  "当前没有待审判断页。": "当前没有待审判断页。",
-  "改写提案": "改写提案",
-  "当前没有改写提案。": "当前没有改写提案。",
-  "老化摘要": "老化摘要",
-  "治理链接": "治理链接",
-  "最近审阅事件": "最近审阅事件",
-  "暂无最近审阅事件。": "暂无最近审阅事件。",
-  执行收据: "执行收据",
-  执行事件: "执行事件",
-  归档事件: "归档事件",
-  生命周期覆盖: "生命周期覆盖",
-  夜间运行: "夜间运行",
-  "计划队列": "计划队列",
-  "待处理提案": "待处理提案",
-  "已执行": "已执行",
-  "已解锁": "已解锁",
-  "已阻塞": "已阻塞",
-  "下一个动作": "下一个动作",
-  "动作控制": "动作控制",
-  "当前没有动作控制对象。": "当前没有动作控制对象。",
-  "最近收据": "最近收据",
-  "最近运行记录": "最近运行记录",
-  "暂无最近收据。": "暂无最近收据。",
-  "暂无最近运行记录。": "暂无最近运行记录。",
-  "最近执行事件": "最近执行事件",
-  "暂无最近执行事件。": "暂无最近执行事件。",
   Title: "标题",
   "可选材料标题……": "可选材料标题……",
   Kind: "类型",
@@ -496,7 +447,6 @@ const ZH_TEXT = {
   "Open Home Note": "打开首页笔记",
   Home: "首页",
   Refresh: "刷新",
-  "Recent Runs": "最近运行",
   "Start Here": "从这里开始",
   "Click Refresh first so shell-summary is generated.": "先点刷新生成最新数据。",
   "先点刷新生成最新数据。": "先点刷新生成最新数据。",
@@ -518,7 +468,6 @@ const ZH_TEXT = {
   "Pending Reviews": "待审阅",
   Overdue: "逾期",
   Escalation: "升级候选",
-  "Recent Outputs": "最近输出",
   "System status": "运行状态",
   "Status checks": "状态检查",
   "Self-check": "自我检查",
@@ -536,8 +485,6 @@ const ZH_TEXT = {
   "Single writer active: avoid compile / nightly / apply / revert from two surfaces at once.": "已有写入任务在运行；等它结束后再开始新的写入任务。",
   Summary: "摘要",
   "Generated at {generated_at} | contract v{version}": "生成于 {generated_at} | contract v{version}",
-  "Review backlog {review_count} | concept backlog {concept_backlog} | retired concepts {retired_concepts}": "审阅积压 {review_count} | 概念积压 {concept_backlog} | 已退役概念 {retired_concepts}",
-  "Judgment assets {pages} | strong assets {strong_assets} | attention {attention_pages} | citation drift {citation_drift}": "判断资产 {pages} | 强资产 {strong_assets} | 关注页 {attention_pages} | 引用漂移 {citation_drift}",
   "Knowledge Base": "知识库",
   Sources: "来源",
   Concepts: "概念",
@@ -592,7 +539,6 @@ const ZH_TEXT = {
   "以下为运行诊断与历史": "以下为运行诊断与历史",
   "运行诊断 · 同步 {sync}": "运行诊断 · 同步 {sync}",
   "最近运行 {n} 条 · 待审 {review}": "最近运行 {n} 条 · 待审 {review}",
-  "最近运行 {n} 条 · 待审 {review} · 待执行 {execution}": "最近运行 {n} 条 · 待审 {review} · 待执行 {execution}",
   "未配置": "未配置",
   "正常": "正常",
   "异常": "异常",
@@ -640,52 +586,10 @@ const ZH_TEXT = {
   "Recent Queries": "最近查询",
   "Judgment Focus": "判断焦点",
   "Quick Links": "快捷链接",
-  "Plugin-triggered Commands": "插件触发命令",
-  "Runtime Events from shell-summary": "运行事件",
-  "Recent Receipts": "最近回执",
-  "Review Next": "下一项审阅",
-  "Pending Decisions": "待审决策",
-  "Pending Judgments": "待审判断",
-  "Overdue Reviews": "逾期审阅",
-  "Concept Backlog": "概念积压",
-  "Review Concepts": "待审概念",
-  "Revisit Concepts": "待回看概念",
-  "Retired Concepts": "已退役概念",
-  "Next Review": "下一项审阅",
   More: "更多",
-  "Batch Suggestions": "批量建议",
-  "Judgment Assets": "判断资产",
-  "Strong Assets": "强资产",
-  "Attention Pages": "关注页",
-  "Missing Counter Evidence": "缺少反证",
-  "Missing Invalidation": "缺少失效条件",
-  "Missing Review History": "缺少审阅历史",
-  "Decision Objects": "决策对象",
-  "Judgment Objects": "判断对象",
-  "Rewrite Proposal Objects": "改写提案对象",
-  "Aging Summary": "老化摘要",
-  "Overdue pages": "逾期页面",
-  "Escalated pages": "升级页面",
-  "Scheduled pages": "计划页面",
   none: "无",
   Review: "审阅",
-  "Recent Review Events": "最近审阅事件",
-  "Governance Links": "治理链接",
-  "Apply All Low-Risk": "应用全部低风险项",
-  "Revert Last Batch": "回滚上一批",
-  "Execution Events": "执行事件",
-  "Archive Events": "归档事件",
-  "Lifecycle Overrides": "生命周期覆盖",
-  "Nightly Runs": "Nightly 次数",
-  "Planner Queue": "规划队列",
-  "Pending Proposals": "待处理提案",
-  Executed: "已执行",
-  Unblocked: "已解阻",
-  Blocked: "已阻塞",
   "Next Action": "下一动作",
-  "Action Control Objects": "动作控制对象",
-  "Recent Execution Events": "最近执行事件",
-  "Execution Links": "执行链接",
   "Open page": "打开页面",
   "Open first": "打开第一项",
   "Open proposal": "打开提案",
@@ -694,7 +598,6 @@ const ZH_TEXT = {
   "Open receipt": "打开回执",
   "Open result": "打开结果",
   "Copy result path": "复制结果路径",
-  "Re-review": "重新审阅",
   "Apply action": "应用动作",
   "Revert action": "回滚动作",
   "Apply archive": "应用归档",
@@ -711,25 +614,13 @@ const ZH_TEXT = {
   "Command failed with exit code {code}": "命令失败，退出码 {code}",
   "unknown error": "未知错误",
   "No plugin-triggered commands yet.": "当前还没有插件触发的命令。",
-  "No shell summary recent runs are available.": "当前没有 shell summary recent runs。",
-  "No recent receipts are available.": "当前没有 recent receipts。",
   "No recent outputs are available.": "当前没有 recent outputs。",
-  "No recent review events are available.": "当前没有 recent review events。",
-  "No recent execution events are available.": "当前没有 recent execution events。",
-  "No batch review groups share the same recommended transition.": "当前没有共享推荐状态的批量 review 组。",
-  "No explicit next review item is available.": "当前没有显式 next review item。",
-  "No explicit decision review object is available.": "当前没有显式 decision review object。",
-  "No explicit judgment review object is available.": "当前没有显式 judgment review object。",
-  "No explicit rewrite proposal object is available.": "当前没有显式 rewrite proposal object。",
-  "No explicit action control object is available.": "当前没有显式 action control object。",
-  "No judgment asset focus object is available.": "当前没有 judgment asset focus object。",
   "shell-summary.json is not available yet. Run Refresh, Compile, or Nightly first.": "数据还没准备好。先点上方刷新，或等当前任务跑完。",
   "数据还没准备好。先点上方刷新，或等当前任务跑完。": "数据还没准备好。先点上方刷新，或等当前任务跑完。",
   "数据还没就绪。先点上方刷新，或等首次任务跑完。": "数据还没就绪。先点上方刷新，或等首次任务跑完。",
   "Repo-local runtime unavailable. Missing: {missing}": "Repo-local runtime 不可用。缺少：{missing}",
   "No visible review backlog item is available; fell back to the manual form.": "当前没有可见的 review backlog 条目，已回退到手动表单。",
   "No reviewable page is available.": "当前没有可 review 的页面。",
-  "No shared batch review suggestion is available.": "当前没有共享推荐状态的批量 review 建议。",
   "No visible concept context is available; fell back to the manual form.": "当前没有可见的 concept context，已回退到手动表单。",
   "No visible machine-memory action context is available; fell back to the manual form.": "当前没有可见的 machine-memory action context，已回退到手动表单。",
   "No visible archive context is available; fell back to the manual form.": "当前没有可见的 archive context，已回退到手动表单。",
@@ -918,12 +809,9 @@ const ZH_TEXT = {
   "Output File-back Rate": "产出回填率",
   "Elixir Reuse Count": "复用沉淀数",
   "Run `aiwiki metrics --json` for full data.": "完整指标数据可在指标报告中查看。",
-  "Quick review": "快速审阅",
-  "Quick execution": "快速执行",
   "Latest plugin runs": "最近运行",
   "Latest run": "最近一次运行",
   "No recent plugin runs.": "当前还没有插件运行记录。",
-  "Run log": "运行日志",
   "Open log": "打开日志",
   "Copy command": "复制命令",
   "Reveal result": "定位结果",
@@ -933,7 +821,6 @@ const ZH_TEXT = {
   "Unable to reveal {path}": "无法定位 {path}",
   "Path revealed: {path}": "已定位 {path}",
   "Path not found: {path}": "路径不存在：{path}",
-  "Stage timeline": "阶段事件流",
   "No stage events recorded.": "当前没有记录到阶段事件。",
   Submitted: "已提交",
   "Runtime selected": "运行上下文",
@@ -996,8 +883,6 @@ const ZH_TEXT = {
   "healthy": "健康",
   warnings: "告警",
   errors: "错误",
-  "status {status} | started {started}{finished}": "状态 {status} | 开始于 {started}{finished}",
-  " | finished {finished}": " | 结束于 {finished}",
   "stdout: {value}": "标准输出：{value}",
   "stderr: {value}": "错误输出：{value}",
   "error: {value}": "错误：{value}",
@@ -5892,146 +5777,6 @@ function advancedDrawerCounts(plugin) {
   return { review, runs };
 }
 
-
-// --- src/render_runs.js ---
-
-// Run detail / timeline helpers for advanced history and run logs.
-
-function runStatusClass(status) {
-  if (status === "success") return "furnace-shell-status-ok";
-  if (status === "failed") return "furnace-shell-status-failed";
-  return "furnace-shell-status-running";
-}
-
-function renderRunTimeline(plugin, container, record, compact) {
-  compact = Boolean(compact);
-  var timeline = Array.isArray(record.timeline) ? record.timeline : [];
-  var section = container.createDiv({ cls: "furnace-shell-run-timeline" });
-  section.createDiv({ cls: "furnace-shell-inline-heading", text: plugin.t("Stage timeline") });
-  if (!timeline.length) {
-    section.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No stage events recorded.") });
-    return section;
-  }
-  var list = section.createEl("ul", { cls: "furnace-shell-run-timeline-list" });
-  var visibleEvents = compact ? timeline.slice(-4) : timeline;
-  visibleEvents.forEach(function (event) {
-    var item = list.createEl("li", { cls: "furnace-shell-run-event" });
-    var statusCls = event.status === "failed" ? "furnace-shell-status-failed" : (event.status === "success" ? "furnace-shell-status-ok" : "furnace-shell-status-running");
-    item.addClass(statusCls);
-    var header = item.createDiv({ cls: "furnace-shell-run-event-header" });
-    header.createEl("strong", { text: plugin.t(event.stage || "event") });
-    if (event.at) {
-      header.createDiv({ cls: "furnace-shell-meta", text: formatDisplayTime(event.at, plugin.locale()) });
-    }
-    if (event.summary) {
-      item.createDiv({ cls: "furnace-shell-meta furnace-shell-code", text: event.summary });
-    }
-  });
-  return section;
-}
-
-function renderRunDetail(plugin, container, record, options) {
-  options = options || {};
-  var compact = Boolean(options.compact);
-  var detail = container.createDiv({ cls: compact ? "furnace-shell-run-card is-compact" : "furnace-shell-run-card" });
-  var header = detail.createDiv({ cls: "furnace-shell-run-header" });
-  header.createEl("strong", { text: plugin.t(record.label || record.args || "command") });
-  header.createDiv({
-    cls: "furnace-shell-meta " + runStatusClass(record.status),
-    text: plugin.t("status {status} | started {started}{finished}", {
-      status: plugin.t(record.status || "unknown"),
-      started: formatDisplayTime(record.startedAt, plugin.locale()) || plugin.t("unknown"),
-      finished: record.finishedAt
-        ? plugin.t(" | finished {finished}", { finished: formatDisplayTime(record.finishedAt, plugin.locale()) || record.finishedAt })
-        : "",
-    }),
-  });
-
-  if (!compact && record.args) {
-    detail.createDiv({ cls: "furnace-shell-code", text: record.args });
-  }
-
-  var contextParts = [];
-  if (record.protocol) contextParts.push(plugin.t("protocol {value}", { value: plugin.t(record.protocol) }));
-  if (record.backend) contextParts.push(plugin.t("backend {value}", { value: record.backend }));
-  if (record.model) contextParts.push(plugin.t("model {value}", { value: record.model }));
-  if (!compact && record.modelSelected && record.modelFinal && record.modelSelected !== record.modelFinal) {
-    contextParts.push(plugin.t("selected") + " " + record.modelSelected + " -> " + plugin.t("final") + " " + record.modelFinal);
-  }
-  if (contextParts.length) detail.createDiv({ cls: "furnace-shell-meta", text: contextParts.join(" | ") });
-
-  if (!compact) {
-    var diagnosticParts = [];
-    if (record.codexReasoningEffort) diagnosticParts.push(plugin.t("codex effort {value}", { value: record.codexReasoningEffort }));
-    if (record.promptProfile) diagnosticParts.push(plugin.t("prompt {value}", { value: record.promptProfile }));
-    if (record.retryPromptProfile) diagnosticParts.push(plugin.t("retry {value}", { value: record.retryPromptProfile }));
-    if (record.fallbackStage) diagnosticParts.push(plugin.t("fallback {value}", { value: record.fallbackStage }));
-    if (diagnosticParts.length) detail.createDiv({ cls: "furnace-shell-meta", text: diagnosticParts.join(" | ") });
-  }
-
-  var rewriteSummary = plugin.rewriteProposalSummary(record);
-  if (rewriteSummary && !compact) detail.createDiv({ cls: "furnace-shell-meta", text: rewriteSummary });
-
-  if (compact) {
-    var compactSummary = [rewriteSummary, record.resultPath || "", record.receiptPath || "", record.errorSummary || "", record.stderrSummary || ""].find(function (value) { return String(value || "").trim(); });
-    if (compactSummary) detail.createDiv({ cls: "furnace-shell-panel-note furnace-shell-run-summary", text: compactSummary });
-  } else {
-    renderRunTimeline(plugin, detail, record, compact);
-  }
-
-  if (!compact && record.stdoutSummary) detail.createDiv({ cls: "furnace-shell-meta", text: plugin.t("stdout: {value}", { value: record.stdoutSummary }) });
-  if (!compact && record.stderrSummary) detail.createDiv({ cls: "furnace-shell-meta", text: plugin.t("stderr: {value}", { value: record.stderrSummary }) });
-  if (!compact && record.errorSummary) detail.createDiv({ cls: "furnace-shell-meta", text: plugin.t("error: {value}", { value: record.errorSummary }) });
-
-  var actions = detail.createDiv({ cls: "furnace-shell-inline-actions" });
-  var rewriteProposalObjects = Array.isArray(record.rewriteProposalObjects) ? record.rewriteProposalObjects : [];
-  var rewriteProposalPaths = rewriteProposalObjects.length
-    ? plugin.rewriteProposalPathsFromObjects(rewriteProposalObjects)
-    : (Array.isArray(record.rewriteProposalPaths) ? record.rewriteProposalPaths : []);
-
-  if (!compact && Array.isArray(record.argv) && record.argv.length) {
-    var rerunButton = actions.createEl("button", { text: plugin.t("Re-run") });
-    rerunButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.rerunRecord(record); }, "Re-run: " + record.args); });
-    var copyCmdButton = actions.createEl("button", { text: plugin.t("Copy command") });
-    copyCmdButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.copyText(record.args); }, "Copy command: " + record.args); });
-  }
-
-  if (rewriteProposalPaths.length && !compact) {
-    var firstProposalPath = rewriteProposalObjects[0] && rewriteProposalObjects[0].proposalPath ? rewriteProposalObjects[0].proposalPath : rewriteProposalPaths[0];
-    var proposalButton = actions.createEl("button", { text: plugin.t("Open proposal") });
-    proposalButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.openWorkspacePath(firstProposalPath); }, "Open rewrite proposal: " + firstProposalPath); });
-  }
-
-  if (record.resultPath) {
-    var outputButton = actions.createEl("button", { text: plugin.t("Open result") });
-    outputButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.openWorkspacePath(record.resultPath); }, "Open result: " + record.resultPath); });
-    var copyResultButton = actions.createEl("button", { text: plugin.t("Copy result path") });
-    copyResultButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.copyText(record.resultPath); }, "Copy result path: " + record.resultPath); });
-    var revealResultButton = actions.createEl("button", { text: plugin.t("Reveal result") });
-    revealResultButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.revealWorkspacePath(record.resultPath); }, "Reveal result: " + record.resultPath); });
-  }
-
-  if (record.receiptPath) {
-    var receiptButton = actions.createEl("button", { text: plugin.t("Open receipt") });
-    receiptButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.openWorkspacePath(record.receiptPath); }, "Open receipt: " + record.receiptPath); });
-    var copyReceiptButton = actions.createEl("button", { text: plugin.t("Copy receipt path") });
-    copyReceiptButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.copyText(record.receiptPath); }, "Copy receipt path: " + record.receiptPath); });
-    var revealReceiptButton = actions.createEl("button", { text: plugin.t("Reveal receipt") });
-    revealReceiptButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.revealWorkspacePath(record.receiptPath); }, "Reveal receipt: " + record.receiptPath); });
-  }
-
-  if (!compact && (record.stderrRaw || record.stderrSummary)) {
-    var copyStderrButton = actions.createEl("button", { text: plugin.t("Copy stderr") });
-    copyStderrButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.copyText(record.stderrRaw || record.stderrSummary); }, "Copy stderr: " + record.args); });
-  }
-
-  if (!compact && record.logPath) {
-    var logButton = actions.createEl("button", { text: plugin.t("Open log") });
-    logButton.addEventListener("click", function () { plugin.runUiAction(function () { return plugin.openWorkspacePath(record.logPath); }, "Open log: " + record.logPath); });
-  }
-
-  return detail;
-}
 
 // --- src/render_home.js ---
 

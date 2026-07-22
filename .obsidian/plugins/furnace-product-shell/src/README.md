@@ -54,7 +54,7 @@ The modules are concatenated in this order:
 7. `modals.js`
 8. `views.js`
 9. `settings.js`
-10. `render/cards.js`, `render_primitives.js`, `render_input.js`, `render_today.js`, `render_advanced.js`, `render_runs.js`, `render_home.js`
+10. `render/cards.js`, `render_primitives.js`, `render_input.js`, `render_today.js`, `render_advanced.js`, `render_home.js`
 11. `plugin_helpers.js`
 12. `rewrite_state.js`
 13. `control_items.js`
