@@ -60,6 +60,10 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       clearTimeout(this._vaultChangeTimer);
       this._vaultChangeTimer = null;
     }
+    if (this._askPendingSoftHintTimer) {
+      clearTimeout(this._askPendingSoftHintTimer);
+      this._askPendingSoftHintTimer = null;
+    }
     this.openViews.clear();
   }
 
