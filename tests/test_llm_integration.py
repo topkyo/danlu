@@ -391,6 +391,48 @@ def test_openai_compat_client_missing_choices(monkeypatch: pytest.MonkeyPatch, t
         client.complete("system", "user")
 
 
+def test_openai_compat_client_parses_multipart_message_content(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """HTTP JSON body with list-shaped message.content must parse to CompletionResult.
+
+    Catches backend schema drift where providers return multimodal-style
+    content parts instead of a plain string (stub clients that construct
+    CompletionResult directly would miss this).
+    """
+
+    body = json.dumps(
+        {
+            "id": "resp-multipart",
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {"type": "text", "text": "Hello "},
+                            {"type": "text", "text": "world"},
+                            {"type": "image_url", "image_url": {"url": "https://ignored.example/x.png"}},
+                        ],
+                    }
+                }
+            ],
+            "usage": {"prompt_tokens": 3, "completion_tokens": 2},
+        }
+    ).encode("utf-8")
+
+    monkeypatch.setattr(
+        "aiwiki.llm.safe_fetch",
+        lambda _url, **_kwargs: (body, "application/json"),
+    )
+
+    client = OpenAICompatClient(_openai_compat_config(), workdir=tmp_path)
+    result = client.complete("system", "user")
+
+    assert result.text == "Hello world"
+    assert result.response_id == "resp-multipart"
+    assert result.usage == {"prompt_tokens": 3, "completion_tokens": 2}
+
+
 # ---------------------------------------------------------------------------
 # 5. classify_backend_error categories
 # ---------------------------------------------------------------------------
