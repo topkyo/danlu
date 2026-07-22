@@ -724,30 +724,12 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
-.furnace-shell-v3 .furnace-shell-report-card.is-unread {
-  border-left-color: var(--interactive-accent);
-  background: var(--background-primary);
-}
-
 .furnace-shell-v3 .furnace-shell-report-content {
   display: flex;
   align-items: center;
   gap: 12px;
   flex: 1 1 220px;
   min-width: 0;
-}
-
-.furnace-shell-v3 .furnace-shell-report-dot {
-  flex: 0 0 auto;
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  visibility: hidden;
-}
-
-.furnace-shell-v3 .furnace-shell-report-card.is-unread .furnace-shell-report-dot {
-  background: var(--interactive-accent);
-  visibility: visible;
 }
 
 .furnace-shell-v3 .furnace-shell-report-copy {
@@ -764,10 +746,6 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.furnace-shell-v3 .furnace-shell-report-card.is-unread .furnace-shell-report-title {
-  font-weight: 700;
 }
 
 .furnace-shell-v3 .furnace-shell-report-meta {
@@ -1173,21 +1151,6 @@
 }
 .furnace-protocol-general {
   border-left-color: var(--furnace-protocol-general, #6b7280);
-}
-
-/* Unread indicator dot */
-.furnace-report-unread .furnace-feed-card-title {
-  font-weight: var(--furnace-weight-bold, 600);
-}
-.furnace-report-unread::before {
-  content: "";
-  position: absolute;
-  left: -10px;
-  top: 14px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--interactive-accent);
 }
 
 /* ========================================================================== */

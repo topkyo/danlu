@@ -93,7 +93,7 @@ function llmProviderProfile(value) {
 }
 
 function llmProviderNeedsModel(profile) {
-  return Boolean(profile && !profile.cliHint);
+  return Boolean(profile);
 }
 
 function effectiveLlmModelForProvider(settings, profile) {

@@ -366,33 +366,21 @@ function reviewObjectMetaText(control, locale = DEFAULT_LOCALE) {
   return parts.join(" | ");
 }
 
-function normalizeEnabledChannels(value) {
-  const allowed = new Set(["feishu", "wecom"]);
-  const items = Array.isArray(value) ? value : [];
-  return Array.from(
-    new Set(
-      items
-        .map((item) => String(item || "").trim())
-        .filter((item) => allowed.has(item))
-    )
-  );
-}
-
 function buildNotifyEnv(settings) {
   const env = {};
-  const feishuWebhookUrl = String(settings && settings.feishuWebhookUrl || "").trim();
+  const channels = [];
+  const feishuWebhookUrl = String((settings && settings.feishuWebhookUrl) || "").trim();
   if (feishuWebhookUrl) {
     env.AIWIKI_NOTIFY_FEISHU_WEBHOOK_URL = feishuWebhookUrl;
+    channels.push("feishu");
   }
-  const wecomWebhookUrl = String(settings && settings.wecomWebhookUrl || "").trim();
+  const wecomWebhookUrl = String((settings && settings.wecomWebhookUrl) || "").trim();
   if (wecomWebhookUrl) {
     env.AIWIKI_NOTIFY_WECOM_WEBHOOK_URL = wecomWebhookUrl;
+    channels.push("wecom");
   }
-  const enabledChannels = Array.isArray(settings && settings.enabledChannels)
-    ? settings.enabledChannels.map((channel) => String(channel || "").trim()).filter(Boolean)
-    : [];
-  if (enabledChannels.length) {
-    env.AIWIKI_NOTIFY_ENABLED_CHANNELS = enabledChannels.join(",");
+  if (channels.length) {
+    env.AIWIKI_NOTIFY_ENABLED_CHANNELS = channels.join(",");
   }
   return env;
 }

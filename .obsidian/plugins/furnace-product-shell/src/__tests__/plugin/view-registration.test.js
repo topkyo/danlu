@@ -89,12 +89,22 @@ test("settings trim removes recentRunsLimit + Advanced endpoint fold and groups 
     path.resolve(__dirname, "../../plugin_state.js"),
     "utf8"
   );
+  const stylesSrc = fs.readFileSync(
+    path.resolve(__dirname, "../../../styles.css"),
+    "utf8"
+  );
 
   expect(settingsSrc).not.toMatch(/recentRunsLimit/);
   expect(settingsSrc).not.toMatch(/Advanced endpoint/);
   expect(settingsSrc).toMatch(/Developer \/ diagnostics/);
   expect(settingsSrc).toMatch(/Developer diagnostics/);
   expect(settingsSrc).toMatch(/createEl\("details"[\s\S]+Integrations \(advanced\)/);
+  expect(settingsSrc).toMatch(/Feishu webhook URL/);
+  expect(settingsSrc).toMatch(/WeCom webhook URL/);
+  expect(settingsSrc).not.toMatch(/Enable Feishu/);
+  expect(settingsSrc).not.toMatch(/Enable WeCom/);
+  expect(settingsSrc).not.toMatch(/enabledChannels/);
+  expect(settingsSrc).not.toMatch(/cliHint/);
   expect(settingsSrc).not.toMatch(/text: t\("Notifications"\)/);
   const langSectionStart = settingsSrc.indexOf("Language & Appearance");
   const langSectionEnd = settingsSrc.indexOf("Furnace Connection");
@@ -102,12 +112,17 @@ test("settings trim removes recentRunsLimit + Advanced endpoint fold and groups 
 
   expect(constantsSrc).toMatch(/const RECENT_RUNS_LIMIT = 8;/);
   expect(constantsSrc).not.toMatch(/recentRunsLimit:/);
+  expect(constantsSrc).not.toMatch(/enabledChannels:/);
 
   expect(pluginSrc).toMatch(/RECENT_RUNS_LIMIT/);
   expect(pluginSrc).not.toMatch(/recentRunsLimit/);
 
   expect(pluginStateSrc).toMatch(/delete plugin\.settings\.recentRunsLimit/);
   expect(pluginStateSrc).toMatch(/legacyRecentRunsLimitMigrated/);
+  expect(pluginStateSrc).toMatch(/delete plugin\.settings\.enabledChannels/);
+
+  expect(stylesSrc).not.toMatch(/is-unread/);
+  expect(stylesSrc).not.toMatch(/furnace-report-unread/);
 });
 
 test("default furnace center keeps Advanced out of the primary shell path", () => {

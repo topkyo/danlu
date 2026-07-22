@@ -29,6 +29,7 @@ test("provider list puts curated providers before advanced entries", () => {
     "openai-api",
   ]);
   expect(LLM_PROVIDER_PROFILES.every((profile) => profile.tier === "common")).toBe(true);
+  expect(LLM_PROVIDER_PROFILES.every((profile) => !profile.cliHint)).toBe(true);
 });
 
 test("buildLlmEnv only emits the selected provider secret and base URL", () => {

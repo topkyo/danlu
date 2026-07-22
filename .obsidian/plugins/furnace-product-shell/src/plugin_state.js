@@ -41,12 +41,15 @@ async function loadProductShellPluginState(plugin) {
   const migratedWecomWebhookUrl = String(plugin.settings.wecomWebhookUrl || plugin.settings.wecom_webhook_url || "").trim();
   const wecomWebhookUrlMigrated = plugin.settings.wecomWebhookUrl !== migratedWecomWebhookUrl;
   plugin.settings.wecomWebhookUrl = migratedWecomWebhookUrl;
-  const rawEnabledChannels = Array.isArray(rawSettings.enabledChannels)
-    ? rawSettings.enabledChannels
-    : rawSettings.enabled_channels;
-  const migratedEnabledChannels = normalizeEnabledChannels(rawEnabledChannels);
-  const enabledChannelsMigrated = JSON.stringify(plugin.settings.enabledChannels || []) !== JSON.stringify(migratedEnabledChannels);
-  plugin.settings.enabledChannels = migratedEnabledChannels;
+  const legacyEnabledChannelsMigrated =
+    Object.prototype.hasOwnProperty.call(plugin.settings, "enabledChannels")
+    || Object.prototype.hasOwnProperty.call(plugin.settings, "enabled_channels")
+    || Object.prototype.hasOwnProperty.call(rawSettings, "enabledChannels")
+    || Object.prototype.hasOwnProperty.call(rawSettings, "enabled_channels");
+  delete plugin.settings.enabledChannels;
+  delete plugin.settings.enabled_channels;
+  delete plugin.settings.feishu_webhook_url;
+  delete plugin.settings.wecom_webhook_url;
   plugin.pendingSubmissions = plugin.hydratePendingSubmissions(plugin.settings.persistedPendingSubmissions);
   const recentRuns = normalizeProductShellRecentRuns(data.recentRuns);
   const llmHealth = data.llmHealth && typeof data.llmHealth === "object" ? data.llmHealth : null;
@@ -55,7 +58,7 @@ async function loadProductShellPluginState(plugin) {
   if (
     feishuWebhookUrlMigrated
     || wecomWebhookUrlMigrated
-    || enabledChannelsMigrated
+    || legacyEnabledChannelsMigrated
     || legacyDefaultAskFormatMigrated
     || legacyLastViewedTimestampMigrated
     || legacyLastKnownReportIdsMigrated

@@ -60,7 +60,7 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName(t("LLM backend"))
-      .setDesc(t("Select the LLM provider used by compile / run-ask / run-nightly. Common providers are listed first; advanced entries are for local CLI sessions or custom OpenAI-compatible endpoints."))
+      .setDesc(t("Select the LLM provider used by compile / run-ask / run-nightly."))
       .addDropdown((dropdown) => {
         for (const profile of LLM_PROVIDER_PROFILES) {
           const prefix = profile.tier === "advanced" ? "Advanced · " : "";
@@ -126,16 +126,6 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
         });
     }
 
-    if (selectedProfile.cliHint) {
-      new Setting(containerEl)
-        .setName(t("CLI session"))
-        .setDesc(t("This backend uses a local CLI login/session. API key fields are not used."));
-      containerEl.createEl("p", {
-        text: selectedProfile.cliHint,
-        cls: "setting-item-description",
-      });
-    }
-
     // ── Integrations (advanced) ────────────────────
     const integrationsDetails = containerEl.createEl("details", {
       cls: "furnace-settings-fold furnace-settings-fold-integrations",
@@ -146,13 +136,13 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
     });
     const integrationsBody = integrationsDetails.createDiv({ cls: "furnace-settings-fold-body" });
     integrationsBody.createEl("p", {
-      text: t("Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports."),
+      text: t("Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports. Non-empty webhook URL enables that channel."),
       cls: "setting-item-description",
     });
 
     new Setting(integrationsBody)
       .setName(t("Feishu webhook URL"))
-      .setDesc(t("Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports."))
+      .setDesc(t("Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports. Non-empty webhook URL enables that channel."))
       .addText((text) => {
         text
           .setPlaceholder("https://open.feishu.cn/open-apis/bot/v2/hook/...")
@@ -166,7 +156,7 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
 
     new Setting(integrationsBody)
       .setName(t("WeCom webhook URL"))
-      .setDesc(t("Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports."))
+      .setDesc(t("Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports. Non-empty webhook URL enables that channel."))
       .addText((text) => {
         text
           .setPlaceholder("https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...")
@@ -177,33 +167,6 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
           });
         text.inputEl.autocomplete = "off";
       });
-
-    const updateEnabledChannel = async (channel, enabled) => {
-      const channels = new Set(normalizeEnabledChannels(this.plugin.settings.enabledChannels));
-      if (enabled) {
-        channels.add(channel);
-      } else {
-        channels.delete(channel);
-      }
-      this.plugin.settings.enabledChannels = normalizeEnabledChannels(Array.from(channels));
-      await this.plugin.savePluginState();
-    };
-
-    new Setting(integrationsBody)
-      .setName(t("Enable Feishu"))
-      .addToggle((toggle) =>
-        toggle.setValue(normalizeEnabledChannels(this.plugin.settings.enabledChannels).includes("feishu")).onChange(async (value) => {
-          await updateEnabledChannel("feishu", Boolean(value));
-        })
-      );
-
-    new Setting(integrationsBody)
-      .setName(t("Enable WeCom"))
-      .addToggle((toggle) =>
-        toggle.setValue(normalizeEnabledChannels(this.plugin.settings.enabledChannels).includes("wecom")).onChange(async (value) => {
-          await updateEnabledChannel("wecom", Boolean(value));
-        })
-      );
 
     // ── Developer / diagnostics ─────────────────────
     containerEl.createEl("h3", { cls: "furnace-settings-section", text: t("Developer / diagnostics") });
