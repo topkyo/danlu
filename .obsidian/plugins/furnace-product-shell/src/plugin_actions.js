@@ -44,9 +44,10 @@ async function runProductShellDroppedPayloadsWithAutoAsk(plugin, { payloads, que
   let runNotesPath = "";
   let runId = "";
   let askFormat = "";
+  let askPayload = null;
   if (normalizedQuestion) {
     askFormat = inferAutoAskFormat(normalizedQuestion, normalizedMaterialPaths);
-    const askPayload = await plugin.runAskCommand({
+    askPayload = await plugin.runAskCommand({
       question: askQuestion,
       format: askFormat,
       mode: "run-ask",
@@ -61,6 +62,7 @@ async function runProductShellDroppedPayloadsWithAutoAsk(plugin, { payloads, que
     askFormat,
     runNotesPath,
     runId,
+    askPayload,
   };
 }
 

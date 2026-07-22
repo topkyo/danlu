@@ -104,6 +104,7 @@ function renderUniversalInput(plugin, container) {
 
     let succeeded = false;
     let materialDropCompleted = false;
+    let askResultPayload = null;
     // R88: 立即推一个"处理中"卡片到 Today，构成视觉闭环
     let pendingId = "";
     try {
@@ -159,6 +160,8 @@ function renderUniversalInput(plugin, container) {
             materialDropCompleted = Boolean(
               plugin.completePendingMaterialDrop(pendingId, flowResult && flowResult.materialPaths)
             );
+          } else {
+            askResultPayload = flowResult && flowResult.askPayload;
           }
         }
       } else {
@@ -203,6 +206,7 @@ function renderUniversalInput(plugin, container) {
               runNotesPath: String(flowResult && flowResult.runNotesPath || ""),
               runId: String(flowResult && flowResult.runId || ""),
             });
+            askResultPayload = flowResult && flowResult.askPayload;
           }
         } else if (looksLikeUniversalMaterialPayload(normalizedQuestion)) {
           const retryArgs = {
@@ -236,7 +240,7 @@ function renderUniversalInput(plugin, container) {
             title: normalizedQuestion,
             retryArgs,
           });
-          const askPayload = await plugin.runAskCommand({
+          askResultPayload = await plugin.runAskCommand({
             question: normalizedQuestion,
             format: askFormat,
             mode: "run-ask",
@@ -245,15 +249,15 @@ function renderUniversalInput(plugin, container) {
           if (pendingId) {
             plugin.updatePendingSubmissionRetryArgs(pendingId, {
               ...retryArgs,
-              runNotesPath: String(askPayload && askPayload.run_notes_path || ""),
-              runId: String(askPayload && askPayload.run_id || ""),
+              runNotesPath: String(askResultPayload && askResultPayload.run_notes_path || ""),
+              runId: String(askResultPayload && askResultPayload.run_id || ""),
             });
           }
         }
       }
       succeeded = true;
-      // 纯投料已在 completePendingMaterialDrop 标 done(raw)；提问路径才进入 received 等报告
-      if (pendingId && !materialDropCompleted) plugin.markPendingSubmissionReceived(pendingId);
+      // 纯投料已在 completePendingMaterialDrop 标 done(raw)；提问路径同步完成则直写 done(outputs)
+      if (pendingId && !materialDropCompleted) finalizePendingAskSubmission(plugin, pendingId, askResultPayload);
     } catch (e) {
       if (pendingId) plugin.markPendingSubmissionFailed(pendingId, e);
       new Notice(plugin.t("提交失败：{message}（输入已保留，可重试）", { message: e && e.message ? e.message : String(e) }));

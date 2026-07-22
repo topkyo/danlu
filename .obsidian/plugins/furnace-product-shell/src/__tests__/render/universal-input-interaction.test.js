@@ -190,6 +190,20 @@ function makePlugin(overrides = {}) {
       const entry = (overrides.pendingSubmissions || []).find((item) => item && item.id === id);
       if (entry && entry.status === "running") entry.status = "received";
     }),
+    markPendingSubmissionDone: jest.fn(function(id, target, path) {
+      const entry = (this.pendingSubmissions || overrides.pendingSubmissions || []).find((item) => item && item.id === id);
+      if (!entry) return;
+      entry.reconcileTarget = target;
+      entry.reconcilePath = path;
+      const degraded = entry.deliveryMode === "deterministic-fallback"
+        || entry.llmStatus === "timeout_or_unavailable"
+        || entry.llmStatus === "validation_failed"
+        || entry.llmStatus === "failed"
+        || entry.llmStatus === "degraded"
+        || entry.backgroundStatus === "degraded"
+        || entry.artifactQuality === "degraded";
+      entry.status = degraded ? "degraded" : "done";
+    }),
     markPendingSubmissionFailed: jest.fn(),
     updatePendingSubmissionRetryArgs: jest.fn((id, retryArgs) => {
       const entry = (overrides.pendingSubmissions || []).find((item) => item && item.id === id);
@@ -199,21 +213,32 @@ function makePlugin(overrides = {}) {
         entry.runNotesPath = retryArgs.runNotesPath || "";
       }
     }),
-    resetPendingSubmissionForRetry: jest.fn((id) => {
-      const entry = (overrides.pendingSubmissions || []).find((item) => item && item.id === id);
+    resetPendingSubmissionForRetry: jest.fn(function(id) {
+      const entry = (this.pendingSubmissions || overrides.pendingSubmissions || []).find((item) => item && item.id === id);
       if (entry) {
         entry.status = "running";
+        entry.error = "";
         entry.reconcileTarget = "";
         entry.reconcilePath = "";
         entry.runId = "";
         entry.runNotesPath = "";
+        entry.deliveryMode = "";
+        entry.llmStatus = "";
+        entry.llmBackend = "";
+        entry.llmModel = "";
+        entry.backgroundStatus = "";
+        entry.artifactQuality = "";
       }
     }),
     completePendingMaterialDrop: jest.fn(() => true),
-    runDroppedFilesWithAutoAsk: jest.fn().mockResolvedValue({ materialPaths: ["raw/inbox/input.md"], askQuestion: "Q" }),
+    runDroppedFilesWithAutoAsk: jest.fn().mockResolvedValue({
+      materialPaths: ["raw/inbox/input.md"],
+      askQuestion: "Q",
+      askPayload: { report_path: "output/reports/q.md" },
+    }),
     runDroppedPayloadsWithAutoAsk: jest.fn().mockResolvedValue({ materialPaths: ["raw/inbox/input.md"], askQuestion: "Q" }),
     runUniversalInputCommand: jest.fn().mockResolvedValue({ note_path: "raw/inbox/url.md" }),
-    runAskCommand: jest.fn().mockResolvedValue({}),
+    runAskCommand: jest.fn().mockResolvedValue({ report_path: "output/reports/default.md" }),
     renderMainHeader: jest.fn((el) => el.createDiv({ cls: "test-main-header", text: "header" })),
     renderLegacyAdvancedPanel: jest.fn((el) => el.createDiv({ cls: "test-legacy-advanced", text: "legacy" })),
     getAdvancedSectionExpanded: jest.fn(() => false),
@@ -300,7 +325,7 @@ beforeEach(() => {
   jest.restoreAllMocks();
 });
 
-test("renderUniversalInput success clears textarea and attachment pills after received", async () => {
+test("renderUniversalInput success clears textarea and attachment pills after ask done", async () => {
   const context = loadRenderContext();
   const plugin = makePlugin();
   const container = document.createElement("div");
@@ -323,7 +348,8 @@ test("renderUniversalInput success clears textarea and attachment pills after re
   await flushAsyncWork();
 
   expect(plugin.pushPendingSubmission).toHaveBeenCalledTimes(1);
-  expect(plugin.markPendingSubmissionReceived).toHaveBeenCalledWith("pending-1");
+  expect(plugin.markPendingSubmissionDone).toHaveBeenCalledWith("pending-1", "outputs", "output/reports/q.md");
+  expect(plugin.markPendingSubmissionReceived).not.toHaveBeenCalled();
   expect(plugin.markPendingSubmissionFailed).not.toHaveBeenCalled();
   expect(plugin.runDroppedFilesWithAutoAsk).toHaveBeenCalledTimes(1);
   expect(textarea.value).toBe("");
@@ -476,7 +502,7 @@ test("ask pending received card shows generic generation copy", () => {
         id: "p-ask",
         status: "received",
         displayText: "请总结这篇文章",
-        startedAt: "2026-05-13T09:00:00Z",
+        startedAt: new Date(Date.now() - 5000).toISOString(),
         retryArgs: { kind: "auto-ask", question: "请总结这篇文章", format: "report" },
       },
     ],
@@ -520,7 +546,11 @@ test("plain question goes through run-ask instead of deterministic universal dro
       locale: "zh",
       defaultAskFormat: "note",
     },
-    runAskCommand: jest.fn().mockResolvedValue({ run_notes_path: "output/control/runs/ask/thinking.md", run_id: "ask-report" }),
+    runAskCommand: jest.fn().mockResolvedValue({
+      report_path: "output/reports/ask.md",
+      run_notes_path: "output/control/runs/ask/thinking.md",
+      run_id: "ask-report",
+    }),
   });
   const container = document.createElement("div");
 
@@ -551,7 +581,11 @@ test("plain question goes through run-ask instead of deterministic universal dro
 test("ctrl enter submits the composer through the form path", async () => {
   const context = loadRenderContext();
   const plugin = makePlugin({
-    runAskCommand: jest.fn().mockResolvedValue({ run_notes_path: "output/control/runs/ask/thinking.md", run_id: "ask-report" }),
+    runAskCommand: jest.fn().mockResolvedValue({
+      report_path: "output/reports/ask.md",
+      run_notes_path: "output/control/runs/ask/thinking.md",
+      run_id: "ask-report",
+    }),
   });
   const container = document.createElement("div");
 
@@ -578,14 +612,19 @@ test("ctrl enter submits the composer through the form path", async () => {
     mode: "run-ask",
     excludePendingId: "pending-1",
   });
-  expect(plugin.markPendingSubmissionReceived).toHaveBeenCalledWith("pending-1");
+  expect(plugin.markPendingSubmissionDone).toHaveBeenCalledWith("pending-1", "outputs", "output/reports/ask.md");
+  expect(plugin.markPendingSubmissionReceived).not.toHaveBeenCalled();
   expect(textarea.value).toBe("");
 });
 
 test("ctrl enter keyup fallback submits once when requestSubmit is unavailable", async () => {
   const context = loadRenderContext();
   const plugin = makePlugin({
-    runAskCommand: jest.fn().mockResolvedValue({ run_notes_path: "output/control/runs/ask/thinking.md", run_id: "ask-note" }),
+    runAskCommand: jest.fn().mockResolvedValue({
+      report_path: "output/reports/ask.md",
+      run_notes_path: "output/control/runs/ask/thinking.md",
+      run_id: "ask-note",
+    }),
   });
   const container = document.createElement("div");
 
@@ -608,7 +647,8 @@ test("ctrl enter keyup fallback submits once when requestSubmit is unavailable",
 
   expect(event.defaultPrevented).toBe(true);
   expect(plugin.runAskCommand).toHaveBeenCalledTimes(1);
-  expect(plugin.markPendingSubmissionReceived).toHaveBeenCalledWith("pending-1");
+  expect(plugin.markPendingSubmissionDone).toHaveBeenCalledWith("pending-1", "outputs", "output/reports/ask.md");
+  expect(plugin.markPendingSubmissionReceived).not.toHaveBeenCalled();
   expect(textarea.value).toBe("");
 });
 
@@ -646,7 +686,11 @@ test("plain question ignores stale persisted format and stays report", async () 
 test("explicit report question uses sync ask pending metadata", async () => {
   const context = loadRenderContext();
   const plugin = makePlugin({
-    runAskCommand: jest.fn().mockResolvedValue({ run_notes_path: "output/control/runs/report/thinking.md", run_id: "ask-report" }),
+    runAskCommand: jest.fn().mockResolvedValue({
+      report_path: "output/reports/report-q.md",
+      run_notes_path: "output/control/runs/report/thinking.md",
+      run_id: "ask-report",
+    }),
   });
   const container = document.createElement("div");
 
@@ -679,6 +723,7 @@ test("material question stores final inferred format without long running flag",
       askFormat: "report",
       run_notes_path: "output/control/runs/report/thinking.md",
       run_id: "ask-report",
+      askPayload: { report_path: "output/reports/material-q.md" },
     }),
   });
   const container = document.createElement("div");
@@ -708,7 +753,7 @@ test("ask pending card uses generic generation language", () => {
           id: "report-1",
           status: "received",
           displayText: "请生成一份深度报告",
-          startedAt: "2026-05-13T09:00:00Z",
+          startedAt: new Date(Date.now() - 5000).toISOString(),
           retryArgs: { kind: "auto-ask", format: "report" },
         },
       ],
@@ -717,8 +762,9 @@ test("ask pending card uses generic generation language", () => {
   );
 
   expect(container.textContent).toContain("正在生成");
-  expect(container.textContent).toContain("已接收请求");
+  expect(container.textContent).not.toContain("已接收请求");
   expect(container.textContent).not.toContain("长程报告");
+  expect(container.querySelector(".furnace-progress-steps")).toBeNull();
 });
 
 test("ask pending running card shows soft hint after 15 seconds", () => {
@@ -743,7 +789,8 @@ test("ask pending running card shows soft hint after 15 seconds", () => {
       container
     );
     expect(container.textContent).toContain("仍在生成，请稍候");
-    expect(container.querySelector(".furnace-ask-pending-soft-hint")).toBeTruthy();
+    expect(container.querySelector(".furnace-ask-pending-soft-hint")).toBeNull();
+    expect(container.querySelector(".furnace-bubble-status-text").textContent).toContain("仍在生成，请稍候");
   } finally {
     Date.now = realNow;
   }
@@ -831,7 +878,7 @@ test("renderTodayFeed covers no-summary empty-feed and pending branches", () => 
   context.renderTodayFeed(
     makePlugin({
       shellSummary: emptySummary,
-      pendingSubmissions: [{ id: "p1", status: "running", displayText: "等待编译", startedAt: "2026-05-13T09:00:00Z" }],
+      pendingSubmissions: [{ id: "p1", status: "running", displayText: "等待编译", startedAt: new Date(Date.now() - 5000).toISOString(), retryArgs: { kind: "auto-ask", format: "report" } }],
     }),
     pendingContainer
   );
@@ -887,6 +934,52 @@ test("chat-style pending stream covers artifact cards failed and escalated bubbl
   expect(container.textContent).toContain("重试");
   expect(container.textContent).toContain("需要人工确认");
   expect(container.querySelector(".furnace-pending-exception-btn")).toBeTruthy();
+});
+
+test("renderTodayFeed hides done pending bubble when report already appears in Today feed", () => {
+  const context = loadRenderContext();
+  const container = document.createElement("div");
+  context.renderTodayFeed(
+    makePlugin({
+      shellSummary: {
+        generated_at: "2026-05-13T10:00:00Z",
+        review_backlog_counts: {},
+        recent_outputs: [
+          {
+            path: "output/reports/r.md",
+            title: "Today report",
+            generated_at: "2026-05-13T09:30:00Z",
+            format: "report",
+          },
+        ],
+        recent_receipts: [],
+        suggested_next_actions: [],
+        metrics_history_delta: { available: false },
+      },
+      pendingSubmissions: [
+        {
+          id: "done-dup",
+          status: "done",
+          displayText: "生成报告",
+          reconcileTarget: "outputs",
+          reconcilePath: "output/reports/r.md",
+        },
+        {
+          id: "done-other",
+          status: "done",
+          displayText: "其他报告",
+          reconcileTarget: "outputs",
+          reconcilePath: "output/reports/other.md",
+        },
+      ],
+    }),
+    container
+  );
+
+  expect(container.querySelectorAll(".furnace-conversation-item")).toHaveLength(1);
+  expect(container.textContent).toContain("其他报告");
+  expect(container.textContent).not.toContain("生成报告");
+  expect(container.textContent).toContain("Today report");
 });
 
 test("degraded output card hides quote action and keeps recovery semantics", async () => {
@@ -955,7 +1048,11 @@ test("degraded output retry clears stale run id and records new sync ask metadat
       },
     ],
   });
-  plugin.runAskCommand = jest.fn().mockResolvedValue({ run_id: "new-run", run_notes_path: "output/control/runs/new/thinking.md" });
+  plugin.runAskCommand = jest.fn().mockResolvedValue({
+    run_id: "new-run",
+    run_notes_path: "output/control/runs/new/thinking.md",
+    report_path: "output/reports/degraded-retry.md",
+  });
   const container = document.createElement("div");
 
   context.renderTodayFeed(plugin, container);
@@ -965,7 +1062,9 @@ test("degraded output retry clears stale run id and records new sync ask metadat
 
   expect(plugin.runAskCommand).toHaveBeenCalledWith(expect.objectContaining({ question: "重试问题", format: "report", mode: "run-ask", excludePendingId: "done-degraded" }));
   expect(plugin.pendingSubmissions[0]).toEqual(expect.objectContaining({
-    status: "received",
+    status: "done",
+    reconcileTarget: "outputs",
+    reconcilePath: "output/reports/degraded-retry.md",
     runId: "new-run",
     runNotesPath: "output/control/runs/new/thinking.md",
   }));

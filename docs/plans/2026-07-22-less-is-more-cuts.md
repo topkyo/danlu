@@ -13,30 +13,30 @@
 **Depends on:** none  
 **Files:** `render_input.js`, `render_today.js` (retry), `plugin_actions.js` if needed, Jest
 
-- [ ] Ask 成功且 payload 有 `report_path`（或等价 outputs 路径）→ `markPendingSubmissionDone(id, "outputs", path)`，**不再** `markPendingSubmissionReceived`
-- [ ] 失败仍 `markPendingSubmissionFailed`；无 path 的成功可 retained received 或 failed-with-hint（优先 done-or-fail，避免幽灵 received）
-- [ ] 重试成功同样直写 done
-- [ ] 更新 Jest：成功路径期望 `markPendingSubmissionDone`，不期望 received
-- [ ] **Verify:** `bash scripts/verify.sh product-shell-static`
+- [x] Ask 成功且 payload 有 `report_path`（或等价 outputs 路径）→ `markPendingSubmissionDone(id, "outputs", path)`，**不再** `markPendingSubmissionReceived`
+- [x] 失败仍 `markPendingSubmissionFailed`；无 path 的成功可 retained received 或 failed-with-hint（优先 done-or-fail，避免幽灵 received）
+- [x] 重试成功同样直写 done
+- [x] 更新 Jest：成功路径期望 `markPendingSubmissionDone`，不期望 received
+- [x] **Verify:** `bash scripts/verify.sh product-shell-static`
 
 ## Task 2: Pending 去戏（假进度 / 双层提示）
 
 **Depends on:** Task 1（同 Shell 文件，串行或同一 agent）  
 **Files:** `render_today.js`, `constants.js`, Jest
 
-- [ ] 删除或不再渲染时间驱动的假 `renderPendingProgressSteps`（running 只留一句静态等待）
-- [ ] 15s 软提示与静态文案合并为不叠两层（二选一：软提示替换状态句，或去掉软提示只留静态）
-- [ ] 用户可见文案不再强调 `backgroundStatus`
-- [ ] **Verify:** `bash scripts/verify.sh product-shell-static`
+- [x] 删除或不再渲染时间驱动的假 `renderPendingProgressSteps`（running 只留一句静态等待）
+- [x] 15s 软提示与静态文案合并为不叠两层（二选一：软提示替换状态句，或去掉软提示只留静态）
+- [x] 用户可见文案不再强调 `backgroundStatus`
+- [x] **Verify:** `bash scripts/verify.sh product-shell-static`
 
 ## Task 3: Today 默认 = 报告列表
 
 **Depends on:** none（可与 Task 1 并行若文件冲突则串 Task 2 后）  
 **Files:** `today_feed.js`, `render_today.js`, `render/cards.js` 若需, Jest
 
-- [ ] 默认 **不** 把 `compound_suggest` 打进主 Today 分组（或设置默认隐藏；无新 settings 则直接不渲染主栏）
-- [ ] done pending 卡与 Today 报告去重/折叠（同 path 只显示一处）
-- [ ] **Verify:** `bash scripts/verify.sh product-shell-static`
+- [x] 默认 **不** 把 `compound_suggest` 打进主 Today 分组（或设置默认隐藏；无新 settings 则直接不渲染主栏）
+- [x] done pending 卡与 Today 报告去重/折叠（同 path 只显示一处）
+- [x] **Verify:** `bash scripts/verify.sh product-shell-static`
 
 ## Task 4: 清 no-op nightly / auto_adopt 配置面
 

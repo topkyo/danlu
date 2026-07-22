@@ -483,6 +483,37 @@ function splitReportsByLocalDate(reports, options = {}) {
   };
 }
 
+function resolveAskOutputPath(payload) {
+  if (!payload || typeof payload !== "object") return "";
+  const reportPath = String(payload.report_path || payload.reportPath || "").trim();
+  if (reportPath) return reportPath;
+  const outputPath = String(payload.output_path || payload.outputPath || "").trim();
+  if (outputPath && outputPath.startsWith("output/")) return outputPath;
+  const path = String(payload.path || "").trim();
+  if (path && path.startsWith("output/")) return path;
+  for (const nestedKey of ["payload", "result", "ask_result", "ask"]) {
+    const nested = payload[nestedKey];
+    if (nested && typeof nested === "object") {
+      const nestedPath = resolveAskOutputPath(nested);
+      if (nestedPath) return nestedPath;
+    }
+  }
+  return "";
+}
+
+function finalizePendingAskSubmission(plugin, pendingId, payload) {
+  if (!pendingId) return;
+  const outputPath = resolveAskOutputPath(payload);
+  if (outputPath) {
+    plugin.markPendingSubmissionDone(pendingId, "outputs", outputPath);
+    return;
+  }
+  plugin.markPendingSubmissionFailed(
+    pendingId,
+    new Error(plugin.t("提问成功但未返回报告路径"))
+  );
+}
+
 function elixirIdFromLinkedRefs(linkedRefs) {
   const refs = Array.isArray(linkedRefs) ? linkedRefs : [];
   for (const ref of refs) {

@@ -43,9 +43,8 @@ function buildTodayFeed(summary) {
   const entries = [];
 
   entries.push(...buildReportEntries(summary, todayDate));
-  entries.push(...buildCompoundSuggestEntries(summary));
-  // Primary Today: today's reports + compound_suggest only. Governance backlog,
-  // drift, proposals, and operator maintenance stay in Advanced / operator feed.
+  // Primary Today: today's reports only. Compound suggest stays on report cards;
+  // governance backlog and operator maintenance stay in Advanced / operator feed.
 
   const prioritized = entries.map((entry) => ({ ...entry, priority: priorityForKind(entry.kind) }));
   prioritized.sort(compareEntries);

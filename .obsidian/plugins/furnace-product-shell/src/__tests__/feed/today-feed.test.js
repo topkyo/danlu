@@ -232,7 +232,7 @@ test("buildTodayFeed keeps elixir receipts out of primary feed", () => {
   expect(feed.filter((e) => e.kind === "elixir")).toHaveLength(0);
 });
 
-test("buildTodayFeed surfaces compound suggest action entries", () => {
+test("buildTodayFeed keeps standalone compound suggest actions out of primary feed", () => {
   const summary = makeSummary({
     compound_suggest: {
       available: true,
@@ -261,11 +261,8 @@ test("buildTodayFeed surfaces compound suggest action entries", () => {
   });
 
   const feed = buildTodayFeed(summary);
-  const compoundActions = feed.filter((entry) => entry.compound_suggest);
-  expect(compoundActions).toHaveLength(1);
-  expect(compoundActions[0].kind).toBe("action");
-  expect(compoundActions[0].title).toBe("沉淀：Today question");
-  expect(compoundActions[0].compound_suggest.action).toBe("file-back-judgment");
+  const compoundActions = feed.filter((entry) => entry.kind === "action" && entry.compound_suggest);
+  expect(compoundActions).toHaveLength(0);
 });
 
 test("buildTodayFeed attaches compound suggest to today report entries", () => {
@@ -336,7 +333,7 @@ test("buildTodayFeed keeps generic suggested actions out of primary feed", () =>
   expect(feed.filter((e) => e.kind === "action")).toHaveLength(0);
 });
 
-test("buildTodayFeed sorts reports before compound suggest actions", () => {
+test("buildTodayFeed keeps reports when compound suggest exists without standalone action rows", () => {
   const summary = makeSummary({
     compound_suggest: {
       available: true,
@@ -355,8 +352,8 @@ test("buildTodayFeed sorts reports before compound suggest actions", () => {
     ],
   });
   const feed = buildTodayFeed(summary);
-  const kinds = feed.map((e) => e.kind);
-  expect(kinds.indexOf("report")).toBeLessThan(kinds.indexOf("action"));
+  expect(feed.map((e) => e.kind)).toEqual(["report"]);
+  expect(feed[0].compound_suggest).toMatchObject({ action: "file-back-judgment" });
 });
 
 test("buildTodayFeed keeps metric trend alerts out of primary Today", () => {
