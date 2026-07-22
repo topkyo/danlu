@@ -14,6 +14,8 @@
 
 ## 当前动态
 
+- 2026-07-22 (**Settings Slim A**)：通知 URL 非空即启用（删 `enabledChannels` toggle）；废弃未读文档/CSS/`cliHint`；SoT §9 camelCase。Spec/plan：`docs/specs|plans/2026-07-22-product-shell-settings-slim.md`。Jest **172**。
+
 - 2026-07-22（shell settings less · batch 3）：Base URL 与 Feishu/WeCom webhook 收进默认折叠 `<details>`；主设置页顺序 Language → Connection → LLM → Integrations → Developer；Jest **169**。
 
 - 2026-07-22（shell less cuts）：去掉 pending received/soft-hint；删死 modal/未用 Today builder/无引用 i18n；删 vault-queue 仅留 desktop launcher；Jest **169**（此前文档误记 174）。

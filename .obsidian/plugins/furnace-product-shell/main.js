@@ -113,7 +113,7 @@ function llmProviderProfile(value) {
 }
 
 function llmProviderNeedsModel(profile) {
-  return Boolean(profile && !profile.cliHint);
+  return Boolean(profile);
 }
 
 function effectiveLlmModelForProvider(settings, profile) {
@@ -214,7 +214,6 @@ const DEFAULT_SETTINGS = {
   llmCustomOpenaiBaseUrl: "",
   feishuWebhookUrl: "",
   wecomWebhookUrl: "",
-  enabledChannels: [],
   // R91: Advanced 子 section 折叠态持久化；默认全折叠以降首屏认知负担
   advancedSectionsExpanded: { status: false, history: false },
 };
@@ -234,7 +233,7 @@ const ZH_TEXT = {
   "Recent plugin-triggered runs are listed here when available.": "此处列出插件触发的最近运行记录（如有）。",
   "Full runtime is Desktop-only. iPad/iOS Obsidian can only be a future companion; it cannot run the local launcher, Python CLI, or full ingest/review flow.": "全功能 runtime 仅支持 Desktop。iPad/iOS Obsidian 未来只能作为 companion，不能运行本地 launcher、Python CLI 或完整投料/复审流程。",
   "LLM backend": "LLM 后端",
-  "Select the LLM provider used by compile / run-ask / run-nightly. Common providers are listed first; advanced entries are for local CLI sessions or custom OpenAI-compatible endpoints.": "选择 compile / run-ask / run-nightly 使用的 LLM API provider。",
+  "Select the LLM provider used by compile / run-ask / run-nightly.": "选择 compile / run-ask / run-nightly 使用的 LLM API provider。",
   "LLM model": "LLM 模型",
   "Model for the selected API provider. Empty uses that provider profile default when one exists.": "所选 API provider 的模型。留空时使用该 provider profile 的默认模型（如果有）。",
   "API key": "API Key",
@@ -242,15 +241,11 @@ const ZH_TEXT = {
   "Base URL": "Base URL",
   "Override the provider endpoint. Leave empty to use the provider profile default.": "覆盖 provider endpoint。留空则使用 provider profile 默认值。",
   "Integrations (advanced)": "集成（高级）",
-  "CLI session": "CLI 会话",
-  "This backend uses a local CLI login/session. API key fields are not used.": "该后端已不再作为 Product Shell 后端使用。",
   "LLM settings saved. New runs will use the updated configuration.": "LLM 设置已保存。新的运行将使用更新后的配置。",
   "Notifications (webhook)": "通知（webhook）",
-  "Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports.": "Webhook 设置仅保存在本地插件数据中。失败不会重试。通知只用于新报告。",
+  "Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports. Non-empty webhook URL enables that channel.": "Webhook 设置仅保存在本地插件数据中。失败不会重试。通知只用于新报告。填写 URL 即启用该渠道。",
   "Feishu webhook URL": "飞书 webhook URL",
   "WeCom webhook URL": "企业微信 webhook URL",
-  "Enable Feishu": "启用飞书",
-  "Enable WeCom": "启用企业微信",
   "Universal input": "统一输入",
   "Universal Input": "统一输入",
   "Universal input cannot be empty.": "统一输入不能为空。",
@@ -1241,33 +1236,21 @@ function reviewObjectMetaText(control, locale = DEFAULT_LOCALE) {
   return parts.join(" | ");
 }
 
-function normalizeEnabledChannels(value) {
-  const allowed = new Set(["feishu", "wecom"]);
-  const items = Array.isArray(value) ? value : [];
-  return Array.from(
-    new Set(
-      items
-        .map((item) => String(item || "").trim())
-        .filter((item) => allowed.has(item))
-    )
-  );
-}
-
 function buildNotifyEnv(settings) {
   const env = {};
-  const feishuWebhookUrl = String(settings && settings.feishuWebhookUrl || "").trim();
+  const channels = [];
+  const feishuWebhookUrl = String((settings && settings.feishuWebhookUrl) || "").trim();
   if (feishuWebhookUrl) {
     env.AIWIKI_NOTIFY_FEISHU_WEBHOOK_URL = feishuWebhookUrl;
+    channels.push("feishu");
   }
-  const wecomWebhookUrl = String(settings && settings.wecomWebhookUrl || "").trim();
+  const wecomWebhookUrl = String((settings && settings.wecomWebhookUrl) || "").trim();
   if (wecomWebhookUrl) {
     env.AIWIKI_NOTIFY_WECOM_WEBHOOK_URL = wecomWebhookUrl;
+    channels.push("wecom");
   }
-  const enabledChannels = Array.isArray(settings && settings.enabledChannels)
-    ? settings.enabledChannels.map((channel) => String(channel || "").trim()).filter(Boolean)
-    : [];
-  if (enabledChannels.length) {
-    env.AIWIKI_NOTIFY_ENABLED_CHANNELS = enabledChannels.join(",");
+  if (channels.length) {
+    env.AIWIKI_NOTIFY_ENABLED_CHANNELS = channels.join(",");
   }
   return env;
 }
@@ -2815,7 +2798,7 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName(t("LLM backend"))
-      .setDesc(t("Select the LLM provider used by compile / run-ask / run-nightly. Common providers are listed first; advanced entries are for local CLI sessions or custom OpenAI-compatible endpoints."))
+      .setDesc(t("Select the LLM provider used by compile / run-ask / run-nightly."))
       .addDropdown((dropdown) => {
         for (const profile of LLM_PROVIDER_PROFILES) {
           const prefix = profile.tier === "advanced" ? "Advanced · " : "";
@@ -2881,16 +2864,6 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
         });
     }
 
-    if (selectedProfile.cliHint) {
-      new Setting(containerEl)
-        .setName(t("CLI session"))
-        .setDesc(t("This backend uses a local CLI login/session. API key fields are not used."));
-      containerEl.createEl("p", {
-        text: selectedProfile.cliHint,
-        cls: "setting-item-description",
-      });
-    }
-
     // ── Integrations (advanced) ────────────────────
     const integrationsDetails = containerEl.createEl("details", {
       cls: "furnace-settings-fold furnace-settings-fold-integrations",
@@ -2901,13 +2874,13 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
     });
     const integrationsBody = integrationsDetails.createDiv({ cls: "furnace-settings-fold-body" });
     integrationsBody.createEl("p", {
-      text: t("Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports."),
+      text: t("Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports. Non-empty webhook URL enables that channel."),
       cls: "setting-item-description",
     });
 
     new Setting(integrationsBody)
       .setName(t("Feishu webhook URL"))
-      .setDesc(t("Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports."))
+      .setDesc(t("Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports. Non-empty webhook URL enables that channel."))
       .addText((text) => {
         text
           .setPlaceholder("https://open.feishu.cn/open-apis/bot/v2/hook/...")
@@ -2921,7 +2894,7 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
 
     new Setting(integrationsBody)
       .setName(t("WeCom webhook URL"))
-      .setDesc(t("Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports."))
+      .setDesc(t("Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports. Non-empty webhook URL enables that channel."))
       .addText((text) => {
         text
           .setPlaceholder("https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...")
@@ -2932,33 +2905,6 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
           });
         text.inputEl.autocomplete = "off";
       });
-
-    const updateEnabledChannel = async (channel, enabled) => {
-      const channels = new Set(normalizeEnabledChannels(this.plugin.settings.enabledChannels));
-      if (enabled) {
-        channels.add(channel);
-      } else {
-        channels.delete(channel);
-      }
-      this.plugin.settings.enabledChannels = normalizeEnabledChannels(Array.from(channels));
-      await this.plugin.savePluginState();
-    };
-
-    new Setting(integrationsBody)
-      .setName(t("Enable Feishu"))
-      .addToggle((toggle) =>
-        toggle.setValue(normalizeEnabledChannels(this.plugin.settings.enabledChannels).includes("feishu")).onChange(async (value) => {
-          await updateEnabledChannel("feishu", Boolean(value));
-        })
-      );
-
-    new Setting(integrationsBody)
-      .setName(t("Enable WeCom"))
-      .addToggle((toggle) =>
-        toggle.setValue(normalizeEnabledChannels(this.plugin.settings.enabledChannels).includes("wecom")).onChange(async (value) => {
-          await updateEnabledChannel("wecom", Boolean(value));
-        })
-      );
 
     // ── Developer / diagnostics ─────────────────────
     containerEl.createEl("h3", { cls: "furnace-settings-section", text: t("Developer / diagnostics") });
@@ -6058,12 +6004,20 @@ async function loadProductShellPluginState(plugin) {
   const migratedWecomWebhookUrl = String(plugin.settings.wecomWebhookUrl || plugin.settings.wecom_webhook_url || "").trim();
   const wecomWebhookUrlMigrated = plugin.settings.wecomWebhookUrl !== migratedWecomWebhookUrl;
   plugin.settings.wecomWebhookUrl = migratedWecomWebhookUrl;
-  const rawEnabledChannels = Array.isArray(rawSettings.enabledChannels)
-    ? rawSettings.enabledChannels
-    : rawSettings.enabled_channels;
-  const migratedEnabledChannels = normalizeEnabledChannels(rawEnabledChannels);
-  const enabledChannelsMigrated = JSON.stringify(plugin.settings.enabledChannels || []) !== JSON.stringify(migratedEnabledChannels);
-  plugin.settings.enabledChannels = migratedEnabledChannels;
+  const legacyEnabledChannelsMigrated =
+    Object.prototype.hasOwnProperty.call(plugin.settings, "enabledChannels")
+    || Object.prototype.hasOwnProperty.call(plugin.settings, "enabled_channels")
+    || Object.prototype.hasOwnProperty.call(rawSettings, "enabledChannels")
+    || Object.prototype.hasOwnProperty.call(rawSettings, "enabled_channels");
+  const legacySnakeWebhookMigrated =
+    Object.prototype.hasOwnProperty.call(plugin.settings, "feishu_webhook_url")
+    || Object.prototype.hasOwnProperty.call(plugin.settings, "wecom_webhook_url")
+    || Object.prototype.hasOwnProperty.call(rawSettings, "feishu_webhook_url")
+    || Object.prototype.hasOwnProperty.call(rawSettings, "wecom_webhook_url");
+  delete plugin.settings.enabledChannels;
+  delete plugin.settings.enabled_channels;
+  delete plugin.settings.feishu_webhook_url;
+  delete plugin.settings.wecom_webhook_url;
   plugin.pendingSubmissions = plugin.hydratePendingSubmissions(plugin.settings.persistedPendingSubmissions);
   const recentRuns = normalizeProductShellRecentRuns(data.recentRuns);
   const llmHealth = data.llmHealth && typeof data.llmHealth === "object" ? data.llmHealth : null;
@@ -6072,7 +6026,8 @@ async function loadProductShellPluginState(plugin) {
   if (
     feishuWebhookUrlMigrated
     || wecomWebhookUrlMigrated
-    || enabledChannelsMigrated
+    || legacyEnabledChannelsMigrated
+    || legacySnakeWebhookMigrated
     || legacyDefaultAskFormatMigrated
     || legacyLastViewedTimestampMigrated
     || legacyLastKnownReportIdsMigrated

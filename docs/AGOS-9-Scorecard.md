@@ -84,7 +84,7 @@ updated_at: "2026-07-22"
 | 维度 | 权重 | 分 | Blocking? | 现行证据 |
 |------|------|---:|---|---|
 | Dogfood / fixture | 20% | 8.9 | no（live 维 blocking 在 Live gate） | acceptance **17** replay + AOS-C8 **historical** |
-| Product Shell | 12% | 9.3 | yes | Jest **169** + sync `run-ask` 单飞 + Today-first |
+| Product Shell | 12% | 9.3 | yes | Jest **172** + sync `run-ask` 单飞 + Today-first |
 | Runtime correctness | 15% | 9.4 | no | path harden + fail-closed LLM；无 background submit/resume |
 | Planner / signal | 10% | 8.7 | no | internal modules；CLI 已删；acceptance replay |
 | LLM reliability | 12% | 9.0 | no | llm-integration **77** + receipt 聚合 |
@@ -101,7 +101,7 @@ updated_at: "2026-07-22"
 | 1 | Full verify | `bash scripts/verify.sh all` |
 | 2 | Acceptance | **17** — `bash scripts/verify.sh acceptance` |
 | 3 | LLM integration | **77** — `bash scripts/verify.sh llm-integration` |
-| 4 | Product Shell | Jest **169** — `bash scripts/verify.sh product-shell-static` |
+| 4 | Product Shell | Jest **172** — `bash scripts/verify.sh product-shell-static` |
 | 5 | Docs consistency | `bash scripts/docs_consistency_check.sh` |
 | 6 | CI | `.github/workflows/verify.yml` |
 

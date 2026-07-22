@@ -35,7 +35,7 @@
 - build + 同步 Product Shell 到 dogfood vault：`bash scripts/sync_product_shell_to_vault.sh`（`build.sh` 重建 `main.js`，并把 vault 端的 `main.js` / `styles.css` 重新 link 到仓库；`manifest.json` / `data.json` 保持本地不动；vault 路径可被 `FURNACE_DOGFOOD_VAULT` 覆盖）
 - 常用 target：`scripts`、`smoke`、`python-static`、`acceptance`、`llm-integration`、`cli-smoke`、`product-shell-static`、`all`
   - 日常：`scripts` + `python-static` + `smoke`（无 coverage，单次常 ~25s）；用 `bash scripts/verify_target_rules.sh` 按改动路径自动选
-  - `all` 走 `scripts + product-shell-static + cli-smoke + smoke + python-static + acceptance + llm-integration`（常约 1–2 min，**含 acceptance 17 fixture replay + Product Shell Jest 169 + LLM integration 77**）；不含 coverage gate
+  - `all` 走 `scripts + product-shell-static + cli-smoke + smoke + python-static + acceptance + llm-integration`（常约 1–2 min，**含 acceptance 17 fixture replay + Product Shell Jest 172 + LLM integration 77**）；不含 coverage gate
 - 按改动路径建议 target：`bash scripts/verify_target_rules.sh`
 - 已移除：`cache_benchmark.py` / `compile_benchmark.py` / `dogfood_maturity_gate.py` / `agos9_*.sh` 等耗时辅助脚本、`verify.sh` 内的 `coverage run pytest` 段（释放 12 min）以及旧 bundle drift gating；`product-shell-static` 现为 `node --check` + Jest hard-gate（可用 `AIWIKI_SKIP_PRODUCT_SHELL_JS_TESTS=1` 紧急旁路）；脚本侧只保留 vault/runtime/install/uninstall 核心
 - 文档一致性：`bash scripts/docs_consistency_check.sh`
