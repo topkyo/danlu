@@ -46,6 +46,11 @@ async function loadProductShellPluginState(plugin) {
     || Object.prototype.hasOwnProperty.call(plugin.settings, "enabled_channels")
     || Object.prototype.hasOwnProperty.call(rawSettings, "enabledChannels")
     || Object.prototype.hasOwnProperty.call(rawSettings, "enabled_channels");
+  const legacySnakeWebhookMigrated =
+    Object.prototype.hasOwnProperty.call(plugin.settings, "feishu_webhook_url")
+    || Object.prototype.hasOwnProperty.call(plugin.settings, "wecom_webhook_url")
+    || Object.prototype.hasOwnProperty.call(rawSettings, "feishu_webhook_url")
+    || Object.prototype.hasOwnProperty.call(rawSettings, "wecom_webhook_url");
   delete plugin.settings.enabledChannels;
   delete plugin.settings.enabled_channels;
   delete plugin.settings.feishu_webhook_url;
@@ -59,6 +64,7 @@ async function loadProductShellPluginState(plugin) {
     feishuWebhookUrlMigrated
     || wecomWebhookUrlMigrated
     || legacyEnabledChannelsMigrated
+    || legacySnakeWebhookMigrated
     || legacyDefaultAskFormatMigrated
     || legacyLastViewedTimestampMigrated
     || legacyLastKnownReportIdsMigrated
