@@ -1687,7 +1687,6 @@ function serializePendingSubmissionList(pendingSubmissions) {
     reconcilePath: String(e.reconcilePath || ""),
     runId: String(e.runId || ""),
     runNotesPath: String(e.runNotesPath || ""),
-    jobId: String(e.jobId || ""),
     deliveryMode: String(e.deliveryMode || ""),
     llmStatus: String(e.llmStatus || ""),
     llmBackend: String(e.llmBackend || ""),
@@ -1743,7 +1742,6 @@ function hydratePendingSubmissionList(raw, now = Date.now()) {
       reconcilePath: String(item.reconcilePath || ""),
       runId: String(item.runId || ""),
       runNotesPath: String(item.runNotesPath || ""),
-      jobId: String(item.jobId || ""),
       deliveryMode: String(item.deliveryMode || ""),
       llmStatus: String(item.llmStatus || ""),
       llmBackend: String(item.llmBackend || ""),
@@ -1792,7 +1790,6 @@ function createPendingSubmissionEntry({ displayText, opts = {}, id, startedAt })
     reconcileTarget: "",
     runId: String(opts.runId || "").trim(),
     runNotesPath: String(opts.runNotesPath || "").trim(),
-    jobId: String(opts.jobId || "").trim(),
     deliveryMode: String(opts.deliveryMode || "").trim(),
     llmStatus: String(opts.llmStatus || "").trim(),
     llmBackend: String(opts.llmBackend || "").trim(),
@@ -1811,7 +1808,6 @@ function resetPendingSubmissionEntryForRetry(entry, nowIso) {
   entry.finishedAt = "";
   entry.reconcileTarget = "";
   entry.reconcilePath = "";
-  entry.jobId = "";
   entry.runId = "";
   entry.runNotesPath = "";
   entry.deliveryMode = "";
@@ -1821,7 +1817,7 @@ function resetPendingSubmissionEntryForRetry(entry, nowIso) {
   entry.backgroundStatus = "";
   entry.artifactQuality = "";
   if (entry.retryArgs && typeof entry.retryArgs === "object") {
-    entry.retryArgs = Object.assign({}, entry.retryArgs, { jobId: "", runId: "", runNotesPath: "" });
+    entry.retryArgs = Object.assign({}, entry.retryArgs, { runId: "", runNotesPath: "" });
   }
   entry._stale = false;
   return true;
@@ -2447,7 +2443,7 @@ function isDeliverableReportOutput(item) {
   const title = firstText(item, "title");
   if (deliveryMode === "deterministic-fallback") return false;
   if (["timeout_or_unavailable", "validation_failed", "pending", "failed", "degraded"].includes(llmStatus)) return false;
-  if (["submitted", "running", "degraded"].includes(backgroundStatus)) return false;
+  if (backgroundStatus === "degraded") return false;
   if (["degraded", "placeholder"].includes(artifactQuality)) return false;
   if (["1", "true", "yes"].includes(placeholder)) return false;
   if (title.startsWith("LLM 未完成")) return false;

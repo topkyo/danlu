@@ -195,7 +195,6 @@ function makePlugin(overrides = {}) {
       const entry = (overrides.pendingSubmissions || []).find((item) => item && item.id === id);
       if (entry) {
         entry.retryArgs = retryArgs;
-        entry.jobId = retryArgs.jobId || "";
         entry.runId = retryArgs.runId || "";
         entry.runNotesPath = retryArgs.runNotesPath || "";
       }
@@ -206,7 +205,6 @@ function makePlugin(overrides = {}) {
         entry.status = "running";
         entry.reconcileTarget = "";
         entry.reconcilePath = "";
-        entry.jobId = "";
         entry.runId = "";
         entry.runNotesPath = "";
       }

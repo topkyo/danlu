@@ -83,7 +83,6 @@ test("pending entry transitions preserve terminal and retry contracts", () => {
   expect(entry).toMatchObject({
     status: "running",
     error: "",
-    jobId: "",
     runId: "",
     runNotesPath: "",
     deliveryMode: "",

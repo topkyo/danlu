@@ -325,7 +325,7 @@ def _is_deliverable_report_output(item: dict[str, Any]) -> bool:
         return False
     if llm_status in {"timeout_or_unavailable", "validation_failed", "pending", "failed", "degraded"}:
         return False
-    if background_status in {"submitted", "running", "degraded"}:
+    if background_status == "degraded":
         return False
     if artifact_quality in {"degraded", "placeholder"}:
         return False

@@ -214,7 +214,6 @@ test("buildTodayFeed hides degraded and placeholder reports", () => {
       { path: "output/reports/degraded.md", title: "LLM 未完成：Q", generated_at: "2026-05-03T08:00:00Z", format: "report", delivery_mode: "deterministic-fallback", llm_status: "timeout_or_unavailable" },
       { path: "output/reports/literal-degraded.md", title: "Literal degraded", generated_at: "2026-05-03T08:00:00Z", format: "report", llm_status: "degraded" },
       { path: "output/reports/placeholder.md", title: "Template", generated_at: "2026-05-03T08:00:00Z", format: "report", artifact_quality: "placeholder", contains_llm_placeholder: "true" },
-      { path: "output/reports/pending.md", title: "Pending", generated_at: "2026-05-03T08:00:00Z", format: "report", background_status: "running" },
     ],
   });
   const feed = buildTodayFeed(summary);

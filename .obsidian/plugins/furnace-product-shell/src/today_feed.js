@@ -199,7 +199,7 @@ function isDeliverableReportOutput(item) {
   const title = firstText(item, "title");
   if (deliveryMode === "deterministic-fallback") return false;
   if (["timeout_or_unavailable", "validation_failed", "pending", "failed", "degraded"].includes(llmStatus)) return false;
-  if (["submitted", "running", "degraded"].includes(backgroundStatus)) return false;
+  if (backgroundStatus === "degraded") return false;
   if (["degraded", "placeholder"].includes(artifactQuality)) return false;
   if (["1", "true", "yes"].includes(placeholder)) return false;
   if (title.startsWith("LLM 未完成")) return false;

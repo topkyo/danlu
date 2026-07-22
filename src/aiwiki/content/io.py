@@ -524,18 +524,12 @@ def collect_recent_output_artifacts(root: Path, *, limit: int = 12) -> list[dict
             frontmatter = parse_frontmatter(content)
             if frontmatter.get("kind") == "output" and str(frontmatter.get("generated_by") or "") != "aiwiki-compile":
                 background_status = str(frontmatter.get("background_status") or "")
-                if background_status in {"submitted", "running"}:
-                    continue
                 title = first_markdown_heading(content) or path.stem
                 delivery_mode = str(frontmatter.get("delivery_mode") or "")
                 llm_status = str(frontmatter.get("llm_status") or "")
                 contains_placeholder = "_LLM:" in content
                 query = str(frontmatter.get("query") or "").strip()
-                background_job_id = str(frontmatter.get("background_job_id") or "")
-                if is_obsidian_open_link(query) or (
-                    contains_placeholder
-                    and (background_job_id or delivery_mode == "background-pending" or llm_status == "pending")
-                ):
+                if is_obsidian_open_link(query) or (contains_placeholder and llm_status == "pending"):
                     continue
                 degraded = (
                     delivery_mode == "deterministic-fallback"
@@ -559,7 +553,6 @@ def collect_recent_output_artifacts(root: Path, *, limit: int = 12) -> list[dict
                         "llm_backend": str(frontmatter.get("llm_backend") or ""),
                         "llm_model": str(frontmatter.get("llm_model") or ""),
                         "llm_failure_reason": str(frontmatter.get("llm_failure_reason") or ""),
-                        "background_job_id": background_job_id,
                         "background_status": background_status,
                         "artifact_quality": artifact_quality,
                         "contains_llm_placeholder": "true" if contains_placeholder else "false",
