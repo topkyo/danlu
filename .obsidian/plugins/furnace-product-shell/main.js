@@ -1617,7 +1617,6 @@ function serializePendingSubmissionList(pendingSubmissions) {
 function hydratePendingSubmissionList(raw, now = Date.now()) {
   if (!Array.isArray(raw) || !raw.length) return [];
   const TTL_MS = 24 * 60 * 60 * 1000;
-  const RECEIVED_STALE_MS = 12 * 60 * 60 * 1000;
   const DONE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
   const out = [];
   for (const item of raw) {
@@ -1635,15 +1634,13 @@ function hydratePendingSubmissionList(raw, now = Date.now()) {
         : (Number.isFinite(startMs) ? startMs : null);
       if (ttlBase !== null && now - ttlBase > DONE_TTL_MS) continue;
     }
-    let nextStatus = status;
+    let nextStatus = status === "received" ? "running" : status;
     let error = String(item.error || "");
     if (Number.isFinite(startMs)) {
       const age = now - startMs;
-      if ((status === "running") && age > TTL_MS) {
+      if (nextStatus === "running" && age > TTL_MS) {
         nextStatus = "failed";
         error = "上次提交可能仍在处理或已完成，点上方刷新查看结果";
-      } else if (status === "received" && age > RECEIVED_STALE_MS) {
-        item._stale = true;
       }
     }
     out.push({
@@ -1740,13 +1737,6 @@ function resetPendingSubmissionEntryForRetry(entry, nowIso) {
   return true;
 }
 
-function markPendingSubmissionEntryReceived(entry, nowIso) {
-  if (!entry || typeof entry !== "object" || entry.status !== "running") return false;
-  entry.status = "received";
-  entry.finishedAt = String(nowIso || "");
-  return true;
-}
-
 function markPendingSubmissionEntryDone(entry, reconcileTarget, reconcilePath, nowIso) {
   if (!entry || typeof entry !== "object") return false;
   if (entry.status === "done" || entry.status === "failed" || entry.status === "degraded") return false;
@@ -1812,7 +1802,7 @@ function pendingHasActiveAsk(pendingSubmissions, excludeId = "") {
   if (!Array.isArray(pendingSubmissions)) return false;
   const skip = String(excludeId || "").trim();
   return pendingSubmissions.some((entry) => {
-    if (!entry || (entry.status !== "running" && entry.status !== "received")) return false;
+    if (!entry || entry.status !== "running") return false;
     if (skip && String(entry.id || "") === skip) return false;
     return !isPureMaterialPendingEntry(entry);
   });
@@ -1855,7 +1845,6 @@ function reconcilePendingSubmissionList(pendingSubmissions, summary, now = Date.
       continue;
     }
     const startMs = Date.parse(entry.startedAt || "") || now;
-    // 超窗（仅对 running 生效；received 长期等待 reconcile，不超窗）
     if (entry.status === "running" && now - startMs > RECONCILE_WINDOW_MS) {
       remaining.push(entry);
       continue;
@@ -2022,13 +2011,6 @@ function resetPendingSubmissionRuntimeForRetry(plugin, id) {
   const entry = findPendingSubmissionRuntimeEntry(plugin, id);
   if (!entry) return;
   resetPendingSubmissionEntryForRetry(entry, new Date().toISOString());
-  commitPendingSubmissionRuntimeChange(plugin);
-}
-
-function markPendingSubmissionRuntimeReceived(plugin, id) {
-  const entry = findPendingSubmissionRuntimeEntry(plugin, id);
-  if (!entry) return;
-  if (!markPendingSubmissionEntryReceived(entry, new Date().toISOString())) return;
   commitPendingSubmissionRuntimeChange(plugin);
 }
 
@@ -4912,45 +4894,6 @@ function renderTodayEmptyCta(plugin, parentEl, viewRoot) {
   });
 }
 
-const ASK_PENDING_SOFT_HINT_MS = 15 * 1000;
-
-function pendingSubmissionElapsedMs(entry, now = Date.now()) {
-  const startedMs = Date.parse(entry && entry.startedAt || "");
-  return Number.isFinite(startedMs) ? Math.max(0, now - startedMs) : 0;
-}
-
-function shouldShowAskPendingSoftHint(entry, now = Date.now()) {
-  const status = String(entry && entry.status || "running");
-  if (status !== "running" && status !== "received") return false;
-  if (isPureMaterialPendingEntry(entry)) return false;
-  return pendingSubmissionElapsedMs(entry, now) >= ASK_PENDING_SOFT_HINT_MS;
-}
-
-function scheduleAskPendingSoftHintRefresh(plugin, items, now = Date.now()) {
-  if (!plugin || typeof plugin.refreshOpenViews !== "function") return;
-  if (plugin._askPendingSoftHintTimer) {
-    clearTimeout(plugin._askPendingSoftHintTimer);
-    plugin._askPendingSoftHintTimer = null;
-  }
-  let nextDelay = null;
-  for (const entry of items) {
-    const status = String(entry && entry.status || "running");
-    if (status !== "running" && status !== "received") continue;
-    if (isPureMaterialPendingEntry(entry)) continue;
-    const elapsed = pendingSubmissionElapsedMs(entry, now);
-    if (elapsed >= ASK_PENDING_SOFT_HINT_MS) continue;
-    const startedMs = Date.parse(entry && entry.startedAt || "");
-    if (!Number.isFinite(startedMs)) continue;
-    const delay = ASK_PENDING_SOFT_HINT_MS - elapsed;
-    if (nextDelay === null || delay < nextDelay) nextDelay = delay;
-  }
-  if (nextDelay === null || nextDelay <= 0) return;
-  plugin._askPendingSoftHintTimer = setTimeout(() => {
-    plugin._askPendingSoftHintTimer = null;
-    plugin.refreshOpenViews();
-  }, nextDelay + 50);
-}
-
 // R88 #2: 渲染"处理中"卡片（runtime-only pending submissions）
 function todayReportPathsFromSummary(summary) {
   if (!summary || typeof summary !== "object") return new Set();
@@ -4998,7 +4941,7 @@ function renderPendingSubmissionsGroup(plugin, section) {
 
     const statusLabel = pendingSubmissionStageLabel(plugin, entry, renderNow);
 
-    if (entry.status === "running" || entry.status === "received") {
+    if (entry.status === "running") {
       const skeleton = aiBubble.createDiv({ cls: "furnace-bubble-shimmer" });
       skeleton.createDiv({ cls: "furnace-bubble-shimmer-line" });
       skeleton.createDiv({ cls: "furnace-bubble-shimmer-line short" });
@@ -5115,18 +5058,6 @@ function renderPendingSubmissionsGroup(plugin, section) {
       openBtn.addEventListener("click", async () => plugin.openReviewPageContextPicker());
       const dismissBtn = actions.createEl("button", { text: plugin.t("Dismiss") });
       dismissBtn.addEventListener("click", () => plugin.removePendingSubmission(entry.id));
-    } else if (entry.status === "received" || entry.status === "running") {
-      const actions = aiBubble.createDiv({ cls: "furnace-bubble-actions" });
-      const refreshBtn = actions.createEl("button", { cls: "furnace-bubble-refresh-btn", text: plugin.t("刷新状态") });
-      refreshBtn.addEventListener("click", async () => {
-        refreshBtn.disabled = true;
-        try { await plugin.refreshShellSummaryCommand(); } catch (e) {}
-        finally { refreshBtn.disabled = false; }
-      });
-      if (entry.status === "received") {
-         const dismissBtn = actions.createEl("button", { text: plugin.t("Dismiss") });
-         dismissBtn.addEventListener("click", () => plugin.removePendingSubmission(entry.id));
-      }
     } else if (entry.status === "done" || entry.status === "degraded") {
       const target = String(entry.reconcileTarget || "");
       const reconcilePath = String(entry.reconcilePath || "");
@@ -5188,7 +5119,6 @@ function renderPendingSubmissionsGroup(plugin, section) {
       doneBtn.addEventListener("click", () => plugin.removePendingSubmission(entry.id));
     }
   }
-  scheduleAskPendingSoftHintRefresh(plugin, items, renderNow);
 }
 
 function hydratePendingArtifactSnippet(plugin, snippetEl, entry) {
@@ -5242,16 +5172,9 @@ function pendingSubmissionStageLabel(plugin, entry, now = Date.now()) {
     if (entry && entry.reconcileTarget === "raw") return plugin.t("已收料");
     return plugin.t("报告已生成");
   }
-  if (status === "received" || status === "running") {
-    if (!pureMaterial && shouldShowAskPendingSoftHint(entry, now)) {
-      return plugin.t("仍在生成，请稍候");
-    }
-    if (status === "received") {
-      if (pureMaterial) {
-        return entry && entry._stale ? plugin.t("可能已完成，刷新看看") : plugin.t("正在收料");
-      }
-      return entry && entry._stale ? plugin.t("可能已完成，刷新看看") : plugin.t("正在生成");
-    }
+  if (status === "running") {
+    if (pureMaterial) return plugin.t("正在收料");
+    return plugin.t("正在生成");
   }
   if (status === "failed") return plugin.t("失败");
   if (status === "escalated") return plugin.t("需要人工确认");
@@ -7715,7 +7638,7 @@ async function runProductShellPluginCommand(plugin, label, args, options = {}) {
         "running"
       );
       plugin.updateRunRecord(record, {
-        status: "received",
+        status: "running",
         exitCode: 0,
         finishedAt: "",
         resultPath: queuePath,
@@ -8227,7 +8150,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   async onload() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS);
     this.pluginState = { recentRuns: [] };
-    this.pendingSubmissions = []; // R89: 持久化 + runtime; status: running | received | done | failed | degraded; { id, payloadFingerprint, displayText, status, startedAt, finishedAt, error, reconcileTarget }
+    this.pendingSubmissions = []; // R89: 持久化 + runtime; status: running | done | failed | degraded; { id, payloadFingerprint, displayText, status, startedAt, finishedAt, error, reconcileTarget }
     this.shellSummary = null;
     this.repoState = { valid: false, root: "", launcherPath: "", missingPaths: ["vault-root"] };
     this.openViews = new Set();
@@ -8281,10 +8204,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     if (this._vaultChangeTimer) {
       clearTimeout(this._vaultChangeTimer);
       this._vaultChangeTimer = null;
-    }
-    if (this._askPendingSoftHintTimer) {
-      clearTimeout(this._askPendingSoftHintTimer);
-      this._askPendingSoftHintTimer = null;
     }
     this.openViews.clear();
   }
@@ -8349,7 +8268,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return serializePendingSubmissionList(this.pendingSubmissions);
   }
 
-  // R89: 启动时从持久化 settings hydrate；超过 TTL 24h 的 running/received → failed
+  // R89: 启动时从持久化 settings hydrate；超过 TTL 24h 的 running → failed；旧 received 迁移为 running
   // R90: done 状态加 7 天 TTL（避免无限堆积）
   hydratePendingSubmissions(raw) {
     return hydratePendingSubmissionList(raw);
@@ -8669,10 +8588,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   resetPendingSubmissionForRetry(id) {
     return resetPendingSubmissionRuntimeForRetry(this, id);
-  }
-
-  markPendingSubmissionReceived(id) {
-    return markPendingSubmissionRuntimeReceived(this, id);
   }
 
   markPendingSubmissionDone(id, reconcileTarget, reconcilePath) {

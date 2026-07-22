@@ -28,7 +28,6 @@ function serializePendingSubmissionList(pendingSubmissions) {
 function hydratePendingSubmissionList(raw, now = Date.now()) {
   if (!Array.isArray(raw) || !raw.length) return [];
   const TTL_MS = 24 * 60 * 60 * 1000;
-  const RECEIVED_STALE_MS = 12 * 60 * 60 * 1000;
   const DONE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
   const out = [];
   for (const item of raw) {
@@ -46,15 +45,13 @@ function hydratePendingSubmissionList(raw, now = Date.now()) {
         : (Number.isFinite(startMs) ? startMs : null);
       if (ttlBase !== null && now - ttlBase > DONE_TTL_MS) continue;
     }
-    let nextStatus = status;
+    let nextStatus = status === "received" ? "running" : status;
     let error = String(item.error || "");
     if (Number.isFinite(startMs)) {
       const age = now - startMs;
-      if ((status === "running") && age > TTL_MS) {
+      if (nextStatus === "running" && age > TTL_MS) {
         nextStatus = "failed";
         error = "上次提交可能仍在处理或已完成，点上方刷新查看结果";
-      } else if (status === "received" && age > RECEIVED_STALE_MS) {
-        item._stale = true;
       }
     }
     out.push({
@@ -151,13 +148,6 @@ function resetPendingSubmissionEntryForRetry(entry, nowIso) {
   return true;
 }
 
-function markPendingSubmissionEntryReceived(entry, nowIso) {
-  if (!entry || typeof entry !== "object" || entry.status !== "running") return false;
-  entry.status = "received";
-  entry.finishedAt = String(nowIso || "");
-  return true;
-}
-
 function markPendingSubmissionEntryDone(entry, reconcileTarget, reconcilePath, nowIso) {
   if (!entry || typeof entry !== "object") return false;
   if (entry.status === "done" || entry.status === "failed" || entry.status === "degraded") return false;
@@ -223,7 +213,7 @@ function pendingHasActiveAsk(pendingSubmissions, excludeId = "") {
   if (!Array.isArray(pendingSubmissions)) return false;
   const skip = String(excludeId || "").trim();
   return pendingSubmissions.some((entry) => {
-    if (!entry || (entry.status !== "running" && entry.status !== "received")) return false;
+    if (!entry || entry.status !== "running") return false;
     if (skip && String(entry.id || "") === skip) return false;
     return !isPureMaterialPendingEntry(entry);
   });
@@ -266,7 +256,6 @@ function reconcilePendingSubmissionList(pendingSubmissions, summary, now = Date.
       continue;
     }
     const startMs = Date.parse(entry.startedAt || "") || now;
-    // 超窗（仅对 running 生效；received 长期等待 reconcile，不超窗）
     if (entry.status === "running" && now - startMs > RECONCILE_WINDOW_MS) {
       remaining.push(entry);
       continue;

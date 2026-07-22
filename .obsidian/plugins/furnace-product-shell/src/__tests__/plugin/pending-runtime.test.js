@@ -26,7 +26,6 @@ function loadPendingRuntimeContext() {
     pendingHasActiveAsk: jest.fn(() => false),
     createPendingSubmissionEntry: jest.fn((payload) => payload),
     resetPendingSubmissionEntryForRetry: jest.fn(),
-    markPendingSubmissionEntryReceived: jest.fn(() => true),
     markPendingSubmissionEntryDone: jest.fn(() => true),
     markPendingSubmissionEntryFailed: jest.fn(),
     updatePendingSubmissionEntryRunNotes: jest.fn(),

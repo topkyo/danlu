@@ -120,7 +120,7 @@ test("pending submissions have a first-class degraded terminal state", () => {
     "utf8"
   );
 
-  expect(pluginSrc).toMatch(/running \| received \| done \| failed \| degraded/);
+  expect(pluginSrc).toMatch(/running \| done \| failed \| degraded/);
   expect(pluginSrc).toMatch(/isPendingSubmissionDegradedEntry\(entry\)/);
   expect(pendingStateSrc).toMatch(/markPendingSubmissionEntryDone/);
   expect(pendingStateSrc).toMatch(/isPendingSubmissionDegradedEntry\(entry\) \? "degraded" : "done"/);

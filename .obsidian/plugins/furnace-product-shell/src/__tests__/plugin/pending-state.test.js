@@ -68,8 +68,6 @@ test("pending entry transitions preserve terminal and retry contracts", () => {
     opts: { retryArgs: { runId: "run-1", runNotesPath: "notes.md", kind: "auto-ask", format: "report" } },
   });
 
-  expect(context.markPendingSubmissionEntryReceived(entry, "2026-05-25T00:00:01Z")).toBe(true);
-  expect(entry.status).toBe("received");
   expect(context.markPendingSubmissionEntryDone(entry, "outputs", "output/reports/a.md", "2026-05-25T00:00:02Z")).toBe(true);
   expect(entry).toMatchObject({
     status: "done",
@@ -98,7 +96,7 @@ test("pendingHasActiveAsk ignores pure material drops but blocks active ask card
   const context = loadPendingStateContext();
   const pending = [
     { id: "material", status: "running", retryArgs: { kind: "material", payload: "https://example.com" } },
-    { id: "ask", status: "received", retryArgs: { kind: "auto-ask", question: "Q", format: "report" } },
+    { id: "ask", status: "running", retryArgs: { kind: "auto-ask", question: "Q", format: "report" } },
   ];
 
   expect(context.pendingHasActiveAsk([pending[0]])).toBe(false);
@@ -113,7 +111,7 @@ test("pure material reconcile ignores recent outputs and matches raw only", () =
   const pending = [
     {
       id: "p-url",
-      status: "received",
+      status: "running",
       payloadFingerprint: "https://example.com/post",
       title: "https://example.com/post",
       startedAt: "2026-05-13T08:59:00Z",
@@ -154,7 +152,7 @@ test("ask reconcile still prefers recent outputs", () => {
   const pending = [
     {
       id: "p-ask",
-      status: "received",
+      status: "running",
       payloadFingerprint: "请总结",
       title: "请总结",
       startedAt: "2026-05-13T08:59:00Z",
@@ -214,4 +212,18 @@ test("pending artifact metadata updates camel and snake case fields", () => {
     artifactQuality: "degraded",
   });
   expect(context.isPendingSubmissionDegradedEntry(entry)).toBe(true);
+});
+
+test("hydrate migrates legacy received status to running", () => {
+  const context = loadPendingStateContext();
+  const hydrated = context.hydratePendingSubmissionList([
+    {
+      id: "legacy-received",
+      status: "received",
+      displayText: "Ask",
+      startedAt: "2026-05-25T00:00:00Z",
+    },
+  ], Date.parse("2026-05-25T00:01:00Z"))[0];
+
+  expect(hydrated.status).toBe("running");
 });

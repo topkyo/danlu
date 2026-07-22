@@ -60,13 +60,6 @@ function resetPendingSubmissionRuntimeForRetry(plugin, id) {
   commitPendingSubmissionRuntimeChange(plugin);
 }
 
-function markPendingSubmissionRuntimeReceived(plugin, id) {
-  const entry = findPendingSubmissionRuntimeEntry(plugin, id);
-  if (!entry) return;
-  if (!markPendingSubmissionEntryReceived(entry, new Date().toISOString())) return;
-  commitPendingSubmissionRuntimeChange(plugin);
-}
-
 function markPendingSubmissionRuntimeDone(plugin, id, reconcileTarget, reconcilePath) {
   const entry = findPendingSubmissionRuntimeEntry(plugin, id);
   if (!entry) return;

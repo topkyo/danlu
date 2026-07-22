@@ -52,7 +52,7 @@ async function runProductShellPluginCommand(plugin, label, args, options = {}) {
         "running"
       );
       plugin.updateRunRecord(record, {
-        status: "received",
+        status: "running",
         exitCode: 0,
         finishedAt: "",
         resultPath: queuePath,

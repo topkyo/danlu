@@ -268,45 +268,6 @@ function renderTodayEmptyCta(plugin, parentEl, viewRoot) {
   });
 }
 
-const ASK_PENDING_SOFT_HINT_MS = 15 * 1000;
-
-function pendingSubmissionElapsedMs(entry, now = Date.now()) {
-  const startedMs = Date.parse(entry && entry.startedAt || "");
-  return Number.isFinite(startedMs) ? Math.max(0, now - startedMs) : 0;
-}
-
-function shouldShowAskPendingSoftHint(entry, now = Date.now()) {
-  const status = String(entry && entry.status || "running");
-  if (status !== "running" && status !== "received") return false;
-  if (isPureMaterialPendingEntry(entry)) return false;
-  return pendingSubmissionElapsedMs(entry, now) >= ASK_PENDING_SOFT_HINT_MS;
-}
-
-function scheduleAskPendingSoftHintRefresh(plugin, items, now = Date.now()) {
-  if (!plugin || typeof plugin.refreshOpenViews !== "function") return;
-  if (plugin._askPendingSoftHintTimer) {
-    clearTimeout(plugin._askPendingSoftHintTimer);
-    plugin._askPendingSoftHintTimer = null;
-  }
-  let nextDelay = null;
-  for (const entry of items) {
-    const status = String(entry && entry.status || "running");
-    if (status !== "running" && status !== "received") continue;
-    if (isPureMaterialPendingEntry(entry)) continue;
-    const elapsed = pendingSubmissionElapsedMs(entry, now);
-    if (elapsed >= ASK_PENDING_SOFT_HINT_MS) continue;
-    const startedMs = Date.parse(entry && entry.startedAt || "");
-    if (!Number.isFinite(startedMs)) continue;
-    const delay = ASK_PENDING_SOFT_HINT_MS - elapsed;
-    if (nextDelay === null || delay < nextDelay) nextDelay = delay;
-  }
-  if (nextDelay === null || nextDelay <= 0) return;
-  plugin._askPendingSoftHintTimer = setTimeout(() => {
-    plugin._askPendingSoftHintTimer = null;
-    plugin.refreshOpenViews();
-  }, nextDelay + 50);
-}
-
 // R88 #2: 渲染"处理中"卡片（runtime-only pending submissions）
 function todayReportPathsFromSummary(summary) {
   if (!summary || typeof summary !== "object") return new Set();
@@ -354,7 +315,7 @@ function renderPendingSubmissionsGroup(plugin, section) {
 
     const statusLabel = pendingSubmissionStageLabel(plugin, entry, renderNow);
 
-    if (entry.status === "running" || entry.status === "received") {
+    if (entry.status === "running") {
       const skeleton = aiBubble.createDiv({ cls: "furnace-bubble-shimmer" });
       skeleton.createDiv({ cls: "furnace-bubble-shimmer-line" });
       skeleton.createDiv({ cls: "furnace-bubble-shimmer-line short" });
@@ -471,18 +432,6 @@ function renderPendingSubmissionsGroup(plugin, section) {
       openBtn.addEventListener("click", async () => plugin.openReviewPageContextPicker());
       const dismissBtn = actions.createEl("button", { text: plugin.t("Dismiss") });
       dismissBtn.addEventListener("click", () => plugin.removePendingSubmission(entry.id));
-    } else if (entry.status === "received" || entry.status === "running") {
-      const actions = aiBubble.createDiv({ cls: "furnace-bubble-actions" });
-      const refreshBtn = actions.createEl("button", { cls: "furnace-bubble-refresh-btn", text: plugin.t("刷新状态") });
-      refreshBtn.addEventListener("click", async () => {
-        refreshBtn.disabled = true;
-        try { await plugin.refreshShellSummaryCommand(); } catch (e) {}
-        finally { refreshBtn.disabled = false; }
-      });
-      if (entry.status === "received") {
-         const dismissBtn = actions.createEl("button", { text: plugin.t("Dismiss") });
-         dismissBtn.addEventListener("click", () => plugin.removePendingSubmission(entry.id));
-      }
     } else if (entry.status === "done" || entry.status === "degraded") {
       const target = String(entry.reconcileTarget || "");
       const reconcilePath = String(entry.reconcilePath || "");
@@ -544,7 +493,6 @@ function renderPendingSubmissionsGroup(plugin, section) {
       doneBtn.addEventListener("click", () => plugin.removePendingSubmission(entry.id));
     }
   }
-  scheduleAskPendingSoftHintRefresh(plugin, items, renderNow);
 }
 
 function hydratePendingArtifactSnippet(plugin, snippetEl, entry) {
@@ -598,16 +546,9 @@ function pendingSubmissionStageLabel(plugin, entry, now = Date.now()) {
     if (entry && entry.reconcileTarget === "raw") return plugin.t("已收料");
     return plugin.t("报告已生成");
   }
-  if (status === "received" || status === "running") {
-    if (!pureMaterial && shouldShowAskPendingSoftHint(entry, now)) {
-      return plugin.t("仍在生成，请稍候");
-    }
-    if (status === "received") {
-      if (pureMaterial) {
-        return entry && entry._stale ? plugin.t("可能已完成，刷新看看") : plugin.t("正在收料");
-      }
-      return entry && entry._stale ? plugin.t("可能已完成，刷新看看") : plugin.t("正在生成");
-    }
+  if (status === "running") {
+    if (pureMaterial) return plugin.t("正在收料");
+    return plugin.t("正在生成");
   }
   if (status === "failed") return plugin.t("失败");
   if (status === "escalated") return plugin.t("需要人工确认");

@@ -5,7 +5,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   async onload() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS);
     this.pluginState = { recentRuns: [] };
-    this.pendingSubmissions = []; // R89: 持久化 + runtime; status: running | received | done | failed | degraded; { id, payloadFingerprint, displayText, status, startedAt, finishedAt, error, reconcileTarget }
+    this.pendingSubmissions = []; // R89: 持久化 + runtime; status: running | done | failed | degraded; { id, payloadFingerprint, displayText, status, startedAt, finishedAt, error, reconcileTarget }
     this.shellSummary = null;
     this.repoState = { valid: false, root: "", launcherPath: "", missingPaths: ["vault-root"] };
     this.openViews = new Set();
@@ -59,10 +59,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     if (this._vaultChangeTimer) {
       clearTimeout(this._vaultChangeTimer);
       this._vaultChangeTimer = null;
-    }
-    if (this._askPendingSoftHintTimer) {
-      clearTimeout(this._askPendingSoftHintTimer);
-      this._askPendingSoftHintTimer = null;
     }
     this.openViews.clear();
   }
@@ -127,7 +123,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return serializePendingSubmissionList(this.pendingSubmissions);
   }
 
-  // R89: 启动时从持久化 settings hydrate；超过 TTL 24h 的 running/received → failed
+  // R89: 启动时从持久化 settings hydrate；超过 TTL 24h 的 running → failed；旧 received 迁移为 running
   // R90: done 状态加 7 天 TTL（避免无限堆积）
   hydratePendingSubmissions(raw) {
     return hydratePendingSubmissionList(raw);
@@ -447,10 +443,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   resetPendingSubmissionForRetry(id) {
     return resetPendingSubmissionRuntimeForRetry(this, id);
-  }
-
-  markPendingSubmissionReceived(id) {
-    return markPendingSubmissionRuntimeReceived(this, id);
   }
 
   markPendingSubmissionDone(id, reconcileTarget, reconcilePath) {

@@ -186,10 +186,6 @@ function makePlugin(overrides = {}) {
     refreshShellSummaryCommand: jest.fn().mockResolvedValue(undefined),
     hasActiveAskPending: jest.fn(() => false),
     pushPendingSubmission: jest.fn(() => "pending-1"),
-    markPendingSubmissionReceived: jest.fn((id) => {
-      const entry = (overrides.pendingSubmissions || []).find((item) => item && item.id === id);
-      if (entry && entry.status === "running") entry.status = "received";
-    }),
     markPendingSubmissionDone: jest.fn(function(id, target, path) {
       const entry = (this.pendingSubmissions || overrides.pendingSubmissions || []).find((item) => item && item.id === id);
       if (!entry) return;
@@ -349,7 +345,6 @@ test("renderUniversalInput success clears textarea and attachment pills after as
 
   expect(plugin.pushPendingSubmission).toHaveBeenCalledTimes(1);
   expect(plugin.markPendingSubmissionDone).toHaveBeenCalledWith("pending-1", "outputs", "output/reports/q.md");
-  expect(plugin.markPendingSubmissionReceived).not.toHaveBeenCalled();
   expect(plugin.markPendingSubmissionFailed).not.toHaveBeenCalled();
   expect(plugin.runDroppedFilesWithAutoAsk).toHaveBeenCalledTimes(1);
   expect(textarea.value).toBe("");
@@ -380,7 +375,6 @@ test("renderUniversalInput failure keeps textarea and attachment pills while res
   await flushAsyncWork();
 
   expect(plugin.markPendingSubmissionFailed).toHaveBeenCalledWith("pending-1", expect.any(Error));
-  expect(plugin.markPendingSubmissionReceived).not.toHaveBeenCalled();
   expect(textarea.value).toBe("请再试一次");
   expect(container.querySelectorAll(".furnace-input-attachment")).toHaveLength(1);
   expect(submitButton.disabled).toBe(false);
@@ -412,7 +406,6 @@ test("drop pure URL text fills textarea and does not enter file flow", async () 
   expect(plugin.runUniversalInputCommand).toHaveBeenCalledWith({ payload: "https://example.com/post" });
   expect(plugin.runAskCommand).not.toHaveBeenCalled();
   expect(plugin.completePendingMaterialDrop).toHaveBeenCalledWith("pending-1", ["raw/inbox/url.md"]);
-  expect(plugin.markPendingSubmissionReceived).not.toHaveBeenCalled();
 });
 
 test("obsidian open links navigate instead of submitting ask", async () => {
@@ -467,7 +460,6 @@ test("file-only submission completes as raw material instead of staying queued",
   });
   expect(plugin.runAskCommand).not.toHaveBeenCalled();
   expect(plugin.completePendingMaterialDrop).toHaveBeenCalledWith("pending-1", ["raw/inbox/image.md", "raw/assets/image.png"]);
-  expect(plugin.markPendingSubmissionReceived).not.toHaveBeenCalled();
 });
 
 test("pure material pending card shows 已收料 and never 排队生成报告", () => {
@@ -494,13 +486,13 @@ test("pure material pending card shows 已收料 and never 排队生成报告", 
   expect(container.textContent).not.toContain("已接收，正在排队生成报告");
 });
 
-test("ask pending received card shows generic generation copy", () => {
+test("ask pending running card shows generic generation copy", () => {
   const context = loadRenderContext();
   const plugin = makePlugin({
     pendingSubmissions: [
       {
         id: "p-ask",
-        status: "received",
+        status: "running",
         displayText: "请总结这篇文章",
         startedAt: new Date(Date.now() - 5000).toISOString(),
         retryArgs: { kind: "auto-ask", question: "请总结这篇文章", format: "report" },
@@ -513,6 +505,7 @@ test("ask pending received card shows generic generation copy", () => {
 
   expect(container.textContent).toContain("正在生成");
   expect(container.textContent).not.toContain("长程报告");
+  expect(container.querySelector(".furnace-bubble-refresh-btn")).toBeNull();
 });
 
 test("pure material failure card uses 投料失败 title", () => {
@@ -613,7 +606,6 @@ test("ctrl enter submits the composer through the form path", async () => {
     excludePendingId: "pending-1",
   });
   expect(plugin.markPendingSubmissionDone).toHaveBeenCalledWith("pending-1", "outputs", "output/reports/ask.md");
-  expect(plugin.markPendingSubmissionReceived).not.toHaveBeenCalled();
   expect(textarea.value).toBe("");
 });
 
@@ -648,7 +640,6 @@ test("ctrl enter keyup fallback submits once when requestSubmit is unavailable",
   expect(event.defaultPrevented).toBe(true);
   expect(plugin.runAskCommand).toHaveBeenCalledTimes(1);
   expect(plugin.markPendingSubmissionDone).toHaveBeenCalledWith("pending-1", "outputs", "output/reports/ask.md");
-  expect(plugin.markPendingSubmissionReceived).not.toHaveBeenCalled();
   expect(textarea.value).toBe("");
 });
 
@@ -751,7 +742,7 @@ test("ask pending card uses generic generation language", () => {
       pendingSubmissions: [
         {
           id: "report-1",
-          status: "received",
+          status: "running",
           displayText: "请生成一份深度报告",
           startedAt: new Date(Date.now() - 5000).toISOString(),
           retryArgs: { kind: "auto-ask", format: "report" },
@@ -765,90 +756,7 @@ test("ask pending card uses generic generation language", () => {
   expect(container.textContent).not.toContain("已接收请求");
   expect(container.textContent).not.toContain("长程报告");
   expect(container.querySelector(".furnace-progress-steps")).toBeNull();
-});
-
-test("ask pending running card shows soft hint after 15 seconds", () => {
-  const context = loadRenderContext();
-  const container = document.createElement("div");
-  const now = Date.parse("2026-05-13T09:00:20.000Z");
-  const realNow = Date.now;
-  Date.now = jest.fn(() => now);
-  try {
-    context.renderTodayFeed(
-      makePlugin({
-        pendingSubmissions: [
-          {
-            id: "ask-running-old",
-            status: "running",
-            displayText: "请总结这篇文章",
-            startedAt: "2026-05-13T09:00:00.000Z",
-            retryArgs: { kind: "auto-ask", format: "report" },
-          },
-        ],
-      }),
-      container
-    );
-    expect(container.textContent).toContain("仍在生成，请稍候");
-    expect(container.querySelector(".furnace-ask-pending-soft-hint")).toBeNull();
-    expect(container.querySelector(".furnace-bubble-status-text").textContent).toContain("仍在生成，请稍候");
-  } finally {
-    Date.now = realNow;
-  }
-});
-
-test("ask pending running card hides soft hint before 15 seconds", () => {
-  const context = loadRenderContext();
-  const container = document.createElement("div");
-  const now = Date.parse("2026-05-13T09:00:10.000Z");
-  const realNow = Date.now;
-  Date.now = jest.fn(() => now);
-  try {
-    context.renderTodayFeed(
-      makePlugin({
-        pendingSubmissions: [
-          {
-            id: "ask-running-fresh",
-            status: "running",
-            displayText: "请总结这篇文章",
-            startedAt: "2026-05-13T09:00:00.000Z",
-            retryArgs: { kind: "auto-ask", format: "report" },
-          },
-        ],
-      }),
-      container
-    );
-    expect(container.textContent).not.toContain("仍在生成，请稍候");
-    expect(container.querySelector(".furnace-ask-pending-soft-hint")).toBeNull();
-  } finally {
-    Date.now = realNow;
-  }
-});
-
-test("pure material pending card never shows ask soft hint", () => {
-  const context = loadRenderContext();
-  const container = document.createElement("div");
-  const now = Date.parse("2026-05-13T09:01:00.000Z");
-  const realNow = Date.now;
-  Date.now = jest.fn(() => now);
-  try {
-    context.renderTodayFeed(
-      makePlugin({
-        pendingSubmissions: [
-          {
-            id: "material-running",
-            status: "running",
-            displayText: "https://example.com/article",
-            startedAt: "2026-05-13T09:00:00.000Z",
-            retryArgs: { kind: "material", payload: "https://example.com/article" },
-          },
-        ],
-      }),
-      container
-    );
-    expect(container.textContent).not.toContain("仍在生成，请稍候");
-  } finally {
-    Date.now = realNow;
-  }
+  expect(container.querySelector(".furnace-bubble-refresh-btn")).toBeNull();
 });
 
 test("renderTodayFeed covers no-summary empty-feed and pending branches", () => {
@@ -885,7 +793,7 @@ test("renderTodayFeed covers no-summary empty-feed and pending branches", () => 
   expect(pendingContainer.textContent).not.toContain("今天还没有新报告");
   expect(pendingContainer.querySelector(".furnace-conversation-bubble")).toBeTruthy();
   expect(pendingContainer.querySelector(".furnace-bubble-user").textContent).toContain("等待编译");
-  expect(pendingContainer.querySelector(".furnace-bubble-ai").textContent).toContain("正在整理材料与上下文");
+  expect(pendingContainer.querySelector(".furnace-bubble-ai").textContent).toContain("正在生成");
   expect(pendingContainer.querySelector(".furnace-bubble-shimmer-line")).toBeTruthy();
 });
 
@@ -1080,13 +988,15 @@ test("reconcile pending report prefers run_id and stores delivery metadata", () 
   Object.assign(plugin, makePlugin());
   plugin.savePluginState = jest.fn();
   plugin.refreshOpenViews = jest.fn();
+  const startedAt = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+  const createdAt = new Date(Date.now() - 60 * 1000).toISOString();
   plugin.pendingSubmissions = [
     {
       id: "p-report",
-      status: "received",
+      status: "running",
       payloadFingerprint: "unmatched text fingerprint",
       displayText: "生成报告",
-      startedAt: "2026-05-13T08:59:00Z",
+      startedAt,
       runId: "ask-report-1",
       retryArgs: { runId: "ask-report-1", format: "report", kind: "auto-ask" },
     },
@@ -1097,7 +1007,7 @@ test("reconcile pending report prefers run_id and stores delivery metadata", () 
       {
         path: "output/reports/final.md",
         title: "完全不同标题",
-        created_at: "2026-05-13T09:00:00Z",
+        created_at: createdAt,
         run_id: "ask-report-1",
         run_notes_path: "output/control/runs/ask-report-1/thinking.md",
         delivery_mode: "deterministic-fallback",
@@ -1365,17 +1275,19 @@ test("llm-check unconfigured summary renders operable UI degradation", () => {
   expect(container.querySelector(".furnace-today-cta-submit")).toBeTruthy();
 });
 
-test("recent raw inputs reconcile received pending card to done with raw target", () => {
+test("recent raw inputs reconcile running pending card to done with raw target", () => {
   const context = loadRenderContext();
   const plugin = new context.FurnaceProductShellPlugin();
   Object.assign(plugin, makePlugin());
+  const startedAt = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+  const occurredAt = new Date(Date.now() - 60 * 1000).toISOString();
   plugin.pendingSubmissions = [
     {
       id: "p-raw",
-      status: "received",
+      status: "running",
       payloadFingerprint: "raw/inbox/product-shell-smoke.md",
       title: "Product Shell smoke",
-      startedAt: "2026-05-13T08:59:00Z",
+      startedAt,
     },
   ];
   plugin.markPendingSubmissionDone = jest.fn();
@@ -1388,7 +1300,7 @@ test("recent raw inputs reconcile received pending card to done with raw target"
       {
         stored_path: "raw/inbox/product-shell-smoke.md",
         title: "Product Shell smoke",
-        occurred_at: "2026-05-13T09:00:00Z",
+        occurred_at: occurredAt,
       },
     ],
   });
