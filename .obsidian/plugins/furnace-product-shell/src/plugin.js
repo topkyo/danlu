@@ -513,10 +513,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return runProductShellDropUrlCommand(this, { url, title });
   }
 
-  openDropUrlModal(initialUrl = "") {
-    new DropUrlModal(this.app, this).setInitialUrl(initialUrl).open();
-  }
-
   async runDropFileCommand({ mode, source, title, maxFiles }) {
     return runProductShellDropFileCommand(this, { mode, source, title, maxFiles });
   }
@@ -653,10 +649,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     renderStatusPanel(this, container);
   }
 
-  renderNextActionsPanel(container) {
-    renderNextActionsPanel(this, container);
-  }
-
   renderDigestRow(container, label, value) {
     renderDigestRow(this, container, label, value);
   }
@@ -665,13 +657,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     renderDigestPanel(this, container);
   }
 
-  
-  renderReportsPanel(container, reports) {
-    renderReportsPanel(this, container, reports);
-  }
-  renderReportsGroup(container, reports, emptyText) {
-    renderReportsGroup(this, container, reports, emptyText);
-  }
   renderAdvancedDrawer(container) {
     renderAdvancedDrawer(this, container);
   }

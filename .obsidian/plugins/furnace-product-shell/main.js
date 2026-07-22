@@ -263,14 +263,11 @@ const ZH_TEXT = {
   "Universal input": "统一输入",
   "Universal Input": "统一输入",
   "Universal input cannot be empty.": "统一输入不能为空。",
-  "投网址、文件、图片，或直接提问……": "投 URL、PDF、Markdown、图片、repo，或直接提问生成报告……",
   "Ctrl+Enter 提交 · 也可拖入文件": "Ctrl+Enter 提交 · 也可拖入文件",
   "Drop file here": "把文件拖到这里",
   Submit: "提交",
   "Invalid input: {message}": "输入无效：{message}",
-  "Ask 炼丹炉": "问炼丹炉",
   Question: "问题",
-  "Enter the research question...": "输入研究问题……",
   Format: "格式",
   Mode: "模式",
   Protocol: "协议",
@@ -306,7 +303,6 @@ const ZH_TEXT = {
   "No backup LLM route configured.": "未配置备用 LLM 路由。",
   "Backup LLM route ready: {count}/{total}": "备用 LLM 路由就绪：{count}/{total}",
   "Backup LLM route not ready.": "备用 LLM 路由未就绪。",
-  "Report generation can take several minutes; keep this card open and refresh status if needed.": "报告生成可能需要几分钟；保留这张卡片，必要时刷新状态。",
   "已有进行中的提问，请等待完成后再试。": "已有进行中的提问，请等待完成后再试。",
   "正在生成": "正在生成",
   "仍在生成，请稍候": "仍在生成，请稍候",
@@ -323,7 +319,6 @@ const ZH_TEXT = {
   "Generated {time}": "生成于 {time}",
   "launcher {launcher} · root {root}": "launcher {launcher} · 根目录 {root}",
   Fallback: "回退",
-  "Ask modal": "Ask 模态框",
   "Capture Material": "投文字材料",
   "欢迎使用炼丹炉": "欢迎使用炼丹炉",
   投料: "投料",
@@ -361,23 +356,6 @@ const ZH_TEXT = {
   "LLM Configuration": "LLM 配置",
   Notifications: "通知",
   "刷新炉子": "刷新炉子",
-  "投 Markdown 材料": "投 Markdown 材料",
-  "快速投入一段 Markdown、会议纪要或观察，作为原料进入炉子的收件箱。": "快速投入一段 Markdown、会议纪要或观察，作为原料进入炉子的收件箱。",
-  "正文不能为空。": "正文不能为空。",
-  "记录中…": "记录中…",
-  "记录": "记录",
-  "投网址": "投网址",
-  "投一个网页地址，炉子会自动抓取内容并编译成知识。": "投一个网页地址，炉子会自动抓取内容并编译成知识。",
-  "网址": "网址",
-  "网址不能为空。": "网址不能为空。",
-  "抓取中…": "抓取中…",
-  "投文件": "投文件",
-  "投一个本地文件或远程地址：PDF 原件会进入 raw/assets，Repo 会抓取代码快照。": "投一个本地文件或远程地址：Markdown 进入 raw/inbox，PDF 原件进入 raw/assets，Repo 会抓取代码快照。",
-  "PDF、Markdown 或 Repo": "PDF、Markdown 或 Repo",
-  "来源不能为空。": "来源不能为空。",
-  "投料中…": "投料中…",
-  "投图片": "投图片",
-  "投一张图片，原件会进入 raw/assets；视觉信息只作为运行层分析，不改写原料。": "投一张图片，原件会进入 raw/assets；视觉信息只作为运行层分析，不改写原料。",
   "搜索知识库": "搜索知识库",
   "搜索 wiki、概念、判断、决策和派生页面。": "搜索 wiki、概念、判断、决策和派生页面。",
   "关键词": "关键词",
@@ -385,18 +363,11 @@ const ZH_TEXT = {
   "搜索关键词不能为空。": "搜索关键词不能为空。",
   "搜索中…": "搜索中…",
   "搜索": "搜索",
-  "分析中…": "分析中…",
-  "问题": "问题",
-  "输入一个问题，炉子会用 LLM 深度分析并生成报告。": "输入一个问题，炉子会用 LLM 深度分析并生成报告。",
-  "选择本地文件": "选择本地文件",
   "来源": "来源",
   "结果数量": "结果数量",
-  "跳过视觉分析": "跳过视觉分析",
   Title: "标题",
-  "可选材料标题……": "可选材料标题……",
   Kind: "类型",
   Text: "正文",
-  "输入 Markdown、会议纪要或快速观察……": "输入 Markdown、会议纪要或快速观察……",
   "This writes into raw/inbox through the same launcher/runtime used by CLI commands.": "这会通过与 CLI 相同的 launcher/runtime 写入 raw/inbox。",
   Capture: "记录",
   "Text cannot be empty.": "正文不能为空。",
@@ -495,7 +466,6 @@ const ZH_TEXT = {
   "Term Index": "术语索引",
   Dashboard: "仪表盘",
   "⚠️ Drift Warnings": "⚠️ 漂移警告",
-  "Suggested Next Actions": "建议下一步动作",
   Today: "今天",
   "Furnace activity": "炉子动态",
   "No recent furnace activity": "暂无炉子动态",
@@ -507,13 +477,10 @@ const ZH_TEXT = {
   "(nothing for today)": "今天暂无待处理内容",
   "Needs Decision": "需要判断",
   Proposals: "提案",
-  "Today's Reports": "今日报告",
   Completed: "已完成",
   "Suggested Actions": "建议动作",
   // R89: pending 状态文案
   "处理中…": "处理中…",
-  "已接收，等待生成报告": "已接收，等待生成报告",
-  "已接收，正在排队生成报告": "已接收，正在排队生成报告",
   "已收料": "已收料",
   "正在收料": "正在收料",
   "投料失败": "投料失败",
@@ -521,11 +488,7 @@ const ZH_TEXT = {
   "投 URL / PDF / Markdown / 图片 / repo；提问才会生成报告": "投 URL / PDF / Markdown / 图片 / repo；提问才会生成报告",
   "Ctrl+Enter 提交 · 拖入文件 · 投料入 raw，提问出报告": "Ctrl+Enter 提交 · 拖入文件 · 投料入 raw，提问出报告",
   "报告已生成": "报告已生成",
-  "已记录": "已记录",
-  "可能已完成，点上方刷新": "可能已完成，点上方刷新",
   // R90: 提交→状态→结果 闭环
-  "可能已完成，点下方刷新状态": "可能已完成，点下方刷新状态",
-  "刷新状态": "刷新状态",
   "查看回执": "查看回执",
   "完成": "完成",
   "未刷新": "未刷新",
@@ -553,8 +516,6 @@ const ZH_TEXT = {
   "这次没成功。可以点重试，或检查输入是否完整。": "这次没成功。可以点重试，或检查输入是否完整。",
   // R89: Advanced 抽屉开发者分隔
   "以下为开发者诊断信息": "以下为开发者诊断信息",
-  "Keep the next safe action visible from the main surface.": "把下一步安全动作直接放在首屏，不藏在 summary 深处。",
-  "No suggested next action right now.": "当前没有明确的建议下一步动作。",
   "reason {value}": "原因 {value}",
   Open: "打开",
   "Open report": "打开报告",
@@ -579,9 +540,6 @@ const ZH_TEXT = {
   "Workspace page": "工作区页面",
   "Metric alert": "指标提醒",
   "Command prepared for manual confirmation": "命令已准备，复制后人工确认",
-  "Previous Reports": "过往报告",
-  "(no reports today)": "今天还没有报告",
-  "(no previous reports)": "暂无过往报告",
   "Search Results": "搜索结果",
   "Recent Queries": "最近查询",
   "Judgment Focus": "判断焦点",
@@ -855,28 +813,11 @@ const ZH_TEXT = {
   "Review queue": "审阅队列",
   "Execution queue": "执行队列",
   "Open outputs hub": "打开输出总览",
-  "URL cannot be empty.": "URL 不能为空。",
-  "Source cannot be empty.": "来源不能为空。",
-  "Drop URL modal": "投网址模态框",
-  "Drop File modal": "投文件模态框",
-  "Drop Image modal": "投图片模态框",
-  "Web URL": "网页 URL",
   "Source": "来源",
-  "Source path or URL": "来源路径或 URL",
-  "Select local file": "选择本地文件",
   "PDF, Markdown, or Repo": "PDF、Markdown 或 Repo",
   PDF: "PDF",
   Markdown: "Markdown",
   Repo: "Repo",
-  "Local PDF path or PDF URL.": "本地 PDF 路径或 PDF URL。",
-  "Local Markdown / txt file path.": "本地 Markdown / txt 文件路径。",
-  "Local repo path or remote git URL.": "本地仓库路径或远端 git URL。",
-  "Local image path or image URL.": "本地图片路径或图片 URL。",
-  "Repo max files": "Repo 最大文件数",
-  "Skip vision analysis": "跳过视觉分析",
-  "Drop this web page into raw/inbox.": "把网页抓取进 raw/inbox。",
-  "Import a PDF asset into raw/assets or a repo snapshot into raw/inbox.": "PDF 原件进 raw/assets；Markdown / 仓库快照进 raw/inbox。",
-  "Import an image asset into raw/assets.": "图片原件进 raw/assets。",
   "No nightly state yet.": "还没有 nightly 状态。",
   "Rerun command": "重跑命令",
   "Rewrite follow-up": "改写后续动作",
@@ -2194,75 +2135,6 @@ function buildTodayFeed(summary) {
   return prioritized;
 }
 
-function buildDecisionEntries(summary) {
-  const counts = summary.review_backlog_counts;
-  if (!counts || typeof counts !== "object") return [];
-  const timestamp = String(summary.generated_at || "");
-  const entries = [];
-  
-  const sortedKeys = Object.keys(counts).sort();
-  for (const kind of sortedKeys) {
-    const count = asCount(counts[kind]);
-    if (count <= 0) continue;
-    const kindText = String(kind).trim();
-    if (!kindText) continue;
-    if (!PRIMARY_REVIEW_BUCKETS.has(kindText)) continue;
-    const [title, hint] = reviewBucketCopy(kindText);
-    entries.push({
-      kind: "decision",
-      title,
-      summary: `${count} 项待处理 · ${hint}`,
-      target: `review:${kindText}`,
-      timestamp,
-      protocol: "",
-    });
-  }
-  return entries;
-}
-
-function buildCounterEvidenceEntries(summary) {
-  const pages = summary.counter_evidence_pages;
-  if (!Array.isArray(pages)) return [];
-  const entries = [];
-  for (const item of dictItems(pages)) {
-    const target = firstText(item, "path");
-    if (!target) continue;
-    const subject = firstText(item, "subject") || target;
-    const pageSummary = firstText(item, "summary") || "judgment 被反驳";
-    entries.push({
-      kind: "decision",
-      title: `反证待复核: ${subject}`,
-      summary: pageSummary,
-      target,
-      timestamp: firstText(item, "detected_at"),
-      protocol: firstText(item, "protocol"),
-    });
-  }
-  return entries;
-}
-
-function buildDriftEntries(summary) {
-  const warnings = summary.drift_warnings;
-  if (!Array.isArray(warnings)) return [];
-  const entries = [];
-  for (const item of dictItems(warnings).slice(0, 8)) {
-    const kindText = firstText(item, "kind");
-    const target = firstText(item, "path");
-    const message = firstText(item, "message");
-    if (!target && !message) continue;
-    const titleTarget = target || kindText || "drift";
-    entries.push({
-      kind: "decision",
-      title: `知识漂移: ${titleTarget}`,
-      summary: message || kindText || "证据已变",
-      target: target || kindText,
-      timestamp: firstText(item, "detected_at"),
-      protocol: firstText(item, "protocol"),
-    });
-  }
-  return entries;
-}
-
 function compoundSuggestItems(summary) {
   const compound = summary.compound_suggest;
   if (!compound || typeof compound !== "object" || !compound.available) return [];
@@ -2278,27 +2150,6 @@ function compoundSuggestIndex(summary) {
     if (reportPath) index[reportPath] = item;
   }
   return index;
-}
-
-function buildCompoundSuggestEntries(summary) {
-  const timestamp = String(summary.generated_at || "");
-  const entries = [];
-  for (const item of compoundSuggestItems(summary)) {
-    const title = firstText(item, "title", "report_title");
-    const reportPath = firstText(item, "report_path");
-    const reason = firstText(item, "reason", "signal") || "compound-suggest";
-    if (!title) continue;
-    entries.push({
-      kind: "action",
-      title,
-      summary: `复利建议：${reason}`,
-      target: reportPath || firstText(item, "command"),
-      timestamp,
-      protocol: firstText(item, "protocol"),
-      compound_suggest: item,
-    });
-  }
-  return entries;
 }
 
 function buildReportEntries(summary, todayDate) {
@@ -2348,129 +2199,6 @@ function isDeliverableReportOutput(item) {
   return true;
 }
 
-function buildElixirEntries(summary, todayDate) {
-  const entries = [];
-  for (const item of dictItems(summary.recent_receipts)) {
-    const timestamp = firstText(item, "applied_at", "generated_at", "created_at");
-    if (datePart(timestamp) !== todayDate) continue;
-    const operation = firstText(item, "operation");
-    const subjectKind = firstText(item, "subject_kind");
-    const subjectId = firstText(item, "subject_id");
-    const actionId = firstText(item, "action_id");
-    
-    const elixirText = [operation, subjectKind, subjectId, actionId].join(" ").toLowerCase();
-    const opLower = operation.toLowerCase();
-    
-    const hasElixir = elixirText.includes("elixir");
-    const hasToken = ["promote", "demote", "revert", "finalize"].some(token => opLower.includes(token));
-    
-    if (!hasElixir && !hasToken) continue;
-    
-    const title = firstText(item, "title") || subjectId || actionId;
-    const target = firstText(item, "receipt_path", "path");
-    if (!title || !target) continue;
-    
-    entries.push({
-      kind: "elixir",
-      title,
-      summary: `已完成 ${operation || '更新'}`,
-      target,
-      timestamp,
-      protocol: firstText(item, "protocol"),
-    });
-  }
-  return entries;
-}
-
-function buildMetricAlertEntries(summary) {
-  const delta = summary.metrics_history_delta;
-  if (!delta || typeof delta !== "object" || !delta.available) return [];
-  const alerts = delta.alerts;
-  if (!Array.isArray(alerts)) return [];
-  const windowLabel = String(delta.window || "");
-  const baselineTs = String(delta.baseline_ts || "");
-  const entries = [];
-  for (const item of dictItems(alerts)) {
-    const key = firstText(item, "metric_key");
-    if (!key) continue;
-    const direction = firstText(item, "direction");
-    const rawDiff = Number(item.diff || 0);
-    const diffValue = Number.isFinite(rawDiff) ? rawDiff : 0;
-    const arrow = direction === "up" ? "↑" : "↓";
-    const sign = diffValue >= 0 ? "+" : "";
-    entries.push({
-      kind: "action",
-      title: `指标变化: ${key} ${arrow}`,
-      summary: `${windowLabel} 内 ${key} 变化 ${sign}${diffValue.toPrecision(3)}（vs ${baselineTs}）`,
-      target: `metric:${key}`,
-      timestamp: baselineTs,
-      protocol: "",
-    });
-  }
-  return entries;
-}
-
-function buildActionEntries(summary, audience = "primary") {
-  const entries = [];
-  const generatedAt = String(summary.generated_at || "");
-  for (const item of dictItems(summary.suggested_next_actions)) {
-    if (firstText(item, "kind") === "compound-suggest") continue;
-    const title = firstText(item, "title", "label", "name");
-    const target = firstText(item, "command", "cli", "action", "path");
-    if (!title || !target) continue;
-    const reason = firstText(item, "reason", "kind");
-    if (audience === "primary" && isMaintenanceCommandAction(target, reason)) continue;
-    entries.push({
-      kind: "action",
-      title,
-      summary: `建议下一步：${reason || '继续处理'}`,
-      target,
-      timestamp: firstText(item, "timestamp", "updated_at", "created_at") || generatedAt,
-      protocol: firstText(item, "protocol"),
-    });
-  }
-  return entries;
-}
-
-function buildRawInputEntries(summary, todayDate) {
-  const recentRawInputs = summary.recent_raw_inputs;
-  if (!Array.isArray(recentRawInputs)) return [];
-  const entries = [];
-  for (const item of dictItems(recentRawInputs)) {
-    const storedPath = firstText(item, "stored_path");
-    if (!storedPath) continue;
-    const occurredAt = firstText(item, "occurred_at");
-    if (datePart(occurredAt) !== todayDate) continue;
-    const originalPath = firstText(item, "original_path");
-    const title = firstText(item, "title");
-    const sourceType = firstText(item, "source_type");
-    const sourceLabel = rawInputSourceTypeLabel(sourceType);
-    entries.push({
-      kind: "action",
-      title: `已投料：${title || originalPath || storedPath}`,
-      summary: `已收料 · ${sourceLabel}`,
-      target: storedPath,
-      timestamp: occurredAt,
-      protocol: firstText(item, "protocol"),
-    });
-  }
-  return entries;
-}
-
-function rawInputSourceTypeLabel(sourceType) {
-  const normalized = String(sourceType || "").trim();
-  const labels = {
-    "note-drop": "文本材料",
-    note: "文本材料",
-    markdown: "Markdown 材料",
-    "url-drop": "网页材料",
-    "pdf-drop": "PDF 材料",
-    "image-drop": "图片材料",
-    "repo-drop": "代码仓库材料",
-  };
-  return labels[normalized] || "材料";
-}
-
 function isMaintenanceCommandAction(target, reason) {
   const targetText = ` ${String(target || "").trim()} `;
   const reasonText = String(reason || "").trim();
@@ -2512,13 +2240,6 @@ function firstText(item, ...keys) {
   return "";
 }
 
-function asCount(value) {
-  if (typeof value === "boolean") return value ? 1 : 0;
-  if (typeof value === "number") return isNaN(value) ? 0 : Math.floor(value);
-  const parsed = parseInt(String(value), 10);
-  return isNaN(parsed) ? 0 : parsed;
-}
-
 function reviewBucketCopy(kindText) {
   const copy = REVIEW_BUCKET_COPY[kindText];
   if (copy) return copy;
@@ -2549,15 +2270,13 @@ module.exports = {
   isMaintenanceCommandAction,
   compoundSuggestItems,
   compoundSuggestIndex,
-  buildCompoundSuggestEntries,
   PRIORITY,
   PRIMARY_REVIEW_BUCKETS,
 };
 
 // --- src/modals.js ---
 
-// Modal subclasses (AskCommand, CaptureNote, Search, DropUrl,
-// DropFile, DropImage, StructuredCommand, ContextPicker).
+// Modal subclasses (StructuredCommand, ContextPicker).
 
 // Shared modal helpers
 function modalSubmitRow(containerEl, submitLabel, cancelLabel, onSubmit, onCancel) {
@@ -2593,372 +2312,6 @@ function clearInlineError(el) {
   if (!el) return;
   el.setText("");
   el.removeClass("is-visible");
-}
-
-class AskCommandModal extends Modal {
-  constructor(app, plugin) {
-    super(app);
-    this.plugin = plugin;
-  }
-
-  onOpen() {
-    const { contentEl } = this;
-    const t = this.plugin.t.bind(this.plugin);
-    contentEl.empty();
-    contentEl.addClass("furnace-shell-view");
-    contentEl.createEl("h2", { text: t("Ask 炼丹炉") });
-    contentEl.createDiv({ cls: "furnace-modal-help", text: t("输入一个问题，炉子会用 LLM 深度分析并生成报告。") });
-
-    const questionSetting = new Setting(contentEl).setName(t("问题"));
-    questionSetting.nameEl.addClass("furnace-modal-field-required");
-    const questionInput = questionSetting.controlEl.createEl("textarea");
-    questionInput.rows = 4;
-    questionInput.placeholder = t("输入研究问题……");
-    questionInput.addClass("furnace-shell-code");
-    const questionError = questionSetting.controlEl.createDiv({ cls: "furnace-modal-error" });
-
-    const { submitBtn } = modalSubmitRow(contentEl, t("运行"), t("取消"), function (btn) {
-      const question = String(questionInput.value || "").trim();
-      if (!question) {
-        showInlineError(questionError, t("问题不能为空。"));
-        return;
-      }
-      clearInlineError(questionError);
-      setSubmitLoading(btn, t("分析中…"));
-      const self = this;
-      self.close();
-      self.plugin.runUiAction(function () {
-        return self.plugin.runAskCommand({ question, format: "report", mode: "run-ask" });
-      }, t("Ask modal"));
-    }.bind(this), function () { this.close(); }.bind(this));
-
-    questionInput.focus();
-  }
-}
-
-class CaptureNoteModal extends Modal {
-  constructor(app, plugin) {
-    super(app);
-    this.plugin = plugin;
-  }
-
-  onOpen() {
-    const { contentEl } = this;
-    const t = this.plugin.t.bind(this.plugin);
-    contentEl.empty();
-    contentEl.addClass("furnace-shell-view");
-    contentEl.createEl("h2", { text: t("投 Markdown 材料") });
-    contentEl.createDiv({ cls: "furnace-modal-help", text: t("快速投入一段 Markdown、会议纪要或观察，作为原料进入炉子的收件箱。") });
-
-    const titleSetting = new Setting(contentEl).setName(t("标题"));
-    titleSetting.nameEl.addClass("furnace-modal-field-optional");
-    const titleInput = titleSetting.controlEl.createEl("input", { type: "text" });
-    titleInput.placeholder = t("可选材料标题……");
-    titleInput.addClass("furnace-shell-code");
-
-    const kindSetting = new Setting(contentEl).setName(t("类型"));
-    const kindSelect = kindSetting.controlEl.createEl("select");
-    [
-      ["markdown", "markdown"],
-      ["transcript", "transcript"],
-    ].forEach(([value, label]) => {
-      const option = kindSelect.createEl("option", { text: label, value });
-      option.value = value;
-    });
-    kindSelect.value = "markdown";
-
-    const textSetting = new Setting(contentEl).setName(t("正文"));
-    textSetting.nameEl.addClass("furnace-modal-field-required");
-    const textInput = textSetting.controlEl.createEl("textarea");
-    textInput.rows = 8;
-    textInput.placeholder = t("输入 Markdown、会议纪要或快速观察……");
-    textInput.addClass("furnace-shell-code");
-    const textError = textSetting.controlEl.createDiv({ cls: "furnace-modal-error" });
-
-    const self = this;
-    modalSubmitRow(contentEl, t("记录"), t("取消"), function (btn) {
-      const text = String(textInput.value || "").trim();
-      if (!text) {
-        showInlineError(textError, t("正文不能为空。"));
-        return;
-      }
-      clearInlineError(textError);
-      setSubmitLoading(btn, t("记录中…"));
-      const title = String(titleInput.value || "").trim();
-      const kind = String(kindSelect.value || "markdown");
-      self.close();
-      self.plugin.runUiAction(function () {
-        return self.plugin.runDropNoteCommand({ text, title, kind });
-      }, t("投 Markdown 材料"));
-    }, function () { self.close(); });
-
-    textInput.focus();
-  }
-}
-
-class DropUrlModal extends Modal {
-  constructor(app, plugin) {
-    super(app);
-    this.plugin = plugin;
-    this.initialUrl = "";
-  }
-
-  setInitialUrl(value) {
-    this.initialUrl = String(value || "").trim();
-    return this;
-  }
-
-  onOpen() {
-    const { contentEl } = this;
-    const t = this.plugin.t.bind(this.plugin);
-    contentEl.empty();
-    contentEl.addClass("furnace-shell-view");
-    contentEl.createEl("h2", { text: t("投网址") });
-    contentEl.createDiv({ cls: "furnace-modal-help", text: t("投一个网页地址，炉子会自动抓取内容并编译成知识。") });
-
-    const sourceSetting = new Setting(contentEl).setName(t("网址"));
-    sourceSetting.nameEl.addClass("furnace-modal-field-required");
-    const sourceInput = sourceSetting.controlEl.createEl("input", { type: "text" });
-    sourceInput.placeholder = "https://example.com/article";
-    sourceInput.addClass("furnace-shell-code");
-    sourceInput.value = this.initialUrl;
-    const sourceError = sourceSetting.controlEl.createDiv({ cls: "furnace-modal-error" });
-
-    const titleSetting = new Setting(contentEl).setName(t("标题"));
-    titleSetting.nameEl.addClass("furnace-modal-field-optional");
-    const titleInput = titleSetting.controlEl.createEl("input", { type: "text" });
-    titleInput.placeholder = t("可选材料标题……");
-    titleInput.addClass("furnace-shell-code");
-
-    const self = this;
-    modalSubmitRow(contentEl, t("投网址"), t("取消"), function (btn) {
-      const url = String(sourceInput.value || "").trim();
-      if (!url) {
-        showInlineError(sourceError, t("网址不能为空。"));
-        return;
-      }
-      clearInlineError(sourceError);
-      setSubmitLoading(btn, t("抓取中…"));
-      const title = String(titleInput.value || "").trim();
-      self.close();
-      self.plugin.runUiAction(function () {
-        return self.plugin.runDropUrlCommand({ url, title });
-      }, t("投网址"));
-    }, function () { self.close(); });
-
-    sourceInput.focus();
-  }
-}
-
-class DropFileModal extends Modal {
-  constructor(app, plugin) {
-    super(app);
-    this.plugin = plugin;
-    this.initialMode = "pdf";
-    this.initialSource = "";
-    this.initialTitle = "";
-  }
-
-  setInitialMode(value) {
-    const mode = String(value || "pdf").trim();
-    this.initialMode = mode === "repo" || mode === "markdown" ? mode : "pdf";
-    return this;
-  }
-
-  setInitialSource(value) {
-    this.initialSource = String(value || "");
-    return this;
-  }
-
-  setInitialTitle(value) {
-    this.initialTitle = String(value || "").trim();
-    return this;
-  }
-
-  onOpen() {
-    const { contentEl } = this;
-    const t = this.plugin.t.bind(this.plugin);
-    contentEl.empty();
-    contentEl.addClass("furnace-shell-view");
-    contentEl.createEl("h2", { text: t("投文件") });
-    contentEl.createDiv({ cls: "furnace-modal-help", text: t("投一个本地文件或远程地址：PDF 原件会进入 raw/assets，Repo 会抓取代码快照。") });
-
-    const kindSetting = new Setting(contentEl).setName(t("PDF、Markdown 或 Repo"));
-    const kindSelect = kindSetting.controlEl.createEl("select");
-    [
-      ["pdf", t("PDF")],
-      ["markdown", t("Markdown")],
-      ["repo", t("Repo")],
-    ].forEach(([value, label]) => {
-      const option = kindSelect.createEl("option", { text: label, value });
-      option.value = value;
-    });
-    kindSelect.value = this.initialMode;
-
-    const sourceSetting = new Setting(contentEl).setName(t("来源"));
-    sourceSetting.nameEl.addClass("furnace-modal-field-required");
-    const sourceInput = sourceSetting.controlEl.createEl("input", { type: "text" });
-    sourceInput.addClass("furnace-shell-code");
-    sourceInput.value = this.initialSource;
-    const pickerInput = sourceSetting.controlEl.createEl("input", { type: "file" });
-    pickerInput.style.display = "none";
-    let pickLocalButton = null;
-    const self = this;
-    sourceSetting.addButton(function (button) {
-      pickLocalButton = button;
-      button.setButtonText(t("选择本地文件")).onClick(function () {
-        pickerInput.click();
-      });
-    });
-    const sourceError = sourceSetting.controlEl.createDiv({ cls: "furnace-modal-error" });
-
-    pickerInput.addEventListener("change", async function () {
-      const file = pickerInput.files && pickerInput.files[0];
-      if (!file) { return; }
-      try {
-        const nextPath = await resolvePluginFileSource(self.plugin, file);
-        if (nextPath) { sourceInput.value = nextPath; }
-        if (!String(titleInput.value || "").trim()) { titleInput.value = String(file.name || "").trim(); }
-      } catch (error) {
-        showInlineError(sourceError, self.plugin.t("提交失败：{message}（输入已保留，可重试）", { message: error && error.message ? error.message : String(error) }));
-      }
-    });
-
-    const titleSetting = new Setting(contentEl).setName(t("标题"));
-    titleSetting.nameEl.addClass("furnace-modal-field-optional");
-    const titleInput = titleSetting.controlEl.createEl("input", { type: "text" });
-    titleInput.placeholder = t("可选材料标题……");
-    titleInput.addClass("furnace-shell-code");
-    titleInput.value = this.initialTitle;
-
-    const maxFilesSetting = new Setting(contentEl).setName(t("Repo 最大文件数"));
-    const maxFilesInput = maxFilesSetting.controlEl.createEl("input", { type: "text" });
-    maxFilesInput.value = "200";
-    maxFilesInput.addClass("furnace-shell-code");
-
-    const syncModeState = function () {
-      const mode = String(kindSelect.value || "pdf");
-      sourceInput.placeholder = mode === "repo"
-        ? t("本地 repo 路径或远程 git URL。")
-        : mode === "markdown"
-          ? t("本地 Markdown / txt 文件路径。")
-          : t("本地 PDF 路径或 PDF URL。");
-      pickerInput.accept = mode === "markdown" ? ".md,.markdown,.txt,text/markdown,text/plain" : mode === "pdf" ? ".pdf,application/pdf" : "";
-      if (pickLocalButton) { pickLocalButton.buttonEl.style.display = mode === "repo" ? "none" : ""; }
-      maxFilesSetting.settingEl.style.display = mode === "repo" ? "" : "none";
-    };
-    kindSelect.addEventListener("change", syncModeState);
-    syncModeState();
-
-    modalSubmitRow(contentEl, t("投文件"), t("取消"), function (btn) {
-      const source = String(sourceInput.value || "").trim();
-      if (!source) {
-        showInlineError(sourceError, t("来源不能为空。"));
-        return;
-      }
-      clearInlineError(sourceError);
-      setSubmitLoading(btn, t("投料中…"));
-      const mode = String(kindSelect.value || "pdf");
-      const title = String(titleInput.value || "").trim();
-      const maxFiles = Number.parseInt(String(maxFilesInput.value || "200"), 10);
-      self.close();
-      self.plugin.runUiAction(function () {
-        return self.plugin.runDropFileCommand({
-          mode, source, title,
-          maxFiles: Number.isFinite(maxFiles) && maxFiles > 0 ? maxFiles : 200,
-        });
-      }, t("投文件"));
-    }, function () { self.close(); });
-
-    sourceInput.focus();
-  }
-}
-
-class DropImageModal extends Modal {
-  constructor(app, plugin) {
-    super(app);
-    this.plugin = plugin;
-    this.initialSource = "";
-    this.initialTitle = "";
-  }
-
-  setInitialSource(value) {
-    this.initialSource = String(value || "");
-    return this;
-  }
-
-  setInitialTitle(value) {
-    this.initialTitle = String(value || "").trim();
-    return this;
-  }
-
-  onOpen() {
-    const { contentEl } = this;
-    const t = this.plugin.t.bind(this.plugin);
-    contentEl.empty();
-    contentEl.addClass("furnace-shell-view");
-    contentEl.createEl("h2", { text: t("投图片") });
-    contentEl.createDiv({ cls: "furnace-modal-help", text: t("投一张图片，原件会进入 raw/assets；视觉信息只作为运行层分析，不改写原料。") });
-
-    const sourceSetting = new Setting(contentEl).setName(t("来源"));
-    sourceSetting.nameEl.addClass("furnace-modal-field-required");
-    const sourceInput = sourceSetting.controlEl.createEl("input", { type: "text" });
-    sourceInput.placeholder = t("本地图片路径或图片 URL。");
-    sourceInput.addClass("furnace-shell-code");
-    sourceInput.value = this.initialSource;
-    const pickerInput = sourceSetting.controlEl.createEl("input", { type: "file" });
-    pickerInput.style.display = "none";
-    pickerInput.accept = "image/*";
-    sourceSetting.addButton(function (button) {
-      button.setButtonText(t("选择本地文件")).onClick(function () {
-        pickerInput.click();
-      });
-    });
-    const sourceError = sourceSetting.controlEl.createDiv({ cls: "furnace-modal-error" });
-    const self = this;
-    pickerInput.addEventListener("change", async function () {
-      const file = pickerInput.files && pickerInput.files[0];
-      if (!file) { return; }
-      try {
-        const nextPath = await resolvePluginFileSource(self.plugin, file);
-        if (nextPath) { sourceInput.value = nextPath; }
-        if (!String(titleInput.value || "").trim()) { titleInput.value = String(file.name || "").trim(); }
-      } catch (error) {
-        showInlineError(sourceError, self.plugin.t("提交失败：{message}（输入已保留，可重试）", { message: error && error.message ? error.message : String(error) }));
-      }
-    });
-
-    const titleSetting = new Setting(contentEl).setName(t("标题"));
-    titleSetting.nameEl.addClass("furnace-modal-field-optional");
-    const titleInput = titleSetting.controlEl.createEl("input", { type: "text" });
-    titleInput.placeholder = t("可选材料标题……");
-    titleInput.addClass("furnace-shell-code");
-    titleInput.value = this.initialTitle;
-
-    let skipVision = false;
-    new Setting(contentEl)
-      .setName(t("跳过视觉分析"))
-      .addToggle(function (toggle) {
-        toggle.setValue(false).onChange(function (value) { skipVision = Boolean(value); });
-      });
-
-    modalSubmitRow(contentEl, t("投图片"), t("取消"), function (btn) {
-      const source = String(sourceInput.value || "").trim();
-      if (!source) {
-        showInlineError(sourceError, t("来源不能为空。"));
-        return;
-      }
-      clearInlineError(sourceError);
-      setSubmitLoading(btn, t("投料中…"));
-      const title = String(titleInput.value || "").trim();
-      self.close();
-      self.plugin.runUiAction(function () {
-        return self.plugin.runDropImageCommand({ source, title, noVision: skipVision });
-      }, t("投图片"));
-    }, function () { self.close(); });
-
-    sourceInput.focus();
-  }
 }
 
 class StructuredCommandModal extends Modal {
@@ -5386,163 +4739,6 @@ function looksLikeCommandTarget(target) {
     return false;
   }
   return /^(?:aiwiki|python3?|PYTHONPATH=|drop-|run-|ask\b|compile\b|nightly\b|review-|apply-|revert-|file-back\b|metrics\b|today\b)/.test(text);
-}
-
-function renderReportsPanel(plugin, container, reports) {
-  const grouped = splitReportsByLocalDate(reports, { limitPreviousDays: 7 });
-  const section = container.createDiv({ cls: "furnace-shell-reports-section" });
-
-  const todaySection = section.createDiv({ cls: "furnace-shell-reports-group furnace-shell-reports-today" });
-  todaySection.createEl("h3", { text: plugin.t("Today's Reports") });
-  renderReportsGroup(plugin, todaySection, grouped.today, "(no reports today)");
-
-  const previousSection = section.createDiv({ cls: "furnace-shell-reports-group furnace-shell-previous-reports" });
-  previousSection.createEl("h3", { text: plugin.t("Previous Reports") });
-  if (!grouped.previous.length) {
-    previousSection.createDiv({ cls: "furnace-shell-empty", text: plugin.t("(no previous reports)") });
-    return;
-  }
-  grouped.previous.forEach((group) => {
-    const groupEl = previousSection.createDiv({ cls: "furnace-shell-date-group" });
-    groupEl.createDiv({ cls: "furnace-shell-date-header", text: plugin.t(group.label) });
-    renderReportsGroup(plugin, groupEl, group.items, "(no previous reports)");
-  });
-}
-
-function renderReportsGroup(plugin, container, reports, emptyText) {
-  const items = Array.isArray(reports) ? reports : [];
-  if (!items.length) {
-    container.createDiv({ cls: "furnace-shell-empty", text: plugin.t(emptyText) });
-    return;
-  }
-  const list = container.createDiv({ cls: "furnace-shell-report-list" });
-  items.forEach((report) => renderReportItem(plugin, list, report));
-}
-
-function renderReportItem(plugin, container, report) {
-  const isUnread = isReportUnread(report, plugin.settings.lastViewedTimestamp);
-  const titleText = report.title || report.path || plugin.t("output");
-  const card = container.createDiv({ cls: "furnace-shell-report-card" });
-  if (isUnread) {
-    card.addClass("is-unread");
-  }
-
-  const openReport = async () => {
-    if (!report.path) {
-      return;
-    }
-    await plugin.openWorkspacePath(report.path);
-    plugin.settings.lastViewedTimestamp = new Date().toISOString();
-    await plugin.savePluginState();
-    plugin.refreshOpenViews();
-  };
-
-  card.addEventListener("click", () => {
-    plugin.runUiAction(() => openReport(), `Open output: ${report.path || titleText}`);
-  });
-
-  const content = card.createDiv({ cls: "furnace-shell-report-content" });
-  content.createEl("span", { cls: "furnace-shell-report-dot", attr: { "aria-hidden": "true" } });
-  const copy = content.createDiv({ cls: "furnace-shell-report-copy" });
-  copy.createEl("span", { cls: "furnace-shell-report-title", text: titleText });
-  copy.createDiv({
-    cls: "furnace-shell-report-meta",
-    text: `${plugin.t(report.protocol || "general")} · ${plugin.t(report.format || "markdown")} · ${formatDisplayTime(report.created_at, plugin.locale()) || report.created_at || plugin.t("unknown")}`,
-  });
-
-  const openBtn = card.createEl("button", { text: plugin.t("Open report") });
-  openBtn.addEventListener("click", (event) => {
-    event.stopPropagation();
-    plugin.runUiAction(() => openReport(), `Open output: ${report.path || titleText}`);
-  });
-}
-
-function renderNeedsDecisionSection(plugin, container) {
-  const summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : null;
-  if (!summary) {
-    return;
-  }
-  const suggested = Array.isArray(summary.suggested_next_actions) ? summary.suggested_next_actions : [];
-  const drifts = Array.isArray(summary.drift_warnings) ? summary.drift_warnings : [];
-  const rewrites = Array.isArray(summary.rewrite_followup_actions)
-    ? summary.rewrite_followup_actions
-    : Array.isArray(summary["rewrite_" + "recovery_actions"])
-      ? summary["rewrite_" + "recovery_actions"]
-      : [];
-  const backlog = summary.review_backlog_counts && typeof summary.review_backlog_counts === "object" ? summary.review_backlog_counts : {};
-  const backlogTotal = Object.values(backlog).reduce((acc, v) => acc + (Number.isFinite(Number(v)) ? Number(v) : 0), 0);
-
-  if (!suggested.length && !drifts.length && !rewrites.length && backlogTotal <= 0) {
-    return;
-  }
-
-  const section = container.createDiv({ cls: "furnace-shell-needs-section" });
-  section.createEl("h3", { text: plugin.t("Needs your decision") });
-
-  const maxItems = 5;
-  if (suggested.length) {
-    renderSuggestedNextActionsBlock(plugin, section, { maxItems: Math.min(suggested.length, maxItems) });
-  }
-
-  const renderItem = (item, kindLabel) => {
-    const wrapper = section.createDiv({ cls: "furnace-shell-inline-list" });
-    const row = wrapper.createDiv({ cls: "furnace-shell-inline-item" });
-    const copy = row.createDiv({ cls: "furnace-shell-output-copy" });
-    copy.createEl("strong", { text: item.title || item.path || item.message || plugin.t(kindLabel) });
-    const metaParts = [plugin.t(kindLabel)];
-    if (item.reason) {
-      metaParts.push(plugin.t("reason {value}", { value: item.reason }));
-    }
-    if (item.path) {
-      metaParts.push(item.path);
-    }
-    if (metaParts.length) {
-      copy.createDiv({ cls: "furnace-shell-meta", text: metaParts.join(" | ") });
-    }
-    if (item.path) {
-      const buttons = row.createDiv({ cls: "furnace-shell-inline-actions furnace-shell-inline-actions-compact" });
-      const openButton = buttons.createEl("button", { text: plugin.t("Open") });
-      openButton.addEventListener("click", () => {
-        plugin.runUiAction(() => plugin.openWorkspacePath(item.path), `Open needs item: ${item.path}`);
-      });
-    }
-  };
-
-  let used = Math.min(suggested.length, maxItems);
-  let truncated = Math.max(0, suggested.length - maxItems);
-  for (const item of drifts) {
-    if (used >= maxItems) {
-      truncated += 1;
-      continue;
-    }
-    renderItem(item, "drift warning");
-    used += 1;
-  }
-  for (const item of rewrites) {
-    if (used >= maxItems) {
-      truncated += 1;
-      continue;
-    }
-    renderItem(item, "rewrite recovery");
-    used += 1;
-  }
-
-  if (backlogTotal > 0) {
-    const backlogRow = section.createDiv({ cls: "furnace-shell-needs-backlog" });
-    backlogRow.setText(plugin.t("Review backlog: {value} pending", { value: String(backlogTotal) }));
-  }
-
-  if (truncated > 0) {
-    const more = section.createDiv({ cls: "furnace-shell-needs-more" });
-    more.setText(plugin.t("+{value} more in Advanced", { value: String(truncated) }));
-  }
-}
-
-function renderNextActionsPanel(plugin, container) {
-  const panel = plugin.renderPanel(container, "Suggested Next Actions", "Keep the next safe action visible from the main surface.");
-  if (!renderSuggestedNextActionsBlock(plugin, panel, { maxItems: 3 })) {
-    panel.createDiv({ cls: "furnace-shell-empty", text: plugin.t("No suggested next action right now.") });
-  }
 }
 
 // --- src/render_advanced.js ---
@@ -8658,10 +7854,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return runProductShellDropUrlCommand(this, { url, title });
   }
 
-  openDropUrlModal(initialUrl = "") {
-    new DropUrlModal(this.app, this).setInitialUrl(initialUrl).open();
-  }
-
   async runDropFileCommand({ mode, source, title, maxFiles }) {
     return runProductShellDropFileCommand(this, { mode, source, title, maxFiles });
   }
@@ -8798,10 +7990,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     renderStatusPanel(this, container);
   }
 
-  renderNextActionsPanel(container) {
-    renderNextActionsPanel(this, container);
-  }
-
   renderDigestRow(container, label, value) {
     renderDigestRow(this, container, label, value);
   }
@@ -8810,13 +7998,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     renderDigestPanel(this, container);
   }
 
-  
-  renderReportsPanel(container, reports) {
-    renderReportsPanel(this, container, reports);
-  }
-  renderReportsGroup(container, reports, emptyText) {
-    renderReportsGroup(this, container, reports, emptyText);
-  }
   renderAdvancedDrawer(container) {
     renderAdvancedDrawer(this, container);
   }

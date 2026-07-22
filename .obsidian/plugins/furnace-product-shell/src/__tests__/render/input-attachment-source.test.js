@@ -76,14 +76,12 @@ describe("Universal Input attachment source handling", () => {
 
   test("drop action copy reflects asset-backed PDF and image drops", () => {
     const constantsSrc = fs.readFileSync(path.resolve(__dirname, "../../constants.js"), "utf8");
+    const inputSrc = fs.readFileSync(path.resolve(__dirname, "../../render_input.js"), "utf8");
     const bundleSrc = fs.readFileSync(path.resolve(__dirname, "../../../main.js"), "utf8");
 
-    expect(constantsSrc).toContain("PDF 原件进 raw/assets；Markdown / 仓库快照进 raw/inbox。");
-    expect(constantsSrc).toContain("图片原件进 raw/assets。");
-    expect(constantsSrc).not.toContain("把 PDF 或仓库快照投进 raw/inbox。");
-    expect(constantsSrc).not.toContain("把图片投进 raw/inbox。");
-    expect(bundleSrc).toContain("PDF 原件进 raw/assets；Markdown / 仓库快照进 raw/inbox。");
-    expect(bundleSrc).toContain("图片原件进 raw/assets。");
+    expect(constantsSrc).toContain("投 URL / PDF / Markdown / 图片 / repo；提问才会生成报告");
+    expect(inputSrc).toMatch(/placeholder = plugin\.t\("投 URL \/ PDF \/ Markdown \/ 图片 \/ repo；提问才会生成报告"\)/);
+    expect(bundleSrc).toContain("投 URL / PDF / Markdown / 图片 / repo；提问才会生成报告");
   });
 
   test("collectMaterialPathsFromPayload gathers all supported drop paths", () => {
@@ -258,17 +256,12 @@ describe("Universal Input attachment source handling", () => {
     expect(question).toContain("请总结要点");
   });
 
-  test("drop modals resolve selected files instead of falling back to bare names", () => {
-    const modalsSrc = fs.readFileSync(path.resolve(__dirname, "../../modals.js"), "utf8");
+  test("universal input resolves selected files instead of falling back to bare names", () => {
+    const inputSrc = fs.readFileSync(path.resolve(__dirname, "../../render_input.js"), "utf8");
     const bundleSrc = fs.readFileSync(path.resolve(__dirname, "../../../main.js"), "utf8");
 
-    expect(modalsSrc).toMatch(/await resolvePluginFileSource\(self\.plugin, file\)/);
-    expect(modalsSrc).toMatch(/setInitialTitle\(value\)/);
-    expect(modalsSrc).toMatch(/titleInput\.value = this\.initialTitle/);
-    expect(modalsSrc).toMatch(/titleInput\.value = String\(file\.name \|\| ""\)\.trim\(\)/);
-    expect(modalsSrc).not.toMatch(/file\.path \|\| file\.name/);
-    expect(bundleSrc).toMatch(/await resolvePluginFileSource\(self\.plugin, file\)/);
-    expect(bundleSrc).toMatch(/titleInput\.value = String\(file\.name \|\| ""\)\.trim\(\)/);
+    expect(inputSrc).toMatch(/await resolvePluginFileSource\(plugin, file\)/);
+    expect(bundleSrc).toMatch(/await resolvePluginFileSource\(plugin, file\)/);
   });
 
   test("splitTextMaterialQuestion detects material plus question", () => {

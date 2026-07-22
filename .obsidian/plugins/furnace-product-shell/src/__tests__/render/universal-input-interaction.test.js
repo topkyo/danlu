@@ -109,21 +109,6 @@ function loadRenderContext() {
       }
     },
     Plugin: class Plugin {},
-    DropFileModal: function DropFileModal() {
-      return {
-        setInitialMode() { return this; },
-        setInitialSource() { return this; },
-        setInitialTitle() { return this; },
-        open() { return this; },
-      };
-    },
-    DropImageModal: function DropImageModal() {
-      return {
-        setInitialSource() { return this; },
-        setInitialTitle() { return this; },
-        open() { return this; },
-      };
-    },
     isHttpUrl(value) {
       return /^https?:\/\//i.test(String(value || "").trim());
     },

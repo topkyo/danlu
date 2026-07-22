@@ -51,75 +51,6 @@ function buildTodayFeed(summary) {
   return prioritized;
 }
 
-function buildDecisionEntries(summary) {
-  const counts = summary.review_backlog_counts;
-  if (!counts || typeof counts !== "object") return [];
-  const timestamp = String(summary.generated_at || "");
-  const entries = [];
-  
-  const sortedKeys = Object.keys(counts).sort();
-  for (const kind of sortedKeys) {
-    const count = asCount(counts[kind]);
-    if (count <= 0) continue;
-    const kindText = String(kind).trim();
-    if (!kindText) continue;
-    if (!PRIMARY_REVIEW_BUCKETS.has(kindText)) continue;
-    const [title, hint] = reviewBucketCopy(kindText);
-    entries.push({
-      kind: "decision",
-      title,
-      summary: `${count} 项待处理 · ${hint}`,
-      target: `review:${kindText}`,
-      timestamp,
-      protocol: "",
-    });
-  }
-  return entries;
-}
-
-function buildCounterEvidenceEntries(summary) {
-  const pages = summary.counter_evidence_pages;
-  if (!Array.isArray(pages)) return [];
-  const entries = [];
-  for (const item of dictItems(pages)) {
-    const target = firstText(item, "path");
-    if (!target) continue;
-    const subject = firstText(item, "subject") || target;
-    const pageSummary = firstText(item, "summary") || "judgment 被反驳";
-    entries.push({
-      kind: "decision",
-      title: `反证待复核: ${subject}`,
-      summary: pageSummary,
-      target,
-      timestamp: firstText(item, "detected_at"),
-      protocol: firstText(item, "protocol"),
-    });
-  }
-  return entries;
-}
-
-function buildDriftEntries(summary) {
-  const warnings = summary.drift_warnings;
-  if (!Array.isArray(warnings)) return [];
-  const entries = [];
-  for (const item of dictItems(warnings).slice(0, 8)) {
-    const kindText = firstText(item, "kind");
-    const target = firstText(item, "path");
-    const message = firstText(item, "message");
-    if (!target && !message) continue;
-    const titleTarget = target || kindText || "drift";
-    entries.push({
-      kind: "decision",
-      title: `知识漂移: ${titleTarget}`,
-      summary: message || kindText || "证据已变",
-      target: target || kindText,
-      timestamp: firstText(item, "detected_at"),
-      protocol: firstText(item, "protocol"),
-    });
-  }
-  return entries;
-}
-
 function compoundSuggestItems(summary) {
   const compound = summary.compound_suggest;
   if (!compound || typeof compound !== "object" || !compound.available) return [];
@@ -135,27 +66,6 @@ function compoundSuggestIndex(summary) {
     if (reportPath) index[reportPath] = item;
   }
   return index;
-}
-
-function buildCompoundSuggestEntries(summary) {
-  const timestamp = String(summary.generated_at || "");
-  const entries = [];
-  for (const item of compoundSuggestItems(summary)) {
-    const title = firstText(item, "title", "report_title");
-    const reportPath = firstText(item, "report_path");
-    const reason = firstText(item, "reason", "signal") || "compound-suggest";
-    if (!title) continue;
-    entries.push({
-      kind: "action",
-      title,
-      summary: `复利建议：${reason}`,
-      target: reportPath || firstText(item, "command"),
-      timestamp,
-      protocol: firstText(item, "protocol"),
-      compound_suggest: item,
-    });
-  }
-  return entries;
 }
 
 function buildReportEntries(summary, todayDate) {
@@ -205,129 +115,6 @@ function isDeliverableReportOutput(item) {
   return true;
 }
 
-function buildElixirEntries(summary, todayDate) {
-  const entries = [];
-  for (const item of dictItems(summary.recent_receipts)) {
-    const timestamp = firstText(item, "applied_at", "generated_at", "created_at");
-    if (datePart(timestamp) !== todayDate) continue;
-    const operation = firstText(item, "operation");
-    const subjectKind = firstText(item, "subject_kind");
-    const subjectId = firstText(item, "subject_id");
-    const actionId = firstText(item, "action_id");
-    
-    const elixirText = [operation, subjectKind, subjectId, actionId].join(" ").toLowerCase();
-    const opLower = operation.toLowerCase();
-    
-    const hasElixir = elixirText.includes("elixir");
-    const hasToken = ["promote", "demote", "revert", "finalize"].some(token => opLower.includes(token));
-    
-    if (!hasElixir && !hasToken) continue;
-    
-    const title = firstText(item, "title") || subjectId || actionId;
-    const target = firstText(item, "receipt_path", "path");
-    if (!title || !target) continue;
-    
-    entries.push({
-      kind: "elixir",
-      title,
-      summary: `已完成 ${operation || '更新'}`,
-      target,
-      timestamp,
-      protocol: firstText(item, "protocol"),
-    });
-  }
-  return entries;
-}
-
-function buildMetricAlertEntries(summary) {
-  const delta = summary.metrics_history_delta;
-  if (!delta || typeof delta !== "object" || !delta.available) return [];
-  const alerts = delta.alerts;
-  if (!Array.isArray(alerts)) return [];
-  const windowLabel = String(delta.window || "");
-  const baselineTs = String(delta.baseline_ts || "");
-  const entries = [];
-  for (const item of dictItems(alerts)) {
-    const key = firstText(item, "metric_key");
-    if (!key) continue;
-    const direction = firstText(item, "direction");
-    const rawDiff = Number(item.diff || 0);
-    const diffValue = Number.isFinite(rawDiff) ? rawDiff : 0;
-    const arrow = direction === "up" ? "↑" : "↓";
-    const sign = diffValue >= 0 ? "+" : "";
-    entries.push({
-      kind: "action",
-      title: `指标变化: ${key} ${arrow}`,
-      summary: `${windowLabel} 内 ${key} 变化 ${sign}${diffValue.toPrecision(3)}（vs ${baselineTs}）`,
-      target: `metric:${key}`,
-      timestamp: baselineTs,
-      protocol: "",
-    });
-  }
-  return entries;
-}
-
-function buildActionEntries(summary, audience = "primary") {
-  const entries = [];
-  const generatedAt = String(summary.generated_at || "");
-  for (const item of dictItems(summary.suggested_next_actions)) {
-    if (firstText(item, "kind") === "compound-suggest") continue;
-    const title = firstText(item, "title", "label", "name");
-    const target = firstText(item, "command", "cli", "action", "path");
-    if (!title || !target) continue;
-    const reason = firstText(item, "reason", "kind");
-    if (audience === "primary" && isMaintenanceCommandAction(target, reason)) continue;
-    entries.push({
-      kind: "action",
-      title,
-      summary: `建议下一步：${reason || '继续处理'}`,
-      target,
-      timestamp: firstText(item, "timestamp", "updated_at", "created_at") || generatedAt,
-      protocol: firstText(item, "protocol"),
-    });
-  }
-  return entries;
-}
-
-function buildRawInputEntries(summary, todayDate) {
-  const recentRawInputs = summary.recent_raw_inputs;
-  if (!Array.isArray(recentRawInputs)) return [];
-  const entries = [];
-  for (const item of dictItems(recentRawInputs)) {
-    const storedPath = firstText(item, "stored_path");
-    if (!storedPath) continue;
-    const occurredAt = firstText(item, "occurred_at");
-    if (datePart(occurredAt) !== todayDate) continue;
-    const originalPath = firstText(item, "original_path");
-    const title = firstText(item, "title");
-    const sourceType = firstText(item, "source_type");
-    const sourceLabel = rawInputSourceTypeLabel(sourceType);
-    entries.push({
-      kind: "action",
-      title: `已投料：${title || originalPath || storedPath}`,
-      summary: `已收料 · ${sourceLabel}`,
-      target: storedPath,
-      timestamp: occurredAt,
-      protocol: firstText(item, "protocol"),
-    });
-  }
-  return entries;
-}
-
-function rawInputSourceTypeLabel(sourceType) {
-  const normalized = String(sourceType || "").trim();
-  const labels = {
-    "note-drop": "文本材料",
-    note: "文本材料",
-    markdown: "Markdown 材料",
-    "url-drop": "网页材料",
-    "pdf-drop": "PDF 材料",
-    "image-drop": "图片材料",
-    "repo-drop": "代码仓库材料",
-  };
-  return labels[normalized] || "材料";
-}
-
 function isMaintenanceCommandAction(target, reason) {
   const targetText = ` ${String(target || "").trim()} `;
   const reasonText = String(reason || "").trim();
@@ -369,13 +156,6 @@ function firstText(item, ...keys) {
   return "";
 }
 
-function asCount(value) {
-  if (typeof value === "boolean") return value ? 1 : 0;
-  if (typeof value === "number") return isNaN(value) ? 0 : Math.floor(value);
-  const parsed = parseInt(String(value), 10);
-  return isNaN(parsed) ? 0 : parsed;
-}
-
 function reviewBucketCopy(kindText) {
   const copy = REVIEW_BUCKET_COPY[kindText];
   if (copy) return copy;
@@ -406,7 +186,6 @@ module.exports = {
   isMaintenanceCommandAction,
   compoundSuggestItems,
   compoundSuggestIndex,
-  buildCompoundSuggestEntries,
   PRIORITY,
   PRIMARY_REVIEW_BUCKETS,
 };
