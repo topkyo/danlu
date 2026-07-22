@@ -82,10 +82,11 @@
 
 ## Source Of Truth
 
+- **Active 文档唯一枚举**：`docs/README.md` Active 表（架构 / 契约 / 运行 / Product Shell / 商业 / 安装与用户指南）
+- **评分与 release gate**：`docs/AGOS-9-Scorecard.md`
+- **动态任务状态**：`PROGRESS.md`
 - 项目规范：`README.md`
-- 架构 / 契约 / 运行：`docs/README.md` Active 表
-- 阶段性计划：`docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md`；已归档 cleanup `docs/archive/Furnace Commercial Grade Cleanup Plan 2026-07.md`（executed-reviewed-pass）
-- 任务状态：`PROGRESS.md`
+- 当前阶段性执行计划：`docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md`（Commercial Go-Live WS1–WS6）；已归档 cleanup 见 `docs/archive/`
 - 验证入口：`bash scripts/verify.sh`
 - 运行态验证：`tests/` fixture-driven CLI smoke / acceptance
 - 部署入口：none

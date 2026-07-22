@@ -2,7 +2,7 @@
 title: "炼丹炉架构文档索引"
 kind: "index"
 status: "active"
-updated_at: 2026-07-15
+updated_at: 2026-07-22
 ---
 
 # 炼丹炉架构文档索引
@@ -34,10 +34,10 @@ updated_at: 2026-07-15
 | 文档 | 角色 |
 |---|---|
 | [Furnace Post-Cleanup Audit and Next Direction 2026-07](<./Furnace Post-Cleanup Audit and Next Direction 2026-07.md>) | **当前执行计划**：Commercial Go-Live WS1–WS6 |
-| [Report Provenance GC spec](<./specs/2026-07-20-report-delete-provenance-gc.md>) | **在途**：删报告后 provenance scrub + `gc-orphans` + 停写机器记忆 HTML（①′） |
+| [Less-is-More 推荐收口包](<./plans/2026-07-22-less-recommended-pack.md>) | **在途**：Shell 死面 / SoT 枚举 / PROGRESS 瘦身 / alchemy 轻归组 |
 
 > Commercial Grade Cleanup Plan 2026-07 已归档（`executed-reviewed-pass`），见下方 Archived。
-> W1–W9 / ingest-dedup / audit remediation 等已完成 plan → [docs/archive/plans/](<./archive/plans/>)。
+> W1–W9 / ingest-dedup / audit remediation / report-provenance / ask-sync / less-is-more cuts 等已完成 plan → 下方 Delivered 或 [docs/archive/plans/](<./archive/plans/>)。
 > Investing Demo Pack（`delivered-fixture`）见下方 Delivered specs。
 
 ## Delivered specs（已交付，非活跃执行）
@@ -46,6 +46,11 @@ updated_at: 2026-07-15
 |---|---|
 | [Furnace Investing Demo Pack Spec](<./Furnace Investing Demo Pack Spec.md>) + [Demo Pack fixture](<../demos/investing-demo-pack/README.md>) | 商业 demo 规格与已交付 fixture（截图/录屏资产见 Go-Live WS3） |
 | [Ingest dedup + Drop UX](<./archive/specs/2026-07-20-ingest-dedup-and-drop-ux.md>) | 已落地：URL 投料幂等 + Shell「已收料」语义 |
+| [Report Provenance GC](<./specs/2026-07-20-report-delete-provenance-gc.md>) + [plan](<./plans/2026-07-20-report-provenance-gc.md>) | 已落地：compile provenance scrub + `advanced gc-orphans` + 停写机器记忆 HTML |
+| [Ask sync chat](<./specs/2026-07-22-ask-sync-chat.md>) + [plan](<./plans/2026-07-22-ask-sync-chat.md>) | 已落地：Shell 同步 `run-ask` + 单飞；删 submit/resume/background |
+| [Less-is-More cuts](<./plans/2026-07-22-less-is-more-cuts.md>) | 已落地：Ask done 直写、pending 去戏、Today 报告列表、清 no-op nightly env |
+| [Less-is-More 复评](<./archive/Furnace Less-is-More Reassessment 2026-07-22.md>) | 2026-07-22 四路审计加权 **7.1**；Less 尺子专用 |
+| [Multi-Ruler 全量复评](<./archive/Furnace Multi-Ruler Reassessment 2026-07-22.md>) | 2026-07-22 Ask sync 后四路复评（Local Eng **9.05** / Commercial **7.8** 等） |
 
 历史方向与已完成执行计划已移入 [docs/archive/](<./archive/README.md>)；当前执行以 [Post-Cleanup Audit](<./Furnace Post-Cleanup Audit and Next Direction 2026-07.md>) + Scorecard + `PROGRESS.md` 为准。
 `wiki/indexes/` 是 compile 生成的派生索引区；策略见 [wiki/indexes/README](<../wiki/indexes/README.md>)。

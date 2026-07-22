@@ -109,12 +109,9 @@ updated_at: "2026-07-22"
 
 ## Active SoT 集合
 
-- `docs/Furnace Agent Architecture.md`
-- `docs/Furnace Evolution Mechanics.md`
-- `docs/Furnace Runtime Operations.md`
-- `docs/AGOS-9-Scorecard.md`（本文件）
-- `docs/DEVELOPER.md`
-- `README.md`
+**唯一枚举**：[docs/README.md](./README.md) 的 **Active** 表（架构 / 契约 / 运行 / Product Shell / 商业 / 安装与用户指南等）。
+
+**本文件角色**：AgentOS **评分与 release gate** SoT；工程文档子集见上表，不在此重复维护平行文件列表。
 
 历史 / thesis：`docs/Furnace Elixir.md`、`docs/archive/*`
 
