@@ -14,6 +14,8 @@
 
 ## 当前动态
 
+- 2026-07-22 (**shell less cuts**)：去掉 pending received/soft-hint；删死 modal/未用 Today builder/无引用 i18n；删 vault-queue 仅留 desktop launcher；Jest **174**。
+
 - 2026-07-22 (**eng-debt radar**)：统一 alchemy/autonomy atomic write；CLI dispatch lazy import；multipart HTTP→CompletionResult 集成测；verify 计数对齐 acceptance **17** / llm **77** / Jest **180**。
 
 - 2026-07-22 (**Less 推荐收口包**)：去掉 Shell runs 死面+僵尸 i18n；SoT Active 单枚举；PROGRESS 瘦身；`advanced alchemy` 子树（旧 alchemy-* compat）。计划：`docs/plans/2026-07-22-less-recommended-pack.md`。
@@ -71,7 +73,7 @@
 |---|---|---|
 | P0 | Commercial go-live：真实邮箱、询价决策、商业 EULA | **done（草案）**：`topkyoxp@gmail.com` + `EULA.md`；正式法律签收仍 open |
 | P1 | 分发闭环：`pip install` 或 INSTALL 明确预览边界；版本与 tag 对齐 | **partial**：`pip install -e .` + v0.4.0；PyPI 正式发布待定 |
-| P1 | Jest hard-gate + env-coupled 测试隔离 | **done / moot**：Jest **180** hard-gate；env unit 已退 |
+| P1 | Jest hard-gate + env-coupled 测试隔离 | **done / moot**：Jest **174** hard-gate；env unit 已退 |
 | P1 | Alchemy materialize 等裸 `write_text` → `atomic_write_text` | **done**（ask/alchemy helpers；execution+runner ask 热路径续扫） |
 | P2 | Scorecard hub 行数刷新；PROGRESS 活跃 round 切档卫生 | **done 2026-07-22**：Round 长尾切档 archive snapshot |
 | P2 | Demo Pack 截图/录屏资产（fixture + checklist 已交付） | checklist done；媒体可选待补 |

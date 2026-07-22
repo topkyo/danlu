@@ -24,7 +24,7 @@ supersedes: []
 | 指标 | 当前值 | 来源 |
 |---|---|---|
 | Runtime | `src/aiwiki` **155** `.py` / **~62k LOC** | `find` + `wc`（2026-07-18） |
-| Tests | acceptance **17** + llm-integration **77** + Jest **180**（2026-07-22 eng-debt radar）；表内历史快照曾为 17/76/179、24/168、16/174 | `pytest` + `npm test` |
+| Tests | acceptance **17** + llm-integration **77** + Jest **174**（2026-07-22 shell less cuts）；表内历史快照曾为 17/77/180、17/76/179、24/168 | `pytest` + `npm test` |
 | Top hubs | `memory/graph.py` 1758 / `drop.py` 1747 / `execution/alchemy.py` 1680 / `auto_adopt` **DELETED** / `app_state` 1221 | `wc -l` |
 | `except Exception` | **~116**（↓ from 172）；裸 `except Exception: pass` **0** | ripgrep |
 | AgentOS Scorecard | **Local Engineering Gate 9.05**；Live Dogfood **not-yet** | `docs/AGOS-9-Scorecard.md` |
