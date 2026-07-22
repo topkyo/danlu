@@ -22,6 +22,8 @@ async function loadProductShellPluginState(plugin) {
   delete plugin.settings.showHtmlShortcuts;
   const legacyDefaultAskModeMigrated = Object.prototype.hasOwnProperty.call(plugin.settings, "defaultAskMode");
   delete plugin.settings.defaultAskMode;
+  const legacyRecentRunsLimitMigrated = Object.prototype.hasOwnProperty.call(plugin.settings, "recentRunsLimit");
+  delete plugin.settings.recentRunsLimit;
   const rawAdvancedSectionsExpanded = plugin.settings.advancedSectionsExpanded && typeof plugin.settings.advancedSectionsExpanded === "object"
     ? plugin.settings.advancedSectionsExpanded
     : {};
@@ -63,6 +65,7 @@ async function loadProductShellPluginState(plugin) {
     || legacyRuntimeClientModeMigrated
     || legacyShowHtmlShortcutsMigrated
     || legacyDefaultAskModeMigrated
+    || legacyRecentRunsLimitMigrated
     || advancedSectionsExpandedMigrated
   ) {
     await plugin.savePluginState();

@@ -72,6 +72,41 @@ test("public command palette keeps only the Furnace entrypoint", () => {
   }
 });
 
+test("settings trim removes recentRunsLimit and groups developer diagnostics", () => {
+  const settingsSrc = fs.readFileSync(
+    path.resolve(__dirname, "../../settings.js"),
+    "utf8"
+  );
+  const constantsSrc = fs.readFileSync(
+    path.resolve(__dirname, "../../constants.js"),
+    "utf8"
+  );
+  const pluginSrc = fs.readFileSync(
+    path.resolve(__dirname, "../../plugin.js"),
+    "utf8"
+  );
+  const pluginStateSrc = fs.readFileSync(
+    path.resolve(__dirname, "../../plugin_state.js"),
+    "utf8"
+  );
+
+  expect(settingsSrc).not.toMatch(/recentRunsLimit/);
+  expect(settingsSrc).toMatch(/Developer \/ diagnostics/);
+  expect(settingsSrc).toMatch(/Developer diagnostics/);
+  const langSectionStart = settingsSrc.indexOf("Language & Appearance");
+  const langSectionEnd = settingsSrc.indexOf("Furnace Connection");
+  expect(settingsSrc.slice(langSectionStart, langSectionEnd)).not.toMatch(/showAdvancedCommands/);
+
+  expect(constantsSrc).toMatch(/const RECENT_RUNS_LIMIT = 8;/);
+  expect(constantsSrc).not.toMatch(/recentRunsLimit:/);
+
+  expect(pluginSrc).toMatch(/RECENT_RUNS_LIMIT/);
+  expect(pluginSrc).not.toMatch(/recentRunsLimit/);
+
+  expect(pluginStateSrc).toMatch(/delete plugin\.settings\.recentRunsLimit/);
+  expect(pluginStateSrc).toMatch(/legacyRecentRunsLimitMigrated/);
+});
+
 test("default furnace center keeps Advanced out of the primary shell path", () => {
   const renderHomeSrc = fs.readFileSync(
     path.resolve(__dirname, "../../render_home.js"),

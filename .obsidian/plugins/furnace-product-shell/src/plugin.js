@@ -130,8 +130,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   trimRecentRuns() {
-    const limit = Math.max(1, Number.parseInt(String(this.settings.recentRunsLimit || DEFAULT_SETTINGS.recentRunsLimit), 10) || DEFAULT_SETTINGS.recentRunsLimit);
-    this.pluginState.recentRuns = this.pluginState.recentRuns.slice(0, limit);
+    this.pluginState.recentRuns = this.pluginState.recentRuns.slice(0, RECENT_RUNS_LIMIT);
   }
 
   normalizeLlmHealthState(value) {

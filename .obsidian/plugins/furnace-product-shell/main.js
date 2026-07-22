@@ -197,9 +197,9 @@ const VIEW_TYPE_FURNACE_CENTER = "furnace-product-shell-furnace-center";
 const SHELL_SUMMARY_PATH = "output/control/shell-summary.json";
 const DEFAULT_PROTOCOLS = ["general"];
 const DEFAULT_LOCALE = "zh";
+const RECENT_RUNS_LIMIT = 8;
 const DEFAULT_SETTINGS = {
   launcherPath: "scripts/aiwiki-launcher.sh",
-  recentRunsLimit: 8,
   showAdvancedCommands: false,
   locale: DEFAULT_LOCALE,
   llmBackend: "opencode-api",
@@ -227,11 +227,10 @@ const ZH_TEXT = {
   English: "英文",
   "Aiwiki launcher": "Aiwiki 启动器",
   "Vault-local or absolute launcher path. This vault may point at an external runtime root.": "vault 内相对路径或绝对 launcher 路径。这个 vault 可以指向外部 runtime root。",
-  "Recent runs limit": "最近运行保留数",
-  "How many plugin-triggered runs to keep in the Product Shell.": "Product Shell 中保留多少条插件触发的运行记录。",
-  "Show advanced commands": "显示高级命令",
-  "Register the Refresh Furnace Shell command in the command palette. Reload Obsidian after changing this toggle.": "是否把「刷新炼丹炉 Shell」命令注册到命令面板中。修改后需要重载 Obsidian。",
-  "Advanced command visibility refreshes after reloading Obsidian.": "高级命令可见性会在重载 Obsidian 后刷新。",
+  "Developer / diagnostics": "开发者 / 诊断",
+  "Developer diagnostics": "开发者诊断",
+  "Shows the Advanced drawer, activity timeline, and run history on the home surface. Also registers the Refresh Furnace Shell command in the command palette. Reload Obsidian after changing this toggle.": "在首页显示 Advanced 抽屉、炉子动态时间线与运行历史。同时把「刷新炼丹炉 Shell」注册到命令面板。修改后需要重载 Obsidian。",
+  "Developer diagnostics visibility refreshes after reloading Obsidian.": "开发者诊断可见性会在重载 Obsidian 后刷新。",
   "Recent plugin-triggered runs are listed here when available.": "此处列出插件触发的最近运行记录（如有）。",
   "Full runtime is Desktop-only. iPad/iOS Obsidian can only be a future companion; it cannot run the local launcher, Python CLI, or full ingest/review flow.": "全功能 runtime 仅支持 Desktop。iPad/iOS Obsidian 未来只能作为 companion，不能运行本地 launcher、Python CLI 或完整投料/复审流程。",
   "LLM backend": "LLM 后端",
@@ -2788,17 +2787,6 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
           })
       );
 
-    new Setting(containerEl)
-      .setName(t("Show advanced commands"))
-      .setDesc(t("Register the Refresh Furnace Shell command in the command palette. Reload Obsidian after changing this toggle."))
-      .addToggle((toggle) =>
-        toggle.setValue(Boolean(this.plugin.settings.showAdvancedCommands)).onChange(async (value) => {
-          this.plugin.settings.showAdvancedCommands = Boolean(value);
-          await this.plugin.savePluginState();
-          new Notice(this.plugin.t("Advanced command visibility refreshes after reloading Obsidian."));
-        })
-      );
-
     // ── Furnace Connection ──────────────────────────
     containerEl.createEl("h3", { cls: "furnace-settings-section", text: t("Furnace Connection") });
     containerEl.createEl("p", {
@@ -2818,19 +2806,6 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
             await this.plugin.savePluginState();
             this.plugin.refreshRepoState();
           })
-      );
-
-    new Setting(containerEl)
-      .setName(t("Recent runs limit"))
-      .setDesc(t("How many plugin-triggered runs to keep in the Product Shell."))
-      .addText((text) =>
-        text.setValue(String(this.plugin.settings.recentRunsLimit)).onChange(async (value) => {
-          const parsed = Number.parseInt(value, 10);
-          this.plugin.settings.recentRunsLimit = Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_SETTINGS.recentRunsLimit;
-          this.plugin.trimRecentRuns();
-          await this.plugin.savePluginState();
-          this.plugin.refreshOpenViews();
-        })
       );
 
     // ── LLM Configuration ──────────────────────────
@@ -2974,6 +2949,20 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
       .addToggle((toggle) =>
         toggle.setValue(normalizeEnabledChannels(this.plugin.settings.enabledChannels).includes("wecom")).onChange(async (value) => {
           await updateEnabledChannel("wecom", Boolean(value));
+        })
+      );
+
+    // ── Developer / diagnostics ─────────────────────
+    containerEl.createEl("h3", { cls: "furnace-settings-section", text: t("Developer / diagnostics") });
+
+    new Setting(containerEl)
+      .setName(t("Developer diagnostics"))
+      .setDesc(t("Shows the Advanced drawer, activity timeline, and run history on the home surface. Also registers the Refresh Furnace Shell command in the command palette. Reload Obsidian after changing this toggle."))
+      .addToggle((toggle) =>
+        toggle.setValue(Boolean(this.plugin.settings.showAdvancedCommands)).onChange(async (value) => {
+          this.plugin.settings.showAdvancedCommands = Boolean(value);
+          await this.plugin.savePluginState();
+          new Notice(this.plugin.t("Developer diagnostics visibility refreshes after reloading Obsidian."));
         })
       );
   }
@@ -6042,6 +6031,8 @@ async function loadProductShellPluginState(plugin) {
   delete plugin.settings.showHtmlShortcuts;
   const legacyDefaultAskModeMigrated = Object.prototype.hasOwnProperty.call(plugin.settings, "defaultAskMode");
   delete plugin.settings.defaultAskMode;
+  const legacyRecentRunsLimitMigrated = Object.prototype.hasOwnProperty.call(plugin.settings, "recentRunsLimit");
+  delete plugin.settings.recentRunsLimit;
   const rawAdvancedSectionsExpanded = plugin.settings.advancedSectionsExpanded && typeof plugin.settings.advancedSectionsExpanded === "object"
     ? plugin.settings.advancedSectionsExpanded
     : {};
@@ -6083,6 +6074,7 @@ async function loadProductShellPluginState(plugin) {
     || legacyRuntimeClientModeMigrated
     || legacyShowHtmlShortcutsMigrated
     || legacyDefaultAskModeMigrated
+    || legacyRecentRunsLimitMigrated
     || advancedSectionsExpandedMigrated
   ) {
     await plugin.savePluginState();
@@ -7166,8 +7158,7 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   trimRecentRuns() {
-    const limit = Math.max(1, Number.parseInt(String(this.settings.recentRunsLimit || DEFAULT_SETTINGS.recentRunsLimit), 10) || DEFAULT_SETTINGS.recentRunsLimit);
-    this.pluginState.recentRuns = this.pluginState.recentRuns.slice(0, limit);
+    this.pluginState.recentRuns = this.pluginState.recentRuns.slice(0, RECENT_RUNS_LIMIT);
   }
 
   normalizeLlmHealthState(value) {

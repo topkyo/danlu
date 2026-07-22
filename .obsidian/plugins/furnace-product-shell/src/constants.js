@@ -5,9 +5,9 @@ const VIEW_TYPE_FURNACE_CENTER = "furnace-product-shell-furnace-center";
 const SHELL_SUMMARY_PATH = "output/control/shell-summary.json";
 const DEFAULT_PROTOCOLS = ["general"];
 const DEFAULT_LOCALE = "zh";
+const RECENT_RUNS_LIMIT = 8;
 const DEFAULT_SETTINGS = {
   launcherPath: "scripts/aiwiki-launcher.sh",
-  recentRunsLimit: 8,
   showAdvancedCommands: false,
   locale: DEFAULT_LOCALE,
   llmBackend: "opencode-api",
@@ -35,11 +35,10 @@ const ZH_TEXT = {
   English: "英文",
   "Aiwiki launcher": "Aiwiki 启动器",
   "Vault-local or absolute launcher path. This vault may point at an external runtime root.": "vault 内相对路径或绝对 launcher 路径。这个 vault 可以指向外部 runtime root。",
-  "Recent runs limit": "最近运行保留数",
-  "How many plugin-triggered runs to keep in the Product Shell.": "Product Shell 中保留多少条插件触发的运行记录。",
-  "Show advanced commands": "显示高级命令",
-  "Register the Refresh Furnace Shell command in the command palette. Reload Obsidian after changing this toggle.": "是否把「刷新炼丹炉 Shell」命令注册到命令面板中。修改后需要重载 Obsidian。",
-  "Advanced command visibility refreshes after reloading Obsidian.": "高级命令可见性会在重载 Obsidian 后刷新。",
+  "Developer / diagnostics": "开发者 / 诊断",
+  "Developer diagnostics": "开发者诊断",
+  "Shows the Advanced drawer, activity timeline, and run history on the home surface. Also registers the Refresh Furnace Shell command in the command palette. Reload Obsidian after changing this toggle.": "在首页显示 Advanced 抽屉、炉子动态时间线与运行历史。同时把「刷新炼丹炉 Shell」注册到命令面板。修改后需要重载 Obsidian。",
+  "Developer diagnostics visibility refreshes after reloading Obsidian.": "开发者诊断可见性会在重载 Obsidian 后刷新。",
   "Recent plugin-triggered runs are listed here when available.": "此处列出插件触发的最近运行记录（如有）。",
   "Full runtime is Desktop-only. iPad/iOS Obsidian can only be a future companion; it cannot run the local launcher, Python CLI, or full ingest/review flow.": "全功能 runtime 仅支持 Desktop。iPad/iOS Obsidian 未来只能作为 companion，不能运行本地 launcher、Python CLI 或完整投料/复审流程。",
   "LLM backend": "LLM 后端",

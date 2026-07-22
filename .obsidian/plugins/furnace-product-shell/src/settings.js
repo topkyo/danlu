@@ -33,17 +33,6 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
           })
       );
 
-    new Setting(containerEl)
-      .setName(t("Show advanced commands"))
-      .setDesc(t("Register the Refresh Furnace Shell command in the command palette. Reload Obsidian after changing this toggle."))
-      .addToggle((toggle) =>
-        toggle.setValue(Boolean(this.plugin.settings.showAdvancedCommands)).onChange(async (value) => {
-          this.plugin.settings.showAdvancedCommands = Boolean(value);
-          await this.plugin.savePluginState();
-          new Notice(this.plugin.t("Advanced command visibility refreshes after reloading Obsidian."));
-        })
-      );
-
     // ── Furnace Connection ──────────────────────────
     containerEl.createEl("h3", { cls: "furnace-settings-section", text: t("Furnace Connection") });
     containerEl.createEl("p", {
@@ -63,19 +52,6 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
             await this.plugin.savePluginState();
             this.plugin.refreshRepoState();
           })
-      );
-
-    new Setting(containerEl)
-      .setName(t("Recent runs limit"))
-      .setDesc(t("How many plugin-triggered runs to keep in the Product Shell."))
-      .addText((text) =>
-        text.setValue(String(this.plugin.settings.recentRunsLimit)).onChange(async (value) => {
-          const parsed = Number.parseInt(value, 10);
-          this.plugin.settings.recentRunsLimit = Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_SETTINGS.recentRunsLimit;
-          this.plugin.trimRecentRuns();
-          await this.plugin.savePluginState();
-          this.plugin.refreshOpenViews();
-        })
       );
 
     // ── LLM Configuration ──────────────────────────
@@ -219,6 +195,20 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
       .addToggle((toggle) =>
         toggle.setValue(normalizeEnabledChannels(this.plugin.settings.enabledChannels).includes("wecom")).onChange(async (value) => {
           await updateEnabledChannel("wecom", Boolean(value));
+        })
+      );
+
+    // ── Developer / diagnostics ─────────────────────
+    containerEl.createEl("h3", { cls: "furnace-settings-section", text: t("Developer / diagnostics") });
+
+    new Setting(containerEl)
+      .setName(t("Developer diagnostics"))
+      .setDesc(t("Shows the Advanced drawer, activity timeline, and run history on the home surface. Also registers the Refresh Furnace Shell command in the command palette. Reload Obsidian after changing this toggle."))
+      .addToggle((toggle) =>
+        toggle.setValue(Boolean(this.plugin.settings.showAdvancedCommands)).onChange(async (value) => {
+          this.plugin.settings.showAdvancedCommands = Boolean(value);
+          await this.plugin.savePluginState();
+          new Notice(this.plugin.t("Developer diagnostics visibility refreshes after reloading Obsidian."));
         })
       );
   }
