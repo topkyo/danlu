@@ -24,7 +24,7 @@ supersedes: []
 | 指标 | 当前值 | 来源 |
 |---|---|---|
 | Runtime | `src/aiwiki` **155** `.py` / **~62k LOC** | `find` + `wc`（2026-07-18） |
-| Tests | acceptance **17** + llm-integration **76** + Jest **179**（2026-07-22 Ask sync-chat）；表内历史快照曾为 24/168、16/174、65 | `pytest` + `npm test` |
+| Tests | acceptance **17** + llm-integration **77** + Jest **180**（2026-07-22 eng-debt radar）；表内历史快照曾为 17/76/179、24/168、16/174 | `pytest` + `npm test` |
 | Top hubs | `memory/graph.py` 1758 / `drop.py` 1747 / `execution/alchemy.py` 1680 / `auto_adopt` **DELETED** / `app_state` 1221 | `wc -l` |
 | `except Exception` | **~116**（↓ from 172）；裸 `except Exception: pass` **0** | ripgrep |
 | AgentOS Scorecard | **Local Engineering Gate 9.05**；Live Dogfood **not-yet** | `docs/AGOS-9-Scorecard.md` |
@@ -264,7 +264,7 @@ Review gate：编码 PR 独立 read-only reviewer（correctness / scope / missin
 
 ## 11. 更新记录
 
-- 2026-07-22：Ask sync-chat 收口 — `run-ask-submit` / `run-ask-resume` / `runner/background.py` 退役；Ask = 同步 `run-ask` + Shell 单飞。§1 测试快照刷新为 acceptance **17** / llm-integration **76** / Jest **179**；§5/§6 明确下一焦点仍为 Commercial Go-Live 打磨，不扩 background job。
+- 2026-07-22：Ask sync-chat 收口 — `run-ask-submit` / `run-ask-resume` / `runner/background.py` 退役；Ask = 同步 `run-ask` + Shell 单飞。§1 测试快照曾刷新为 acceptance **17** / llm-integration **76** / Jest **179**；同日 eng-debt radar 再对齐为 **17** / **77** / **180**。§5/§6 明确下一焦点仍为 Commercial Go-Live 打磨，不扩 background job。
 - 2026-07-15：Commercial Go-Live 执行波 — WS1（邮箱/询价/EULA）、WS2（`pip install -e .` 预览 + v0.4.0 + launcher 优先 console script）、WS3（对外 checklist）、WS5（Jest hard-gate + alchemy atomic_write）、LLM-Wiki 叙事补丁；PyPI 正式发布与 EULA 法律签收仍 open。
 - 2026-07-15：初版。基于 Cleanup executed-reviewed-pass 后再审计；现场 scripts/python-static/smoke/docs PASS；立项 Commercial Go-Live WS1–WS6。
 - 2026-07-15：同 PR 落地 WS4 子集 — D4/D8/D10/D11 marked **fixed**；缺陷表增加「本 PR」列避免与修复矛盾。

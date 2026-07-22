@@ -25,8 +25,8 @@ updated_at: "2026-07-22"
 | 组件 | 数量 | 命令 |
 |---|---:|---|
 | Acceptance | **17** passed | `bash scripts/verify.sh acceptance` |
-| LLM integration | **76** passed | `bash scripts/verify.sh llm-integration` |
-| Product Shell Jest | **179** passed | `bash scripts/verify.sh product-shell-static` |
+| LLM integration | **77** passed | `bash scripts/verify.sh llm-integration` |
+| Product Shell Jest | **180** passed | `bash scripts/verify.sh product-shell-static` |
 | 全量 | 7 步 | `bash scripts/verify.sh all` |
 | Docs consistency | exit 0 | `bash scripts/docs_consistency_check.sh` |
 | CI | exists | `.github/workflows/verify.yml` |
@@ -84,10 +84,10 @@ updated_at: "2026-07-22"
 | 维度 | 权重 | 分 | Blocking? | 现行证据 |
 |------|------|---:|---|---|
 | Dogfood / fixture | 20% | 8.9 | no（live 维 blocking 在 Live gate） | acceptance **17** replay + AOS-C8 **historical** |
-| Product Shell | 12% | 9.3 | yes | Jest **179** + sync `run-ask` 单飞 + Today-first |
+| Product Shell | 12% | 9.3 | yes | Jest **180** + sync `run-ask` 单飞 + Today-first |
 | Runtime correctness | 15% | 9.4 | no | path harden + fail-closed LLM；无 background submit/resume |
 | Planner / signal | 10% | 8.7 | no | internal modules；CLI 已删；acceptance replay |
-| LLM reliability | 12% | 9.0 | no | llm-integration **76** + receipt 聚合 |
+| LLM reliability | 12% | 9.0 | no | llm-integration **77** + receipt 聚合 |
 | Governance | 13% | 9.1 | yes | review-page / alchemy-revert / receipts；**无** L3 apply CLI / auto_adopt |
 | Maintainability | 8% | 9.0 | no | 顶层 `app_*.py` = 0；Ask 路径净删 background |
 | Docs SoT | 10% | 8.9 | yes | active docs 对齐；本轮刷新计数 |
@@ -100,8 +100,8 @@ updated_at: "2026-07-22"
 |---|------|----------|
 | 1 | Full verify | `bash scripts/verify.sh all` |
 | 2 | Acceptance | **17** — `bash scripts/verify.sh acceptance` |
-| 3 | LLM integration | **76** — `bash scripts/verify.sh llm-integration` |
-| 4 | Product Shell | Jest **179** — `bash scripts/verify.sh product-shell-static` |
+| 3 | LLM integration | **77** — `bash scripts/verify.sh llm-integration` |
+| 4 | Product Shell | Jest **180** — `bash scripts/verify.sh product-shell-static` |
 | 5 | Docs consistency | `bash scripts/docs_consistency_check.sh` |
 | 6 | CI | `.github/workflows/verify.yml` |
 
@@ -129,3 +129,4 @@ updated_at: "2026-07-22"
 - 2026-07-19：audit remediation；P2-9 hub 归零证据刷新；Docs/Maint 漂移 → Local Eng ≈8.4。
 - 2026-07-20：Wave 3 docs 缩略；verify 实测 acceptance **16**、llm-integration **76**、Jest **174**。
 - 2026-07-22：Ask sync-chat（删 submit/resume/background）后四路复评 — Local Eng **9.05**；Live 维 **7.0**（Gate not-yet）；Commercial **7.8**；Ask 架构 A/B **8.0**。verify：acceptance **17** / Jest **179** / llm **76**。
+- 2026-07-22（eng-debt radar）：Jest 实测 **180**；llm-integration 增 multipart HTTP body parse → **77**。
