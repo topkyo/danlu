@@ -247,3 +247,53 @@ def _context_ref_paths(records: list[dict[str, Any]]) -> list[str]:
         if path and path not in paths:
             paths.append(path)
     return paths
+
+
+def _material_refs_unreadable(root: Path, refs: list[str], context_text: str) -> bool:
+    """True when refs are present but no usable textual material context was loaded."""
+
+    cleaned_refs = [str(item).strip() for item in refs if str(item).strip()]
+    if not cleaned_refs:
+        return False
+    if str(context_text or "").strip():
+        return False
+    return True
+
+
+def _build_unreadable_material_ask_markdown(
+    *,
+    question: str,
+    material_refs: list[str],
+    frontmatter: dict[str, Any],
+) -> str:
+    from aiwiki.utils.markdown import render_frontmatter
+    from aiwiki.utils.text import human_query_title
+
+    refs = [str(item).strip() for item in material_refs if str(item).strip()]
+    title = human_query_title(question) if question else "材料不可读"
+    lines = [
+        render_frontmatter(frontmatter),
+        "",
+        f"# {title}",
+        "",
+        "**答案**：材料已登记，但当前无法读取其内容（例如图片尚无可用视觉摘要，或路径不是可读文本）。"
+        "因此不能分析附件内容，也不会用其它 wiki 来源冒充回答。",
+        "",
+        "## 已登记材料",
+    ]
+    if refs:
+        lines.extend(f"- `{ref}`" for ref in refs)
+    else:
+        lines.append("- （无路径）")
+    lines.extend(
+        [
+            "",
+            "## 建议",
+            "- 若是图片：先确认视觉分析可用，或改投文字 / Markdown 摘要后再问。",
+            "- 若是文本材料：确认路径存在且为 `.md` / `.txt` 后重试。",
+            "",
+            "## 参考",
+            "- 本回答未引用无关 wiki 来源。",
+        ]
+    )
+    return "\n".join(lines).rstrip() + "\n"

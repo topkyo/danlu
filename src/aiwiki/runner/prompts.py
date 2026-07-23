@@ -85,7 +85,9 @@ def _system_prompt(kind: str) -> str:
     if kind == "ask":
         return (
             "You answer research questions by editing markdown artifacts in place. "
-            "Return only the full replacement artifact, grounded in the provided source pages."
+            "Return only the full replacement artifact, grounded in the provided source pages. "
+            "If you cannot identify which materials or files the user means, say so in the first paragraph "
+            "before any alternative analysis; do not invent a confident substitute answer."
         )
     raise ValueError(f"unsupported prompt kind: {kind}")
 

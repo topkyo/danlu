@@ -779,6 +779,41 @@ def test_complete_run_ask_artifact_persistent_timeout_degrades_artifact(tmp_path
     assert frontmatter.get("llm_status") == "timeout_or_unavailable"
 
 
+def test_complete_run_ask_unreadable_image_material_honest_degrade(tmp_path: Path) -> None:
+    """Explicit image material_refs with no readable text context -> honest short answer, no LLM wiki synthesis."""
+
+    vault = _copy_fixture_vault(tmp_path)
+    asset = vault / "raw" / "assets" / "probe.jpeg"
+    asset.parent.mkdir(parents=True, exist_ok=True)
+    asset.write_bytes(b"\xff\xd8\xff\xd9")
+    artifact = ask_question(vault, "分析下内容", "report")
+    artifact["material_refs"] = ["raw/assets/probe.jpeg"]
+    target = vault / artifact["path"]
+
+    client = _StatefulMockClient(
+        _mock_config(),
+        [CompletionResult(text="# Fake wiki essay\n\nThis should never be written.", response_id="x", usage={})],
+    )
+
+    payload = _complete_run_ask_artifact(
+        vault,
+        artifact=artifact,
+        question="分析下内容",
+        output_format="report",
+        client=client,
+    )
+
+    assert payload.get("delivery_mode") == "llm-degraded"
+    assert client._index == 0
+    final_text = target.read_text(encoding="utf-8")
+    frontmatter = parse_frontmatter(final_text)
+    assert frontmatter.get("delivery_mode") == "llm-degraded"
+    assert frontmatter.get("llm_status") == "material_unreadable"
+    assert "无法读取其内容" in final_text
+    assert "Fake wiki essay" not in final_text
+    assert "raw/assets/probe.jpeg" in final_text
+
+
 def test_furnace_quick_commands_use_advanced_surface_without_protocol() -> None:
     from aiwiki.render.views import furnace_quick_commands
 

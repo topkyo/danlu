@@ -44,9 +44,11 @@ from aiwiki.runner.prompts import (
 from aiwiki.runner.receipts import record_llm_attempt
 from aiwiki.runner.workflow_shared import _raw_response_path, _receipt_error_class, reinject_candidate_frontmatter
 from aiwiki.runner.workflows_ask_context import (
+    _build_unreadable_material_ask_markdown,
     _clean_report_reference_question,
     _context_ref_paths,
     _material_hint_paths,
+    _material_refs_unreadable,
     _quoted_report_material_refs,
     _read_material_context,
     _run_ask_prepared_context,
@@ -73,6 +75,7 @@ from aiwiki.utils.io import (
     atomic_write_text,
     runtime_write_lock,
 )
+from aiwiki.utils.markdown import parse_frontmatter
 
 
 def _complete_run_ask_artifact(
@@ -141,6 +144,132 @@ def _complete_run_ask_artifact(
         provenance_event_fields["material_refs"] = material_refs
     if material_context_refs:
         provenance_event_fields["used_context_refs"] = material_context_refs
+
+    if _material_refs_unreadable(root, material_refs, material_context):
+        started = time.monotonic()
+        with runtime_write_lock(root):
+            target_snapshot = _snapshot_file_bytes(target)
+            current = target.read_text(encoding="utf-8", errors="replace") if target.exists() else ""
+            frontmatter = parse_frontmatter(current)
+            frontmatter.update(
+                {
+                    "llm_status": "material_unreadable",
+                    "delivery_mode": "llm-degraded",
+                    "material_refs": material_refs,
+                    "used_context_refs": [],
+                    "used_refs": material_refs,
+                    "llm_backend": backend_requested,
+                    "llm_model": model_selected,
+                }
+            )
+            updated = _build_unreadable_material_ask_markdown(
+                question=question,
+                material_refs=material_refs,
+                frontmatter=frontmatter,
+            )
+            try:
+                atomic_write_text(target, updated)
+                artifact_ref = str(artifact.get("path") or "")
+                run_id = str(artifact.get("run_id") or run_id_for_artifact(artifact_ref))
+                planned_receipt_path = _planned_run_ask_output_receipt_ref(root, artifact_ref=artifact_ref, run_id=run_id)
+                llm_audit = {
+                    "backend_requested": backend_requested,
+                    "backend_effective": backend_requested,
+                    "model_selected": model_selected,
+                    "model_final": model_selected,
+                    "fallback_stage": "",
+                    "fallback_reason": "material_unreadable",
+                    "contract_validated": True,
+                    "delivery_mode": "llm-degraded",
+                }
+                _restore_run_ask_provenance_frontmatter(
+                    target,
+                    current_artifact,
+                    material_refs=material_refs,
+                    used_context_refs=[],
+                    used_refs=material_refs,
+                )
+                reinject_candidate_frontmatter(target, corpus_id=str(artifact.get("active_corpus_id") or ""))
+                _apply_graph_anchors_to_target()
+                _stamped_record(
+                    {
+                        "event": "run-ask",
+                        "target": artifact_ref,
+                        "question": question,
+                        "format": output_format,
+                        "protocol": artifact.get("protocol", ""),
+                        "duration_ms": int((time.monotonic() - started) * 1000),
+                        "prompt_profile": "skipped-unreadable-material",
+                        "retry_prompt_profile": "",
+                        "no_cache": no_cache,
+                        **provenance_event_fields,
+                        "used_context_refs": [],
+                        "used_refs": material_refs,
+                    },
+                    llm_audit,
+                    status="success",
+                    response_id="",
+                    usage={},
+                    raw_response_path="",
+                )
+                run_notes = write_run_notes(
+                    root,
+                    run_id=run_id,
+                    status="llm-degraded",
+                    question=question,
+                    output_format=output_format,
+                    protocol=str(artifact.get("protocol") or ""),
+                    output_path=artifact_ref,
+                    source_count=0,
+                    concept_count=0,
+                    receipt_path=planned_receipt_path,
+                    backend=str(backend_requested or ""),
+                    model=str(model_selected or ""),
+                    fallback_stage="",
+                    stages=[
+                        "Detected explicit material refs with no readable textual context.",
+                        "Wrote an honest short answer without synthesizing unrelated wiki sources.",
+                    ],
+                    context_refs=[],
+                )
+                write_run_notes_frontmatter(target, run_id=run_notes["run_id"], run_notes_ref=run_notes["run_notes_path"])
+                _ensure_output_cssclass(target)
+                _write_run_ask_output_receipt(
+                    root,
+                    generated_by="aiwiki-run-ask",
+                    artifact_ref=artifact_ref,
+                    run_id=run_id,
+                    question=question,
+                    output_format=output_format,
+                    protocol=str(artifact.get("protocol") or ""),
+                    delivery_mode="llm-degraded",
+                    run_ask_path="report",
+                    extra={
+                        "backend_effective": backend_requested,
+                        "model_final": model_selected,
+                        "fallback_stage": "",
+                        "response_id": "",
+                        "usage": {},
+                        **provenance_event_fields,
+                        "used_context_refs": [],
+                        "used_refs": material_refs,
+                        "llm_status": "material_unreadable",
+                    },
+                )
+                _refresh_shell_summary_fail_soft(root)
+            except Exception:
+                _restore_file_bytes(target, target_snapshot)
+                raise
+            return {
+                **artifact,
+                **run_notes,
+                **llm_audit,
+                "prompt_profile": "skipped-unreadable-material",
+                "retry_prompt_profile": "",
+                "timeout_seconds": getattr(getattr(effective_client, "config", None), "timeout_seconds", timeout_seconds),
+                "no_cache": no_cache,
+            }
+
     compound_paths = [f"wiki/judgments/{page_id}.md" for page_id, _content in prepared.get("judgment_pages", [])] + [
         f"wiki/elixirs/{elixir_id}.md" for elixir_id, _content in prepared.get("elixir_pages", [])
     ]
