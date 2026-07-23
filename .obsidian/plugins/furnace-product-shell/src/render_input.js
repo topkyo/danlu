@@ -30,10 +30,42 @@ function renderUniversalInput(plugin, container) {
   stickyMaterialsContainer.style.display = "none";
 
   const attachmentsContainer = wrapper.createDiv({ cls: "furnace-input-attachments-container" });
-  
+  const atSuggest = wrapper.createDiv({ cls: "furnace-at-suggest" });
+  atSuggest.style.display = "none";
+
+  const composerActions = wrapper.createDiv({ cls: "furnace-input-composer-actions" });
+  const quoteActiveBtn = composerActions.createEl("button", {
+    cls: "furnace-input-quote-active-btn",
+    text: plugin.t("Attach current file"),
+    attr: { type: "button" },
+  });
+
   let attachedFiles = [];
+  let attachedVaultPaths = [];
   let submitting = false;
   let lastChordSubmitAt = 0;
+  let activeMention = null;
+
+  const listVaultMentionCandidates = () => {
+    const vault = plugin.app && plugin.app.vault;
+    const files = vault && typeof vault.getMarkdownFiles === "function" ? vault.getMarkdownFiles() : [];
+    const paths = [];
+    for (const file of Array.isArray(files) ? files : []) {
+      const p = String(file && file.path || "").trim();
+      if (p) paths.push(p);
+    }
+    const activePath = typeof plugin.getActiveFilePath === "function" ? String(plugin.getActiveFilePath() || "").trim() : "";
+    if (activePath && isAskMaterialPathAllowed(activePath) && !paths.includes(activePath)) {
+      paths.unshift(activePath);
+    }
+    return paths;
+  };
+
+  const hideAtSuggest = () => {
+    activeMention = null;
+    atSuggest.style.display = "none";
+    atSuggest.empty();
+  };
 
   const renderStickyMaterialChips = () => {
     stickyMaterialsContainer.empty();
@@ -43,7 +75,7 @@ function renderUniversalInput(plugin, container) {
       return;
     }
     stickyMaterialsContainer.style.display = "flex";
-    const label = stickyMaterialsContainer.createDiv({
+    stickyMaterialsContainer.createDiv({
       cls: "furnace-input-sticky-materials-label",
       text: plugin.t("Sticky materials (used on follow-up)"),
     });
@@ -60,22 +92,82 @@ function renderUniversalInput(plugin, container) {
 
   const updateAttachmentPills = () => {
     attachmentsContainer.empty();
-    if (attachedFiles.length === 0) {
+    if (!attachedFiles.length && !attachedVaultPaths.length) {
       attachmentsContainer.style.display = "none";
       return;
     }
     attachmentsContainer.style.display = "flex";
+    attachedVaultPaths.forEach((materialPath, index) => {
+      const pill = attachmentsContainer.createDiv({ cls: "furnace-input-attachment furnace-input-attachment-vault" });
+      pill.createSpan({
+        text: formatMaterialChipLabel(materialPath),
+        cls: "furnace-input-attachment-name",
+        attr: { title: materialPath },
+      });
+      const removeBtn = pill.createSpan({ text: "×", cls: "furnace-input-attachment-remove" });
+      removeBtn.addEventListener("click", () => {
+        attachedVaultPaths.splice(index, 1);
+        updateAttachmentPills();
+      });
+    });
     attachedFiles.forEach((file, index) => {
       const pill = attachmentsContainer.createDiv({ cls: "furnace-input-attachment" });
-      const nameSpan = pill.createSpan({ text: file.name, cls: "furnace-input-attachment-name" });
+      pill.createSpan({ text: file.name, cls: "furnace-input-attachment-name" });
       const removeBtn = pill.createSpan({ text: "×", cls: "furnace-input-attachment-remove" });
-      
       removeBtn.addEventListener("click", () => {
         attachedFiles.splice(index, 1);
         updateAttachmentPills();
       });
     });
   };
+
+  const addVaultPath = (rawPath) => {
+    const path = String(rawPath || "").replace(/\\/g, "/").replace(/^\.\//, "").trim();
+    if (!path) return false;
+    if (!isAskMaterialPathAllowed(path)) {
+      new Notice(plugin.t("Path is not an allowed ask material: {path}", { path }));
+      return false;
+    }
+    attachedVaultPaths = normalizeMaterialPaths([...attachedVaultPaths, path]);
+    updateAttachmentPills();
+    return true;
+  };
+
+  const showAtSuggest = (mention) => {
+    activeMention = mention;
+    const candidates = filterVaultPathsForMention(listVaultMentionCandidates(), mention.query, 12);
+    atSuggest.empty();
+    if (!candidates.length) {
+      atSuggest.style.display = "none";
+      return;
+    }
+    atSuggest.style.display = "block";
+    for (const candidate of candidates) {
+      const item = atSuggest.createDiv({
+        cls: "furnace-at-suggest-item",
+        text: candidate,
+        attr: { title: candidate },
+      });
+      item.addEventListener("mousedown", (event) => {
+        if (event && typeof event.preventDefault === "function") event.preventDefault();
+        const value = String(textarea.value || "");
+        textarea.value = `${value.slice(0, mention.start)}${value.slice(mention.end)}`;
+        addVaultPath(candidate);
+        hideAtSuggest();
+        autoResize();
+        textarea.focus();
+      });
+    }
+  };
+
+  quoteActiveBtn.addEventListener("click", () => {
+    const activePath = typeof plugin.getActiveFilePath === "function" ? String(plugin.getActiveFilePath() || "").trim() : "";
+    if (!activePath) {
+      new Notice(plugin.t("No active file to attach."));
+      return;
+    }
+    addVaultPath(activePath);
+  });
 
   const addFile = (file) => {
     if (file && (file.path || file.name || typeof file.arrayBuffer === "function")) {
@@ -88,7 +180,13 @@ function renderUniversalInput(plugin, container) {
     textarea.style.height = 'auto';
     textarea.style.height = Math.min(textarea.scrollHeight, 300) + 'px';
   };
-  textarea.addEventListener('input', autoResize);
+  textarea.addEventListener("input", () => {
+    autoResize();
+    const cursor = typeof textarea.selectionStart === "number" ? textarea.selectionStart : textarea.value.length;
+    const mention = extractAtMentionQuery(textarea.value, cursor);
+    if (mention) showAtSuggest(mention);
+    else hideAtSuggest();
+  });
 
   const isSubmitChord = (event) => {
     const isEnter = event.key === "Enter" || event.key === "NumpadEnter" || event.code === "Enter" || event.code === "NumpadEnter" || event.keyCode === 13;
@@ -115,11 +213,13 @@ function renderUniversalInput(plugin, container) {
     if (event && typeof event.preventDefault === "function") event.preventDefault();
     if (submitting) return;
     const value = textarea.value;
-    if (!value.trim() && attachedFiles.length === 0) return;
+    if (!value.trim() && attachedFiles.length === 0 && attachedVaultPaths.length === 0) return;
     submitting = true;
 
     const filesToProcess = [...attachedFiles];
+    const vaultPathsToUse = normalizeMaterialPaths(attachedVaultPaths);
     const normalizedQuestion = String(value || "").trim();
+    hideAtSuggest();
 
     // Lock UI during submit
     submitButton.disabled = true;
@@ -136,7 +236,7 @@ function renderUniversalInput(plugin, container) {
     try {
       // Single-flight: block a new ask while one is active; pure material drops stay allowed.
       const materialQuestionPreview = splitTextMaterialQuestion(value);
-      const willAsk = filesToProcess.length > 0
+      const willAsk = filesToProcess.length > 0 || vaultPathsToUse.length > 0
         ? Boolean(normalizedQuestion)
         : Boolean(materialQuestionPreview)
           || (
@@ -171,6 +271,7 @@ function renderUniversalInput(plugin, container) {
           files: resolvedFiles.map((f) => ({ path: f.source, name: f.name })),
           question: normalizedQuestion,
           excludePendingId: pendingId,
+          extraMaterialPaths: vaultPathsToUse,
         });
         if (pendingId) {
           const finalFormat = String(flowResult && flowResult.askFormat || retryArgs.format || "");
@@ -190,6 +291,41 @@ function renderUniversalInput(plugin, container) {
             askResultPayload = flowResult && flowResult.askPayload;
           }
         }
+      } else if (vaultPathsToUse.length > 0 && normalizedQuestion) {
+        const askFormat = inferAutoAskFormat(normalizedQuestion, vaultPathsToUse);
+        const retryArgs = {
+          kind: "auto-ask",
+          question: normalizedQuestion,
+          askQuestion: normalizedQuestion,
+          format: askFormat,
+          materialPaths: vaultPathsToUse,
+        };
+        pendingId = plugin.pushPendingSubmission(value, {
+          title: normalizedQuestion,
+          retryArgs,
+        });
+        askResultPayload = await plugin.runAskCommand({
+          question: normalizedQuestion,
+          format: askFormat,
+          mode: "run-ask",
+          excludePendingId: pendingId,
+          materialPaths: vaultPathsToUse,
+        });
+        if (pendingId) {
+          const usedPaths = Array.isArray(askResultPayload && askResultPayload.usedMaterialPaths)
+            ? askResultPayload.usedMaterialPaths
+            : vaultPathsToUse;
+          plugin.updatePendingSubmissionRetryArgs(pendingId, {
+            ...retryArgs,
+            materialPaths: usedPaths,
+            askQuestion: String(normalizedQuestion || ""),
+            runNotesPath: String(askResultPayload && askResultPayload.run_notes_path || ""),
+            runId: String(askResultPayload && askResultPayload.run_id || ""),
+          });
+        }
+      } else if (vaultPathsToUse.length > 0) {
+        new Notice(plugin.t("Attached vault paths need a question to ask."));
+        return;
       } else {
         if (isObsidianOpenLink(normalizedQuestion)) {
           const targetPath = obsidianOpenLinkFilePath(normalizedQuestion);
@@ -303,7 +439,9 @@ function renderUniversalInput(plugin, container) {
         textarea.value = '';
         autoResize();
         attachedFiles = [];
+        attachedVaultPaths = [];
         updateAttachmentPills();
+        renderStickyMaterialChips();
       }
       // 失败：保留 textarea.value 和 attachedFiles，便于用户修正后重试
     }

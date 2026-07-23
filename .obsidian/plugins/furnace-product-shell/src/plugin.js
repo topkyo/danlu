@@ -496,16 +496,16 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return runProductShellAskCommand(this, { question, format, mode, excludePendingId, materialPaths });
   }
 
-  async runDroppedPayloadsWithAutoAsk({ payloads, question, excludePendingId }) {
-    return runProductShellDroppedPayloadsWithAutoAsk(this, { payloads, question, excludePendingId });
+  async runDroppedPayloadsWithAutoAsk({ payloads, question, excludePendingId, extraMaterialPaths }) {
+    return runProductShellDroppedPayloadsWithAutoAsk(this, { payloads, question, excludePendingId, extraMaterialPaths });
   }
 
   completePendingMaterialDrop(id, materialPaths) {
     return completeProductShellPendingMaterialDrop(this, id, materialPaths);
   }
 
-  async runDroppedFilesWithAutoAsk({ files, question, excludePendingId }) {
-    return runProductShellDroppedFilesWithAutoAsk(this, { files, question, excludePendingId });
+  async runDroppedFilesWithAutoAsk({ files, question, excludePendingId, extraMaterialPaths }) {
+    return runProductShellDroppedFilesWithAutoAsk(this, { files, question, excludePendingId, extraMaterialPaths });
   }
 
   async runDropUrlCommand({ url, title }) {

@@ -98,3 +98,21 @@ test("isAskMaterialPathAllowed matches runtime material hint prefixes", () => {
   expect(isAskMaterialPathAllowed("notes/root.md")).toBe(false);
   expect(isAskMaterialPathAllowed("raw/inbox/a.png")).toBe(false);
 });
+
+test("extractAtMentionQuery finds trailing @token", () => {
+  const { extractAtMentionQuery } = loadHelpersContext();
+  expect(extractAtMentionQuery("see @wiki/sou", 13)).toEqual({ start: 4, end: 13, query: "wiki/sou" });
+  expect(extractAtMentionQuery("@raw/inbox/a", 12)).toEqual({ start: 0, end: 12, query: "raw/inbox/a" });
+  expect(extractAtMentionQuery("hello world", 11)).toBeNull();
+  expect(extractAtMentionQuery("email@x.com more", 10)).toBeNull();
+});
+
+test("filterVaultPathsForMention keeps allowed prefixes and query", () => {
+  const { filterVaultPathsForMention } = loadHelpersContext();
+  expect(filterVaultPathsForMention([
+    "raw/inbox/a.md",
+    "notes/root.md",
+    "wiki/sources/foo.md",
+    "output/reports/r.md",
+  ], "foo", 12)).toEqual(["wiki/sources/foo.md"]);
+});

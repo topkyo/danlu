@@ -55,7 +55,7 @@ async function runProductShellAskCommand(plugin, { question, format, mode, exclu
   return payload;
 }
 
-async function runProductShellDroppedPayloadsWithAutoAsk(plugin, { payloads, question, excludePendingId }) {
+async function runProductShellDroppedPayloadsWithAutoAsk(plugin, { payloads, question, excludePendingId, extraMaterialPaths }) {
   const normalizedPayloads = Array.isArray(payloads)
     ? payloads
       .map((payload) => {
@@ -80,9 +80,10 @@ async function runProductShellDroppedPayloadsWithAutoAsk(plugin, { payloads, que
       new Notice(plugin.t("Image archived only; content analysis is unavailable for now."));
     }
   }
-  const normalizedMaterialPaths = normalizeMaterialPaths(materialPaths);
+  const extraPaths = normalizeMaterialPaths(extraMaterialPaths);
+  const normalizedMaterialPaths = normalizeMaterialPaths([...materialPaths, ...extraPaths]);
   if (normalizedMaterialPaths.length) {
-    setStickyMaterialRefs(plugin.settings, normalizedMaterialPaths, "drop");
+    setStickyMaterialRefs(plugin.settings, normalizedMaterialPaths, extraPaths.length ? "explicit-@" : "drop");
     persistStickyMaterialRefs(plugin);
   }
   const askQuestion = normalizedQuestion
@@ -94,12 +95,22 @@ async function runProductShellDroppedPayloadsWithAutoAsk(plugin, { payloads, que
   let askPayload = null;
   if (normalizedQuestion) {
     askFormat = inferAutoAskFormat(normalizedQuestion, normalizedMaterialPaths);
-    askPayload = await plugin.runAskCommand({
-      question: askQuestion,
-      format: askFormat,
-      mode: "run-ask",
-      excludePendingId,
-    });
+    if (extraPaths.length) {
+      askPayload = await plugin.runAskCommand({
+        question: normalizedQuestion,
+        format: askFormat,
+        mode: "run-ask",
+        excludePendingId,
+        materialPaths: normalizedMaterialPaths,
+      });
+    } else {
+      askPayload = await plugin.runAskCommand({
+        question: askQuestion,
+        format: askFormat,
+        mode: "run-ask",
+        excludePendingId,
+      });
+    }
     runNotesPath = String(askPayload && askPayload.run_notes_path || "");
     runId = String(askPayload && askPayload.run_id || "");
   }
@@ -128,7 +139,7 @@ function completeProductShellPendingMaterialDrop(plugin, id, materialPaths) {
   return false;
 }
 
-async function runProductShellDroppedFilesWithAutoAsk(plugin, { files, question, excludePendingId }) {
+async function runProductShellDroppedFilesWithAutoAsk(plugin, { files, question, excludePendingId, extraMaterialPaths }) {
   const normalizedFiles = Array.isArray(files)
     ? files
       .map((file) => ({
@@ -141,6 +152,7 @@ async function runProductShellDroppedFilesWithAutoAsk(plugin, { files, question,
     payloads: normalizedFiles.map((file) => ({ path: file.path, title: file.name })),
     question,
     excludePendingId,
+    extraMaterialPaths,
   });
 }
 

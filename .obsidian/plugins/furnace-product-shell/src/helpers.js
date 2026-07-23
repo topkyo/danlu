@@ -204,6 +204,28 @@ function isAskMaterialPathAllowed(path) {
     || s.startsWith("output/") || s.startsWith(".aiwiki/");
 }
 
+function extractAtMentionQuery(text, cursor) {
+  const value = String(text || "");
+  const pos = Number.isFinite(Number(cursor))
+    ? Math.max(0, Math.min(Number(cursor), value.length))
+    : value.length;
+  const before = value.slice(0, pos);
+  const match = before.match(/(?:^|[\s\n])@([^\s@]*)$/);
+  if (!match) return null;
+  const query = String(match[1] || "");
+  const start = before.length - query.length - 1;
+  if (start < 0 || before.charAt(start) !== "@") return null;
+  return { start, end: pos, query };
+}
+
+function filterVaultPathsForMention(paths, query, limit) {
+  const q = String(query || "").toLowerCase();
+  const max = Number.isFinite(Number(limit)) && Number(limit) > 0 ? Number(limit) : 12;
+  return normalizeMaterialPaths(paths)
+    .filter((item) => isAskMaterialPathAllowed(item) && (!q || item.toLowerCase().includes(q)))
+    .slice(0, max);
+}
+
 function imageDropLacksReadableAnalysis(payload) {
   if (!payload || typeof payload !== "object") {
     return false;

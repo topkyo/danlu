@@ -441,6 +441,7 @@ test("file-only submission completes as raw material instead of staying queued",
     files: [{ path: "/tmp/image.png", name: "image.png" }],
     question: "",
     excludePendingId: "pending-1",
+    extraMaterialPaths: [],
   });
   expect(plugin.runAskCommand).not.toHaveBeenCalled();
   expect(plugin.completePendingMaterialDrop).toHaveBeenCalledWith("pending-1", ["raw/inbox/image.md", "raw/assets/image.png"]);
@@ -599,6 +600,78 @@ test("pure ask writes usedMaterialPaths into retryArgs.materialPaths", async () 
   expect(plugin.updatePendingSubmissionRetryArgs).toHaveBeenCalledWith("pending-1", expect.objectContaining({
     kind: "auto-ask",
     materialPaths: ["raw/inbox/sticky.md"],
+  }));
+});
+
+test("@ mention attaches vault path and submits materialPaths", async () => {
+  const context = loadRenderContext();
+  const plugin = makePlugin({
+    getActiveFilePath: () => "",
+    app: {
+      vault: {
+        getMarkdownFiles: () => [
+          { path: "wiki/sources/foo.md" },
+          { path: "raw/inbox/bar.md" },
+          { path: "notes/skip.md" },
+        ],
+      },
+    },
+    runAskCommand: jest.fn().mockResolvedValue({
+      report_path: "output/reports/ask.md",
+      usedMaterialPaths: ["wiki/sources/foo.md"],
+    }),
+  });
+  const container = document.createElement("div");
+  context.renderUniversalInput(plugin, container);
+  const textarea = container.querySelector(".furnace-universal-input-textarea");
+  textarea.value = "请总结 @wiki/sou";
+  textarea.selectionStart = textarea.value.length;
+  textarea.dispatchEvent(new Event("input", { bubbles: true }));
+  const suggestItem = [...container.querySelectorAll(".furnace-at-suggest-item")]
+    .find((el) => el.textContent.includes("wiki/sources/foo.md"));
+  expect(suggestItem).toBeTruthy();
+  suggestItem.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+  expect(container.querySelectorAll(".furnace-input-attachment-vault")).toHaveLength(1);
+  textarea.value = "请总结";
+  container.querySelector(".furnace-universal-input-button").click();
+  await flushAsyncWork();
+  expect(plugin.runAskCommand).toHaveBeenCalledWith(expect.objectContaining({
+    question: "请总结",
+    materialPaths: ["wiki/sources/foo.md"],
+  }));
+});
+
+test("files plus vault paths pass extraMaterialPaths into drop auto-ask", async () => {
+  const context = loadRenderContext();
+  const plugin = makePlugin({
+    runDroppedFilesWithAutoAsk: jest.fn().mockResolvedValue({
+      materialPaths: ["raw/inbox/input.md", "wiki/sources/foo.md"],
+      askQuestion: "Q",
+      askFormat: "report",
+      askPayload: { report_path: "output/reports/q.md" },
+    }),
+  });
+  const container = document.createElement("div");
+  context.renderUniversalInput(plugin, container);
+  const textarea = container.querySelector(".furnace-universal-input-textarea");
+  const file = { name: "note.md", path: "/tmp/note.md" };
+  const dataTransfer = {
+    files: [file],
+    getData: () => "",
+  };
+  const dropEvent = new Event("drop", { bubbles: true });
+  dropEvent.preventDefault = jest.fn();
+  dropEvent.dataTransfer = dataTransfer;
+  container.querySelector(".furnace-universal-input-wrapper").dispatchEvent(dropEvent);
+  // attach vault path via active-file button mock
+  plugin.getActiveFilePath = () => "wiki/sources/foo.md";
+  container.querySelector(".furnace-input-quote-active-btn").click();
+  textarea.value = "一起分析";
+  container.querySelector(".furnace-universal-input-button").click();
+  await flushAsyncWork();
+  expect(plugin.runDroppedFilesWithAutoAsk).toHaveBeenCalledWith(expect.objectContaining({
+    question: "一起分析",
+    extraMaterialPaths: ["wiki/sources/foo.md"],
   }));
 });
 

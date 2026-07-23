@@ -1138,6 +1138,36 @@
   margin-top: 8px;
 }
 
+.furnace-input-composer-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.furnace-input-quote-active-btn {
+  font-size: var(--font-ui-smaller);
+}
+
+.furnace-at-suggest {
+  margin-top: 6px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-primary);
+  max-height: 180px;
+  overflow: auto;
+}
+
+.furnace-at-suggest-item {
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.furnace-at-suggest-item:hover {
+  background: var(--background-secondary);
+}
+
 .furnace-input-attachment {
   display: inline-flex;
   align-items: center;
