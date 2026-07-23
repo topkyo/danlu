@@ -122,6 +122,34 @@ function quoteProductShellFileToComposer(plugin, relativePath) {
   return true;
 }
 
+function prefillProductShellComposer(plugin, { question, materialPaths } = {}) {
+  const textarea = document.querySelector(".furnace-universal-input-textarea");
+  if (!textarea) {
+    new Notice(plugin.t("找不到输入框，无法编辑问题"));
+    return false;
+  }
+  const nextQuestion = String(question || "").trim();
+  textarea.value = nextQuestion;
+  textarea.dispatchEvent(new Event("input", { bubbles: true }));
+  textarea.focus();
+  try { textarea.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (error) {}
+  const paths = normalizeMaterialPaths(materialPaths);
+  if (paths.length && plugin.settings) {
+    setStickyMaterialRefs(plugin.settings, paths, "explicit-@");
+    if (typeof plugin.savePluginState === "function") {
+      try {
+        const result = plugin.savePluginState();
+        if (result && typeof result.then === "function") {
+          void result.catch(() => {});
+        }
+      } catch (_error) {
+        // Prefill must not fail the edit action if persistence is unavailable.
+      }
+    }
+  }
+  return true;
+}
+
 async function openProductShellWorkspacePath(plugin, relativePath) {
   const requestedPath = String(relativePath || "").trim();
   const normalized = normalizeWorkspaceRelativePath(requestedPath);

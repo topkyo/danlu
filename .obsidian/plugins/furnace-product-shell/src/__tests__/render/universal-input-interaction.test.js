@@ -234,6 +234,7 @@ function makePlugin(overrides = {}) {
     openPendingDoneTarget: jest.fn(),
     readWorkspaceSnippet: jest.fn().mockResolvedValue("这是报告摘要，会直接显示在交付物卡片里。"),
     quoteFileToComposer: jest.fn(),
+    prefillComposer: jest.fn(),
     currentLlmHealth: jest.fn(() => ({ backend: "", model: "" })),
     currentShellSyncState: jest.fn(() => ({ status: "healthy" })),
     renderStatusPanel(container) {
@@ -441,6 +442,7 @@ test("file-only submission completes as raw material instead of staying queued",
     files: [{ path: "/tmp/image.png", name: "image.png" }],
     question: "",
     excludePendingId: "pending-1",
+    extraMaterialPaths: [],
   });
   expect(plugin.runAskCommand).not.toHaveBeenCalled();
   expect(plugin.completePendingMaterialDrop).toHaveBeenCalledWith("pending-1", ["raw/inbox/image.md", "raw/assets/image.png"]);
@@ -548,8 +550,129 @@ test("plain question goes through run-ask instead of deterministic universal dro
   expect(plugin.updatePendingSubmissionRetryArgs).toHaveBeenCalledWith("pending-1", expect.objectContaining({
     kind: "auto-ask",
     format: "report",
+    materialPaths: [],
     runNotesPath: "output/control/runs/ask/thinking.md",
     runId: "ask-report",
+  }));
+});
+
+test("composer shows read-only sticky material chips without remove controls", () => {
+  const context = loadRenderContext();
+  const plugin = makePlugin({
+    settings: {
+      showAdvancedCommands: false,
+      advancedSectionsExpanded: {},
+      locale: "zh",
+      stickyMaterialRefs: {
+        paths: ["raw/inbox/sticky.md", "output/reports/r.md"],
+        updatedAt: "2026-07-23T00:00:00Z",
+        source: "drop",
+      },
+    },
+  });
+  const container = document.createElement("div");
+  context.renderUniversalInput(plugin, container);
+  expect(container.querySelector(".furnace-input-sticky-materials")).toBeTruthy();
+  expect(container.textContent).toContain("Sticky materials (used on follow-up)");
+  const chips = container.querySelectorAll(".furnace-input-sticky-chip");
+  expect(chips).toHaveLength(2);
+  expect(chips[0].getAttribute("title")).toBe("raw/inbox/sticky.md");
+  expect(container.querySelector(".furnace-input-sticky-chip-remove")).toBeNull();
+  expect(container.querySelector(".furnace-input-sticky-materials .furnace-input-attachment-remove")).toBeNull();
+});
+
+test("pure ask writes usedMaterialPaths into retryArgs.materialPaths", async () => {
+  const context = loadRenderContext();
+  const plugin = makePlugin({
+    runAskCommand: jest.fn().mockResolvedValue({
+      report_path: "output/reports/ask.md",
+      run_notes_path: "output/control/runs/ask/thinking.md",
+      run_id: "ask-report",
+      usedMaterialPaths: ["raw/inbox/sticky.md"],
+    }),
+  });
+  const container = document.createElement("div");
+  context.renderUniversalInput(plugin, container);
+  const textarea = container.querySelector(".furnace-universal-input-textarea");
+  const submitButton = container.querySelector(".furnace-universal-input-button");
+  textarea.value = "继续分析";
+  submitButton.click();
+  await flushAsyncWork();
+  expect(plugin.updatePendingSubmissionRetryArgs).toHaveBeenCalledWith("pending-1", expect.objectContaining({
+    kind: "auto-ask",
+    materialPaths: ["raw/inbox/sticky.md"],
+  }));
+});
+
+test("@ mention attaches vault path and submits materialPaths", async () => {
+  const context = loadRenderContext();
+  const plugin = makePlugin({
+    getActiveFilePath: () => "",
+    app: {
+      vault: {
+        getMarkdownFiles: () => [
+          { path: "wiki/sources/foo.md" },
+          { path: "raw/inbox/bar.md" },
+          { path: "notes/skip.md" },
+        ],
+      },
+    },
+    runAskCommand: jest.fn().mockResolvedValue({
+      report_path: "output/reports/ask.md",
+      usedMaterialPaths: ["wiki/sources/foo.md"],
+    }),
+  });
+  const container = document.createElement("div");
+  context.renderUniversalInput(plugin, container);
+  const textarea = container.querySelector(".furnace-universal-input-textarea");
+  textarea.value = "请总结 @wiki/sou";
+  textarea.selectionStart = textarea.value.length;
+  textarea.dispatchEvent(new Event("input", { bubbles: true }));
+  const suggestItem = [...container.querySelectorAll(".furnace-at-suggest-item")]
+    .find((el) => el.textContent.includes("wiki/sources/foo.md"));
+  expect(suggestItem).toBeTruthy();
+  suggestItem.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+  expect(container.querySelectorAll(".furnace-input-attachment-vault")).toHaveLength(1);
+  textarea.value = "请总结";
+  container.querySelector(".furnace-universal-input-button").click();
+  await flushAsyncWork();
+  expect(plugin.runAskCommand).toHaveBeenCalledWith(expect.objectContaining({
+    question: "请总结",
+    materialPaths: ["wiki/sources/foo.md"],
+  }));
+});
+
+test("files plus vault paths pass extraMaterialPaths into drop auto-ask", async () => {
+  const context = loadRenderContext();
+  const plugin = makePlugin({
+    runDroppedFilesWithAutoAsk: jest.fn().mockResolvedValue({
+      materialPaths: ["raw/inbox/input.md", "wiki/sources/foo.md"],
+      askQuestion: "Q",
+      askFormat: "report",
+      askPayload: { report_path: "output/reports/q.md" },
+    }),
+  });
+  const container = document.createElement("div");
+  context.renderUniversalInput(plugin, container);
+  const textarea = container.querySelector(".furnace-universal-input-textarea");
+  const file = { name: "note.md", path: "/tmp/note.md" };
+  const dataTransfer = {
+    files: [file],
+    getData: () => "",
+  };
+  const dropEvent = new Event("drop", { bubbles: true });
+  dropEvent.preventDefault = jest.fn();
+  dropEvent.dataTransfer = dataTransfer;
+  container.querySelector(".furnace-universal-input-wrapper").dispatchEvent(dropEvent);
+  // attach vault path via active-file button mock
+  plugin.getActiveFilePath = () => "wiki/sources/foo.md";
+  container.querySelector(".furnace-input-quote-active-btn").click();
+  textarea.value = "一起分析";
+  container.querySelector(".furnace-universal-input-button").click();
+  await flushAsyncWork();
+  expect(plugin.runDroppedFilesWithAutoAsk).toHaveBeenCalledWith(expect.objectContaining({
+    question: "一起分析",
+    extraMaterialPaths: ["wiki/sources/foo.md"],
   }));
 });
 
@@ -789,7 +912,16 @@ test("chat-style pending stream covers artifact cards failed and escalated bubbl
       metrics_history_delta: { available: false },
     },
     pendingSubmissions: [
-      { id: "done-output", status: "done", displayText: "生成报告", reconcileTarget: "outputs", reconcilePath: "output/reports/r.md", runNotesPath: "output/control/runs/ask-r/thinking.md", runId: "ask-r" },
+      {
+        id: "done-output",
+        status: "done",
+        displayText: "生成报告",
+        reconcileTarget: "outputs",
+        reconcilePath: "output/reports/r.md",
+        runNotesPath: "output/control/runs/ask-r/thinking.md",
+        runId: "ask-r",
+        retryArgs: { kind: "auto-ask", materialPaths: ["raw/inbox/a.md"] },
+      },
       { id: "done-receipt", status: "done", displayText: "写回执", reconcileTarget: "receipts", reconcilePath: "output/control/r.json" },
       { id: "failed", status: "failed", displayText: "失败任务", error: "backend unavailable", retryArgs: { kind: "text", payload: "retry" } },
       { id: "escalated", status: "escalated", displayText: "需要确认" },
@@ -805,6 +937,8 @@ test("chat-style pending stream covers artifact cards failed and escalated bubbl
   expect(container.textContent).toContain("本地报告 Artifact");
   expect(container.textContent).toContain("这是报告摘要，会直接显示在交付物卡片里。");
   expect(container.textContent).toContain("引用此报告追问");
+  expect(container.querySelector(".furnace-bubble-materials")).toBeTruthy();
+  expect(container.querySelector(".furnace-bubble-material-chip").getAttribute("title")).toBe("raw/inbox/a.md");
   const outputBubble = container.querySelector(".furnace-conversation-item .furnace-bubble-ai");
   const resultCard = outputBubble.querySelector(".furnace-artifact-card");
   const actions = outputBubble.querySelector(".furnace-artifact-actions");
@@ -812,6 +946,8 @@ test("chat-style pending stream covers artifact cards failed and escalated bubbl
   expect(actions).toBeTruthy();
   expect(resultCard.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(container.querySelector(".furnace-pending-open-report-btn")).toBeTruthy();
+  expect(container.querySelector(".furnace-pending-regenerate-btn")).toBeTruthy();
+  expect(container.querySelector(".furnace-pending-edit-ask-btn")).toBeTruthy();
   container.querySelector(".furnace-pending-quote-report-btn").click();
   expect(plugin.quoteFileToComposer).toHaveBeenCalledWith("output/reports/r.md");
   expect(container.textContent).toContain("回执已就绪");
@@ -907,7 +1043,67 @@ test("degraded output card hides quote action and keeps recovery semantics", asy
   expect(container.textContent).toContain("重试");
   expect(container.textContent).not.toContain("引用此报告追问");
   expect(container.querySelector(".furnace-pending-quote-report-btn")).toBeNull();
+  expect(container.querySelector(".furnace-pending-regenerate-btn")).toBeNull();
+  expect(container.querySelector(".furnace-pending-edit-ask-btn")).toBeNull();
   expect(container.querySelector(".furnace-pending-open-report-btn").textContent).toBe("打开产物");
+});
+
+test("successful ask bubble regenerates with materialPaths and can edit question", async () => {
+  const context = loadRenderContext();
+  const plugin = makePlugin({
+    shellSummary: {
+      generated_at: "2026-05-13T10:00:00Z",
+      review_backlog_counts: {},
+      recent_outputs: [],
+      recent_receipts: [],
+      suggested_next_actions: [],
+      metrics_history_delta: { available: false },
+    },
+    pendingSubmissions: [
+      {
+        id: "done-ok",
+        status: "done",
+        displayText: "生成报告",
+        reconcileTarget: "outputs",
+        reconcilePath: "output/reports/ok.md",
+        retryArgs: {
+          kind: "auto-ask",
+          format: "report",
+          question: "原问题",
+          askQuestion: "原问题",
+          materialPaths: ["raw/inbox/a.md"],
+        },
+      },
+    ],
+  });
+  plugin.runAskCommand = jest.fn().mockResolvedValue({
+    report_path: "output/reports/ok-2.md",
+    run_id: "ask-2",
+    run_notes_path: "output/control/runs/ask-2/thinking.md",
+    usedMaterialPaths: ["raw/inbox/a.md"],
+  });
+  const container = document.createElement("div");
+  context.renderTodayFeed(plugin, container);
+  await flushAsyncWork();
+
+  expect(container.querySelector(".furnace-pending-regenerate-btn")).toBeTruthy();
+  expect(container.querySelector(".furnace-pending-edit-ask-btn")).toBeTruthy();
+  expect(container.querySelector(".furnace-pending-retry-report-btn")).toBeNull();
+
+  container.querySelector(".furnace-pending-edit-ask-btn").click();
+  expect(plugin.prefillComposer).toHaveBeenCalledWith({
+    question: "原问题",
+    materialPaths: ["raw/inbox/a.md"],
+  });
+
+  container.querySelector(".furnace-pending-regenerate-btn").click();
+  await flushAsyncWork();
+  expect(plugin.runAskCommand).toHaveBeenCalledWith(expect.objectContaining({
+    question: "原问题",
+    format: "report",
+    excludePendingId: "done-ok",
+    materialPaths: ["raw/inbox/a.md"],
+  }));
 });
 
 test("degraded output retry clears stale run id and records new sync ask metadata", async () => {
@@ -948,7 +1144,13 @@ test("degraded output retry clears stale run id and records new sync ask metadat
   container.querySelector(".furnace-pending-retry-report-btn").click();
   await flushAsyncWork();
 
-  expect(plugin.runAskCommand).toHaveBeenCalledWith(expect.objectContaining({ question: "重试问题", format: "report", mode: "run-ask", excludePendingId: "done-degraded" }));
+  expect(plugin.runAskCommand).toHaveBeenCalledWith(expect.objectContaining({
+    question: "重试问题",
+    format: "report",
+    mode: "run-ask",
+    excludePendingId: "done-degraded",
+    materialPaths: [],
+  }));
   expect(plugin.pendingSubmissions[0]).toEqual(expect.objectContaining({
     status: "done",
     reconcileTarget: "outputs",
@@ -1097,7 +1299,7 @@ test("runAskCommand uses sync run-ask for report mode", async () => {
     ["run-ask", "请生成一份深度报告", "--format", "report", "--lean"],
     expect.objectContaining({ refreshAfter: true })
   );
-  expect(payload).toEqual({ report_path: "output/reports/r.md" });
+  expect(payload).toEqual({ report_path: "output/reports/r.md", usedMaterialPaths: [] });
 });
 
 test("runAskCommand rejects a second ask while one is active", async () => {
@@ -1170,7 +1372,7 @@ test("runAskCommand excludes its own pending card (no self-block after push)", a
   });
 
   expect(plugin.runPluginCommand).toHaveBeenCalledTimes(1);
-  expect(payload).toEqual({ report_path: "output/reports/r.md", run_id: "ask-1" });
+  expect(payload).toEqual({ report_path: "output/reports/r.md", run_id: "ask-1", usedMaterialPaths: [] });
   expect(context.__notices).not.toContain("已有进行中的提问，请等待完成后再试。");
 });
 

@@ -445,6 +445,17 @@ function renderPendingSubmissionsGroup(plugin, section) {
       hydratePendingArtifactSnippet(plugin, snippet, entry);
       const meta = resultCard.createDiv({ cls: "furnace-artifact-meta" });
       meta.createSpan({ text: pendingSubmissionArtifactMeta(plugin, entry) });
+      const materialPaths = normalizeMaterialPaths(entry.retryArgs && entry.retryArgs.materialPaths);
+      if (materialPaths.length) {
+        const materials = resultCard.createDiv({ cls: "furnace-bubble-materials" });
+        for (const materialPath of materialPaths) {
+          materials.createSpan({
+            cls: "furnace-bubble-material-chip",
+            text: formatMaterialChipLabel(materialPath),
+            attr: { title: materialPath },
+          });
+        }
+      }
       const actions = aiBubble.createDiv({ cls: "furnace-bubble-actions furnace-artifact-actions" });
       const degradedOutput = target === "outputs" && pendingSubmissionIsDegraded(entry);
       const openReceiptTarget = () => plugin.openPendingDoneTarget("receipts", reconcilePath);
@@ -457,17 +468,26 @@ function renderPendingSubmissionsGroup(plugin, section) {
           const retryBtn = actions.createEl("button", { cls: "furnace-pending-retry-report-btn", text: plugin.t("重试") });
           retryBtn.addEventListener("click", async () => {
             const args = entry.retryArgs || {};
+            const question = pendingAskQuestionFromEntry(entry);
+            const materialPaths = pendingAskMaterialPathsFromEntry(entry);
             plugin.resetPendingSubmissionForRetry(entry.id);
             try {
               const retryPayload = await plugin.runAskCommand({
-                question: args.askQuestion || args.question || entry.displayText || "",
+                question,
                 format: args.format || "report",
                 mode: "run-ask",
                 protocol: args.protocol || "",
                 excludePendingId: entry.id,
+                materialPaths,
               });
               if (retryPayload && typeof plugin.updatePendingSubmissionRetryArgs === "function") {
+                const usedPaths = Array.isArray(retryPayload.usedMaterialPaths)
+                  ? retryPayload.usedMaterialPaths
+                  : materialPaths;
                 plugin.updatePendingSubmissionRetryArgs(entry.id, Object.assign({}, args, {
+                  question,
+                  askQuestion: question,
+                  materialPaths: usedPaths,
                   runId: retryPayload.run_id || retryPayload.runId || "",
                   runNotesPath: retryPayload.run_notes_path || retryPayload.runNotesPath || "",
                 }));
@@ -482,6 +502,47 @@ function renderPendingSubmissionsGroup(plugin, section) {
           quoteBtn.addEventListener("click", () => {
             if (typeof plugin.quoteFileToComposer === "function") {
               plugin.quoteFileToComposer(reconcilePath);
+            }
+          });
+          const regenerateBtn = actions.createEl("button", { cls: "furnace-pending-regenerate-btn", text: plugin.t("Regenerate") });
+          regenerateBtn.addEventListener("click", async () => {
+            const args = entry.retryArgs || {};
+            const question = pendingAskQuestionFromEntry(entry);
+            const materialPaths = pendingAskMaterialPathsFromEntry(entry);
+            plugin.resetPendingSubmissionForRetry(entry.id);
+            try {
+              const retryPayload = await plugin.runAskCommand({
+                question,
+                format: args.format || "report",
+                mode: "run-ask",
+                protocol: args.protocol || "",
+                excludePendingId: entry.id,
+                materialPaths,
+              });
+              if (retryPayload && typeof plugin.updatePendingSubmissionRetryArgs === "function") {
+                const usedPaths = Array.isArray(retryPayload.usedMaterialPaths)
+                  ? retryPayload.usedMaterialPaths
+                  : materialPaths;
+                plugin.updatePendingSubmissionRetryArgs(entry.id, Object.assign({}, args, {
+                  question,
+                  askQuestion: question,
+                  materialPaths: usedPaths,
+                  runId: retryPayload.run_id || retryPayload.runId || "",
+                  runNotesPath: retryPayload.run_notes_path || retryPayload.runNotesPath || "",
+                }));
+              }
+              finalizePendingAskSubmission(plugin, entry.id, retryPayload);
+            } catch (e) {
+              plugin.markPendingSubmissionFailed(entry.id, e);
+            }
+          });
+          const editBtn = actions.createEl("button", { cls: "furnace-pending-edit-ask-btn", text: plugin.t("Edit question") });
+          editBtn.addEventListener("click", () => {
+            if (typeof plugin.prefillComposer === "function") {
+              plugin.prefillComposer({
+                question: pendingAskQuestionFromEntry(entry),
+                materialPaths: pendingAskMaterialPathsFromEntry(entry),
+              });
             }
           });
         }

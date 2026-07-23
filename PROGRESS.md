@@ -14,6 +14,8 @@
 
 ## 当前动态
 
+- 2026-07-23 (**Chat-entry 第一刀**)：入口像 ChatGPT、产出仍一问一报告+金丹。落地材料 chips、`runAskCommand(materialPaths)`、`@`/引用当前文件、成功气泡「再生成/编辑问题」。Spec/plan：`docs/specs|plans/2026-07-23-chat-entry-report-elixir.md`。Jest **186**。
+
 - 2026-07-23 (**Dogfood P0 sticky + honest media**)：Shell `stickyMaterialRefs` 追问继承刚投材料；图片无视觉摘要 Notice；ask 对不可读 material_refs 诚实短答降级（不灌无关 wiki）。Spec/plan：`docs/specs|plans/2026-07-23-dogfood-p0-sticky-and-honest-media.md`。Jest **177**；llm-integration **78**。
 
 - 2026-07-22 (**Settings Slim A**)：通知 URL 非空即启用（删 `enabledChannels` toggle）；废弃未读文档/CSS/`cliHint`；SoT §9 camelCase。Spec/plan：`docs/specs|plans/2026-07-22-product-shell-settings-slim.md`。Jest **172**。

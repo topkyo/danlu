@@ -2,14 +2,14 @@
 title: "Furnace Product Shell SoT"
 kind: "spec"
 status: "active"
-updated_at: "2026-07-22"
+updated_at: "2026-07-23"
 ---
 
 # Furnace Product Shell SoT
 
 *Obsidian 插件 UI 层事实源；炼丹炉"一个输入端 + 一个输出端"原则的可视化呈现*
 *Status: Active SoT, decision points resolved (§10)*
-*Last updated: 2026-07-22*
+*Last updated: 2026-07-23*
 
 ## Platform boundary（2026-07）
 
@@ -24,10 +24,10 @@ updated_at: "2026-07-22"
 
 炼丹炉 Product Shell 的 UI 第一性原理是：**用户面只暴露一个输入端 + 一个输出端，其他全部隐藏**。
 
-- **一个输入端**：首屏只给用户一个 Universal Input；URL、文件拖拽、文本笔记和问题都从这里进入。
-- **一个输出端**：首屏只呈现 Today Feed 中可交付的输出、需要确认的事项和非降级活动，不把运行态流水线当成用户目标。
+- **一个输入端**：首屏只给用户一个 Universal Input；URL、文件拖拽、文本笔记和问题都从这里进入。交互可像 chat（`@` 引用材料、粘性材料条、编辑问题/再生成），但**不新增第二输入面或会话 IDE**。
+- **一个输出端**：首屏只呈现 Today Feed 中可交付的输出、需要确认的事项和非降级活动，不把运行态流水线当成用户目标。完整答案永远是 `output/reports/*.md` 报告文件；气泡只做进度/摘要/打开入口。长期价值走报告卡上的沉淀/凝丹（金丹链），不是聊完即忘的对话记录（对齐 `docs/commercial/COMPARE.md`）。
 - **其他全部隐藏**：System Status / LLM Health 等 diagnostics 收纳到 Advanced / 更多工具抽屉；W8 起 Review Center / Execution Center / Recent Runs **已从 Product Shell 视图注册移除**（Today-only）。
-- **用户心智最小化**：任何 UI 层新增卡片、按钮、状态或通知，都必须证明它没有扩大用户需要理解的概念数量。
+- **用户心智最小化**：任何 UI 层新增卡片、按钮、状态或通知，都必须证明它没有扩大用户需要理解的概念数量。Chat-entry 增量（材料 chips / `@` / 再生成）仍落在「一个输入 + 一个报告输出」内，无新视图、无未读态、无第二输出端。
 - **通知只服务输出端**：外部 webhook 通知（飞书 / 企业微信）只提醒"有新报告需要看"，不把后台调度细节推给用户。
 - **Advanced / 更多工具不是删除**：高级视图仍保留给操作者排障和治理，只是不占据默认首屏。
 - **UI 不拥有 runtime state**：Product Shell 只通过 launcher CLI 与 `output/control/shell-summary.json` 读取 shell-facing contract。
