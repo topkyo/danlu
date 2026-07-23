@@ -25,7 +25,7 @@ updated_at: "2026-07-22"
 | 组件 | 数量 | 命令 |
 |---|---:|---|
 | Acceptance | **17** passed | `bash scripts/verify.sh acceptance` |
-| LLM integration | **77** passed | `bash scripts/verify.sh llm-integration` |
+| LLM integration | **78** passed | `bash scripts/verify.sh llm-integration` |
 | Product Shell Jest | **169** passed | `bash scripts/verify.sh product-shell-static` |
 | 全量 | 7 步 | `bash scripts/verify.sh all` |
 | Docs consistency | exit 0 | `bash scripts/docs_consistency_check.sh` |
@@ -84,10 +84,10 @@ updated_at: "2026-07-22"
 | 维度 | 权重 | 分 | Blocking? | 现行证据 |
 |------|------|---:|---|---|
 | Dogfood / fixture | 20% | 8.9 | no（live 维 blocking 在 Live gate） | acceptance **17** replay + AOS-C8 **historical** |
-| Product Shell | 12% | 9.3 | yes | Jest **172** + sync `run-ask` 单飞 + Today-first |
+| Product Shell | 12% | 9.3 | yes | Jest **177** + sync `run-ask` 单飞 + Today-first |
 | Runtime correctness | 15% | 9.4 | no | path harden + fail-closed LLM；无 background submit/resume |
 | Planner / signal | 10% | 8.7 | no | internal modules；CLI 已删；acceptance replay |
-| LLM reliability | 12% | 9.0 | no | llm-integration **77** + receipt 聚合 |
+| LLM reliability | 12% | 9.0 | no | llm-integration **78** + receipt 聚合 |
 | Governance | 13% | 9.1 | yes | review-page / alchemy-revert / receipts；**无** L3 apply CLI / auto_adopt |
 | Maintainability | 8% | 9.0 | no | 顶层 `app_*.py` = 0；Ask 路径净删 background |
 | Docs SoT | 10% | 8.9 | yes | active docs 对齐；本轮刷新计数 |
@@ -100,8 +100,8 @@ updated_at: "2026-07-22"
 |---|------|----------|
 | 1 | Full verify | `bash scripts/verify.sh all` |
 | 2 | Acceptance | **17** — `bash scripts/verify.sh acceptance` |
-| 3 | LLM integration | **77** — `bash scripts/verify.sh llm-integration` |
-| 4 | Product Shell | Jest **172** — `bash scripts/verify.sh product-shell-static` |
+| 3 | LLM integration | **78** — `bash scripts/verify.sh llm-integration` |
+| 4 | Product Shell | Jest **177** — `bash scripts/verify.sh product-shell-static` |
 | 5 | Docs consistency | `bash scripts/docs_consistency_check.sh` |
 | 6 | CI | `.github/workflows/verify.yml` |
 

@@ -214,6 +214,8 @@ const DEFAULT_SETTINGS = {
   llmCustomOpenaiBaseUrl: "",
   feishuWebhookUrl: "",
   wecomWebhookUrl: "",
+  // Short-lived material stickiness for follow-up asks (dogfood P0).
+  stickyMaterialRefs: { paths: [], updatedAt: "", source: "" },
   // R91: Advanced 子 section 折叠态持久化；默认全折叠以降首屏认知负担
   advancedSectionsExpanded: { status: false, history: false },
 };
@@ -246,6 +248,7 @@ const ZH_TEXT = {
   "Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports. Non-empty webhook URL enables that channel.": "Webhook 设置仅保存在本地插件数据中。失败不会重试。通知只用于新报告。填写 URL 即启用该渠道。",
   "Feishu webhook URL": "飞书 webhook URL",
   "WeCom webhook URL": "企业微信 webhook URL",
+  "Image archived only; content analysis is unavailable for now.": "图片已存档，暂不能内容分析。",
   "Universal input": "统一输入",
   "Universal Input": "统一输入",
   "Universal input cannot be empty.": "统一输入不能为空。",
@@ -1020,6 +1023,64 @@ function buildAutoAskQuestion(question, materialPaths) {
     ? `\n\n请优先使用本次投喂材料回答；材料路径供系统路由使用：${paths.join("、")}`
     : "";
   return `${normalizedQuestion}${sourceHint}`;
+}
+
+function questionAlreadyHasMaterialRoutingHint(question) {
+  return /材料路径供系统路由使用/.test(String(question || ""));
+}
+
+function normalizeStickyMaterialRefs(value) {
+  const raw = value && typeof value === "object" ? value : {};
+  return {
+    paths: normalizeMaterialPaths(raw.paths),
+    updatedAt: String(raw.updatedAt || "").trim(),
+    source: String(raw.source || "").trim(),
+  };
+}
+
+function setStickyMaterialRefs(settings, paths, source) {
+  if (!settings || typeof settings !== "object") {
+    return null;
+  }
+  const next = {
+    paths: normalizeMaterialPaths(paths),
+    updatedAt: new Date().toISOString(),
+    source: String(source || "drop").trim() || "drop",
+  };
+  settings.stickyMaterialRefs = next;
+  return next;
+}
+
+function resolveAskMaterialPaths(explicitPaths, sticky) {
+  const explicit = normalizeMaterialPaths(explicitPaths);
+  if (explicit.length) {
+    return { paths: explicit, fromSticky: false };
+  }
+  const stickyPaths = normalizeStickyMaterialRefs(sticky).paths;
+  return { paths: stickyPaths, fromSticky: stickyPaths.length > 0 };
+}
+
+function imageDropLacksReadableAnalysis(payload) {
+  if (!payload || typeof payload !== "object") {
+    return false;
+  }
+  const material = String(payload.material || "").trim().toLowerCase();
+  const looksLikeImage =
+    material === "image"
+    || Boolean(payload.mime_type && String(payload.mime_type).startsWith("image/"))
+    || Object.prototype.hasOwnProperty.call(payload, "visual_analysis_present")
+    || Object.prototype.hasOwnProperty.call(payload, "vision_status");
+  if (!looksLikeImage) {
+    return false;
+  }
+  if (payload.visual_analysis_present === true) {
+    return false;
+  }
+  const status = String(payload.vision_status || "").trim().toLowerCase();
+  if (status === "generated") {
+    return false;
+  }
+  return true;
 }
 
 function stripQuotedReportLinesForIntent(question) {
@@ -6018,6 +6079,9 @@ async function loadProductShellPluginState(plugin) {
   delete plugin.settings.enabled_channels;
   delete plugin.settings.feishu_webhook_url;
   delete plugin.settings.wecom_webhook_url;
+  const migratedSticky = normalizeStickyMaterialRefs(plugin.settings.stickyMaterialRefs);
+  const stickyMigrated = JSON.stringify(plugin.settings.stickyMaterialRefs || {}) !== JSON.stringify(migratedSticky);
+  plugin.settings.stickyMaterialRefs = migratedSticky;
   plugin.pendingSubmissions = plugin.hydratePendingSubmissions(plugin.settings.persistedPendingSubmissions);
   const recentRuns = normalizeProductShellRecentRuns(data.recentRuns);
   const llmHealth = data.llmHealth && typeof data.llmHealth === "object" ? data.llmHealth : null;
@@ -6028,6 +6092,7 @@ async function loadProductShellPluginState(plugin) {
     || wecomWebhookUrlMigrated
     || legacyEnabledChannelsMigrated
     || legacySnakeWebhookMigrated
+    || stickyMigrated
     || legacyDefaultAskFormatMigrated
     || legacyLastViewedTimestampMigrated
     || legacyLastKnownReportIdsMigrated
@@ -6320,13 +6385,43 @@ async function runProductShellUniversalInputCommand(plugin, { payload, title }) 
   return await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
 }
 
+function persistStickyMaterialRefs(plugin) {
+  if (!plugin || typeof plugin.savePluginState !== "function") {
+    return;
+  }
+  try {
+    const result = plugin.savePluginState();
+    if (result && typeof result.then === "function") {
+      void result.catch(() => {});
+    }
+  } catch (_error) {
+    // Sticky persistence must not break drop/ask completion in partial test bundles.
+  }
+}
+
 async function runProductShellAskCommand(plugin, { question, format, mode, excludePendingId }) {
   if (pendingHasActiveAsk(plugin.pendingSubmissions, excludePendingId)) {
     new Notice(plugin.t("已有进行中的提问，请等待完成后再试。"));
     return;
   }
-  const spec = buildAskCommandSpec({ question, format, mode });
-  return await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
+  let askQuestion = String(question || "").trim();
+  let usedPaths = [];
+  let fromSticky = false;
+  if (askQuestion && !questionAlreadyHasMaterialRoutingHint(askQuestion)) {
+    const resolved = resolveAskMaterialPaths([], plugin.settings && plugin.settings.stickyMaterialRefs);
+    usedPaths = resolved.paths;
+    fromSticky = Boolean(resolved.fromSticky);
+    if (usedPaths.length) {
+      askQuestion = buildAutoAskQuestion(askQuestion, usedPaths);
+    }
+  }
+  const spec = buildAskCommandSpec({ question: askQuestion, format, mode });
+  const payload = await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
+  if (usedPaths.length && payload && (payload.report_path || payload.output_path || payload.ok !== false)) {
+    setStickyMaterialRefs(plugin.settings, usedPaths, fromSticky ? (plugin.settings.stickyMaterialRefs && plugin.settings.stickyMaterialRefs.source) || "drop" : "ask");
+    persistStickyMaterialRefs(plugin);
+  }
+  return payload;
 }
 
 async function runProductShellDroppedPayloadsWithAutoAsk(plugin, { payloads, question, excludePendingId }) {
@@ -6345,11 +6440,20 @@ async function runProductShellDroppedPayloadsWithAutoAsk(plugin, { payloads, que
     : [];
   const normalizedQuestion = String(question || "").trim();
   const materialPaths = [];
+  const dropPayloads = [];
   for (const payloadItem of normalizedPayloads) {
     const payload = await plugin.runUniversalInputCommand({ payload: payloadItem.path, title: payloadItem.title });
+    dropPayloads.push(payload);
     collectMaterialPathsFromPayload(payload).forEach((item) => materialPaths.push(item));
+    if (imageDropLacksReadableAnalysis(payload)) {
+      new Notice(plugin.t("Image archived only; content analysis is unavailable for now."));
+    }
   }
   const normalizedMaterialPaths = normalizeMaterialPaths(materialPaths);
+  if (normalizedMaterialPaths.length) {
+    setStickyMaterialRefs(plugin.settings, normalizedMaterialPaths, "drop");
+    persistStickyMaterialRefs(plugin);
+  }
   const askQuestion = normalizedQuestion
     ? buildAutoAskQuestion(normalizedQuestion, normalizedMaterialPaths)
     : "";
@@ -6375,11 +6479,16 @@ async function runProductShellDroppedPayloadsWithAutoAsk(plugin, { payloads, que
     runNotesPath,
     runId,
     askPayload,
+    dropPayloads,
   };
 }
 
 function completeProductShellPendingMaterialDrop(plugin, id, materialPaths) {
   const paths = normalizeMaterialPaths(materialPaths);
+  if (paths.length) {
+    setStickyMaterialRefs(plugin.settings, paths, "drop");
+    persistStickyMaterialRefs(plugin);
+  }
   const rawPath = paths.find((item) => item.startsWith("raw/inbox/")) || paths[0] || "";
   if (id && rawPath) {
     plugin.markPendingSubmissionDone(id, "raw", rawPath);

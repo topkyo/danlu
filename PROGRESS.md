@@ -14,6 +14,8 @@
 
 ## 当前动态
 
+- 2026-07-23 (**Dogfood P0 sticky + honest media**)：Shell `stickyMaterialRefs` 追问继承刚投材料；图片无视觉摘要 Notice；ask 对不可读 material_refs 诚实短答降级（不灌无关 wiki）。Spec/plan：`docs/specs|plans/2026-07-23-dogfood-p0-sticky-and-honest-media.md`。Jest **177**；llm-integration **78**。
+
 - 2026-07-22 (**Settings Slim A**)：通知 URL 非空即启用（删 `enabledChannels` toggle）；废弃未读文档/CSS/`cliHint`；SoT §9 camelCase。Spec/plan：`docs/specs|plans/2026-07-22-product-shell-settings-slim.md`。Jest **172**。
 
 - 2026-07-22（shell settings less · batch 3）：Base URL 与 Feishu/WeCom webhook 收进默认折叠 `<details>`；主设置页顺序 Language → Connection → LLM → Integrations → Developer；Jest **169**。

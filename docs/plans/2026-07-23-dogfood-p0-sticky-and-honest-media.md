@@ -37,7 +37,7 @@
 - Touch ask entry points only as needed so **所有** `runAskCommand` / `runDroppedPayloadsWithAutoAsk` 路径一致
 - Test: `src/__tests__/helpers/sticky-materials.test.js` + 扩展既有 interaction/auto-ask 测
 
-- [ ] **Step 1:** `DEFAULT_SETTINGS` 增加：
+- [x] **Step 1:** `DEFAULT_SETTINGS` 增加：
 
 ```js
 stickyMaterialRefs: { paths: [], updatedAt: "", source: "" },
@@ -45,7 +45,7 @@ stickyMaterialRefs: { paths: [], updatedAt: "", source: "" },
 
 i18n 键预留（Task 2 也用）：`"Image archived only; content analysis is unavailable for now."` 等。
 
-- [ ] **Step 2:** helpers 增加：
+- [x] **Step 2:** helpers 增加：
 
 ```js
 function normalizeStickyMaterialRefs(value) {
@@ -66,16 +66,16 @@ function resolveAskMaterialPaths(explicitPaths, sticky) {
 }
 ```
 
-- [ ] **Step 3:** `plugin_state.js` load 后 `plugin.settings.stickyMaterialRefs = normalizeStickyMaterialRefs(...)`；若纠正则纳入 save-if-migrated。
+- [x] **Step 3:** `plugin_state.js` load 后 `plugin.settings.stickyMaterialRefs = normalizeStickyMaterialRefs(...)`；若纠正则纳入 save-if-migrated。
 
-- [ ] **Step 4:** `runProductShellDroppedPayloadsWithAutoAsk`：drop 收集到 `normalizedMaterialPaths` 非空 → `setStickyMaterialRefs(..., "drop")` + `savePluginState`。  
+- [x] **Step 4:** `runProductShellDroppedPayloadsWithAutoAsk`：drop 收集到 `normalizedMaterialPaths` 非空 → `setStickyMaterialRefs(..., "drop")` + `savePluginState`。  
   `runProductShellAskCommand`（或调用前包装）：无 caller 显式 materials 时，用 `resolveAskMaterialPaths([], sticky)`；若 `fromSticky`，`question = buildAutoAskQuestion(question, paths)` 再 `buildAskCommandSpec`。  
   ask 成功且本轮 paths 非空 → 刷新 sticky（`source: fromSticky ? sticky.source : "ask"` 或 `"explicit-@"` 若问题自带材料提示——实现时：显式 paths 用 `"ask"`）。
 
-- [ ] **Step 5:** Jest：normalize 损坏输入；set/replace；`resolveAskMaterialPaths` 显式优先于 sticky；模拟 drop→ask 注入（可测 helpers + plugin_actions 经 vm/mock）。
+- [x] **Step 5:** Jest：normalize 损坏输入；set/replace；`resolveAskMaterialPaths` 显式优先于 sticky；模拟 drop→ask 注入（可测 helpers + plugin_actions 经 vm/mock）。
 
-- [ ] **Verify:** `bash scripts/verify.sh product-shell-static` — expect PASS  
-- [ ] **Commit:** `feat(shell): persist stickyMaterialRefs for follow-up asks`
+- [x] **Verify:** `bash scripts/verify.sh product-shell-static` — expect PASS  
+- [x] **Commit:** `feat(shell): persist stickyMaterialRefs for follow-up asks`
 
 ---
 
@@ -87,16 +87,16 @@ function resolveAskMaterialPaths(explicitPaths, sticky) {
 - Modify: `helpers.js`, `plugin_actions.js`（或 drop 完成回调处）, `constants.js`
 - Test: Jest 契约
 
-- [ ] **Step 1:** helper `imageDropLacksReadableAnalysis(payload)`：  
+- [x] **Step 1:** helper `imageDropLacksReadableAnalysis(payload)`：  
   当 payload 表明 image drop 且 `visual_analysis_present === false` 或 `vision_status` ∈ `{disabled,skipped,failed,""}`（字段名以 CLI JSON 实际为准，实现前 `rg visual_analysis` 对齐）。
 
-- [ ] **Step 2:** 在 drop 成功路径（`runUniversalInputCommand` / dropped payloads 循环内）若 helper 为 true → `new Notice(t("Image archived only; content analysis is unavailable for now."))`。  
+- [x] **Step 2:** 在 drop 成功路径（`runUniversalInputCommand` / dropped payloads 循环内）若 helper 为 true → `new Notice(t("Image archived only; content analysis is unavailable for now."))`。  
   不阻断 sticky 写入（图路径仍可进 sticky，供 runtime 诚实降级）。
 
-- [ ] **Step 3:** Jest：payload 无分析 → helper true；有 `visual_analysis_present: true` → false。
+- [x] **Step 3:** Jest：payload 无分析 → helper true；有 `visual_analysis_present: true` → false。
 
-- [ ] **Verify:** `bash scripts/verify.sh product-shell-static`  
-- [ ] **Commit:** `feat(shell): notice when image drop has no visual analysis`
+- [x] **Verify:** `bash scripts/verify.sh product-shell-static`  
+- [x] **Commit:** `feat(shell): notice when image drop has no visual analysis`
 
 ---
 
@@ -108,7 +108,7 @@ function resolveAskMaterialPaths(explicitPaths, sticky) {
 - Modify: `src/aiwiki/runner/workflows_ask_context.py`, `workflows_ask.py`（必要时 `workflows_ask_frontmatter.py` / prompts）
 - Test: `tests/test_llm_integration.py` 新增用例
 
-- [ ] **Step 1:** 在 `workflows_ask_context.py` 增加：
+- [x] **Step 1:** 在 `workflows_ask_context.py` 增加：
 
 ```python
 def _material_refs_unreadable(root: Path, refs: list[str], context_text: str) -> bool:
@@ -118,16 +118,16 @@ def _material_refs_unreadable(root: Path, refs: list[str], context_text: str) ->
 
 判定：`refs` 非空且 `strip(context_text)` 为空（因 `_read_material_context` 已跳过非 md/txt）。可选：若唯一 ref 是 image 扩展名则同为 True。
 
-- [ ] **Step 2:** `workflows_ask.py` 在读完 `material_context` 后：若 `_material_refs_unreadable(...)`：
+- [x] **Step 2:** `workflows_ask.py` 在读完 `material_context` 后：若 `_material_refs_unreadable(...)`：
   - **不要**用无关 ranked wiki 生成「分析了附件」长文；优先写固定诚实短正文（首段说明材料已登记但当前无法读取内容；列出 refs），并 `_mark_run_ask_artifact_degraded` 或等价 degraded 标记（对齐现有 `llm_status` / delivery 字段；选最小侵入已有约定）。
   - 若仍调用 LLM：prompt 必须强制只输出诚实短答 + 禁止编造图片内容；并收窄/清空无关 source 页注入。**推荐最小路径：确定性短答 + degraded，不调用 LLM**（更 KISS、测更稳）。
 
-- [ ] **Step 3:** 文本弱命中：在 ask prompt 系统约束加一句——若不确定所指材料，**第一段**必须声明不确定，禁止先写长替代分析（可与现有 prompt builder 一处修改）。
+- [x] **Step 3:** 文本弱命中：在 ask prompt 系统约束加一句——若不确定所指材料，**第一段**必须声明不确定，禁止先写长替代分析（可与现有 prompt builder 一处修改）。
 
-- [ ] **Step 4:** llm-integration：构造 vault fixture，`material_refs` 仅 `raw/assets/x.jpeg`（文件可存在但无 md 上下文）→ run-ask（mock）→ 报告含诚实首段、且不出现无关长综述标题模式；status/degraded 断言。
+- [x] **Step 4:** llm-integration：构造 vault fixture，`material_refs` 仅 `raw/assets/x.jpeg`（文件可存在但无 md 上下文）→ run-ask（mock）→ 报告含诚实首段、且不出现无关长综述标题模式；status/degraded 断言。
 
-- [ ] **Verify:** `bash scripts/verify.sh llm-integration python-static`  
-- [ ] **Commit:** `fix(ask): honest degrade when material refs are unreadable`
+- [x] **Verify:** `bash scripts/verify.sh llm-integration python-static`  
+- [x] **Commit:** `fix(ask): honest degrade when material refs are unreadable`
 
 ---
 
@@ -140,17 +140,17 @@ def _material_refs_unreadable(root: Path, refs: list[str], context_text: str) ->
 - Modify: `PROGRESS.md`；可选勾选本 plan checkboxes
 - Optional: `bash scripts/sync_product_shell_to_vault.sh`
 
-- [ ] **Step 1:** `bash .obsidian/plugins/furnace-product-shell/build.sh`
-- [ ] **Step 2:** PROGRESS 记：P0 sticky + honest media；链 spec/plan；Jest 计数若变则更新 AGENTS/Scorecard
-- [ ] **Step 3（可选）:** sync dogfood vault plugin links
-- [ ] **Final verify:**
+- [x] **Step 1:** `bash .obsidian/plugins/furnace-product-shell/build.sh`
+- [x] **Step 2:** PROGRESS 记：P0 sticky + honest media；链 spec/plan；Jest 计数若变则更新 AGENTS/Scorecard
+- [x] **Step 3（可选）:** sync dogfood vault plugin links
+- [x] **Final verify:**
 
 ```bash
 bash scripts/verify.sh product-shell-static
 bash scripts/verify.sh llm-integration
 ```
 
-- [ ] **Commit:** `chore(shell): rebuild main.js after sticky + honest media`
+- [x] **Commit:** `chore(shell): rebuild main.js after sticky + honest media`
 
 ---
 
