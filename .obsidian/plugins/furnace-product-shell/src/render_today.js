@@ -445,6 +445,17 @@ function renderPendingSubmissionsGroup(plugin, section) {
       hydratePendingArtifactSnippet(plugin, snippet, entry);
       const meta = resultCard.createDiv({ cls: "furnace-artifact-meta" });
       meta.createSpan({ text: pendingSubmissionArtifactMeta(plugin, entry) });
+      const materialPaths = normalizeMaterialPaths(entry.retryArgs && entry.retryArgs.materialPaths);
+      if (materialPaths.length) {
+        const materials = resultCard.createDiv({ cls: "furnace-bubble-materials" });
+        for (const materialPath of materialPaths) {
+          materials.createSpan({
+            cls: "furnace-bubble-material-chip",
+            text: formatMaterialChipLabel(materialPath),
+            attr: { title: materialPath },
+          });
+        }
+      }
       const actions = aiBubble.createDiv({ cls: "furnace-bubble-actions furnace-artifact-actions" });
       const degradedOutput = target === "outputs" && pendingSubmissionIsDegraded(entry);
       const openReceiptTarget = () => plugin.openPendingDoneTarget("receipts", reconcilePath);

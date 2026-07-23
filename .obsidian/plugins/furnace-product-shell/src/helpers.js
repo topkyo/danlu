@@ -187,6 +187,23 @@ function resolveAskMaterialPaths(explicitPaths, sticky) {
   return { paths: stickyPaths, fromSticky: stickyPaths.length > 0 };
 }
 
+function stickyMaterialDisplayPaths(settings) {
+  return normalizeStickyMaterialRefs(settings && settings.stickyMaterialRefs).paths;
+}
+
+function formatMaterialChipLabel(path) {
+  const p = String(path || "").replace(/\\/g, "/");
+  const parts = p.split("/").filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : p;
+}
+
+function isAskMaterialPathAllowed(path) {
+  const s = String(path || "").replace(/\\/g, "/").replace(/^\.\//, "");
+  if (!(s.endsWith(".md") || s.endsWith(".txt"))) return false;
+  return s.startsWith("raw/") || s.startsWith("wiki/")
+    || s.startsWith("output/") || s.startsWith(".aiwiki/");
+}
+
 function imageDropLacksReadableAnalysis(payload) {
   if (!payload || typeof payload !== "object") {
     return false;

@@ -492,8 +492,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return runProductShellUniversalInputCommand(this, { payload, title });
   }
 
-  async runAskCommand({ question, format, mode, excludePendingId }) {
-    return runProductShellAskCommand(this, { question, format, mode, excludePendingId });
+  async runAskCommand({ question, format, mode, excludePendingId, materialPaths }) {
+    return runProductShellAskCommand(this, { question, format, mode, excludePendingId, materialPaths });
   }
 
   async runDroppedPayloadsWithAutoAsk({ payloads, question, excludePendingId }) {

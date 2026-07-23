@@ -101,6 +101,7 @@ const ZH_TEXT = {
   "Backup LLM route ready: {count}/{total}": "备用 LLM 路由就绪：{count}/{total}",
   "Backup LLM route not ready.": "备用 LLM 路由未就绪。",
   "已有进行中的提问，请等待完成后再试。": "已有进行中的提问，请等待完成后再试。",
+  "Sticky materials (used on follow-up)": "本轮材料（追问仍会带上）",
   "正在生成": "正在生成",
   "仍在生成，请稍候": "仍在生成，请稍候",
   "Latest run-ask failed without deterministic fallback.": "最近一次 run-ask 失败，且没有进入 deterministic fallback。",

@@ -22,27 +22,35 @@ function persistStickyMaterialRefs(plugin) {
   }
 }
 
-async function runProductShellAskCommand(plugin, { question, format, mode, excludePendingId }) {
+async function runProductShellAskCommand(plugin, { question, format, mode, excludePendingId, materialPaths }) {
   if (pendingHasActiveAsk(plugin.pendingSubmissions, excludePendingId)) {
     new Notice(plugin.t("已有进行中的提问，请等待完成后再试。"));
     return;
   }
+  const explicit = normalizeMaterialPaths(materialPaths);
+  const resolved = resolveAskMaterialPaths(explicit, plugin.settings && plugin.settings.stickyMaterialRefs);
   let askQuestion = String(question || "").trim();
-  let usedPaths = [];
-  let fromSticky = false;
-  if (askQuestion && !questionAlreadyHasMaterialRoutingHint(askQuestion)) {
-    const resolved = resolveAskMaterialPaths([], plugin.settings && plugin.settings.stickyMaterialRefs);
-    usedPaths = resolved.paths;
-    fromSticky = Boolean(resolved.fromSticky);
-    if (usedPaths.length) {
-      askQuestion = buildAutoAskQuestion(askQuestion, usedPaths);
-    }
+  let usedPaths = resolved.paths;
+  const fromSticky = Boolean(resolved.fromSticky);
+  if (askQuestion && !questionAlreadyHasMaterialRoutingHint(askQuestion) && usedPaths.length) {
+    askQuestion = buildAutoAskQuestion(askQuestion, usedPaths);
+  }
+  if (explicit.length) {
+    setStickyMaterialRefs(plugin.settings, explicit, "explicit-@");
+    persistStickyMaterialRefs(plugin);
   }
   const spec = buildAskCommandSpec({ question: askQuestion, format, mode });
   const payload = await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
-  if (usedPaths.length && payload && (payload.report_path || payload.output_path || payload.ok !== false)) {
-    setStickyMaterialRefs(plugin.settings, usedPaths, fromSticky ? (plugin.settings.stickyMaterialRefs && plugin.settings.stickyMaterialRefs.source) || "drop" : "ask");
+  if (!explicit.length && usedPaths.length && payload && (payload.report_path || payload.output_path || payload.ok !== false)) {
+    setStickyMaterialRefs(
+      plugin.settings,
+      usedPaths,
+      fromSticky ? (plugin.settings.stickyMaterialRefs && plugin.settings.stickyMaterialRefs.source) || "drop" : "ask",
+    );
     persistStickyMaterialRefs(plugin);
+  }
+  if (payload && typeof payload === "object") {
+    payload.usedMaterialPaths = usedPaths;
   }
   return payload;
 }

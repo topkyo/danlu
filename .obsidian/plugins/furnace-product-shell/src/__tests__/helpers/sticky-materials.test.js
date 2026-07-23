@@ -78,3 +78,23 @@ test("imageDropLacksReadableAnalysis detects image drops without vision analysis
   })).toBe(false);
   expect(imageDropLacksReadableAnalysis({ material: "url" })).toBe(false);
 });
+
+test("stickyMaterialDisplayPaths and formatMaterialChipLabel", () => {
+  const { stickyMaterialDisplayPaths, formatMaterialChipLabel } = loadHelpersContext();
+  expect(stickyMaterialDisplayPaths({
+    stickyMaterialRefs: { paths: ["raw/inbox/a.md", "output/reports/r.md"], updatedAt: "t", source: "drop" },
+  })).toEqual(["raw/inbox/a.md", "output/reports/r.md"]);
+  expect(formatMaterialChipLabel("raw/inbox/codex-goal.md")).toBe("codex-goal.md");
+  expect(formatMaterialChipLabel("")).toBe("");
+});
+
+test("isAskMaterialPathAllowed matches runtime material hint prefixes", () => {
+  const { isAskMaterialPathAllowed } = loadHelpersContext();
+  expect(isAskMaterialPathAllowed("raw/inbox/a.md")).toBe(true);
+  expect(isAskMaterialPathAllowed("wiki/sources/x.md")).toBe(true);
+  expect(isAskMaterialPathAllowed("wiki/elixirs/e.md")).toBe(true);
+  expect(isAskMaterialPathAllowed("output/reports/r.md")).toBe(true);
+  expect(isAskMaterialPathAllowed(".aiwiki/state/x.md")).toBe(true);
+  expect(isAskMaterialPathAllowed("notes/root.md")).toBe(false);
+  expect(isAskMaterialPathAllowed("raw/inbox/a.png")).toBe(false);
+});

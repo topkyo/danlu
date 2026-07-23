@@ -26,11 +26,37 @@ function renderUniversalInput(plugin, container) {
   const hint = wrapper.createDiv({ cls: "furnace-universal-input-hint" });
       hint.setText(plugin.t("Ctrl+Enter 提交 · 拖入文件 · 投料入 raw，提问出报告"));
 
+  const stickyMaterialsContainer = wrapper.createDiv({ cls: "furnace-input-sticky-materials" });
+  stickyMaterialsContainer.style.display = "none";
+
   const attachmentsContainer = wrapper.createDiv({ cls: "furnace-input-attachments-container" });
   
   let attachedFiles = [];
   let submitting = false;
   let lastChordSubmitAt = 0;
+
+  const renderStickyMaterialChips = () => {
+    stickyMaterialsContainer.empty();
+    const paths = stickyMaterialDisplayPaths(plugin.settings);
+    if (!paths.length) {
+      stickyMaterialsContainer.style.display = "none";
+      return;
+    }
+    stickyMaterialsContainer.style.display = "flex";
+    const label = stickyMaterialsContainer.createDiv({
+      cls: "furnace-input-sticky-materials-label",
+      text: plugin.t("Sticky materials (used on follow-up)"),
+    });
+    const chips = stickyMaterialsContainer.createDiv({ cls: "furnace-input-sticky-materials-chips" });
+    for (const materialPath of paths) {
+      chips.createSpan({
+        cls: "furnace-input-sticky-chip",
+        text: formatMaterialChipLabel(materialPath),
+        attr: { title: materialPath },
+      });
+    }
+  };
+  renderStickyMaterialChips();
 
   const updateAttachmentPills = () => {
     attachmentsContainer.empty();
@@ -235,6 +261,7 @@ function renderUniversalInput(plugin, container) {
             question: normalizedQuestion,
             askQuestion: normalizedQuestion,
             format: askFormat,
+            materialPaths: [],
           };
           pendingId = plugin.pushPendingSubmission(value, {
             title: normalizedQuestion,
@@ -247,8 +274,13 @@ function renderUniversalInput(plugin, container) {
             excludePendingId: pendingId,
           });
           if (pendingId) {
+            const usedPaths = Array.isArray(askResultPayload && askResultPayload.usedMaterialPaths)
+              ? askResultPayload.usedMaterialPaths
+              : [];
             plugin.updatePendingSubmissionRetryArgs(pendingId, {
               ...retryArgs,
+              materialPaths: usedPaths,
+              askQuestion: String(normalizedQuestion || ""),
               runNotesPath: String(askResultPayload && askResultPayload.run_notes_path || ""),
               runId: String(askResultPayload && askResultPayload.run_id || ""),
             });
