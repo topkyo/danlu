@@ -73,9 +73,9 @@ Universal Input（像 ChatGPT 的入口）
 
 | Priority | Slice | Change surface | Done when |
 |----------|-------|----------------|-----------|
-| **1** | 追问不断档 | 巩固 `stickyMaterialRefs` + `引用报告：…`；composer/气泡可见「本轮材料」 | 追问无显式材料时仍带 sticky；用户能看见本轮 paths；无可读材料时诚实短答 |
-| **2** | Composer `@` / 选文件 | Universal Input：`@` 或 picker → 附件 pill → `material_refs` | 可引用：当前打开文件、`wiki/sources|judgments`、`output/reports`、vault 内 `.md/.txt`；走现有 ask 路由 |
-| **3** | 编辑再发 / 再生成 | 气泡动作：编辑问题、成功后再生成 | 每次新 `run-ask`、新报告、新 receipt；failed/degraded 继续现有重试 |
+| **1** | 追问不断档 | 巩固 sticky + 引用报告；composer/气泡**只读**材料 chips；`runAskCommand` 回写 `retryArgs.materialPaths` | 追问仍带 sticky；可见本轮 paths；无可读材料时诚实短答；无 sticky 逐条 ×（清除仍仅新 drop / 新显式 `@` 整组替换） |
+| **2** | Composer `@` / 选文件 | `@` 或 picker → pill → `material_refs`；drop+`@` 时 paths **union** | 路径须 `.md/.txt` 且前缀 ∈ `raw/`\|`wiki/`\|`output/`\|`.aiwiki/`（对齐 runtime）；当前文件仅前缀合法时注入 |
+| **3** | 编辑再发 / 再生成 | 成功气泡：编辑问题、再生成；degraded 仍「重试」 | 新 `run-ask` + 新报告 + 新 receipt；再生成重传 `materialPaths`；不覆盖旧报告 |
 
 ### Data flow
 
@@ -89,7 +89,8 @@ Universal Input（像 ChatGPT 的入口）
 - 有 `material_refs` 但无可读上下文 → 诚实短答（已有 P0 契约）。
 - Ask 进行中拒绝新 ask（单飞）；drop 仍可并行。
 - 再生成失败 → 保留旧报告；新 pending 标 failed/degraded，可重试。
-- `@` 指向不存在或 vault 外路径 → fail-loud，不静默忽略。
+- `@` 指向不存在、vault 外、或非允许前缀路径 → fail-loud，不静默忽略。
+- sticky 展示条只读；清除语义不扩大（见 dogfood P0）。
 
 ### Testing
 
