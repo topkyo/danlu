@@ -152,6 +152,64 @@ function buildAutoAskQuestion(question, materialPaths) {
   return `${normalizedQuestion}${sourceHint}`;
 }
 
+function questionAlreadyHasMaterialRoutingHint(question) {
+  return /材料路径供系统路由使用/.test(String(question || ""));
+}
+
+function normalizeStickyMaterialRefs(value) {
+  const raw = value && typeof value === "object" ? value : {};
+  return {
+    paths: normalizeMaterialPaths(raw.paths),
+    updatedAt: String(raw.updatedAt || "").trim(),
+    source: String(raw.source || "").trim(),
+  };
+}
+
+function setStickyMaterialRefs(settings, paths, source) {
+  if (!settings || typeof settings !== "object") {
+    return null;
+  }
+  const next = {
+    paths: normalizeMaterialPaths(paths),
+    updatedAt: new Date().toISOString(),
+    source: String(source || "drop").trim() || "drop",
+  };
+  settings.stickyMaterialRefs = next;
+  return next;
+}
+
+function resolveAskMaterialPaths(explicitPaths, sticky) {
+  const explicit = normalizeMaterialPaths(explicitPaths);
+  if (explicit.length) {
+    return { paths: explicit, fromSticky: false };
+  }
+  const stickyPaths = normalizeStickyMaterialRefs(sticky).paths;
+  return { paths: stickyPaths, fromSticky: stickyPaths.length > 0 };
+}
+
+function imageDropLacksReadableAnalysis(payload) {
+  if (!payload || typeof payload !== "object") {
+    return false;
+  }
+  const material = String(payload.material || "").trim().toLowerCase();
+  const looksLikeImage =
+    material === "image"
+    || Boolean(payload.mime_type && String(payload.mime_type).startsWith("image/"))
+    || Object.prototype.hasOwnProperty.call(payload, "visual_analysis_present")
+    || Object.prototype.hasOwnProperty.call(payload, "vision_status");
+  if (!looksLikeImage) {
+    return false;
+  }
+  if (payload.visual_analysis_present === true) {
+    return false;
+  }
+  const status = String(payload.vision_status || "").trim().toLowerCase();
+  if (status === "generated") {
+    return false;
+  }
+  return true;
+}
+
 function stripQuotedReportLinesForIntent(question) {
   return String(question || "")
     .split(/\r?\n/)

@@ -22,6 +22,8 @@ const DEFAULT_SETTINGS = {
   llmCustomOpenaiBaseUrl: "",
   feishuWebhookUrl: "",
   wecomWebhookUrl: "",
+  // Short-lived material stickiness for follow-up asks (dogfood P0).
+  stickyMaterialRefs: { paths: [], updatedAt: "", source: "" },
   // R91: Advanced 子 section 折叠态持久化；默认全折叠以降首屏认知负担
   advancedSectionsExpanded: { status: false, history: false },
 };
@@ -54,6 +56,7 @@ const ZH_TEXT = {
   "Webhook settings are stored only in local plugin data. Failures are not retried. Notifications are only for new reports. Non-empty webhook URL enables that channel.": "Webhook 设置仅保存在本地插件数据中。失败不会重试。通知只用于新报告。填写 URL 即启用该渠道。",
   "Feishu webhook URL": "飞书 webhook URL",
   "WeCom webhook URL": "企业微信 webhook URL",
+  "Image archived only; content analysis is unavailable for now.": "图片已存档，暂不能内容分析。",
   "Universal input": "统一输入",
   "Universal Input": "统一输入",
   "Universal input cannot be empty.": "统一输入不能为空。",

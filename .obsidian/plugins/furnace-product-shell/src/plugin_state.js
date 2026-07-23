@@ -55,6 +55,9 @@ async function loadProductShellPluginState(plugin) {
   delete plugin.settings.enabled_channels;
   delete plugin.settings.feishu_webhook_url;
   delete plugin.settings.wecom_webhook_url;
+  const migratedSticky = normalizeStickyMaterialRefs(plugin.settings.stickyMaterialRefs);
+  const stickyMigrated = JSON.stringify(plugin.settings.stickyMaterialRefs || {}) !== JSON.stringify(migratedSticky);
+  plugin.settings.stickyMaterialRefs = migratedSticky;
   plugin.pendingSubmissions = plugin.hydratePendingSubmissions(plugin.settings.persistedPendingSubmissions);
   const recentRuns = normalizeProductShellRecentRuns(data.recentRuns);
   const llmHealth = data.llmHealth && typeof data.llmHealth === "object" ? data.llmHealth : null;
@@ -65,6 +68,7 @@ async function loadProductShellPluginState(plugin) {
     || wecomWebhookUrlMigrated
     || legacyEnabledChannelsMigrated
     || legacySnakeWebhookMigrated
+    || stickyMigrated
     || legacyDefaultAskFormatMigrated
     || legacyLastViewedTimestampMigrated
     || legacyLastKnownReportIdsMigrated

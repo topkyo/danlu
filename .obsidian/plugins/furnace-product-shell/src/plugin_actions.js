@@ -13,8 +13,26 @@ async function runProductShellAskCommand(plugin, { question, format, mode, exclu
     new Notice(plugin.t("已有进行中的提问，请等待完成后再试。"));
     return;
   }
-  const spec = buildAskCommandSpec({ question, format, mode });
-  return await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
+  let askQuestion = String(question || "").trim();
+  let usedPaths = [];
+  let fromSticky = false;
+  if (askQuestion && !questionAlreadyHasMaterialRoutingHint(askQuestion)) {
+    const resolved = resolveAskMaterialPaths([], plugin.settings && plugin.settings.stickyMaterialRefs);
+    usedPaths = resolved.paths;
+    fromSticky = Boolean(resolved.fromSticky);
+    if (usedPaths.length) {
+      askQuestion = buildAutoAskQuestion(askQuestion, usedPaths);
+    }
+  }
+  const spec = buildAskCommandSpec({ question: askQuestion, format, mode });
+  const payload = await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
+  if (usedPaths.length && payload && (payload.report_path || payload.output_path || payload.ok !== false)) {
+    setStickyMaterialRefs(plugin.settings, usedPaths, fromSticky ? (plugin.settings.stickyMaterialRefs && plugin.settings.stickyMaterialRefs.source) || "drop" : "ask");
+    if (typeof plugin.savePluginState === "function") {
+      void plugin.savePluginState();
+    }
+  }
+  return payload;
 }
 
 async function runProductShellDroppedPayloadsWithAutoAsk(plugin, { payloads, question, excludePendingId }) {
@@ -33,11 +51,22 @@ async function runProductShellDroppedPayloadsWithAutoAsk(plugin, { payloads, que
     : [];
   const normalizedQuestion = String(question || "").trim();
   const materialPaths = [];
+  const dropPayloads = [];
   for (const payloadItem of normalizedPayloads) {
     const payload = await plugin.runUniversalInputCommand({ payload: payloadItem.path, title: payloadItem.title });
+    dropPayloads.push(payload);
     collectMaterialPathsFromPayload(payload).forEach((item) => materialPaths.push(item));
+    if (imageDropLacksReadableAnalysis(payload)) {
+      new Notice(plugin.t("Image archived only; content analysis is unavailable for now."));
+    }
   }
   const normalizedMaterialPaths = normalizeMaterialPaths(materialPaths);
+  if (normalizedMaterialPaths.length) {
+    setStickyMaterialRefs(plugin.settings, normalizedMaterialPaths, "drop");
+    if (typeof plugin.savePluginState === "function") {
+      void plugin.savePluginState();
+    }
+  }
   const askQuestion = normalizedQuestion
     ? buildAutoAskQuestion(normalizedQuestion, normalizedMaterialPaths)
     : "";
@@ -63,11 +92,18 @@ async function runProductShellDroppedPayloadsWithAutoAsk(plugin, { payloads, que
     runNotesPath,
     runId,
     askPayload,
+    dropPayloads,
   };
 }
 
 function completeProductShellPendingMaterialDrop(plugin, id, materialPaths) {
   const paths = normalizeMaterialPaths(materialPaths);
+  if (paths.length) {
+    setStickyMaterialRefs(plugin.settings, paths, "drop");
+    if (typeof plugin.savePluginState === "function") {
+      void plugin.savePluginState();
+    }
+  }
   const rawPath = paths.find((item) => item.startsWith("raw/inbox/")) || paths[0] || "";
   if (id && rawPath) {
     plugin.markPendingSubmissionDone(id, "raw", rawPath);
