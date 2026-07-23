@@ -234,6 +234,7 @@ function makePlugin(overrides = {}) {
     openPendingDoneTarget: jest.fn(),
     readWorkspaceSnippet: jest.fn().mockResolvedValue("这是报告摘要，会直接显示在交付物卡片里。"),
     quoteFileToComposer: jest.fn(),
+    prefillComposer: jest.fn(),
     currentLlmHealth: jest.fn(() => ({ backend: "", model: "" })),
     currentShellSyncState: jest.fn(() => ({ status: "healthy" })),
     renderStatusPanel(container) {
@@ -945,6 +946,8 @@ test("chat-style pending stream covers artifact cards failed and escalated bubbl
   expect(actions).toBeTruthy();
   expect(resultCard.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(container.querySelector(".furnace-pending-open-report-btn")).toBeTruthy();
+  expect(container.querySelector(".furnace-pending-regenerate-btn")).toBeTruthy();
+  expect(container.querySelector(".furnace-pending-edit-ask-btn")).toBeTruthy();
   container.querySelector(".furnace-pending-quote-report-btn").click();
   expect(plugin.quoteFileToComposer).toHaveBeenCalledWith("output/reports/r.md");
   expect(container.textContent).toContain("回执已就绪");
@@ -1040,7 +1043,67 @@ test("degraded output card hides quote action and keeps recovery semantics", asy
   expect(container.textContent).toContain("重试");
   expect(container.textContent).not.toContain("引用此报告追问");
   expect(container.querySelector(".furnace-pending-quote-report-btn")).toBeNull();
+  expect(container.querySelector(".furnace-pending-regenerate-btn")).toBeNull();
+  expect(container.querySelector(".furnace-pending-edit-ask-btn")).toBeNull();
   expect(container.querySelector(".furnace-pending-open-report-btn").textContent).toBe("打开产物");
+});
+
+test("successful ask bubble regenerates with materialPaths and can edit question", async () => {
+  const context = loadRenderContext();
+  const plugin = makePlugin({
+    shellSummary: {
+      generated_at: "2026-05-13T10:00:00Z",
+      review_backlog_counts: {},
+      recent_outputs: [],
+      recent_receipts: [],
+      suggested_next_actions: [],
+      metrics_history_delta: { available: false },
+    },
+    pendingSubmissions: [
+      {
+        id: "done-ok",
+        status: "done",
+        displayText: "生成报告",
+        reconcileTarget: "outputs",
+        reconcilePath: "output/reports/ok.md",
+        retryArgs: {
+          kind: "auto-ask",
+          format: "report",
+          question: "原问题",
+          askQuestion: "原问题",
+          materialPaths: ["raw/inbox/a.md"],
+        },
+      },
+    ],
+  });
+  plugin.runAskCommand = jest.fn().mockResolvedValue({
+    report_path: "output/reports/ok-2.md",
+    run_id: "ask-2",
+    run_notes_path: "output/control/runs/ask-2/thinking.md",
+    usedMaterialPaths: ["raw/inbox/a.md"],
+  });
+  const container = document.createElement("div");
+  context.renderTodayFeed(plugin, container);
+  await flushAsyncWork();
+
+  expect(container.querySelector(".furnace-pending-regenerate-btn")).toBeTruthy();
+  expect(container.querySelector(".furnace-pending-edit-ask-btn")).toBeTruthy();
+  expect(container.querySelector(".furnace-pending-retry-report-btn")).toBeNull();
+
+  container.querySelector(".furnace-pending-edit-ask-btn").click();
+  expect(plugin.prefillComposer).toHaveBeenCalledWith({
+    question: "原问题",
+    materialPaths: ["raw/inbox/a.md"],
+  });
+
+  container.querySelector(".furnace-pending-regenerate-btn").click();
+  await flushAsyncWork();
+  expect(plugin.runAskCommand).toHaveBeenCalledWith(expect.objectContaining({
+    question: "原问题",
+    format: "report",
+    excludePendingId: "done-ok",
+    materialPaths: ["raw/inbox/a.md"],
+  }));
 });
 
 test("degraded output retry clears stale run id and records new sync ask metadata", async () => {
@@ -1081,7 +1144,13 @@ test("degraded output retry clears stale run id and records new sync ask metadat
   container.querySelector(".furnace-pending-retry-report-btn").click();
   await flushAsyncWork();
 
-  expect(plugin.runAskCommand).toHaveBeenCalledWith(expect.objectContaining({ question: "重试问题", format: "report", mode: "run-ask", excludePendingId: "done-degraded" }));
+  expect(plugin.runAskCommand).toHaveBeenCalledWith(expect.objectContaining({
+    question: "重试问题",
+    format: "report",
+    mode: "run-ask",
+    excludePendingId: "done-degraded",
+    materialPaths: [],
+  }));
   expect(plugin.pendingSubmissions[0]).toEqual(expect.objectContaining({
     status: "done",
     reconcileTarget: "outputs",

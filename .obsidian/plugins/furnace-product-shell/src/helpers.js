@@ -226,6 +226,16 @@ function filterVaultPathsForMention(paths, query, limit) {
     .slice(0, max);
 }
 
+function pendingAskQuestionFromEntry(entry) {
+  const args = (entry && entry.retryArgs) || {};
+  return String(args.askQuestion || args.question || (entry && entry.displayText) || "").trim();
+}
+
+function pendingAskMaterialPathsFromEntry(entry) {
+  const args = (entry && entry.retryArgs) || {};
+  return normalizeMaterialPaths(args.materialPaths || []);
+}
+
 function imageDropLacksReadableAnalysis(payload) {
   if (!payload || typeof payload !== "object") {
     return false;

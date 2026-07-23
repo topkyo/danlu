@@ -403,6 +403,10 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return quoteProductShellFileToComposer(this, relativePath);
   }
 
+  prefillComposer({ question, materialPaths } = {}) {
+    return prefillProductShellComposer(this, { question, materialPaths });
+  }
+
 
   async runCompileCommand() {
     await this.runPluginCommand(this.t("Compile"), ["compile"], { refreshAfter: true });
