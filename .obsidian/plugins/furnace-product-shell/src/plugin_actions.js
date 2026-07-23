@@ -8,6 +8,20 @@ async function runProductShellUniversalInputCommand(plugin, { payload, title }) 
   return await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
 }
 
+function persistStickyMaterialRefs(plugin) {
+  if (!plugin || typeof plugin.savePluginState !== "function") {
+    return;
+  }
+  try {
+    const result = plugin.savePluginState();
+    if (result && typeof result.then === "function") {
+      void result.catch(() => {});
+    }
+  } catch (_error) {
+    // Sticky persistence must not break drop/ask completion in partial test bundles.
+  }
+}
+
 async function runProductShellAskCommand(plugin, { question, format, mode, excludePendingId }) {
   if (pendingHasActiveAsk(plugin.pendingSubmissions, excludePendingId)) {
     new Notice(plugin.t("已有进行中的提问，请等待完成后再试。"));
@@ -28,9 +42,7 @@ async function runProductShellAskCommand(plugin, { question, format, mode, exclu
   const payload = await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
   if (usedPaths.length && payload && (payload.report_path || payload.output_path || payload.ok !== false)) {
     setStickyMaterialRefs(plugin.settings, usedPaths, fromSticky ? (plugin.settings.stickyMaterialRefs && plugin.settings.stickyMaterialRefs.source) || "drop" : "ask");
-    if (typeof plugin.savePluginState === "function") {
-      void plugin.savePluginState();
-    }
+    persistStickyMaterialRefs(plugin);
   }
   return payload;
 }
@@ -63,9 +75,7 @@ async function runProductShellDroppedPayloadsWithAutoAsk(plugin, { payloads, que
   const normalizedMaterialPaths = normalizeMaterialPaths(materialPaths);
   if (normalizedMaterialPaths.length) {
     setStickyMaterialRefs(plugin.settings, normalizedMaterialPaths, "drop");
-    if (typeof plugin.savePluginState === "function") {
-      void plugin.savePluginState();
-    }
+    persistStickyMaterialRefs(plugin);
   }
   const askQuestion = normalizedQuestion
     ? buildAutoAskQuestion(normalizedQuestion, normalizedMaterialPaths)
@@ -100,9 +110,7 @@ function completeProductShellPendingMaterialDrop(plugin, id, materialPaths) {
   const paths = normalizeMaterialPaths(materialPaths);
   if (paths.length) {
     setStickyMaterialRefs(plugin.settings, paths, "drop");
-    if (typeof plugin.savePluginState === "function") {
-      void plugin.savePluginState();
-    }
+    persistStickyMaterialRefs(plugin);
   }
   const rawPath = paths.find((item) => item.startsWith("raw/inbox/")) || paths[0] || "";
   if (id && rawPath) {
