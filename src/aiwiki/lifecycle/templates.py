@@ -253,10 +253,7 @@ def _curated_risk_lines(supporting: str, *, max_lines: int = 6) -> list[str]:
     structured = _filter_non_placeholder_lines(_section_lines(supporting, "risks", fallback=[], max_lines=max_lines))
     if structured:
         return structured
-    limited = _limited_evidence_lines(supporting, max_lines=max_lines)
-    if limited:
-        return limited
-    return ["- No explicit counter evidence was found in the filed artifact."]
+    return _limited_evidence_lines(supporting, max_lines=max_lines)
 
 
 def curated_structured_value_is_placeholder(value: Any) -> bool:
@@ -270,11 +267,12 @@ def curated_structured_value_is_placeholder(value: Any) -> bool:
 
 
 def _replace_section_if_placeholder(markdown: str, heading: str, lines: list[str]) -> str:
-    if not lines:
+    meaningful = _filter_non_placeholder_lines(lines)
+    if not meaningful:
         return markdown
     if not _section_is_placeholder(markdown, heading):
         return markdown
-    replacement = f"## {heading}\n" + "\n".join(lines).strip() + "\n\n"
+    replacement = f"## {heading}\n" + "\n".join(meaningful).strip() + "\n\n"
     pattern = rf"(?ms)^## {re.escape(heading)}\n.*?(?=^## |\Z)"
     if re.search(pattern, markdown):
         return re.sub(pattern, replacement, markdown, count=1)
@@ -285,17 +283,22 @@ def curated_asset_section_overrides(
     *, supporting_body: str, revisit_after: str, escalate_after: str
 ) -> dict[str, list[str]]:
     risks = _curated_risk_lines(supporting_body)
-    if not _filter_non_placeholder_lines(risks):
-        risks = ["- No counter evidence was found in the filed artifact; verify this during review."]
-    signals = _section_lines(
-        supporting_body,
-        "signals",
-        fallback=[
-            f"- Revisit this judgment after `{revisit_after or 'none'}` or when cited evidence changes.",
-            f"- Escalate after `{escalate_after or 'none'}` if the evidence chain breaks.",
-        ],
+    signals = _filter_non_placeholder_lines(
+        _section_lines(
+            supporting_body,
+            "signals",
+            fallback=[],
+            max_lines=6,
+        )
     )
-    return {"Counter Evidence": risks, "Invalidation": risks, "Next Signals": signals}
+    overrides: dict[str, list[str]] = {}
+    if risks:
+        overrides["Counter Evidence"] = risks
+        overrides["Invalidation"] = risks
+    if signals:
+        overrides["Next Signals"] = signals
+    _ = (revisit_after, escalate_after)
+    return overrides
 
 
 def curated_frontmatter_hints(*, kind: str, protocol: str, supporting_body: str) -> dict[str, Any]:
@@ -333,15 +336,20 @@ def repair_curated_page_body(
         _section_lines(
             supporting,
             "evidence",
-            fallback=[f"- Evidence is preserved in the supporting artifact `{artifact_ref}`."],
+            fallback=[],
+            max_lines=6,
         )
-    ) or [f"- Evidence is preserved in the supporting artifact `{artifact_ref}`."]
-    risks = _curated_risk_lines(supporting)
-    signals = _section_lines(
-        supporting,
-        "signals",
-        fallback=[f"- Revisit after `{revisit_after or 'none'}` or when cited evidence changes."],
     )
+    risks = _curated_risk_lines(supporting)
+    signals = _filter_non_placeholder_lines(
+        _section_lines(
+            supporting,
+            "signals",
+            fallback=[],
+            max_lines=6,
+        )
+    )
+    _ = (artifact_ref, revisit_after, escalate_after)
 
     repaired = body
     if kind == "judgment":
