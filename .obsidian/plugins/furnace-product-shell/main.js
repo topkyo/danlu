@@ -1112,9 +1112,21 @@ function pendingAskQuestionFromEntry(entry) {
   return String(args.askQuestion || args.question || (entry && entry.displayText) || "").trim();
 }
 
-function pendingAskMaterialPathsFromEntry(entry) {
+function pendingAskMaterialPathsFromEntry(entry, settings) {
   const args = (entry && entry.retryArgs) || {};
-  return normalizeMaterialPaths(args.materialPaths || []);
+  const recorded = normalizeMaterialPaths(args.materialPaths || []);
+  if (recorded.length) return recorded;
+  return stickyMaterialDisplayPaths(settings);
+}
+
+function coalesceAskUsedMaterialPaths(payload, fallbackPaths, settings) {
+  const fromPayload = Array.isArray(payload && payload.usedMaterialPaths)
+    ? normalizeMaterialPaths(payload.usedMaterialPaths)
+    : [];
+  if (fromPayload.length) return fromPayload;
+  const fallback = normalizeMaterialPaths(fallbackPaths);
+  if (fallback.length) return fallback;
+  return stickyMaterialDisplayPaths(settings);
 }
 
 function imageDropLacksReadableAnalysis(payload) {
@@ -3753,9 +3765,11 @@ function renderUniversalInput(plugin, container) {
           materialPaths: vaultPathsToUse,
         });
         if (pendingId) {
-          const usedPaths = Array.isArray(askResultPayload && askResultPayload.usedMaterialPaths)
-            ? askResultPayload.usedMaterialPaths
-            : vaultPathsToUse;
+          const usedPaths = coalesceAskUsedMaterialPaths(
+            askResultPayload,
+            vaultPathsToUse,
+            plugin.settings,
+          );
           plugin.updatePendingSubmissionRetryArgs(pendingId, {
             ...retryArgs,
             materialPaths: usedPaths,
@@ -3851,9 +3865,11 @@ function renderUniversalInput(plugin, container) {
             excludePendingId: pendingId,
           });
           if (pendingId) {
-            const usedPaths = Array.isArray(askResultPayload && askResultPayload.usedMaterialPaths)
-              ? askResultPayload.usedMaterialPaths
-              : [];
+            const usedPaths = coalesceAskUsedMaterialPaths(
+              askResultPayload,
+              [],
+              plugin.settings,
+            );
             plugin.updatePendingSubmissionRetryArgs(pendingId, {
               ...retryArgs,
               materialPaths: usedPaths,
@@ -4427,7 +4443,7 @@ function renderPendingSubmissionsGroup(plugin, section) {
           retryBtn.addEventListener("click", async () => {
             const args = entry.retryArgs || {};
             const question = pendingAskQuestionFromEntry(entry);
-            const materialPaths = pendingAskMaterialPathsFromEntry(entry);
+            const materialPaths = pendingAskMaterialPathsFromEntry(entry, plugin.settings);
             plugin.resetPendingSubmissionForRetry(entry.id);
             try {
               const retryPayload = await plugin.runAskCommand({
@@ -4439,9 +4455,11 @@ function renderPendingSubmissionsGroup(plugin, section) {
                 materialPaths,
               });
               if (retryPayload && typeof plugin.updatePendingSubmissionRetryArgs === "function") {
-                const usedPaths = Array.isArray(retryPayload.usedMaterialPaths)
-                  ? retryPayload.usedMaterialPaths
-                  : materialPaths;
+                const usedPaths = coalesceAskUsedMaterialPaths(
+                  retryPayload,
+                  materialPaths,
+                  plugin.settings,
+                );
                 plugin.updatePendingSubmissionRetryArgs(entry.id, Object.assign({}, args, {
                   question,
                   askQuestion: question,
@@ -4466,7 +4484,7 @@ function renderPendingSubmissionsGroup(plugin, section) {
           regenerateBtn.addEventListener("click", async () => {
             const args = entry.retryArgs || {};
             const question = pendingAskQuestionFromEntry(entry);
-            const materialPaths = pendingAskMaterialPathsFromEntry(entry);
+            const materialPaths = pendingAskMaterialPathsFromEntry(entry, plugin.settings);
             plugin.resetPendingSubmissionForRetry(entry.id);
             try {
               const retryPayload = await plugin.runAskCommand({
@@ -4478,9 +4496,11 @@ function renderPendingSubmissionsGroup(plugin, section) {
                 materialPaths,
               });
               if (retryPayload && typeof plugin.updatePendingSubmissionRetryArgs === "function") {
-                const usedPaths = Array.isArray(retryPayload.usedMaterialPaths)
-                  ? retryPayload.usedMaterialPaths
-                  : materialPaths;
+                const usedPaths = coalesceAskUsedMaterialPaths(
+                  retryPayload,
+                  materialPaths,
+                  plugin.settings,
+                );
                 plugin.updatePendingSubmissionRetryArgs(entry.id, Object.assign({}, args, {
                   question,
                   askQuestion: question,
@@ -4499,7 +4519,7 @@ function renderPendingSubmissionsGroup(plugin, section) {
             if (typeof plugin.prefillComposer === "function") {
               plugin.prefillComposer({
                 question: pendingAskQuestionFromEntry(entry),
-                materialPaths: pendingAskMaterialPathsFromEntry(entry),
+                materialPaths: pendingAskMaterialPathsFromEntry(entry, plugin.settings),
               });
             }
           });
@@ -4601,12 +4621,104 @@ function pendingSubmissionIsDegraded(entry) {
     || artifactQuality === "degraded";
 }
 
+function findPendingAskForReportPath(plugin, reportPath) {
+  const path = String(reportPath || "").trim();
+  if (!path) return null;
+  const items = Array.isArray(plugin && plugin.pendingSubmissions) ? plugin.pendingSubmissions : [];
+  for (let i = items.length - 1; i >= 0; i -= 1) {
+    const entry = items[i];
+    if (!entry) continue;
+    if (String(entry.reconcilePath || "").trim() !== path) continue;
+    if (String(entry.reconcileTarget || "") !== "outputs") continue;
+    if (pendingSubmissionIsDegraded(entry)) continue;
+    if (!pendingAskQuestionFromEntry(entry)) continue;
+    return entry;
+  }
+  return null;
+}
+
+async function regeneratePendingAskFromEntry(plugin, entry) {
+  const args = (entry && entry.retryArgs) || {};
+  const question = pendingAskQuestionFromEntry(entry);
+  const materialPaths = pendingAskMaterialPathsFromEntry(entry, plugin.settings);
+  plugin.resetPendingSubmissionForRetry(entry.id);
+  try {
+    const retryPayload = await plugin.runAskCommand({
+      question,
+      format: args.format || "report",
+      mode: "run-ask",
+      protocol: args.protocol || "",
+      excludePendingId: entry.id,
+      materialPaths,
+    });
+    if (retryPayload && typeof plugin.updatePendingSubmissionRetryArgs === "function") {
+      const usedPaths = coalesceAskUsedMaterialPaths(
+        retryPayload,
+        materialPaths,
+        plugin.settings,
+      );
+      plugin.updatePendingSubmissionRetryArgs(entry.id, Object.assign({}, args, {
+        question,
+        askQuestion: question,
+        materialPaths: usedPaths,
+        runId: retryPayload.run_id || retryPayload.runId || "",
+        runNotesPath: retryPayload.run_notes_path || retryPayload.runNotesPath || "",
+      }));
+    }
+    finalizePendingAskSubmission(plugin, entry.id, retryPayload);
+  } catch (e) {
+    plugin.markPendingSubmissionFailed(entry.id, e);
+  }
+}
+
+function attachReportCardAskActions(plugin, cardEl, feedEntry) {
+  const target = String(feedEntry && feedEntry.target || "").trim();
+  if (!target || !cardEl) return;
+  let actions = cardEl.querySelector
+    ? cardEl.querySelector(".furnace-feed-card-actions")
+    : null;
+  if (!actions) {
+    actions = cardEl.createDiv({ cls: "furnace-feed-card-actions" });
+  }
+  const quoteBtn = actions.createEl("button", {
+    cls: "furnace-report-quote-btn",
+    text: plugin.t("引用此报告追问"),
+  });
+  quoteBtn.addEventListener("click", () => {
+    if (typeof plugin.quoteFileToComposer === "function") {
+      plugin.quoteFileToComposer(target);
+    }
+  });
+  const pending = findPendingAskForReportPath(plugin, target);
+  if (!pending) return;
+  const regenerateBtn = actions.createEl("button", {
+    cls: "furnace-report-regenerate-btn furnace-pending-regenerate-btn",
+    text: plugin.t("Regenerate"),
+  });
+  regenerateBtn.addEventListener("click", () => {
+    void regeneratePendingAskFromEntry(plugin, pending);
+  });
+  const editBtn = actions.createEl("button", {
+    cls: "furnace-report-edit-ask-btn furnace-pending-edit-ask-btn",
+    text: plugin.t("Edit question"),
+  });
+  editBtn.addEventListener("click", () => {
+    if (typeof plugin.prefillComposer === "function") {
+      plugin.prefillComposer({
+        question: pendingAskQuestionFromEntry(pending),
+        materialPaths: pendingAskMaterialPathsFromEntry(pending, plugin.settings),
+      });
+    }
+  });
+}
+
 function renderTodayFeedItem(plugin, listEl, entry) {
   const li = listEl.createEl("li", { cls: "furnace-today-feed-item" });
   const { card } = renderFeedCard(plugin, li, entry);
 
   if (entry.kind === "report") {
     renderReportCard(plugin, card, entry);
+    attachReportCardAskActions(plugin, card, entry);
   } else if (entry.kind === "action" && (entry.compound_suggest || entry.compoundSuggest)) {
     renderCompoundSuggestActionCard(plugin, card, entry);
   } else if (entry.kind === "decision" || entry.kind === "proposal") {
@@ -6733,8 +6845,9 @@ async function runProductShellAskCommand(plugin, { question, format, mode, exclu
     persistStickyMaterialRefs(plugin);
   }
   const spec = buildAskCommandSpec({ question: askQuestion, format, mode });
-  const payload = await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
-  if (!explicit.length && usedPaths.length && payload && (payload.report_path || payload.output_path || payload.ok !== false)) {
+  const rawPayload = await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
+  const payload = rawPayload && typeof rawPayload === "object" ? rawPayload : {};
+  if (!explicit.length && usedPaths.length && (payload.report_path || payload.output_path || payload.ok !== false)) {
     setStickyMaterialRefs(
       plugin.settings,
       usedPaths,
@@ -6742,9 +6855,7 @@ async function runProductShellAskCommand(plugin, { question, format, mode, exclu
     );
     persistStickyMaterialRefs(plugin);
   }
-  if (payload && typeof payload === "object") {
-    payload.usedMaterialPaths = usedPaths;
-  }
+  payload.usedMaterialPaths = usedPaths;
   return payload;
 }
 

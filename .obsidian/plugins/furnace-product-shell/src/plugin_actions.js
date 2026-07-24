@@ -40,8 +40,9 @@ async function runProductShellAskCommand(plugin, { question, format, mode, exclu
     persistStickyMaterialRefs(plugin);
   }
   const spec = buildAskCommandSpec({ question: askQuestion, format, mode });
-  const payload = await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
-  if (!explicit.length && usedPaths.length && payload && (payload.report_path || payload.output_path || payload.ok !== false)) {
+  const rawPayload = await plugin.runPluginCommand(commandLabel(plugin.t.bind(plugin), spec.labelKey, spec.labelSubject), spec.args, spec.options);
+  const payload = rawPayload && typeof rawPayload === "object" ? rawPayload : {};
+  if (!explicit.length && usedPaths.length && (payload.report_path || payload.output_path || payload.ok !== false)) {
     setStickyMaterialRefs(
       plugin.settings,
       usedPaths,
@@ -49,9 +50,7 @@ async function runProductShellAskCommand(plugin, { question, format, mode, exclu
     );
     persistStickyMaterialRefs(plugin);
   }
-  if (payload && typeof payload === "object") {
-    payload.usedMaterialPaths = usedPaths;
-  }
+  payload.usedMaterialPaths = usedPaths;
   return payload;
 }
 

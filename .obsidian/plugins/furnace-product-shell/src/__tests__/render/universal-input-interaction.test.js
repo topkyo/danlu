@@ -604,6 +604,35 @@ test("pure ask writes usedMaterialPaths into retryArgs.materialPaths", async () 
   }));
 });
 
+test("pure ask falls back to sticky when usedMaterialPaths is empty", async () => {
+  const context = loadRenderContext();
+  const plugin = makePlugin({
+    settings: {
+      stickyMaterialRefs: {
+        paths: ["raw/inbox/codex-goal-sm.md"],
+        updatedAt: "2026-07-23T16:48:19.575Z",
+        source: "explicit-@",
+      },
+    },
+    runAskCommand: jest.fn().mockResolvedValue({
+      report_path: "output/reports/ask.md",
+      run_id: "ask-report",
+      usedMaterialPaths: [],
+    }),
+  });
+  const container = document.createElement("div");
+  context.renderUniversalInput(plugin, container);
+  const textarea = container.querySelector(".furnace-universal-input-textarea");
+  const submitButton = container.querySelector(".furnace-universal-input-button");
+  textarea.value = "【accept】追问一句";
+  submitButton.click();
+  await flushAsyncWork();
+  expect(plugin.updatePendingSubmissionRetryArgs).toHaveBeenCalledWith("pending-1", expect.objectContaining({
+    kind: "auto-ask",
+    materialPaths: ["raw/inbox/codex-goal-sm.md"],
+  }));
+});
+
 test("@ mention attaches vault path and submits materialPaths", async () => {
   const context = loadRenderContext();
   const plugin = makePlugin({
@@ -1004,6 +1033,70 @@ test("renderTodayFeed hides done pending bubble when report already appears in T
   expect(container.textContent).toContain("其他报告");
   expect(container.textContent).not.toContain("生成报告");
   expect(container.textContent).toContain("Today report");
+});
+
+test("Today report card keeps regenerate/edit when matching pending bubble is hidden", async () => {
+  const context = loadRenderContext();
+  const plugin = makePlugin({
+    shellSummary: {
+      generated_at: "2026-05-13T10:00:00Z",
+      review_backlog_counts: {},
+      recent_outputs: [
+        {
+          path: "output/reports/r.md",
+          title: "Today report",
+          generated_at: "2026-05-13T09:30:00Z",
+          format: "report",
+        },
+      ],
+      recent_receipts: [],
+      suggested_next_actions: [],
+      metrics_history_delta: { available: false },
+    },
+    pendingSubmissions: [
+      {
+        id: "done-dup",
+        status: "done",
+        displayText: "生成报告",
+        reconcileTarget: "outputs",
+        reconcilePath: "output/reports/r.md",
+        retryArgs: {
+          kind: "auto-ask",
+          format: "report",
+          question: "原问题",
+          askQuestion: "原问题",
+          materialPaths: ["raw/inbox/a.md"],
+        },
+      },
+    ],
+  });
+  plugin.runAskCommand = jest.fn().mockResolvedValue({
+    report_path: "output/reports/r-2.md",
+    run_id: "ask-2",
+    usedMaterialPaths: ["raw/inbox/a.md"],
+  });
+  const container = document.createElement("div");
+  context.renderTodayFeed(plugin, container);
+  await flushAsyncWork();
+
+  expect(container.querySelectorAll(".furnace-conversation-item")).toHaveLength(0);
+  expect(container.querySelector(".furnace-report-quote-btn")).toBeTruthy();
+  expect(container.querySelector(".furnace-report-regenerate-btn")).toBeTruthy();
+  expect(container.querySelector(".furnace-report-edit-ask-btn")).toBeTruthy();
+
+  container.querySelector(".furnace-report-edit-ask-btn").click();
+  expect(plugin.prefillComposer).toHaveBeenCalledWith({
+    question: "原问题",
+    materialPaths: ["raw/inbox/a.md"],
+  });
+
+  container.querySelector(".furnace-report-regenerate-btn").click();
+  await flushAsyncWork();
+  expect(plugin.runAskCommand).toHaveBeenCalledWith(expect.objectContaining({
+    question: "原问题",
+    materialPaths: ["raw/inbox/a.md"],
+    excludePendingId: "done-dup",
+  }));
 });
 
 test("degraded output card hides quote action and keeps recovery semantics", async () => {

@@ -312,9 +312,11 @@ function renderUniversalInput(plugin, container) {
           materialPaths: vaultPathsToUse,
         });
         if (pendingId) {
-          const usedPaths = Array.isArray(askResultPayload && askResultPayload.usedMaterialPaths)
-            ? askResultPayload.usedMaterialPaths
-            : vaultPathsToUse;
+          const usedPaths = coalesceAskUsedMaterialPaths(
+            askResultPayload,
+            vaultPathsToUse,
+            plugin.settings,
+          );
           plugin.updatePendingSubmissionRetryArgs(pendingId, {
             ...retryArgs,
             materialPaths: usedPaths,
@@ -410,9 +412,11 @@ function renderUniversalInput(plugin, container) {
             excludePendingId: pendingId,
           });
           if (pendingId) {
-            const usedPaths = Array.isArray(askResultPayload && askResultPayload.usedMaterialPaths)
-              ? askResultPayload.usedMaterialPaths
-              : [];
+            const usedPaths = coalesceAskUsedMaterialPaths(
+              askResultPayload,
+              [],
+              plugin.settings,
+            );
             plugin.updatePendingSubmissionRetryArgs(pendingId, {
               ...retryArgs,
               materialPaths: usedPaths,

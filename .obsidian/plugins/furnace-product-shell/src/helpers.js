@@ -231,9 +231,21 @@ function pendingAskQuestionFromEntry(entry) {
   return String(args.askQuestion || args.question || (entry && entry.displayText) || "").trim();
 }
 
-function pendingAskMaterialPathsFromEntry(entry) {
+function pendingAskMaterialPathsFromEntry(entry, settings) {
   const args = (entry && entry.retryArgs) || {};
-  return normalizeMaterialPaths(args.materialPaths || []);
+  const recorded = normalizeMaterialPaths(args.materialPaths || []);
+  if (recorded.length) return recorded;
+  return stickyMaterialDisplayPaths(settings);
+}
+
+function coalesceAskUsedMaterialPaths(payload, fallbackPaths, settings) {
+  const fromPayload = Array.isArray(payload && payload.usedMaterialPaths)
+    ? normalizeMaterialPaths(payload.usedMaterialPaths)
+    : [];
+  if (fromPayload.length) return fromPayload;
+  const fallback = normalizeMaterialPaths(fallbackPaths);
+  if (fallback.length) return fallback;
+  return stickyMaterialDisplayPaths(settings);
 }
 
 function imageDropLacksReadableAnalysis(payload) {

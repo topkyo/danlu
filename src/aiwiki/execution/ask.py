@@ -825,10 +825,14 @@ def file_back(
                 # (promote_candidate via wiki/derived was removed). Judgment
                 # file-backs set promoted_to to wiki/judgments/; alchemy accepts
                 # both wiki/derived/ (legacy) and wiki/judgments/ as elixir sources.
+                # DEF-R2-01: duplicate file-back must not rewrite an existing
+                # judgment/derived anchor — that orphans elixir derived_from.
                 promoted_to = relative_path(root, destination)
                 if kind in {"judgment", "decision"}:
                     existing = str(candidate.get("promoted_to") or "").strip()
                     if existing.startswith("wiki/derived/"):
+                        promoted_to = existing
+                    elif existing.startswith("wiki/judgments/") and (root / existing).is_file():
                         promoted_to = existing
                 upsert_output_candidate(
                     root,

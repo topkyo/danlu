@@ -753,6 +753,56 @@ def test_file_back_judgment_preserves_derived_promoted_to(  # pragma: no cover -
     assert promote_payload.get("elixir_state") == "settled"
 
 
+def test_duplicate_file_back_preserves_judgment_promoted_to(  # pragma: no cover - explicit pytest acceptance gate
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """DEF-R2-01: second file-back on same report must keep the first judgment alchemy anchor."""
+    _case, vault = _copy_case_and_fix_clock_from("D3", "case_elixir_stage3_compounding", tmp_path, monkeypatch)
+
+    report_ref = "output/reports/d3-dup-fileback.md"
+    report_path = vault / report_ref
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(
+        "---\nprotocol: general\ncorpus_id: corpus-d3-old\n---\n\n# Dup file-back report\n\nSeed.\n",
+        encoding="utf-8",
+    )
+
+    # Ensure output-candidates row exists so file-back can upsert promoted_to.
+    from aiwiki.execution.candidates import upsert_output_candidate
+    from aiwiki.utils.time import utc_now
+
+    now = utc_now()
+    upsert_output_candidate(
+        vault,
+        artifact_ref=report_ref,
+        candidate_state="pending",
+        created_at=now,
+        updated_at=now,
+        format="report",
+        protocol="general",
+        corpus_id="corpus-d3-old",
+        question="Dup file-back?",
+    )
+
+    out1 = _run_cli(vault, ["advanced", "file-back", report_ref, "--title", "First judgment"])
+    first_path = json.loads(out1)["path"]
+    assert first_path.startswith("wiki/judgments/"), first_path
+
+    out2 = _run_cli(vault, ["advanced", "file-back", report_ref, "--title", "Second judgment"])
+    second_path = json.loads(out2)["path"]
+    assert second_path.startswith("wiki/judgments/"), second_path
+    assert second_path != first_path
+
+    candidates_state = json.loads((vault / ".aiwiki" / "state" / "output-candidates.json").read_text(encoding="utf-8"))
+    matched = [
+        candidate for candidate in candidates_state.get("candidates", []) if candidate.get("artifact_ref") == report_ref
+    ]
+    assert len(matched) == 1, matched
+    assert matched[0].get("promoted_to") == first_path, matched[0]
+    assert (vault / first_path).is_file()
+    assert (vault / second_path).is_file()
+
+
 # M9-P1.2: corrupt-state acceptance coverage.
 #
 # Unit tests already cover receipt-failure rollback end-to-end:

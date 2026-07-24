@@ -57,6 +57,32 @@ test("resolveAskMaterialPaths prefers explicit paths over sticky", () => {
   expect(resolveAskMaterialPaths([], { paths: [] })).toEqual({ paths: [], fromSticky: false });
 });
 
+test("pendingAskMaterialPathsFromEntry and coalesceAskUsedMaterialPaths fall back to sticky", () => {
+  const {
+    pendingAskMaterialPathsFromEntry,
+    coalesceAskUsedMaterialPaths,
+  } = loadHelpersContext();
+  const settings = {
+    stickyMaterialRefs: { paths: ["raw/inbox/sticky.md"], updatedAt: "t", source: "drop" },
+  };
+  expect(pendingAskMaterialPathsFromEntry({
+    retryArgs: { materialPaths: ["raw/inbox/recorded.md"] },
+  }, settings)).toEqual(["raw/inbox/recorded.md"]);
+  expect(pendingAskMaterialPathsFromEntry({
+    retryArgs: { materialPaths: [] },
+  }, settings)).toEqual(["raw/inbox/sticky.md"]);
+  expect(coalesceAskUsedMaterialPaths(
+    { usedMaterialPaths: [] },
+    [],
+    settings,
+  )).toEqual(["raw/inbox/sticky.md"]);
+  expect(coalesceAskUsedMaterialPaths(
+    { usedMaterialPaths: ["raw/inbox/used.md"] },
+    ["raw/inbox/fallback.md"],
+    settings,
+  )).toEqual(["raw/inbox/used.md"]);
+});
+
 test("questionAlreadyHasMaterialRoutingHint detects injected ask questions", () => {
   const { questionAlreadyHasMaterialRoutingHint, buildAutoAskQuestion } = loadHelpersContext();
   const injected = buildAutoAskQuestion("有什么区别吗?", ["raw/inbox/a.md"]);
