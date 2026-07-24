@@ -147,9 +147,19 @@ USER_HIDDEN_FOLDER_PATHS: tuple[str, ...] = (
     "output/control",
     "output/figures",
     "output/graph",
-    ".aiwiki/derived/packs",
     "output/review",
     "output/slides",
+    # Legacy output paths (migrated to .aiwiki/); hide if scaffold recreates empty dirs.
+    "output/agents",
+    "output/packs",
+    "output/pilots",
+    "output/lint",
+    ".aiwiki/derived/packs",
+)
+
+# Files that should stay off the daily file tree (folder hide cannot cover these).
+USER_HIDDEN_FILE_PATHS: tuple[str, ...] = (
+    "wiki/evidence-graph.md",
 )
 
 def _folder_label_selectors(path: str) -> tuple[str, ...]:
@@ -191,6 +201,19 @@ def _render_folder_label_snippet() -> str:
             [
                 f"/* hide {path} from the daily file tree */",
                 ",\n".join(_folder_container_selectors(path)) + " {",
+                "  display: none !important;",
+                "}",
+                "",
+            ]
+        )
+    for path in USER_HIDDEN_FILE_PATHS:
+        lines.extend(
+            [
+                f"/* hide file {path} from the daily file tree */",
+                f'.tree-item[data-path="{path}"],',
+                f'.nav-file[data-path="{path}"],',
+                f'.tree-item-self[data-path="{path}"],',
+                f'.nav-file-title[data-path="{path}"] {{',
                 "  display: none !important;",
                 "}",
                 "",

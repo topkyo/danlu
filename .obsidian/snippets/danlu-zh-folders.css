@@ -133,14 +133,6 @@
   display: none !important;
 }
 
-/* hide .aiwiki/derived/packs from the daily file tree */
-.nav-folder[data-path=".aiwiki/derived/packs"],
-.tree-item[data-path=".aiwiki/derived/packs"],
-.nav-folder-title[data-path=".aiwiki/derived/packs"],
-.tree-item-self[data-path=".aiwiki/derived/packs"] {
-  display: none !important;
-}
-
 /* hide output/review from the daily file tree */
 .nav-folder[data-path="output/review"],
 .tree-item[data-path="output/review"],
@@ -154,6 +146,54 @@
 .tree-item[data-path="output/slides"],
 .nav-folder-title[data-path="output/slides"],
 .tree-item-self[data-path="output/slides"] {
+  display: none !important;
+}
+
+/* hide output/agents from the daily file tree */
+.nav-folder[data-path="output/agents"],
+.tree-item[data-path="output/agents"],
+.nav-folder-title[data-path="output/agents"],
+.tree-item-self[data-path="output/agents"] {
+  display: none !important;
+}
+
+/* hide output/packs from the daily file tree */
+.nav-folder[data-path="output/packs"],
+.tree-item[data-path="output/packs"],
+.nav-folder-title[data-path="output/packs"],
+.tree-item-self[data-path="output/packs"] {
+  display: none !important;
+}
+
+/* hide output/pilots from the daily file tree */
+.nav-folder[data-path="output/pilots"],
+.tree-item[data-path="output/pilots"],
+.nav-folder-title[data-path="output/pilots"],
+.tree-item-self[data-path="output/pilots"] {
+  display: none !important;
+}
+
+/* hide output/lint from the daily file tree */
+.nav-folder[data-path="output/lint"],
+.tree-item[data-path="output/lint"],
+.nav-folder-title[data-path="output/lint"],
+.tree-item-self[data-path="output/lint"] {
+  display: none !important;
+}
+
+/* hide .aiwiki/derived/packs from the daily file tree */
+.nav-folder[data-path=".aiwiki/derived/packs"],
+.tree-item[data-path=".aiwiki/derived/packs"],
+.nav-folder-title[data-path=".aiwiki/derived/packs"],
+.tree-item-self[data-path=".aiwiki/derived/packs"] {
+  display: none !important;
+}
+
+/* hide file wiki/evidence-graph.md from the daily file tree */
+.tree-item[data-path="wiki/evidence-graph.md"],
+.nav-file[data-path="wiki/evidence-graph.md"],
+.tree-item-self[data-path="wiki/evidence-graph.md"],
+.nav-file-title[data-path="wiki/evidence-graph.md"] {
   display: none !important;
 }
 
