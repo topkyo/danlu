@@ -1716,7 +1716,7 @@
 .furnace-today-feed-head {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   margin-bottom: 8px;
 }
 .furnace-today-feed-title {
@@ -1733,6 +1733,20 @@
   cursor: pointer;
   font-size: 0.9em;
 }
+.furnace-today-refresh-quiet {
+  margin-left: auto;
+  padding: 2px 8px;
+  font-size: 0.78em;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  opacity: 0.75;
+}
+.furnace-today-refresh-quiet:hover {
+  color: var(--text-normal);
+  opacity: 1;
+}
 .furnace-today-refresh-btn:disabled {
   opacity: 0.5;
   cursor: progress;
@@ -1740,6 +1754,11 @@
 .furnace-today-last-updated {
   font-size: 0.82em;
   color: var(--text-muted);
+}
+.furnace-today-feed-reports {
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 .furnace-pending-refresh-btn {
   cursor: pointer;

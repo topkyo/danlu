@@ -1667,8 +1667,11 @@ test("shell summary fixture builds today DOM headings and furnace center keeps o
 
   const todayContainer = document.createElement("div");
   context.renderTodayFeed(makePlugin({ shellSummary: SHELL_SUMMARY_FIXTURE }), todayContainer);
-  expect(todayContainer.textContent).toContain("新报告");
+  expect(todayContainer.textContent).toContain("Today");
+  expect(todayContainer.textContent).not.toContain("新报告");
   expect(todayContainer.textContent).not.toContain("需要你确认");
+  expect(todayContainer.querySelector(".furnace-today-feed-reports")).toBeTruthy();
+  expect(todayContainer.querySelector(".furnace-today-last-updated")).toBeNull();
 
   const homeContainer = document.createElement("div");
   context.renderFurnaceCenter(makePlugin({ shellSummary: SHELL_SUMMARY_FIXTURE }), homeContainer);

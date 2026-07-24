@@ -4,28 +4,25 @@ function renderTodayFeed(plugin, container) {
   const summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : null;
 
   const section = container.createDiv({ cls: "furnace-today-feed" });
-  // R90: Today 标题行 → 标题 + "刷新炉子"按钮 + last updated
+  // Slim head: title + quiet refresh (no "last updated" chrome on the default path).
   const headRow = section.createDiv({ cls: "furnace-today-feed-head" });
   headRow.createEl("h2", { text: plugin.t("Today"), cls: "furnace-today-feed-title" });
-  const refreshWrap = headRow.createDiv({ cls: "furnace-today-feed-refresh" });
-  const refreshBtn = refreshWrap.createEl("button", {
-    cls: "furnace-today-refresh-btn",
-    text: plugin.t("刷新炉子"),
+  const refreshBtn = headRow.createEl("button", {
+    cls: "furnace-today-refresh-btn furnace-today-refresh-quiet",
+    text: plugin.t("Refresh"),
   });
   refreshBtn.setAttr && refreshBtn.setAttr("aria-label", plugin.t("刷新炉子"));
+  refreshBtn.title = plugin.getLastSummaryRefreshLabel() || plugin.t("刷新炉子");
   refreshBtn.addEventListener("click", async () => {
     refreshBtn.disabled = true;
     try {
       await plugin.refreshShellSummaryCommand();
+      refreshBtn.title = plugin.getLastSummaryRefreshLabel() || plugin.t("刷新炉子");
     } catch (e) { /* 已在 plugin 层 Notice */ }
     finally { refreshBtn.disabled = false; }
   });
-  refreshWrap.createEl("span", {
-    cls: "furnace-today-last-updated",
-    text: plugin.getLastSummaryRefreshLabel(),
-  });
 
-  // Conversation chrome first; pending/report stream sits above the composer (rendered later).
+  // Operator-only activity chrome; default product path stays conversation + reports.
   renderFurnaceActivityTimeline(plugin, section);
 
   if (!summary) {
@@ -63,17 +60,11 @@ function renderTodayFeed(plugin, container) {
   
   const groups = { report: [], automation: [], decision: [], proposal: [], elixir: [], action: [] };
   for (const entry of feed) groups[entry.kind].push(entry);
-  
-  const groupSpecs = [
-    ["report", plugin.t("新报告"), groups.report],
-  ];
-  
-  for (const [kind, heading, items] of groupSpecs) {
-    if (!items.length) continue;
-    const groupEl = section.createDiv({ cls: `furnace-today-feed-group furnace-today-feed-${kind}` });
-    groupEl.createEl("h3", { text: heading });
-    const listEl = groupEl.createEl("ul", { cls: "furnace-today-feed-list" });
-    for (const entry of items) {
+
+  // Keep Today flat: only deliverable reports, no extra section chrome.
+  if (groups.report.length) {
+    const listEl = section.createEl("ul", { cls: "furnace-today-feed-list furnace-today-feed-reports" });
+    for (const entry of groups.report) {
       renderTodayFeedItem(plugin, listEl, entry);
     }
   }

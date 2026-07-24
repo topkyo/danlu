@@ -245,7 +245,7 @@ M-PS.1 实施后，Product Shell 仍只作为 surface / trigger 运行；Notifie
 M-UX.1 ~ M-UX.6 之后，Product Shell 的实际产品面继续向“一个输入端 + 一个输出端”收敛：
 
 - 默认 Obsidian workspace 进入主区 Product Shell，左侧仅文件列表/书签，右侧仅大纲/反链，并默认折叠左右侧栏。
-- new-vault 与 dogfood vault 的 CSS snippet 把普通用户文件树收敛为报告视图：隐藏 `raw/wiki/schema/scripts/prompts`，`output/` 下默认只露出 `reports/`。
+- new-vault 与 dogfood vault 的 CSS snippet 把普通用户文件树收敛为：收件箱 + 报告 + 沉淀（`wiki/judgments`）+ 金丹（`wiki/elixirs`）；隐藏其余 `wiki/schema/scripts/prompts` 与 operator output 分层。
 - Advanced 抽屉在中文界面显示为“更多工具”，折叠区为“系统状态 / 运行与历史”两段 diagnostics（W8：不含 Review Center / Execution Center / Recent Runs 视图注册）。
 - Today feed 的可见 target 不再默认展示 `output/...` / `wiki/...` runtime path，而以“报告 / 判断页 / 决策页 / 提案页 / 关系图谱”等产品标签呈现；真实路径仍由按钮动作持有。
 - 报告卡和 Today 报告动作使用 “Open report / 打开报告”，而不是泛化的 “Open / 打开”，让报告入口成为明确输出端。
