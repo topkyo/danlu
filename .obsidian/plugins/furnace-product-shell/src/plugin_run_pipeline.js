@@ -107,8 +107,36 @@ async function refreshProductShellSummarySilently(plugin) {
   return await plugin.loadShellSummaryFromDisk();
 }
 
+function compoundLootToastKey(item) {
+  const action = String(item && item.action || "").trim();
+  const reportPath = String(item && item.report_path || "").trim();
+  const corpusId = String(item && item.corpus_id || "").trim();
+  if (!action) return "";
+  return `${action}:${reportPath || corpusId || "unknown"}`;
+}
+
+function maybeNotifyCompoundLoot(plugin, summary) {
+  if (!plugin || typeof compoundSuggestItems !== "function") return;
+  const items = compoundSuggestItems(summary);
+  if (!items.length) return;
+  if (!plugin._seenCompoundLootKeys) plugin._seenCompoundLootKeys = new Set();
+  const seen = plugin._seenCompoundLootKeys;
+  for (const item of items) {
+    const action = String(item && item.action || "").trim();
+    const key = compoundLootToastKey(item);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    if (action === "alchemy-start") {
+      new Notice(plugin.t("✦ 可凝丹"));
+    } else if (action === "file-back-judgment") {
+      new Notice(plugin.t("✦ 可沉淀"));
+    }
+  }
+}
+
 function processProductShellSummaryUpdates(plugin, summary) {
   plugin.reconcilePendingSubmissions(summary);
+  maybeNotifyCompoundLoot(plugin, summary);
 }
 
 async function refreshProductShellSummaryCommand(plugin) {

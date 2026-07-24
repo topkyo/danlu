@@ -17,6 +17,13 @@ function renderUniversalInput(plugin, container) {
   textarea.placeholder = plugin.t("投 URL / PDF / Markdown / 图片 / repo；提问才会生成报告");
   textarea.rows = 1;
 
+  // Compact sticky badge lives inside the form so idle composer stays one row.
+  const stickyBadge = form.createEl("button", {
+    cls: "furnace-input-sticky-badge",
+    attr: { type: "button", title: plugin.t("本轮材料（点击展开）") },
+  });
+  stickyBadge.style.display = "none";
+
   const submitButton = form.createEl("button", { 
     cls: "furnace-universal-input-button", 
     text: plugin.t("Submit"),
@@ -24,8 +31,9 @@ function renderUniversalInput(plugin, container) {
   });
 
   const hint = wrapper.createDiv({ cls: "furnace-universal-input-hint" });
-      hint.setText(plugin.t("⌘/Ctrl+Enter · @材料 · 拖文件"));
-      hint.setAttr && hint.setAttr("title", plugin.t("Ctrl+Enter 提交 · 拖入文件 · 投料入 raw，提问出报告"));
+  hint.setText(plugin.t("⌘/Ctrl+Enter · @材料 · 拖文件"));
+  hint.setAttr && hint.setAttr("title", plugin.t("Ctrl+Enter 提交 · 拖入文件 · 投料入 raw，提问出报告"));
+  hint.style.display = "none";
 
   const stickyMaterialsContainer = wrapper.createDiv({ cls: "furnace-input-sticky-materials" });
   stickyMaterialsContainer.style.display = "none";
@@ -35,6 +43,7 @@ function renderUniversalInput(plugin, container) {
   atSuggest.style.display = "none";
 
   const composerActions = wrapper.createDiv({ cls: "furnace-input-composer-actions" });
+  composerActions.style.display = "none";
   const quoteActiveBtn = composerActions.createEl("button", {
     cls: "furnace-input-quote-active-btn",
     text: plugin.t("当前文件"),
@@ -46,6 +55,31 @@ function renderUniversalInput(plugin, container) {
   let submitting = false;
   let lastChordSubmitAt = 0;
   let activeMention = null;
+  let stickyExpanded = false;
+  let composerFocused = false;
+
+  const persistSticky = () => {
+    if (!plugin || typeof plugin.savePluginState !== "function") return;
+    try {
+      const result = plugin.savePluginState();
+      if (result && typeof result.then === "function") void result.catch(() => {});
+    } catch (_error) { /* ignore */ }
+  };
+
+  const syncComposerChrome = () => {
+    const paths = stickyMaterialDisplayPaths(plugin.settings);
+    hint.style.display = composerFocused ? "" : "none";
+    composerActions.style.display = composerFocused ? "flex" : "none";
+    if (!paths.length) {
+      stickyBadge.style.display = "none";
+      stickyMaterialsContainer.style.display = "none";
+      return;
+    }
+    const showChips = stickyExpanded || composerFocused;
+    stickyBadge.style.display = showChips ? "none" : "inline-flex";
+    stickyBadge.textContent = plugin.t("材料 · {n}", { n: String(paths.length) });
+    stickyMaterialsContainer.style.display = showChips ? "flex" : "none";
+  };
 
   const listVaultMentionCandidates = () => {
     const vault = plugin.app && plugin.app.vault;
@@ -66,19 +100,20 @@ function renderUniversalInput(plugin, container) {
     activeMention = null;
     atSuggest.style.display = "none";
     atSuggest.empty();
+    syncComposerChrome();
   };
 
   const renderStickyMaterialChips = () => {
     stickyMaterialsContainer.empty();
     const paths = stickyMaterialDisplayPaths(plugin.settings);
     if (!paths.length) {
-      stickyMaterialsContainer.style.display = "none";
+      stickyExpanded = false;
+      syncComposerChrome();
       return;
     }
-    stickyMaterialsContainer.style.display = "flex";
     stickyMaterialsContainer.createDiv({
       cls: "furnace-input-sticky-materials-label",
-      text: plugin.t("材料"),
+      text: plugin.t("本轮材料"),
     });
     const chips = stickyMaterialsContainer.createDiv({ cls: "furnace-input-sticky-materials-chips" });
     for (const materialPath of paths) {
@@ -88,13 +123,48 @@ function renderUniversalInput(plugin, container) {
         attr: { title: materialPath },
       });
     }
+    const clearBtn = stickyMaterialsContainer.createEl("button", {
+      cls: "furnace-input-sticky-clear",
+      text: plugin.t("清除"),
+      attr: { type: "button", title: plugin.t("清除粘性材料") },
+    });
+    clearBtn.addEventListener("click", (event) => {
+      if (event && typeof event.preventDefault === "function") event.preventDefault();
+      setStickyMaterialRefs(plugin.settings, [], "clear");
+      persistSticky();
+      stickyExpanded = false;
+      renderStickyMaterialChips();
+    });
+    syncComposerChrome();
   };
   renderStickyMaterialChips();
+
+  stickyBadge.addEventListener("click", (event) => {
+    if (event && typeof event.preventDefault === "function") event.preventDefault();
+    stickyExpanded = !stickyExpanded;
+    syncComposerChrome();
+    if (stickyExpanded) textarea.focus();
+  });
+
+  textarea.addEventListener("focus", () => {
+    composerFocused = true;
+    syncComposerChrome();
+  });
+  textarea.addEventListener("blur", () => {
+    window.setTimeout(() => {
+      if (document.activeElement === textarea) return;
+      if (wrapper.contains(document.activeElement)) return;
+      composerFocused = false;
+      stickyExpanded = false;
+      syncComposerChrome();
+    }, 120);
+  });
 
   const updateAttachmentPills = () => {
     attachmentsContainer.empty();
     if (!attachedFiles.length && !attachedVaultPaths.length) {
       attachmentsContainer.style.display = "none";
+      syncComposerChrome();
       return;
     }
     attachmentsContainer.style.display = "flex";
@@ -120,6 +190,7 @@ function renderUniversalInput(plugin, container) {
         updateAttachmentPills();
       });
     });
+    syncComposerChrome();
   };
 
   const addVaultPath = (rawPath) => {
@@ -140,6 +211,7 @@ function renderUniversalInput(plugin, container) {
     atSuggest.empty();
     if (!candidates.length) {
       atSuggest.style.display = "none";
+      syncComposerChrome();
       return;
     }
     atSuggest.style.display = "block";
@@ -159,6 +231,7 @@ function renderUniversalInput(plugin, container) {
         textarea.focus();
       });
     }
+    syncComposerChrome();
   };
 
   quoteActiveBtn.addEventListener("click", () => {
@@ -237,9 +310,11 @@ function renderUniversalInput(plugin, container) {
     try {
       // Single-flight: block a new ask while one is active; pure material drops stay allowed.
       const materialQuestionPreview = splitTextMaterialQuestion(value);
+      const openLinkAskPreview = splitObsidianOpenLinkQuestion(value);
       const willAsk = filesToProcess.length > 0 || vaultPathsToUse.length > 0
         ? Boolean(normalizedQuestion)
         : Boolean(materialQuestionPreview)
+          || Boolean(openLinkAskPreview)
           || (
             Boolean(normalizedQuestion)
             && !isObsidianOpenLink(normalizedQuestion)
@@ -330,7 +405,56 @@ function renderUniversalInput(plugin, container) {
         new Notice(plugin.t("Attached vault paths need a question to ask."));
         return;
       } else {
-        if (isObsidianOpenLink(normalizedQuestion)) {
+        const openLinkAsk = splitObsidianOpenLinkQuestion(value);
+        if (openLinkAsk) {
+          let materialPath = openLinkAsk.path;
+          const vault = plugin.app && plugin.app.vault;
+          if (vault && typeof vault.getAbstractFileByPath === "function") {
+            if (!vault.getAbstractFileByPath(materialPath) && !materialPath.endsWith(".md")) {
+              const withMd = `${materialPath}.md`;
+              if (vault.getAbstractFileByPath(withMd)) materialPath = withMd;
+            }
+          } else if (!materialPath.endsWith(".md")) {
+            materialPath = `${materialPath}.md`;
+          }
+          if (!isAskMaterialPathAllowed(materialPath)) {
+            new Notice(plugin.t("Path is not an allowed ask material: {path}", { path: materialPath }));
+            return;
+          }
+          const askFormat = inferAutoAskFormat(openLinkAsk.question, [materialPath]);
+          const retryArgs = {
+            kind: "auto-ask",
+            question: openLinkAsk.question,
+            askQuestion: openLinkAsk.question,
+            format: askFormat,
+            materialPaths: [materialPath],
+          };
+          pendingId = plugin.pushPendingSubmission(value, {
+            title: openLinkAsk.question,
+            retryArgs,
+          });
+          askResultPayload = await plugin.runAskCommand({
+            question: openLinkAsk.question,
+            format: askFormat,
+            mode: "run-ask",
+            excludePendingId: pendingId,
+            materialPaths: [materialPath],
+          });
+          if (pendingId) {
+            const usedPaths = coalesceAskUsedMaterialPaths(
+              askResultPayload,
+              [materialPath],
+              plugin.settings,
+            );
+            plugin.updatePendingSubmissionRetryArgs(pendingId, {
+              ...retryArgs,
+              materialPaths: usedPaths,
+              askQuestion: String(openLinkAsk.question || ""),
+              runNotesPath: String(askResultPayload && askResultPayload.run_notes_path || ""),
+              runId: String(askResultPayload && askResultPayload.run_id || ""),
+            });
+          }
+        } else if (isObsidianOpenLink(normalizedQuestion)) {
           const targetPath = obsidianOpenLinkFilePath(normalizedQuestion);
           if (targetPath) {
             const opened = await plugin.openWorkspacePath(targetPath);
@@ -342,7 +466,7 @@ function renderUniversalInput(plugin, container) {
             new Notice(plugin.t("Obsidian 打开链接是导航目标，不会作为问题提交。"));
           }
           return;
-        }
+        } else {
         const materialQuestion = splitTextMaterialQuestion(value);
         if (materialQuestion) {
           const retryArgs = {
@@ -427,6 +551,7 @@ function renderUniversalInput(plugin, container) {
             });
           }
         }
+        }
       }
       succeeded = true;
       // 纯投料已在 completePendingMaterialDrop 标 done(raw)；提问路径同步完成则直写 done(outputs)
@@ -439,7 +564,7 @@ function renderUniversalInput(plugin, container) {
       textarea.disabled = false;
       submitting = false;
       submitButton.setText(originalLabel || plugin.t("Submit"));
-  hint.setText(plugin.t("Ctrl+Enter 提交 · 拖入文件 · 投料入 raw，提问出报告"));
+      hint.setText(plugin.t("⌘/Ctrl+Enter · @材料 · 拖文件"));
       if (succeeded) {
         textarea.value = '';
         autoResize();

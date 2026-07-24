@@ -551,8 +551,23 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       new Notice(this.t("缺少报告路径"));
       return;
     }
+    if (this._compoundFileBackInFlight) {
+      new Notice(this.t("沉淀进行中，请稍候"));
+      return;
+    }
+    this._compoundFileBackInFlight = true;
+    if (!(this._locallyFiledReports instanceof Set)) this._locallyFiledReports = new Set();
+    this._locallyFiledReports.add(reportPath);
     const label = String(item.title || this.t("沉淀")).trim() || this.t("沉淀");
-    await this.runCliAction(label, "file-back", [reportPath]);
+    try {
+      await this.runCliAction(label, "file-back", [reportPath]);
+      this.refreshOpenViews();
+    } catch (error) {
+      this._locallyFiledReports.delete(reportPath);
+      throw error;
+    } finally {
+      this._compoundFileBackInFlight = false;
+    }
   }
 
   openCompoundAlchemyStart(suggest) {

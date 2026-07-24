@@ -756,7 +756,7 @@ def test_file_back_judgment_preserves_derived_promoted_to(  # pragma: no cover -
 def test_duplicate_file_back_preserves_judgment_promoted_to(  # pragma: no cover - explicit pytest acceptance gate
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """DEF-R2-01: second file-back on same report must keep the first judgment alchemy anchor."""
+    """Duplicate file-back is idempotent: reuse first judgment and keep promoted_to anchor."""
     _case, vault = _copy_case_and_fix_clock_from("D3", "case_elixir_stage3_compounding", tmp_path, monkeypatch)
 
     report_ref = "output/reports/d3-dup-fileback.md"
@@ -789,9 +789,11 @@ def test_duplicate_file_back_preserves_judgment_promoted_to(  # pragma: no cover
     assert first_path.startswith("wiki/judgments/"), first_path
 
     out2 = _run_cli(vault, ["advanced", "file-back", report_ref, "--title", "Second judgment"])
-    second_path = json.loads(out2)["path"]
-    assert second_path.startswith("wiki/judgments/"), second_path
-    assert second_path != first_path
+    second = json.loads(out2)
+    second_path = second["path"]
+    assert second_path == first_path
+    assert second.get("reused") is True
+    assert second.get("already_filed") is True
 
     candidates_state = json.loads((vault / ".aiwiki" / "state" / "output-candidates.json").read_text(encoding="utf-8"))
     matched = [
@@ -800,8 +802,9 @@ def test_duplicate_file_back_preserves_judgment_promoted_to(  # pragma: no cover
     assert len(matched) == 1, matched
     assert matched[0].get("promoted_to") == first_path, matched[0]
     assert (vault / first_path).is_file()
-    assert (vault / second_path).is_file()
-
+    # Idempotent file-back must not mint judgment-N.md spam.
+    judgment_dir = vault / "wiki" / "judgments"
+    assert len(list(judgment_dir.glob("*.md"))) == 1
 
 # M9-P1.2: corrupt-state acceptance coverage.
 #

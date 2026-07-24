@@ -296,6 +296,19 @@ const ZH_TEXT = {
   "Sticky materials (used on follow-up)": "本轮材料（追问仍会带上）",
   "Attach current file": "引用当前文件",
   "No active file to attach.": "没有可引用的当前文件。",
+  "本轮材料（点击展开）": "本轮材料（点击展开）",
+  "本轮材料": "本轮材料",
+  "材料 · {n}": "材料 · {n}",
+  "清除": "清除",
+  "清除粘性材料": "清除粘性材料",
+  "可凝丹": "可凝丹",
+  "可沉淀": "可沉淀",
+  "凝丹": "凝丹",
+  "沉淀": "沉淀",
+  "沉淀进行中，请稍候": "沉淀进行中，请稍候",
+  "缺少报告路径": "缺少报告路径",
+  "✦ 可凝丹": "✦ 可凝丹",
+  "✦ 可沉淀": "✦ 可沉淀",
   "Path is not an allowed ask material: {path}": "该路径不能作为提问材料：{path}",
   "Attached vault paths need a question to ask.": "已附加材料，请输入问题后再提问。",
   Regenerate: "再生成",
@@ -485,6 +498,9 @@ const ZH_TEXT = {
   "已打开输出汇总（找不到具体报告路径）": "已打开输出汇总（找不到具体报告路径）",
   "已回到 Today（找不到具体回执路径）": "已回到 Today（找不到具体回执路径）",
   "无法打开目标，可能尚未生成": "无法打开目标，可能尚未生成",
+  "报告仍在生成中，请稍候再打开": "报告仍在生成中，请稍候再打开",
+  "原报告路径已不存在，已打开同名报告": "原报告路径已不存在，已打开同名报告",
+  "报告文件已不存在：{path}": "报告文件已不存在：{path}",
   // R91 Advanced 抽屉子 section
   "系统状态": "系统状态",
   "运行与历史": "运行与历史",
@@ -1201,12 +1217,14 @@ function looksLikeUniversalMaterialPayload(value) {
 }
 
 function isObsidianOpenLink(value) {
-  return String(value || "").trim().toLowerCase().startsWith("obsidian://open");
+  const first = String(value || "").trim().split(/\r?\n/)[0].trim();
+  return first.toLowerCase().startsWith("obsidian://open");
 }
 
 function obsidianOpenLinkFilePath(value) {
-  const text = String(value || "").trim();
-  if (!isObsidianOpenLink(text)) return "";
+  // Only parse the URL line — multiline paste must not pollute file=.
+  const text = String(value || "").trim().split(/\r?\n/)[0].trim();
+  if (!text.toLowerCase().startsWith("obsidian://open")) return "";
   try {
     const url = new URL(text);
     const file = String(url.searchParams.get("file") || "").trim();
@@ -1220,6 +1238,28 @@ function obsidianOpenLinkFilePath(value) {
       return "";
     }
   }
+}
+
+function splitObsidianOpenLinkQuestion(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  const nonEmptyLines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (!nonEmptyLines.length) return null;
+  let linkLine = "";
+  let question = "";
+  if (nonEmptyLines[0].toLowerCase().startsWith("obsidian://open")) {
+    linkLine = nonEmptyLines[0];
+    question = nonEmptyLines.slice(1).join("\n").trim();
+  } else {
+    const oneLine = text.match(/^(obsidian:\/\/open\S+)\s+([\s\S]+)$/i);
+    if (!oneLine) return null;
+    linkLine = oneLine[1];
+    question = String(oneLine[2] || "").trim();
+  }
+  if (!question) return null;
+  const path = obsidianOpenLinkFilePath(linkLine);
+  if (!path) return null;
+  return { path, question };
 }
 
 function normalizeWorkspaceLinkTarget(value) {
@@ -2323,9 +2363,10 @@ function compareEntries(a, b) {
   const pa = priorityForKind(a.kind);
   const pb = priorityForKind(b.kind);
   if (pa !== pb) return pa - pb;
-  const ta = a.timestamp || "";
-  const tb = b.timestamp || "";
-  if (ta !== tb) return ta < tb ? 1 : -1;
+  const ta = a.timestamp || "\x7f";
+  const tb = b.timestamp || "\x7f";
+  // Ascending: older first, newest last (near the composer).
+  if (ta !== tb) return ta < tb ? -1 : 1;
   return a.kind < b.kind ? -1 : (a.kind > b.kind ? 1 : 0);
 }
 
@@ -2769,50 +2810,95 @@ function renderFeedCard(plugin, container, entry) {
   return { card, body };
 }
 
+function compoundLootCopy(plugin, action) {
+  if (action === "alchemy-start") {
+    return {
+      bannerCls: "furnace-loot-banner furnace-loot-alchemy",
+      badge: plugin.t("可凝丹"),
+      cta: plugin.t("凝丹"),
+      buttonCls: "mod-cta furnace-compound-alchemy-start",
+    };
+  }
+  if (action === "file-back-judgment") {
+    return {
+      bannerCls: "furnace-loot-banner furnace-loot-file-back",
+      badge: plugin.t("可沉淀"),
+      cta: plugin.t("沉淀"),
+      buttonCls: "mod-cta furnace-compound-file-back",
+    };
+  }
+  return null;
+}
+
+function runCompoundSuggestAction(plugin, suggest) {
+  const action = String(suggest && suggest.action || "").trim();
+  if (action === "file-back-judgment") {
+    if (typeof plugin.runCompoundFileBack === "function") plugin.runCompoundFileBack(suggest);
+    return;
+  }
+  if (action === "alchemy-start") {
+    if (typeof plugin.openCompoundAlchemyStart === "function") plugin.openCompoundAlchemyStart(suggest);
+  }
+}
+
+function renderCompoundLootBanner(plugin, parentEl, suggest) {
+  const action = String(suggest && suggest.action || "").trim();
+  const reportPath = String(suggest && (suggest.report_path || suggest.reportPath) || "").trim();
+  if (
+    action === "file-back-judgment"
+    && reportPath
+    && plugin
+    && plugin._locallyFiledReports instanceof Set
+    && plugin._locallyFiledReports.has(reportPath)
+  ) {
+    return null;
+  }
+  const copy = compoundLootCopy(plugin, action);
+  if (!copy) return null;
+  const banner = parentEl.createDiv({ cls: copy.bannerCls });
+  banner.createSpan({ cls: "furnace-loot-badge", text: copy.badge });
+  const cta = banner.createEl("button", {
+    cls: copy.buttonCls,
+    text: copy.cta,
+    attr: { type: "button" },
+  });
+  banner.addEventListener("click", (event) => {
+    if (event && typeof event.preventDefault === "function") event.preventDefault();
+    if (banner.classList.contains("is-busy")) return;
+    banner.classList.add("is-busy");
+    cta.disabled = true;
+    runCompoundSuggestAction(plugin, suggest);
+  });
+  return banner;
+}
+
 function renderReportCard(plugin, cardEl, entry) {
-  const actions = cardEl.createDiv({ cls: "furnace-feed-card-actions" });
   const suggest = entry.compound_suggest || entry.compoundSuggest;
   if (suggest && typeof suggest === "object") {
-    renderCompoundSuggestActions(plugin, actions, suggest);
+    renderCompoundLootBanner(plugin, cardEl, suggest);
   }
+  const actions = cardEl.createDiv({ cls: "furnace-feed-card-actions" });
   const openBtn = actions.createEl("button", {
     cls: suggest ? "" : "mod-cta",
     text: plugin.t("Open report"),
   });
   openBtn.addEventListener("click", () => {
+    if (typeof plugin.openPendingDoneTarget === "function") {
+      void plugin.openPendingDoneTarget("outputs", entry.target);
+      return;
+    }
     plugin.openWorkspacePath(entry.target);
   });
-
 }
 
 function renderCompoundSuggestActionCard(plugin, cardEl, entry) {
   const suggest = entry.compound_suggest || entry.compoundSuggest;
   if (!suggest || typeof suggest !== "object") return;
-  const actions = cardEl.createDiv({ cls: "furnace-feed-card-actions" });
-  renderCompoundSuggestActions(plugin, actions, suggest);
+  renderCompoundLootBanner(plugin, cardEl, suggest);
 }
 
 function renderCompoundSuggestActions(plugin, actionsEl, suggest) {
-  const action = String(suggest.action || "").trim();
-  if (action === "file-back-judgment") {
-    const fileBackBtn = actionsEl.createEl("button", {
-      cls: "mod-cta furnace-compound-file-back",
-      text: plugin.t("沉淀"),
-    });
-    fileBackBtn.addEventListener("click", () => {
-      plugin.runCompoundFileBack(suggest);
-    });
-    return;
-  }
-  if (action === "alchemy-start") {
-    const alchemyBtn = actionsEl.createEl("button", {
-      cls: "mod-cta furnace-compound-alchemy-start",
-      text: plugin.t("凝丹"),
-    });
-    alchemyBtn.addEventListener("click", () => {
-      plugin.openCompoundAlchemyStart(suggest);
-    });
-  }
+  renderCompoundLootBanner(plugin, actionsEl, suggest);
 }
 
 function renderConfirmationCard(plugin, cardEl, entry) {
@@ -2862,6 +2948,8 @@ module.exports = {
   renderAutomationCard,
   renderCompoundSuggestActionCard,
   renderCompoundSuggestActions,
+  renderCompoundLootBanner,
+  compoundLootCopy,
 };
 
 // --- src/settings.js ---
@@ -3470,6 +3558,13 @@ function renderUniversalInput(plugin, container) {
   textarea.placeholder = plugin.t("投 URL / PDF / Markdown / 图片 / repo；提问才会生成报告");
   textarea.rows = 1;
 
+  // Compact sticky badge lives inside the form so idle composer stays one row.
+  const stickyBadge = form.createEl("button", {
+    cls: "furnace-input-sticky-badge",
+    attr: { type: "button", title: plugin.t("本轮材料（点击展开）") },
+  });
+  stickyBadge.style.display = "none";
+
   const submitButton = form.createEl("button", { 
     cls: "furnace-universal-input-button", 
     text: plugin.t("Submit"),
@@ -3477,8 +3572,9 @@ function renderUniversalInput(plugin, container) {
   });
 
   const hint = wrapper.createDiv({ cls: "furnace-universal-input-hint" });
-      hint.setText(plugin.t("⌘/Ctrl+Enter · @材料 · 拖文件"));
-      hint.setAttr && hint.setAttr("title", plugin.t("Ctrl+Enter 提交 · 拖入文件 · 投料入 raw，提问出报告"));
+  hint.setText(plugin.t("⌘/Ctrl+Enter · @材料 · 拖文件"));
+  hint.setAttr && hint.setAttr("title", plugin.t("Ctrl+Enter 提交 · 拖入文件 · 投料入 raw，提问出报告"));
+  hint.style.display = "none";
 
   const stickyMaterialsContainer = wrapper.createDiv({ cls: "furnace-input-sticky-materials" });
   stickyMaterialsContainer.style.display = "none";
@@ -3488,6 +3584,7 @@ function renderUniversalInput(plugin, container) {
   atSuggest.style.display = "none";
 
   const composerActions = wrapper.createDiv({ cls: "furnace-input-composer-actions" });
+  composerActions.style.display = "none";
   const quoteActiveBtn = composerActions.createEl("button", {
     cls: "furnace-input-quote-active-btn",
     text: plugin.t("当前文件"),
@@ -3499,6 +3596,31 @@ function renderUniversalInput(plugin, container) {
   let submitting = false;
   let lastChordSubmitAt = 0;
   let activeMention = null;
+  let stickyExpanded = false;
+  let composerFocused = false;
+
+  const persistSticky = () => {
+    if (!plugin || typeof plugin.savePluginState !== "function") return;
+    try {
+      const result = plugin.savePluginState();
+      if (result && typeof result.then === "function") void result.catch(() => {});
+    } catch (_error) { /* ignore */ }
+  };
+
+  const syncComposerChrome = () => {
+    const paths = stickyMaterialDisplayPaths(plugin.settings);
+    hint.style.display = composerFocused ? "" : "none";
+    composerActions.style.display = composerFocused ? "flex" : "none";
+    if (!paths.length) {
+      stickyBadge.style.display = "none";
+      stickyMaterialsContainer.style.display = "none";
+      return;
+    }
+    const showChips = stickyExpanded || composerFocused;
+    stickyBadge.style.display = showChips ? "none" : "inline-flex";
+    stickyBadge.textContent = plugin.t("材料 · {n}", { n: String(paths.length) });
+    stickyMaterialsContainer.style.display = showChips ? "flex" : "none";
+  };
 
   const listVaultMentionCandidates = () => {
     const vault = plugin.app && plugin.app.vault;
@@ -3519,19 +3641,20 @@ function renderUniversalInput(plugin, container) {
     activeMention = null;
     atSuggest.style.display = "none";
     atSuggest.empty();
+    syncComposerChrome();
   };
 
   const renderStickyMaterialChips = () => {
     stickyMaterialsContainer.empty();
     const paths = stickyMaterialDisplayPaths(plugin.settings);
     if (!paths.length) {
-      stickyMaterialsContainer.style.display = "none";
+      stickyExpanded = false;
+      syncComposerChrome();
       return;
     }
-    stickyMaterialsContainer.style.display = "flex";
     stickyMaterialsContainer.createDiv({
       cls: "furnace-input-sticky-materials-label",
-      text: plugin.t("材料"),
+      text: plugin.t("本轮材料"),
     });
     const chips = stickyMaterialsContainer.createDiv({ cls: "furnace-input-sticky-materials-chips" });
     for (const materialPath of paths) {
@@ -3541,13 +3664,48 @@ function renderUniversalInput(plugin, container) {
         attr: { title: materialPath },
       });
     }
+    const clearBtn = stickyMaterialsContainer.createEl("button", {
+      cls: "furnace-input-sticky-clear",
+      text: plugin.t("清除"),
+      attr: { type: "button", title: plugin.t("清除粘性材料") },
+    });
+    clearBtn.addEventListener("click", (event) => {
+      if (event && typeof event.preventDefault === "function") event.preventDefault();
+      setStickyMaterialRefs(plugin.settings, [], "clear");
+      persistSticky();
+      stickyExpanded = false;
+      renderStickyMaterialChips();
+    });
+    syncComposerChrome();
   };
   renderStickyMaterialChips();
+
+  stickyBadge.addEventListener("click", (event) => {
+    if (event && typeof event.preventDefault === "function") event.preventDefault();
+    stickyExpanded = !stickyExpanded;
+    syncComposerChrome();
+    if (stickyExpanded) textarea.focus();
+  });
+
+  textarea.addEventListener("focus", () => {
+    composerFocused = true;
+    syncComposerChrome();
+  });
+  textarea.addEventListener("blur", () => {
+    window.setTimeout(() => {
+      if (document.activeElement === textarea) return;
+      if (wrapper.contains(document.activeElement)) return;
+      composerFocused = false;
+      stickyExpanded = false;
+      syncComposerChrome();
+    }, 120);
+  });
 
   const updateAttachmentPills = () => {
     attachmentsContainer.empty();
     if (!attachedFiles.length && !attachedVaultPaths.length) {
       attachmentsContainer.style.display = "none";
+      syncComposerChrome();
       return;
     }
     attachmentsContainer.style.display = "flex";
@@ -3573,6 +3731,7 @@ function renderUniversalInput(plugin, container) {
         updateAttachmentPills();
       });
     });
+    syncComposerChrome();
   };
 
   const addVaultPath = (rawPath) => {
@@ -3593,6 +3752,7 @@ function renderUniversalInput(plugin, container) {
     atSuggest.empty();
     if (!candidates.length) {
       atSuggest.style.display = "none";
+      syncComposerChrome();
       return;
     }
     atSuggest.style.display = "block";
@@ -3612,6 +3772,7 @@ function renderUniversalInput(plugin, container) {
         textarea.focus();
       });
     }
+    syncComposerChrome();
   };
 
   quoteActiveBtn.addEventListener("click", () => {
@@ -3690,9 +3851,11 @@ function renderUniversalInput(plugin, container) {
     try {
       // Single-flight: block a new ask while one is active; pure material drops stay allowed.
       const materialQuestionPreview = splitTextMaterialQuestion(value);
+      const openLinkAskPreview = splitObsidianOpenLinkQuestion(value);
       const willAsk = filesToProcess.length > 0 || vaultPathsToUse.length > 0
         ? Boolean(normalizedQuestion)
         : Boolean(materialQuestionPreview)
+          || Boolean(openLinkAskPreview)
           || (
             Boolean(normalizedQuestion)
             && !isObsidianOpenLink(normalizedQuestion)
@@ -3783,7 +3946,56 @@ function renderUniversalInput(plugin, container) {
         new Notice(plugin.t("Attached vault paths need a question to ask."));
         return;
       } else {
-        if (isObsidianOpenLink(normalizedQuestion)) {
+        const openLinkAsk = splitObsidianOpenLinkQuestion(value);
+        if (openLinkAsk) {
+          let materialPath = openLinkAsk.path;
+          const vault = plugin.app && plugin.app.vault;
+          if (vault && typeof vault.getAbstractFileByPath === "function") {
+            if (!vault.getAbstractFileByPath(materialPath) && !materialPath.endsWith(".md")) {
+              const withMd = `${materialPath}.md`;
+              if (vault.getAbstractFileByPath(withMd)) materialPath = withMd;
+            }
+          } else if (!materialPath.endsWith(".md")) {
+            materialPath = `${materialPath}.md`;
+          }
+          if (!isAskMaterialPathAllowed(materialPath)) {
+            new Notice(plugin.t("Path is not an allowed ask material: {path}", { path: materialPath }));
+            return;
+          }
+          const askFormat = inferAutoAskFormat(openLinkAsk.question, [materialPath]);
+          const retryArgs = {
+            kind: "auto-ask",
+            question: openLinkAsk.question,
+            askQuestion: openLinkAsk.question,
+            format: askFormat,
+            materialPaths: [materialPath],
+          };
+          pendingId = plugin.pushPendingSubmission(value, {
+            title: openLinkAsk.question,
+            retryArgs,
+          });
+          askResultPayload = await plugin.runAskCommand({
+            question: openLinkAsk.question,
+            format: askFormat,
+            mode: "run-ask",
+            excludePendingId: pendingId,
+            materialPaths: [materialPath],
+          });
+          if (pendingId) {
+            const usedPaths = coalesceAskUsedMaterialPaths(
+              askResultPayload,
+              [materialPath],
+              plugin.settings,
+            );
+            plugin.updatePendingSubmissionRetryArgs(pendingId, {
+              ...retryArgs,
+              materialPaths: usedPaths,
+              askQuestion: String(openLinkAsk.question || ""),
+              runNotesPath: String(askResultPayload && askResultPayload.run_notes_path || ""),
+              runId: String(askResultPayload && askResultPayload.run_id || ""),
+            });
+          }
+        } else if (isObsidianOpenLink(normalizedQuestion)) {
           const targetPath = obsidianOpenLinkFilePath(normalizedQuestion);
           if (targetPath) {
             const opened = await plugin.openWorkspacePath(targetPath);
@@ -3795,7 +4007,7 @@ function renderUniversalInput(plugin, container) {
             new Notice(plugin.t("Obsidian 打开链接是导航目标，不会作为问题提交。"));
           }
           return;
-        }
+        } else {
         const materialQuestion = splitTextMaterialQuestion(value);
         if (materialQuestion) {
           const retryArgs = {
@@ -3880,6 +4092,7 @@ function renderUniversalInput(plugin, container) {
             });
           }
         }
+        }
       }
       succeeded = true;
       // 纯投料已在 completePendingMaterialDrop 标 done(raw)；提问路径同步完成则直写 done(outputs)
@@ -3892,7 +4105,7 @@ function renderUniversalInput(plugin, container) {
       textarea.disabled = false;
       submitting = false;
       submitButton.setText(originalLabel || plugin.t("Submit"));
-  hint.setText(plugin.t("Ctrl+Enter 提交 · 拖入文件 · 投料入 raw，提问出报告"));
+      hint.setText(plugin.t("⌘/Ctrl+Enter · @材料 · 拖文件"));
       if (succeeded) {
         textarea.value = '';
         autoResize();
@@ -4003,10 +4216,7 @@ function renderTodayFeed(plugin, container) {
     text: plugin.getLastSummaryRefreshLabel(),
   });
 
-  // R88: pending submissions（用户刚提交、流水线未落地的"处理中"卡片）
-  // 始终在最前面渲染，独立于 shellSummary 状态，构成视觉闭环
-  renderPendingSubmissionsGroup(plugin, section);
-
+  // Conversation chrome first; pending/report stream sits above the composer (rendered later).
   renderFurnaceActivityTimeline(plugin, section);
 
   if (!summary) {
@@ -4016,25 +4226,29 @@ function renderTodayFeed(plugin, container) {
     });
     // R88 #1 (P1 fix): summary 缺失也提供 CTA
     renderTodayEmptyCta(plugin, section, container);
+    renderPendingSubmissionsGroup(plugin, section);
+    scrollTodayConversationToEnd(section);
     return;
   }
 
   const feed = buildTodayFeed(summary);
 
   if (!feed.length) {
-    // 如果有 pending 卡片在上方，已经构成"投了在跑"的视觉反馈，不再渲染冷空态
     const hasPending = Array.isArray(plugin.pendingSubmissions) && plugin.pendingSubmissions.length > 0;
-    if (hasPending) return;
-    const empty = section.createDiv({ cls: "furnace-today-feed-empty" });
-    empty.createEl("div", {
-      cls: "furnace-today-feed-empty-title",
-      text: plugin.t("今天还没有新报告"),
-    });
-    empty.createEl("div", {
-      cls: "furnace-today-feed-empty-hint",
-      text: plugin.t("拖入 URL / PDF / 图片 / repo，或在上方直接提一个问题；生成的报告会出现在这里。"),
-    });
-    renderTodayEmptyCta(plugin, empty, container);
+    if (!hasPending) {
+      const empty = section.createDiv({ cls: "furnace-today-feed-empty" });
+      empty.createEl("div", {
+        cls: "furnace-today-feed-empty-title",
+        text: plugin.t("今天还没有新报告"),
+      });
+      empty.createEl("div", {
+        cls: "furnace-today-feed-empty-hint",
+        text: plugin.t("拖入 URL / PDF / 图片 / repo，或在上方直接提一个问题；生成的报告会出现在这里。"),
+      });
+      renderTodayEmptyCta(plugin, empty, container);
+    }
+    renderPendingSubmissionsGroup(plugin, section);
+    scrollTodayConversationToEnd(section);
     return;
   }
   
@@ -4054,6 +4268,22 @@ function renderTodayFeed(plugin, container) {
       renderTodayFeedItem(plugin, listEl, entry);
     }
   }
+
+  // Pending ask bubbles last — newest activity sits next to the composer.
+  renderPendingSubmissionsGroup(plugin, section);
+  scrollTodayConversationToEnd(section);
+}
+
+function scrollTodayConversationToEnd(section) {
+  if (!section || typeof section.querySelector !== "function") return;
+  const targets = section.querySelectorAll(
+    ".furnace-conversation-item, .furnace-today-feed-list > li, .furnace-feed-card, .furnace-loot-banner"
+  );
+  const last = targets.length ? targets[targets.length - 1] : null;
+  if (!last || typeof last.scrollIntoView !== "function") return;
+  try {
+    last.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  } catch (_error) { /* ignore */ }
 }
 
 const REVIEW_BUCKET_LABELS = {
@@ -4855,11 +5085,21 @@ function todayFeedActions(plugin, entry) {
     ];
   }
   if (isWorkspaceTarget(target)) {
+    const openTarget = async () => {
+      if (
+        target.startsWith("output/reports/")
+        && typeof plugin.openPendingDoneTarget === "function"
+      ) {
+        await plugin.openPendingDoneTarget("outputs", target);
+        return;
+      }
+      await plugin.openWorkspacePath(target);
+    };
     return [
       {
         label: workspaceTargetActionLabel(target, entry),
         description: `Open today target: ${target}`,
-        onClick: async () => plugin.openWorkspacePath(target),
+        onClick: openTarget,
       },
     ];
   }
@@ -6706,19 +6946,37 @@ async function openProductShellOutputsHub(plugin) {
 async function openProductShellPendingDoneTarget(plugin, target, reconcilePath) {
   const normalizedPath = String(reconcilePath || "").trim();
   const normalizedTarget = String(target || "").trim();
-  if (normalizedPath) {
+  let openPath = normalizedPath;
+  if (openPath && normalizedTarget === "outputs") {
+    const blocked = await isPlaceholderAskReportPath(plugin, openPath);
+    if (blocked) {
+      new Notice(plugin.t("报告仍在生成中，请稍候再打开"));
+      return;
+    }
+    openPath = resolveMissingReportOpenPath(plugin, openPath) || openPath;
+  }
+  if (openPath) {
     let opened = false;
     try {
-      opened = await plugin.openWorkspacePath(normalizedPath);
+      opened = await plugin.openWorkspacePath(openPath);
     } catch (error) {
       opened = false;
     }
-    if (opened) return;
+    if (opened) {
+      if (openPath !== normalizedPath) {
+        new Notice(plugin.t("原报告路径已不存在，已打开同名报告"));
+      }
+      return;
+    }
   }
   try {
     if (normalizedTarget === "outputs" && typeof plugin.openOutputsHub === "function") {
       await plugin.openOutputsHub();
-      new Notice(plugin.t("已打开输出汇总（找不到具体报告路径）"));
+      if (normalizedPath && !plugin.app.vault.getAbstractFileByPath(normalizedPath)) {
+        new Notice(plugin.t("报告文件已不存在：{path}", { path: normalizedPath }));
+      } else {
+        new Notice(plugin.t("已打开输出汇总（找不到具体报告路径）"));
+      }
       return;
     }
     if (normalizedTarget === "receipts" && typeof plugin.openFurnaceCenterView === "function") {
@@ -6734,6 +6992,38 @@ async function openProductShellPendingDoneTarget(plugin, target, reconcilePath) 
     // Last resort is a user-facing notice below.
   }
   new Notice(plugin.t("无法打开目标，可能尚未生成"));
+}
+
+function resolveMissingReportOpenPath(plugin, relativePath) {
+  const path = String(relativePath || "").trim();
+  if (!path || !plugin || !plugin.app || !plugin.app.vault) return "";
+  if (plugin.app.vault.getAbstractFileByPath(path)) return path;
+  if (!path.startsWith("output/reports/") || !path.endsWith(".md")) return "";
+  const match = path.match(/^(output\/reports\/.+)-(\d+)\.md$/);
+  if (!match) return "";
+  const fallback = `${match[1]}.md`;
+  return plugin.app.vault.getAbstractFileByPath(fallback) ? fallback : "";
+}
+
+async function isPlaceholderAskReportPath(plugin, relativePath) {
+  const path = String(relativePath || "").trim();
+  if (!path || !plugin || !plugin.app || !plugin.app.vault) return false;
+  try {
+    const abstract = plugin.app.vault.getAbstractFileByPath(path);
+    if (!abstract) return false;
+    const text = await plugin.app.vault.read(abstract);
+    const body = String(text || "");
+    if (body.includes("_LLM:")) return true;
+    const fm = body.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+    if (!fm) return false;
+    const block = fm[1];
+    if (/^llm_status:\s*["']?pending["']?\s*$/m.test(block)) return true;
+    if (/^artifact_quality:\s*["']?placeholder["']?\s*$/m.test(block)) return true;
+    if (/^delivery_mode:\s*["']?llm-pending["']?\s*$/m.test(block)) return true;
+    return false;
+  } catch (_error) {
+    return false;
+  }
 }
 
 async function readProductShellWorkspaceSnippet(plugin, relativePath, length = 420) {
@@ -6804,6 +7094,13 @@ async function openProductShellWorkspacePath(plugin, relativePath) {
   if (!normalized) {
     new Notice(plugin.t("Unable to open {path}", { path: requestedPath }));
     return false;
+  }
+  if (normalized.startsWith("output/reports/")) {
+    const blocked = await isPlaceholderAskReportPath(plugin, normalized);
+    if (blocked) {
+      new Notice(plugin.t("报告仍在生成中，请稍候再打开"));
+      return false;
+    }
   }
   const abstractFile = plugin.app.vault.getAbstractFileByPath(normalized);
   if (abstractFile && normalized.endsWith(".md")) {
@@ -7222,8 +7519,36 @@ async function refreshProductShellSummarySilently(plugin) {
   return await plugin.loadShellSummaryFromDisk();
 }
 
+function compoundLootToastKey(item) {
+  const action = String(item && item.action || "").trim();
+  const reportPath = String(item && item.report_path || "").trim();
+  const corpusId = String(item && item.corpus_id || "").trim();
+  if (!action) return "";
+  return `${action}:${reportPath || corpusId || "unknown"}`;
+}
+
+function maybeNotifyCompoundLoot(plugin, summary) {
+  if (!plugin || typeof compoundSuggestItems !== "function") return;
+  const items = compoundSuggestItems(summary);
+  if (!items.length) return;
+  if (!plugin._seenCompoundLootKeys) plugin._seenCompoundLootKeys = new Set();
+  const seen = plugin._seenCompoundLootKeys;
+  for (const item of items) {
+    const action = String(item && item.action || "").trim();
+    const key = compoundLootToastKey(item);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    if (action === "alchemy-start") {
+      new Notice(plugin.t("✦ 可凝丹"));
+    } else if (action === "file-back-judgment") {
+      new Notice(plugin.t("✦ 可沉淀"));
+    }
+  }
+}
+
 function processProductShellSummaryUpdates(plugin, summary) {
   plugin.reconcilePendingSubmissions(summary);
+  maybeNotifyCompoundLoot(plugin, summary);
 }
 
 async function refreshProductShellSummaryCommand(plugin) {
@@ -8195,8 +8520,23 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
       new Notice(this.t("缺少报告路径"));
       return;
     }
+    if (this._compoundFileBackInFlight) {
+      new Notice(this.t("沉淀进行中，请稍候"));
+      return;
+    }
+    this._compoundFileBackInFlight = true;
+    if (!(this._locallyFiledReports instanceof Set)) this._locallyFiledReports = new Set();
+    this._locallyFiledReports.add(reportPath);
     const label = String(item.title || this.t("沉淀")).trim() || this.t("沉淀");
-    await this.runCliAction(label, "file-back", [reportPath]);
+    try {
+      await this.runCliAction(label, "file-back", [reportPath]);
+      this.refreshOpenViews();
+    } catch (error) {
+      this._locallyFiledReports.delete(reportPath);
+      throw error;
+    } finally {
+      this._compoundFileBackInFlight = false;
+    }
   }
 
   openCompoundAlchemyStart(suggest) {

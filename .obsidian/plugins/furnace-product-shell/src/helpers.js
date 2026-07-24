@@ -320,12 +320,14 @@ function looksLikeUniversalMaterialPayload(value) {
 }
 
 function isObsidianOpenLink(value) {
-  return String(value || "").trim().toLowerCase().startsWith("obsidian://open");
+  const first = String(value || "").trim().split(/\r?\n/)[0].trim();
+  return first.toLowerCase().startsWith("obsidian://open");
 }
 
 function obsidianOpenLinkFilePath(value) {
-  const text = String(value || "").trim();
-  if (!isObsidianOpenLink(text)) return "";
+  // Only parse the URL line — multiline paste must not pollute file=.
+  const text = String(value || "").trim().split(/\r?\n/)[0].trim();
+  if (!text.toLowerCase().startsWith("obsidian://open")) return "";
   try {
     const url = new URL(text);
     const file = String(url.searchParams.get("file") || "").trim();
@@ -339,6 +341,28 @@ function obsidianOpenLinkFilePath(value) {
       return "";
     }
   }
+}
+
+function splitObsidianOpenLinkQuestion(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  const nonEmptyLines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (!nonEmptyLines.length) return null;
+  let linkLine = "";
+  let question = "";
+  if (nonEmptyLines[0].toLowerCase().startsWith("obsidian://open")) {
+    linkLine = nonEmptyLines[0];
+    question = nonEmptyLines.slice(1).join("\n").trim();
+  } else {
+    const oneLine = text.match(/^(obsidian:\/\/open\S+)\s+([\s\S]+)$/i);
+    if (!oneLine) return null;
+    linkLine = oneLine[1];
+    question = String(oneLine[2] || "").trim();
+  }
+  if (!question) return null;
+  const path = obsidianOpenLinkFilePath(linkLine);
+  if (!path) return null;
+  return { path, question };
 }
 
 function normalizeWorkspaceLinkTarget(value) {

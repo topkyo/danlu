@@ -29,6 +29,11 @@ if (!HTMLElement.prototype.createEl) {
     return el;
   };
 }
+if (!HTMLElement.prototype.createSpan) {
+  HTMLElement.prototype.createSpan = function (opts) {
+    return this.createEl("span", opts);
+  };
+}
 if (!HTMLElement.prototype.addClass) {
   HTMLElement.prototype.addClass = function (cls) {
     if (cls) this.classList.add(cls);
@@ -104,7 +109,21 @@ describe("renderReportCard", () => {
     expect(graphBtn).toBeUndefined();
   });
 
-  test("Open report button calls openWorkspacePath", () => {
+  test("Open report button guards via openPendingDoneTarget", () => {
+    const plugin = makeMockPlugin();
+    plugin.openPendingDoneTarget = jest.fn().mockResolvedValue(undefined);
+    const cardEl = document.createElement("div");
+
+    renderReportCard(plugin, cardEl, { target: "output/reports/foo.md" });
+
+    const openBtn = Array.from(cardEl.querySelectorAll("button")).find((btn) => btn.textContent === "Open report");
+    openBtn.click();
+
+    expect(plugin.openPendingDoneTarget).toHaveBeenCalledWith("outputs", "output/reports/foo.md");
+    expect(plugin.openWorkspacePath).not.toHaveBeenCalled();
+  });
+
+  test("Open report falls back to openWorkspacePath when guard helper missing", () => {
     const plugin = makeMockPlugin();
     const cardEl = document.createElement("div");
 
@@ -127,6 +146,9 @@ describe("renderReportCard", () => {
 
     renderReportCard(plugin, cardEl, { target: "output/reports/foo.md", compound_suggest: suggest });
 
+    const loot = cardEl.querySelector(".furnace-loot-file-back");
+    expect(loot).toBeTruthy();
+    expect(loot.querySelector(".furnace-loot-badge").textContent).toBe("可沉淀");
     const fileBackBtn = Array.from(cardEl.querySelectorAll("button")).find((btn) => btn.textContent === "沉淀");
     expect(fileBackBtn).toBeTruthy();
     fileBackBtn.click();
@@ -144,6 +166,9 @@ describe("renderReportCard", () => {
 
     renderReportCard(plugin, cardEl, { target: "output/reports/foo.md", compound_suggest: suggest });
 
+    const loot = cardEl.querySelector(".furnace-loot-alchemy");
+    expect(loot).toBeTruthy();
+    expect(loot.querySelector(".furnace-loot-badge").textContent).toBe("可凝丹");
     const alchemyBtn = Array.from(cardEl.querySelectorAll("button")).find((btn) => btn.textContent === "凝丹");
     expect(alchemyBtn).toBeTruthy();
     alchemyBtn.click();

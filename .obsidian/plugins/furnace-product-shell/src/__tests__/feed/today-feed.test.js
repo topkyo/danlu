@@ -57,12 +57,12 @@ test("compareEntries sorts by priority (kind)", () => {
   expect(compareEntries(action, report)).toBeGreaterThan(0);
 });
 
-test("compareEntries same priority sorts by timestamp descending", () => {
+test("compareEntries same priority sorts by timestamp ascending", () => {
   const a = { kind: "report", timestamp: "2026-05-01" };
   const b = { kind: "report", timestamp: "2026-05-03" };
-  // newer (B) should come before older (A)
-  expect(compareEntries(a, b)).toBeGreaterThan(0);
-  expect(compareEntries(b, a)).toBeLessThan(0);
+  // older (A) should come before newer (B) — newest sits near composer
+  expect(compareEntries(a, b)).toBeLessThan(0);
+  expect(compareEntries(b, a)).toBeGreaterThan(0);
 });
 
 test("compareEntries handles missing timestamps", () => {

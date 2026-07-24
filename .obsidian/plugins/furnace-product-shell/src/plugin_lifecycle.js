@@ -62,19 +62,37 @@ async function openProductShellOutputsHub(plugin) {
 async function openProductShellPendingDoneTarget(plugin, target, reconcilePath) {
   const normalizedPath = String(reconcilePath || "").trim();
   const normalizedTarget = String(target || "").trim();
-  if (normalizedPath) {
+  let openPath = normalizedPath;
+  if (openPath && normalizedTarget === "outputs") {
+    const blocked = await isPlaceholderAskReportPath(plugin, openPath);
+    if (blocked) {
+      new Notice(plugin.t("报告仍在生成中，请稍候再打开"));
+      return;
+    }
+    openPath = resolveMissingReportOpenPath(plugin, openPath) || openPath;
+  }
+  if (openPath) {
     let opened = false;
     try {
-      opened = await plugin.openWorkspacePath(normalizedPath);
+      opened = await plugin.openWorkspacePath(openPath);
     } catch (error) {
       opened = false;
     }
-    if (opened) return;
+    if (opened) {
+      if (openPath !== normalizedPath) {
+        new Notice(plugin.t("原报告路径已不存在，已打开同名报告"));
+      }
+      return;
+    }
   }
   try {
     if (normalizedTarget === "outputs" && typeof plugin.openOutputsHub === "function") {
       await plugin.openOutputsHub();
-      new Notice(plugin.t("已打开输出汇总（找不到具体报告路径）"));
+      if (normalizedPath && !plugin.app.vault.getAbstractFileByPath(normalizedPath)) {
+        new Notice(plugin.t("报告文件已不存在：{path}", { path: normalizedPath }));
+      } else {
+        new Notice(plugin.t("已打开输出汇总（找不到具体报告路径）"));
+      }
       return;
     }
     if (normalizedTarget === "receipts" && typeof plugin.openFurnaceCenterView === "function") {
@@ -90,6 +108,38 @@ async function openProductShellPendingDoneTarget(plugin, target, reconcilePath) 
     // Last resort is a user-facing notice below.
   }
   new Notice(plugin.t("无法打开目标，可能尚未生成"));
+}
+
+function resolveMissingReportOpenPath(plugin, relativePath) {
+  const path = String(relativePath || "").trim();
+  if (!path || !plugin || !plugin.app || !plugin.app.vault) return "";
+  if (plugin.app.vault.getAbstractFileByPath(path)) return path;
+  if (!path.startsWith("output/reports/") || !path.endsWith(".md")) return "";
+  const match = path.match(/^(output\/reports\/.+)-(\d+)\.md$/);
+  if (!match) return "";
+  const fallback = `${match[1]}.md`;
+  return plugin.app.vault.getAbstractFileByPath(fallback) ? fallback : "";
+}
+
+async function isPlaceholderAskReportPath(plugin, relativePath) {
+  const path = String(relativePath || "").trim();
+  if (!path || !plugin || !plugin.app || !plugin.app.vault) return false;
+  try {
+    const abstract = plugin.app.vault.getAbstractFileByPath(path);
+    if (!abstract) return false;
+    const text = await plugin.app.vault.read(abstract);
+    const body = String(text || "");
+    if (body.includes("_LLM:")) return true;
+    const fm = body.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+    if (!fm) return false;
+    const block = fm[1];
+    if (/^llm_status:\s*["']?pending["']?\s*$/m.test(block)) return true;
+    if (/^artifact_quality:\s*["']?placeholder["']?\s*$/m.test(block)) return true;
+    if (/^delivery_mode:\s*["']?llm-pending["']?\s*$/m.test(block)) return true;
+    return false;
+  } catch (_error) {
+    return false;
+  }
 }
 
 async function readProductShellWorkspaceSnippet(plugin, relativePath, length = 420) {
@@ -160,6 +210,13 @@ async function openProductShellWorkspacePath(plugin, relativePath) {
   if (!normalized) {
     new Notice(plugin.t("Unable to open {path}", { path: requestedPath }));
     return false;
+  }
+  if (normalized.startsWith("output/reports/")) {
+    const blocked = await isPlaceholderAskReportPath(plugin, normalized);
+    if (blocked) {
+      new Notice(plugin.t("报告仍在生成中，请稍候再打开"));
+      return false;
+    }
   }
   const abstractFile = plugin.app.vault.getAbstractFileByPath(normalized);
   if (abstractFile && normalized.endsWith(".md")) {

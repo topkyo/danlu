@@ -14,7 +14,7 @@ from typing import Any, Literal
 FeedKind = Literal["decision", "report", "elixir", "automation", "action"]
 FeedAudience = Literal["primary", "operator"]
 
-# 固定优先级：数字越小越靠前。同 priority 内按 timestamp desc。
+# 固定优先级：数字越小越靠前。同 priority 内按 timestamp asc（旧上新下，贴提问框）。
 # Primary Today 只保留报告、待拍板异常和必要行动；operator feed 仍可显示自动化/指标状态。
 _PRIORITY: dict[str, int] = {
     "report": 1,
@@ -481,12 +481,6 @@ def _as_count(value: object) -> int:
 
 
 def _sort_key(entry: FeedEntry) -> tuple[int, str, str]:
-    """priority asc, timestamp desc（用反向字符串实现），kind 顺序保险。"""
-    return (priority_for_kind(entry.kind), _reverse_timestamp(entry.timestamp), entry.kind)
-
-
-def _reverse_timestamp(ts: str) -> str:
-    # ISO8601 字典序与时间序一致；反向排序用 negation trick: 取反 char by char
-    if not ts:
-        return "\x7f"  # 空串排最后（最大 sort key）
-    return "".join(chr(0x7F - ord(c)) for c in ts)
+    """priority asc, timestamp asc（空时间戳排最后），kind 顺序保险。"""
+    ts = str(entry.timestamp or "").strip() or "\x7f"
+    return (priority_for_kind(entry.kind), ts, entry.kind)

@@ -529,13 +529,21 @@ def collect_recent_output_artifacts(root: Path, *, limit: int = 12) -> list[dict
                 llm_status = str(frontmatter.get("llm_status") or "")
                 contains_placeholder = "_LLM:" in content
                 query = str(frontmatter.get("query") or "").strip()
-                if is_obsidian_open_link(query) or (contains_placeholder and llm_status == "pending"):
+                artifact_quality_hint = str(frontmatter.get("artifact_quality") or "").strip()
+                if (
+                    is_obsidian_open_link(query)
+                    or (contains_placeholder and llm_status in {"", "pending"})
+                    or llm_status == "pending"
+                    or artifact_quality_hint == "placeholder"
+                    or delivery_mode in {"llm-pending", "pending"}
+                ):
                     continue
                 degraded = (
                     delivery_mode == "deterministic-fallback"
-                    or llm_status in {"timeout_or_unavailable", "validation_failed", "pending", "failed", "degraded"}
+                    or llm_status in {"timeout_or_unavailable", "validation_failed", "pending", "failed", "degraded", "material_unreadable"}
                     or background_status == "degraded"
                     or title.startswith("LLM 未完成")
+                    or artifact_quality_hint == "degraded"
                 )
                 artifact_quality = "degraded" if degraded else "deliverable"
                 artifacts.append(

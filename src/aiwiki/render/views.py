@@ -1125,12 +1125,18 @@ def render_report(
             "created_at": created_at,
             "generated_by": "aiwiki-ask",
             "_id": artifact_id,
+            # Pending scaffold must not appear as a deliverable report while LLM runs.
+            "llm_status": "pending",
+            "delivery_mode": "llm-pending",
+            "artifact_quality": "placeholder",
         }
     )
     lines = [
         frontmatter,
         "",
         f"# {title}",
+        "",
+        "_LLM: awaiting synthesis.",
         "",
         "## 参考",
         f"- 当前协议：`{active_protocol}` ({protocol_title(active_protocol)})。",

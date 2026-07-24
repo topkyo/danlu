@@ -25,10 +25,7 @@ function renderTodayFeed(plugin, container) {
     text: plugin.getLastSummaryRefreshLabel(),
   });
 
-  // R88: pending submissions（用户刚提交、流水线未落地的"处理中"卡片）
-  // 始终在最前面渲染，独立于 shellSummary 状态，构成视觉闭环
-  renderPendingSubmissionsGroup(plugin, section);
-
+  // Conversation chrome first; pending/report stream sits above the composer (rendered later).
   renderFurnaceActivityTimeline(plugin, section);
 
   if (!summary) {
@@ -38,25 +35,29 @@ function renderTodayFeed(plugin, container) {
     });
     // R88 #1 (P1 fix): summary 缺失也提供 CTA
     renderTodayEmptyCta(plugin, section, container);
+    renderPendingSubmissionsGroup(plugin, section);
+    scrollTodayConversationToEnd(section);
     return;
   }
 
   const feed = buildTodayFeed(summary);
 
   if (!feed.length) {
-    // 如果有 pending 卡片在上方，已经构成"投了在跑"的视觉反馈，不再渲染冷空态
     const hasPending = Array.isArray(plugin.pendingSubmissions) && plugin.pendingSubmissions.length > 0;
-    if (hasPending) return;
-    const empty = section.createDiv({ cls: "furnace-today-feed-empty" });
-    empty.createEl("div", {
-      cls: "furnace-today-feed-empty-title",
-      text: plugin.t("今天还没有新报告"),
-    });
-    empty.createEl("div", {
-      cls: "furnace-today-feed-empty-hint",
-      text: plugin.t("拖入 URL / PDF / 图片 / repo，或在上方直接提一个问题；生成的报告会出现在这里。"),
-    });
-    renderTodayEmptyCta(plugin, empty, container);
+    if (!hasPending) {
+      const empty = section.createDiv({ cls: "furnace-today-feed-empty" });
+      empty.createEl("div", {
+        cls: "furnace-today-feed-empty-title",
+        text: plugin.t("今天还没有新报告"),
+      });
+      empty.createEl("div", {
+        cls: "furnace-today-feed-empty-hint",
+        text: plugin.t("拖入 URL / PDF / 图片 / repo，或在上方直接提一个问题；生成的报告会出现在这里。"),
+      });
+      renderTodayEmptyCta(plugin, empty, container);
+    }
+    renderPendingSubmissionsGroup(plugin, section);
+    scrollTodayConversationToEnd(section);
     return;
   }
   
@@ -76,6 +77,22 @@ function renderTodayFeed(plugin, container) {
       renderTodayFeedItem(plugin, listEl, entry);
     }
   }
+
+  // Pending ask bubbles last — newest activity sits next to the composer.
+  renderPendingSubmissionsGroup(plugin, section);
+  scrollTodayConversationToEnd(section);
+}
+
+function scrollTodayConversationToEnd(section) {
+  if (!section || typeof section.querySelector !== "function") return;
+  const targets = section.querySelectorAll(
+    ".furnace-conversation-item, .furnace-today-feed-list > li, .furnace-feed-card, .furnace-loot-banner"
+  );
+  const last = targets.length ? targets[targets.length - 1] : null;
+  if (!last || typeof last.scrollIntoView !== "function") return;
+  try {
+    last.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  } catch (_error) { /* ignore */ }
 }
 
 const REVIEW_BUCKET_LABELS = {
@@ -877,11 +894,21 @@ function todayFeedActions(plugin, entry) {
     ];
   }
   if (isWorkspaceTarget(target)) {
+    const openTarget = async () => {
+      if (
+        target.startsWith("output/reports/")
+        && typeof plugin.openPendingDoneTarget === "function"
+      ) {
+        await plugin.openPendingDoneTarget("outputs", target);
+        return;
+      }
+      await plugin.openWorkspacePath(target);
+    };
     return [
       {
         label: workspaceTargetActionLabel(target, entry),
         description: `Open today target: ${target}`,
-        onClick: async () => plugin.openWorkspacePath(target),
+        onClick: openTarget,
       },
     ];
   }

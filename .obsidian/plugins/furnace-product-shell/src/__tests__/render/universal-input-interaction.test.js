@@ -416,6 +416,40 @@ test("obsidian open links navigate instead of submitting ask", async () => {
   expect(textarea.value).toBe("");
 });
 
+test("obsidian open link plus question asks with vault material instead of navigating", async () => {
+  const context = loadRenderContext();
+  const plugin = makePlugin({
+    openWorkspacePath: jest.fn().mockResolvedValue(true),
+    runAskCommand: jest.fn().mockResolvedValue({
+      report_path: "output/reports/投料的文件讲了啥.md",
+      run_notes_path: "output/control/runs/ask/thinking.md",
+      run_id: "ask-openlink",
+      usedMaterialPaths: ["raw/inbox/codex-goal.md"],
+    }),
+    app: {
+      vault: {
+        getAbstractFileByPath: (p) => (p === "raw/inbox/codex-goal.md" ? { path: p } : null),
+        getMarkdownFiles: () => [],
+      },
+    },
+  });
+  const container = document.createElement("div");
+  context.renderUniversalInput(plugin, container);
+  const textarea = container.querySelector(".furnace-universal-input-textarea");
+  const submitButton = container.querySelector(".furnace-universal-input-button");
+  textarea.value = "obsidian://open?vault=%E7%82%BC%E4%B8%B9%E7%82%89&file=raw%2Finbox%2Fcodex-goal\n投料的文件讲了啥?";
+
+  submitButton.click();
+  await flushAsyncWork();
+
+  expect(plugin.openWorkspacePath).not.toHaveBeenCalled();
+  expect(plugin.runAskCommand).toHaveBeenCalledWith(expect.objectContaining({
+    question: "投料的文件讲了啥?",
+    materialPaths: ["raw/inbox/codex-goal.md"],
+  }));
+  expect(plugin.pushPendingSubmission).toHaveBeenCalled();
+});
+
 test("file-only submission completes as raw material instead of staying queued", async () => {
   const context = loadRenderContext();
   const plugin = makePlugin({
@@ -556,7 +590,7 @@ test("plain question goes through run-ask instead of deterministic universal dro
   }));
 });
 
-test("composer shows read-only sticky material chips without remove controls", () => {
+test("composer collapses sticky materials to a badge until focus/expand", () => {
   const context = loadRenderContext();
   const plugin = makePlugin({
     settings: {
@@ -572,13 +606,49 @@ test("composer shows read-only sticky material chips without remove controls", (
   });
   const container = document.createElement("div");
   context.renderUniversalInput(plugin, container);
-  expect(container.querySelector(".furnace-input-sticky-materials")).toBeTruthy();
-  expect(container.textContent).toContain("材料");
+  const badge = container.querySelector(".furnace-input-sticky-badge");
+  const sticky = container.querySelector(".furnace-input-sticky-materials");
+  const quoteBtn = container.querySelector(".furnace-input-quote-active-btn");
+  const hint = container.querySelector(".furnace-universal-input-hint");
+  expect(badge).toBeTruthy();
+  expect(badge.style.display).toBe("inline-flex");
+  expect(badge.textContent).toContain("材料");
+  expect(sticky.style.display).toBe("none");
+  expect(quoteBtn.parentElement.style.display).toBe("none");
+  expect(hint.style.display).toBe("none");
+
+  badge.click();
+  expect(sticky.style.display).toBe("flex");
+  expect(badge.style.display).toBe("none");
   const chips = container.querySelectorAll(".furnace-input-sticky-chip");
   expect(chips).toHaveLength(2);
   expect(chips[0].getAttribute("title")).toBe("raw/inbox/sticky.md");
   expect(container.querySelector(".furnace-input-sticky-chip-remove")).toBeNull();
+  expect(container.querySelector(".furnace-input-sticky-clear")).toBeTruthy();
   expect(container.querySelector(".furnace-input-sticky-materials .furnace-input-attachment-remove")).toBeNull();
+});
+
+test("composer shows current-file and sticky chips only while focused", () => {
+  const context = loadRenderContext();
+  const plugin = makePlugin({
+    settings: {
+      locale: "zh",
+      stickyMaterialRefs: {
+        paths: ["raw/inbox/sticky.md"],
+        updatedAt: "2026-07-23T00:00:00Z",
+        source: "drop",
+      },
+    },
+  });
+  const container = document.createElement("div");
+  context.renderUniversalInput(plugin, container);
+  const textarea = container.querySelector(".furnace-universal-input-textarea");
+  const sticky = container.querySelector(".furnace-input-sticky-materials");
+  const actions = container.querySelector(".furnace-input-composer-actions");
+  expect(actions.style.display).toBe("none");
+  textarea.dispatchEvent(new Event("focus"));
+  expect(actions.style.display).toBe("flex");
+  expect(sticky.style.display).toBe("flex");
 });
 
 test("pure ask writes usedMaterialPaths into retryArgs.materialPaths", async () => {
@@ -1425,6 +1495,70 @@ test("openWorkspacePath notices when file exists but Obsidian did not index it",
   expect(context.__notices).toEqual([
     "File exists but Obsidian has not indexed it (check Excluded files / userIgnoreFilters): output/reports/demo.md",
   ]);
+});
+
+test("openWorkspacePath blocks placeholder ask scaffold reports", async () => {
+  const context = loadRenderContext();
+  const plugin = new context.FurnaceProductShellPlugin();
+  plugin.t = (text) => text;
+  const reportRel = "output/reports/pending.md";
+  const openFile = jest.fn();
+  plugin.app = {
+    vault: {
+      getAbstractFileByPath: jest.fn().mockReturnValue({ path: reportRel }),
+      read: jest.fn().mockResolvedValue(
+        "---\nkind: output\nformat: report\nllm_status: pending\nartifact_quality: placeholder\n---\n\n_LLM: awaiting synthesis.\n"
+      ),
+    },
+    workspace: { getLeaf: jest.fn(() => ({ openFile })) },
+  };
+
+  await expect(plugin.openWorkspacePath(reportRel)).resolves.toBe(false);
+  expect(openFile).not.toHaveBeenCalled();
+  expect(context.__notices).toEqual(["报告仍在生成中，请稍候再打开"]);
+});
+
+test("openPendingDoneTarget blocks placeholder ask scaffold reports", async () => {
+  const context = loadRenderContext();
+  const plugin = new context.FurnaceProductShellPlugin();
+  plugin.t = (text) => text;
+  plugin.openWorkspacePath = jest.fn().mockResolvedValue(true);
+  plugin.openOutputsHub = jest.fn();
+  const reportRel = "output/reports/pending.md";
+  plugin.app = {
+    vault: {
+      getAbstractFileByPath: jest.fn().mockReturnValue({ path: reportRel }),
+      read: jest.fn().mockResolvedValue(
+        "---\nkind: output\nformat: report\nllm_status: pending\ndelivery_mode: llm-pending\nartifact_quality: placeholder\n---\n\n# Q\n\n_LLM: awaiting synthesis.\n"
+      ),
+    },
+  };
+
+  await plugin.openPendingDoneTarget("outputs", reportRel);
+
+  expect(plugin.openWorkspacePath).not.toHaveBeenCalled();
+  expect(plugin.openOutputsHub).not.toHaveBeenCalled();
+  expect(context.__notices).toEqual(["报告仍在生成中，请稍候再打开"]);
+});
+
+test("openPendingDoneTarget opens completed reports", async () => {
+  const context = loadRenderContext();
+  const plugin = new context.FurnaceProductShellPlugin();
+  plugin.t = (text) => text;
+  plugin.openWorkspacePath = jest.fn().mockResolvedValue(true);
+  const reportRel = "output/reports/done.md";
+  plugin.app = {
+    vault: {
+      getAbstractFileByPath: jest.fn().mockReturnValue({ path: reportRel }),
+      read: jest.fn().mockResolvedValue(
+        "---\nkind: output\nformat: report\nllm_status: complete\ndelivery_mode: llm-complete\nartifact_quality: deliverable\n---\n\n# Done\n\nReal answer.\n"
+      ),
+    },
+  };
+
+  await plugin.openPendingDoneTarget("outputs", reportRel);
+
+  expect(plugin.openWorkspacePath).toHaveBeenCalledWith(reportRel);
 });
 
 test("runAskCommand uses sync run-ask for report mode", async () => {

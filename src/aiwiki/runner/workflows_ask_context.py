@@ -88,14 +88,14 @@ def _run_ask_prepared_context(root: Path, question: str, artifact: dict[str, Any
 def _strip_run_notes_prompt_fields(markdown: str) -> str:
     lines = str(markdown or "").splitlines()
     if not lines or lines[0].strip() != "---":
-        return markdown
+        return _strip_pending_llm_placeholder_body(markdown)
     close_idx: int | None = None
     for idx in range(1, len(lines)):
         if lines[idx].strip() == "---":
             close_idx = idx
             break
     if close_idx is None:
-        return markdown
+        return _strip_pending_llm_placeholder_body(markdown)
     control_prefixes = (
         "run_id:",
         "run_notes_path:",
@@ -106,10 +106,30 @@ def _strip_run_notes_prompt_fields(markdown: str) -> str:
         "llm_failure_reason:",
         "llm_backend:",
         "llm_model:",
+        "artifact_quality:",
     )
     filtered = [line for line in lines[: close_idx + 1] if not line.startswith(control_prefixes)]
     filtered.extend(lines[close_idx + 1 :])
-    return "\n".join(filtered) + ("\n" if markdown.endswith("\n") else "")
+    cleaned = "\n".join(filtered) + ("\n" if markdown.endswith("\n") else "")
+    return _strip_pending_llm_placeholder_body(cleaned)
+
+
+def _strip_pending_llm_placeholder_body(markdown: str) -> str:
+    """Keep scaffold refs for the model, but do not feed `_LLM:` placeholder lines."""
+
+    lines = str(markdown or "").splitlines()
+    if not any(line.lstrip().startswith("_LLM:") for line in lines):
+        return markdown
+    kept: list[str] = []
+    replaced = False
+    for line in lines:
+        if line.lstrip().startswith("_LLM:"):
+            if not replaced:
+                kept.append("_Runtime note: replace this whole body with the final answer. Do not keep `_LLM:` lines._")
+                replaced = True
+            continue
+        kept.append(line)
+    return "\n".join(kept) + ("\n" if str(markdown).endswith("\n") else "")
 
 
 def _material_hint_paths(question: str) -> list[str]:

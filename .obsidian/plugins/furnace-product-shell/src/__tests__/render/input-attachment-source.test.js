@@ -278,4 +278,30 @@ describe("Universal Input attachment source handling", () => {
     expect(splitTextMaterialQuestion("重新分析下"))
       .toBeNull();
   });
+
+  test("splitObsidianOpenLinkQuestion treats open-link plus question as ask materials", () => {
+    const helpersSrc = fs.readFileSync(path.resolve(__dirname, "../../helpers.js"), "utf8");
+    const context = { console, module: { exports: {} }, exports: {}, require };
+    const vm = require("vm");
+    vm.runInNewContext(
+      `${helpersSrc}\nmodule.exports = { splitObsidianOpenLinkQuestion, obsidianOpenLinkFilePath, isObsidianOpenLink };`,
+      context,
+    );
+    const {
+      splitObsidianOpenLinkQuestion,
+      obsidianOpenLinkFilePath,
+      isObsidianOpenLink,
+    } = Object.assign({}, context, context.module.exports);
+
+    const multiline = "obsidian://open?vault=x&file=raw%2Finbox%2Fcodex-goal\n投料的文件讲了啥?";
+    expect(isObsidianOpenLink(multiline)).toBe(true);
+    expect(obsidianOpenLinkFilePath(multiline)).toBe("raw/inbox/codex-goal");
+    expect(splitObsidianOpenLinkQuestion(multiline)).toEqual({
+      path: "raw/inbox/codex-goal",
+      question: "投料的文件讲了啥?",
+    });
+    expect(splitObsidianOpenLinkQuestion(
+      "obsidian://open?vault=x&file=output%2Freports%2Fdemo.md",
+    )).toBeNull();
+  });
 });

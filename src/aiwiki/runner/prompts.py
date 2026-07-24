@@ -155,21 +155,29 @@ def _build_ask_prompt(
             root, ("index.md", "taxonomy.md", "decision.md", "judgment.md", "review.md", "nightly.md", "query.md")
         ),
         "",
-        "## Current Artifact",
-        current_artifact,
-        "",
     ]
-    if previous_output_summary:
-        sections.extend(["## Previous Output In Corpus", previous_output_summary, ""])
     material_context = str(material_context or "").strip()
     if material_context:
+        # Explicit materials first so the model does not hedge "无法识别这个文件".
         sections.extend(
             [
-                "## Quoted Report / Material Context",
+                "## 本次投喂材料（优先依据）",
+                "The user explicitly attached the materials below. Answer about these files directly.",
+                "Do not claim the file cannot be identified when material paths are listed.",
+                "Do not substitute unrelated wiki judgments for the attached material content.",
                 _fit_prompt_section(material_context, max_chars=min(12000, profile["max_total_chars"] // 2)),
                 "",
             ]
         )
+    sections.extend(
+        [
+            "## Current Artifact",
+            current_artifact,
+            "",
+        ]
+    )
+    if previous_output_summary:
+        sections.extend(["## Previous Output In Corpus", previous_output_summary, ""])
     sections.extend(
         [
             "## Machine Memory Query Plan",

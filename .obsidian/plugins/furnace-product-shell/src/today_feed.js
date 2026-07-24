@@ -171,9 +171,10 @@ function compareEntries(a, b) {
   const pa = priorityForKind(a.kind);
   const pb = priorityForKind(b.kind);
   if (pa !== pb) return pa - pb;
-  const ta = a.timestamp || "";
-  const tb = b.timestamp || "";
-  if (ta !== tb) return ta < tb ? 1 : -1;
+  const ta = a.timestamp || "\x7f";
+  const tb = b.timestamp || "\x7f";
+  // Ascending: older first, newest last (near the composer).
+  if (ta !== tb) return ta < tb ? -1 : 1;
   return a.kind < b.kind ? -1 : (a.kind > b.kind ? 1 : 0);
 }
 

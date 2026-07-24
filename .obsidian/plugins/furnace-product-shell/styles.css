@@ -913,6 +913,28 @@
   box-shadow: 0 0 0 2px var(--background-modifier-border-hover);
 }
 
+.furnace-input-sticky-badge {
+  display: none;
+  flex: 0 0 auto;
+  align-items: center;
+  height: 28px;
+  padding: 0 10px;
+  margin-bottom: 4px;
+  border-radius: 999px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  font-size: 0.78em;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.furnace-input-sticky-badge:hover {
+  color: var(--text-normal);
+  border-color: var(--interactive-accent);
+}
+
 .furnace-universal-input-textarea {
   flex-grow: 1;
   background: transparent;
@@ -952,7 +974,7 @@
   align-items: center;
   gap: 4px 8px;
   margin-top: 4px;
-  max-height: 2.4em;
+  max-height: 4.8em;
   overflow: hidden;
 }
 
@@ -960,6 +982,22 @@
   font-size: 0.72em;
   color: var(--text-faint);
   flex: 0 0 auto;
+}
+
+.furnace-input-sticky-clear {
+  font-size: 0.72em;
+  padding: 1px 8px;
+  height: auto;
+  line-height: 1.3;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.furnace-input-sticky-clear:hover {
+  color: var(--text-normal);
 }
 
 .furnace-input-composer-actions {
@@ -1078,10 +1116,54 @@
 
 /* Button semantics: primary (cta), secondary (outline), tertiary (ghost) */
 .furnace-shell-actions button.mod-cta,
-.furnace-feed-card-actions button.mod-cta {
+.furnace-feed-card-actions button.mod-cta,
+.furnace-loot-banner button.mod-cta {
   background: var(--interactive-accent);
   color: var(--text-on-accent);
   border-color: var(--interactive-accent);
+}
+
+.furnace-loot-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 4px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--color-yellow, #d4a017) 55%, var(--background-modifier-border));
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--color-yellow, #d4a017) 18%, transparent),
+    transparent 70%
+  );
+  cursor: pointer;
+}
+
+.furnace-loot-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-normal);
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-yellow, #d4a017) 22%, var(--background-primary));
+  border: 1px solid color-mix(in srgb, var(--color-yellow, #d4a017) 45%, var(--background-modifier-border));
+}
+
+.furnace-loot-file-back {
+  border-color: color-mix(in srgb, var(--interactive-accent) 45%, var(--background-modifier-border));
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--interactive-accent) 14%, transparent),
+    transparent 70%
+  );
+}
+
+.furnace-loot-file-back .furnace-loot-badge {
+  background: color-mix(in srgb, var(--interactive-accent) 16%, var(--background-primary));
+  border-color: color-mix(in srgb, var(--interactive-accent) 40%, var(--background-modifier-border));
 }
 
 .furnace-shell-actions button:not(.mod-cta):not(.furnace-shell-ghost-button),

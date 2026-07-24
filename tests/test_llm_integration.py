@@ -703,6 +703,37 @@ def test_complete_run_ask_artifact_timeout_retry_success(tmp_path: Path) -> None
     final_text = target.read_text(encoding="utf-8")
     assert "Stub Answer" in final_text
     assert "llm-failed" not in final_text
+    frontmatter = parse_frontmatter(final_text)
+    assert frontmatter.get("delivery_mode") == "llm-complete"
+    assert frontmatter.get("llm_status") == "complete"
+    assert frontmatter.get("artifact_quality") == "deliverable"
+    assert "_LLM:" not in final_text
+
+
+def test_ask_scaffold_pending_skipped_by_recent_outputs(tmp_path: Path) -> None:
+    """Pending ask scaffold must not appear as an openable Today report."""
+
+    from aiwiki.content.io import collect_recent_output_artifacts
+    from aiwiki.runner.workflows_ask_context import _strip_run_notes_prompt_fields
+
+    vault = _copy_fixture_vault(tmp_path)
+    artifact = ask_question(vault, "scaffold pending probe", "report")
+    target = vault / artifact["path"]
+    text = target.read_text(encoding="utf-8")
+    frontmatter = parse_frontmatter(text)
+    assert frontmatter.get("llm_status") == "pending"
+    assert frontmatter.get("delivery_mode") == "llm-pending"
+    assert frontmatter.get("artifact_quality") == "placeholder"
+    assert "_LLM:" in text
+
+    recent = collect_recent_output_artifacts(vault, limit=20)
+    assert all(item.get("path") != artifact["path"] for item in recent)
+
+    prompt_view = _strip_run_notes_prompt_fields(text)
+    assert "llm_status:" not in prompt_view.split("---", 2)[1]
+    assert "artifact_quality:" not in prompt_view.split("---", 2)[1]
+    assert not any(line.lstrip().startswith("_LLM:") for line in prompt_view.splitlines())
+    assert "replace this whole body" in prompt_view
 
 
 def test_complete_run_ask_artifact_failure_degrades_artifact(tmp_path: Path) -> None:

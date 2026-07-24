@@ -68,6 +68,7 @@ from aiwiki.runner.workflows_ask_receipts import (
 from aiwiki.runner.workflows_ask_status import (
     _mark_run_ask_artifact_degraded,
     _run_ask_failure_llm_status,
+    _stamp_run_ask_artifact_complete,
 )
 from aiwiki.utils.io import (
     _restore_file_bytes,
@@ -516,6 +517,11 @@ def _complete_run_ask_artifact(
                 context_refs=material_context_refs,
             )
             write_run_notes_frontmatter(target, run_id=run_notes["run_id"], run_notes_ref=run_notes["run_notes_path"])
+            _stamp_run_ask_artifact_complete(
+                target,
+                backend=backend_effective,
+                model=model_final,
+            )
             _ensure_output_cssclass(target)
             _write_run_ask_output_receipt(
                 root,

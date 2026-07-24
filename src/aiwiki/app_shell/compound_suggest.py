@@ -9,6 +9,7 @@ from typing import Any
 from ..content.io import find_promoted_curated_page
 from ..content.outputs import normalize_query_signature
 from ..execution.alchemy_helpers import ELIXIR_DIR, list_promoted_outputs_for_corpus
+from ..execution.candidates import load_output_candidates_state
 from ..utils.hash import question_signature
 from ..utils.markdown import parse_frontmatter
 
@@ -215,6 +216,13 @@ def build_compound_suggest(
 
     corpus_counts = _corpus_report_counts(deliverable_reports)
     candidates: list[dict[str, Any]] = []
+    promoted_artifact_refs = {
+        str(item.get("artifact_ref") or "").strip()
+        for item in load_output_candidates_state(root).get("candidates", [])
+        if isinstance(item, dict)
+        and str(item.get("candidate_state") or "") == "promoted"
+        and str(item.get("promoted_to") or "").strip().startswith("wiki/judgments/")
+    }
 
     for report in deliverable_reports:
         report_path = str(report["path"])
@@ -233,8 +241,8 @@ def build_compound_suggest(
         )
         has_conflict = any(ref in counter_paths for ref in linked_judgments)
 
-        already_judgment = False
-        if query:
+        already_judgment = report_path in promoted_artifact_refs
+        if not already_judgment and query:
             protocol = str(report.get("protocol") or "")
             existing = find_promoted_curated_page(
                 root,

@@ -748,6 +748,22 @@ def file_back(
     citation_snapshots = build_citation_snapshots(root, citations)
     source_protocol = str(original_frontmatter.get("protocol") or "").strip()
     resolved_protocol = resolve_protocol(root, protocol or source_protocol or None)
+
+    # Idempotent product UX: same report already filed → reuse judgment, do not mint -N.md spam.
+    for candidate in load_output_candidates_state(root).get("candidates", []):
+        if candidate.get("artifact_ref") != artifact_ref:
+            continue
+        existing = str(candidate.get("promoted_to") or "").strip()
+        if existing.startswith("wiki/judgments/") and (root / existing).is_file():
+            next_step_hint = NEXT_STEP_HINTS[kind].format(path=existing)
+            return {
+                "path": existing,
+                "protocol": resolved_protocol,
+                "next_step_hint": next_step_hint,
+                "reused": True,
+                "already_filed": True,
+            }
+        break
     entry_seed = _file_back_entry_seed(kind, title or artifact_path.stem)
     directory = {
         "derived": root / "wiki" / "derived",

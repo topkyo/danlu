@@ -28,6 +28,35 @@ def _run_ask_failure_llm_status(exc: Exception) -> str:
     return "failed"
 
 
+def _stamp_run_ask_artifact_complete(
+    target: Path,
+    *,
+    backend: str = "",
+    model: str = "",
+) -> None:
+    """Clear pending/placeholder scaffold markers after a validated LLM write."""
+
+    if not target.exists():
+        return
+    current = target.read_text(encoding="utf-8", errors="replace")
+    frontmatter = parse_frontmatter(current)
+    frontmatter.update(
+        {
+            "llm_status": "complete",
+            "delivery_mode": "llm-complete",
+            "artifact_quality": "deliverable",
+            "background_status": "complete",
+        }
+    )
+    if backend:
+        frontmatter["llm_backend"] = backend
+    if model:
+        frontmatter["llm_model"] = model
+    frontmatter.pop("llm_failure_reason", None)
+    body = strip_frontmatter(current).strip()
+    atomic_write_text(target, f"{render_frontmatter(frontmatter)}\n{body}\n")
+
+
 def _mark_run_ask_artifact_degraded(
     target: Path,
     *,
