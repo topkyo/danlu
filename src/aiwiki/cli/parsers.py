@@ -387,6 +387,32 @@ def _register_alchemy_compat_aliases(subparsers: argparse._SubParsersAction) -> 
     _configure_alchemy_demote_parser(alchemy_demote_parser)
 
 
+def _configure_alchemy_elixir_id_args(parser: argparse.ArgumentParser) -> None:
+    """Accept either positional elixir_id or --elixir-id."""
+    parser.add_argument(
+        "elixir_id_pos",
+        nargs="?",
+        default=None,
+        metavar="elixir_id",
+        help="金丹 id（与 --elixir-id 二选一）",
+    )
+    parser.add_argument(
+        "--elixir-id",
+        dest="elixir_id_opt",
+        default=None,
+        help="金丹 id（与位置参数二选一）",
+    )
+
+
+def resolve_alchemy_elixir_id(args: argparse.Namespace) -> str:
+    elixir_id = str(
+        getattr(args, "elixir_id_opt", None) or getattr(args, "elixir_id_pos", None) or ""
+    ).strip()
+    if not elixir_id:
+        raise ValueError("alchemy 需要 elixir id：请传位置参数或 --elixir-id")
+    return elixir_id
+
+
 def _configure_alchemy_start_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("corpus_id")
     parser.add_argument("--topic", required=True)
@@ -396,7 +422,7 @@ def _configure_alchemy_start_parser(parser: argparse.ArgumentParser) -> None:
 
 
 def _configure_alchemy_distill_parser(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("elixir_id")
+    _configure_alchemy_elixir_id_args(parser)
     parser.add_argument("--question", required=True)
     parser.add_argument(
         "--include-elixir", type=str, default=None, help="可选：额外包含的金丹 id，多个用逗号分隔。"
@@ -404,21 +430,21 @@ def _configure_alchemy_distill_parser(parser: argparse.ArgumentParser) -> None:
 
 
 def _configure_alchemy_finalize_parser(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--elixir-id", required=True)
+    _configure_alchemy_elixir_id_args(parser)
 
 
 def _configure_alchemy_promote_parser(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--elixir-id", required=True)
+    _configure_alchemy_elixir_id_args(parser)
     parser.add_argument("--note", default=None)
 
 
 def _configure_alchemy_revert_parser(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--elixir-id", required=True)
+    _configure_alchemy_elixir_id_args(parser)
     parser.add_argument("--note", default=None)
 
 
 def _configure_alchemy_demote_parser(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--elixir-id", required=True)
+    _configure_alchemy_elixir_id_args(parser)
     parser.add_argument("--note", default=None)
 
 

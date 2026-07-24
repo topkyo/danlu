@@ -222,6 +222,7 @@ def _handle_alchemy(args: argparse.Namespace, root: Path) -> tuple[object, str |
         run_alchemy_revert,
         run_alchemy_start,
     )
+    from .parsers import resolve_alchemy_elixir_id
 
     if args.handler_command == "alchemy-start":
         include_elixir_ids = None
@@ -238,17 +239,22 @@ def _handle_alchemy(args: argparse.Namespace, root: Path) -> tuple[object, str |
         kwargs = {}
         if include_elixir_ids is not None:
             kwargs["include_elixir_ids"] = include_elixir_ids
-        return _out(run_alchemy_distill(root, args.elixir_id, args.question, **kwargs))
+        elixir_id = resolve_alchemy_elixir_id(args)
+        return _out(run_alchemy_distill(root, elixir_id, args.question, **kwargs))
     if args.handler_command == "alchemy-finalize":
-        return _out(run_alchemy_finalize(root, elixir_id=args.elixir_id))
+        elixir_id = resolve_alchemy_elixir_id(args)
+        return _out(run_alchemy_finalize(root, elixir_id=elixir_id))
     if args.handler_command == "alchemy-promote":
-        return _out(run_alchemy_promote(root, elixir_id=args.elixir_id, note=args.note))
+        elixir_id = resolve_alchemy_elixir_id(args)
+        return _out(run_alchemy_promote(root, elixir_id=elixir_id, note=args.note))
     if args.handler_command == "alchemy-revert":
-        path = run_alchemy_revert(root, elixir_id=args.elixir_id, note=args.note)
-        return _out({"elixir_id": args.elixir_id, "path": str(path.relative_to(root))})
+        elixir_id = resolve_alchemy_elixir_id(args)
+        path = run_alchemy_revert(root, elixir_id=elixir_id, note=args.note)
+        return _out({"elixir_id": elixir_id, "path": str(path.relative_to(root))})
     if args.handler_command == "alchemy-demote":
-        path = run_alchemy_demote(root, elixir_id=args.elixir_id, note=args.note)
-        return _out({"elixir_id": args.elixir_id, "path": str(path.relative_to(root))})
+        elixir_id = resolve_alchemy_elixir_id(args)
+        path = run_alchemy_demote(root, elixir_id=elixir_id, note=args.note)
+        return _out({"elixir_id": elixir_id, "path": str(path.relative_to(root))})
     raise ValueError(f"Unsupported command: {args.handler_command}")
 
 

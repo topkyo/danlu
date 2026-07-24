@@ -697,6 +697,105 @@ async function regeneratePendingAskFromEntry(plugin, entry) {
   }
 }
 
+async function readReportQueryForAsk(plugin, reportPath) {
+  const path = String(reportPath || "").trim();
+  if (!path || !plugin || !plugin.app || !plugin.app.vault) return "";
+  try {
+    const abstract = plugin.app.vault.getAbstractFileByPath(path);
+    if (!abstract) return "";
+    const text = await plugin.app.vault.read(abstract);
+    const match = String(text || "").match(/^---\r?\n([\s\S]*?)\r?\n---/);
+    if (!match) return "";
+    const queryLine = match[1].match(/^query:\s*(.+)$/m);
+    if (!queryLine) return "";
+    return String(queryLine[1] || "").trim().replace(/^["']|["']$/g, "");
+  } catch (_error) {
+    return "";
+  }
+}
+
+async function regenerateAskForReportPath(plugin, reportPath, fallbackQuestion) {
+  const pending = findPendingAskForReportPath(plugin, reportPath);
+  if (pending) {
+    await regeneratePendingAskFromEntry(plugin, pending);
+    return;
+  }
+  let question = String(fallbackQuestion || "").trim();
+  const fromReport = await readReportQueryForAsk(plugin, reportPath);
+  if (fromReport) question = fromReport;
+  if (!question) {
+    new Notice(plugin.t("找不到可再生成的问题（报告无 query，且无会话记录）"));
+    return;
+  }
+  if (typeof plugin.hasActiveAskPending === "function" && plugin.hasActiveAskPending()) {
+    new Notice(plugin.t("已有进行中的提问，请等待完成后再试。"));
+    return;
+  }
+  const materialPaths = stickyMaterialDisplayPaths(plugin.settings);
+  const pendingId = plugin.pushPendingSubmission(question, {
+    title: question,
+    retryArgs: {
+      kind: "auto-ask",
+      question,
+      askQuestion: question,
+      format: "report",
+      materialPaths,
+    },
+  });
+  try {
+    const retryPayload = await plugin.runAskCommand({
+      question,
+      format: "report",
+      mode: "run-ask",
+      excludePendingId: pendingId,
+      materialPaths,
+    });
+    if (retryPayload && typeof plugin.updatePendingSubmissionRetryArgs === "function") {
+      const usedPaths = coalesceAskUsedMaterialPaths(
+        retryPayload,
+        materialPaths,
+        plugin.settings,
+      );
+      plugin.updatePendingSubmissionRetryArgs(pendingId, {
+        kind: "auto-ask",
+        question,
+        askQuestion: question,
+        format: "report",
+        materialPaths: usedPaths,
+        runId: retryPayload.run_id || retryPayload.runId || "",
+        runNotesPath: retryPayload.run_notes_path || retryPayload.runNotesPath || "",
+      });
+    }
+    finalizePendingAskSubmission(plugin, pendingId, retryPayload);
+  } catch (e) {
+    plugin.markPendingSubmissionFailed(pendingId, e);
+  }
+}
+
+async function editAskForReportPath(plugin, reportPath, fallbackQuestion) {
+  const pending = findPendingAskForReportPath(plugin, reportPath);
+  if (pending && typeof plugin.prefillComposer === "function") {
+    plugin.prefillComposer({
+      question: pendingAskQuestionFromEntry(pending),
+      materialPaths: pendingAskMaterialPathsFromEntry(pending, plugin.settings),
+    });
+    return;
+  }
+  let question = String(fallbackQuestion || "").trim();
+  const fromReport = await readReportQueryForAsk(plugin, reportPath);
+  if (fromReport) question = fromReport;
+  if (!question) {
+    new Notice(plugin.t("找不到可编辑的问题（报告无 query，且无会话记录）"));
+    return;
+  }
+  if (typeof plugin.prefillComposer === "function") {
+    plugin.prefillComposer({
+      question,
+      materialPaths: stickyMaterialDisplayPaths(plugin.settings),
+    });
+  }
+}
+
 function attachReportCardAskActions(plugin, cardEl, feedEntry) {
   const target = String(feedEntry && feedEntry.target || "").trim();
   if (!target || !cardEl) return;
@@ -715,26 +814,20 @@ function attachReportCardAskActions(plugin, cardEl, feedEntry) {
       plugin.quoteFileToComposer(target);
     }
   });
-  const pending = findPendingAskForReportPath(plugin, target);
-  if (!pending) return;
+  const fallbackQuestion = String(feedEntry && feedEntry.title || "").trim();
   const regenerateBtn = actions.createEl("button", {
     cls: "furnace-report-regenerate-btn furnace-pending-regenerate-btn",
     text: plugin.t("Regenerate"),
   });
   regenerateBtn.addEventListener("click", () => {
-    void regeneratePendingAskFromEntry(plugin, pending);
+    void regenerateAskForReportPath(plugin, target, fallbackQuestion);
   });
   const editBtn = actions.createEl("button", {
     cls: "furnace-report-edit-ask-btn furnace-pending-edit-ask-btn",
     text: plugin.t("Edit question"),
   });
   editBtn.addEventListener("click", () => {
-    if (typeof plugin.prefillComposer === "function") {
-      plugin.prefillComposer({
-        question: pendingAskQuestionFromEntry(pending),
-        materialPaths: pendingAskMaterialPathsFromEntry(pending, plugin.settings),
-      });
-    }
+    void editAskForReportPath(plugin, target, fallbackQuestion);
   });
 }
 

@@ -1099,6 +1099,59 @@ test("Today report card keeps regenerate/edit when matching pending bubble is hi
   }));
 });
 
+test("Today report card regenerates from report query when no pending match", async () => {
+  const context = loadRenderContext();
+  const plugin = makePlugin({
+    shellSummary: {
+      generated_at: "2026-05-13T10:00:00Z",
+      review_backlog_counts: {},
+      recent_outputs: [
+        {
+          path: "output/reports/cli-only.md",
+          title: "CLI 报告标题",
+          generated_at: "2026-05-13T09:30:00Z",
+          format: "report",
+        },
+      ],
+      recent_receipts: [],
+      suggested_next_actions: [],
+      metrics_history_delta: { available: false },
+    },
+    pendingSubmissions: [],
+    settings: {
+      stickyMaterialRefs: {
+        paths: ["raw/inbox/sticky.md"],
+        updatedAt: "t",
+        source: "drop",
+      },
+    },
+    app: {
+      vault: {
+        getAbstractFileByPath: (path) => (path === "output/reports/cli-only.md" ? { path } : null),
+        read: async () => "---\nquery: \"报告里的原问题\"\n---\n\n# body\n",
+      },
+    },
+  });
+  plugin.runAskCommand = jest.fn().mockResolvedValue({
+    report_path: "output/reports/cli-only-2.md",
+    usedMaterialPaths: ["raw/inbox/sticky.md"],
+  });
+  plugin.pushPendingSubmission = jest.fn(() => "pending-cli");
+  const container = document.createElement("div");
+  context.renderTodayFeed(plugin, container);
+  await flushAsyncWork();
+
+  expect(container.querySelector(".furnace-report-regenerate-btn")).toBeTruthy();
+  container.querySelector(".furnace-report-regenerate-btn").click();
+  await flushAsyncWork();
+  expect(plugin.pushPendingSubmission).toHaveBeenCalled();
+  expect(plugin.runAskCommand).toHaveBeenCalledWith(expect.objectContaining({
+    question: "报告里的原问题",
+    materialPaths: ["raw/inbox/sticky.md"],
+    excludePendingId: "pending-cli",
+  }));
+});
+
 test("degraded output card hides quote action and keeps recovery semantics", async () => {
   const context = loadRenderContext();
   const plugin = makePlugin({

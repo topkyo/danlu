@@ -14,6 +14,8 @@
 
 ## 当前动态
 
+- 2026-07-24 (**文档对齐 + dogfood/质保维护**)：Scorecard/AGENTS/Post-Cleanup 计数对齐 acceptance **18** / llm **78** / Jest **189**；alchemy CLI 位置参数与 `--elixir-id` 互通；Today 报告卡无 pending 也可再生成/编辑（读报告 `query` + sticky）。下一轮指针见文末「会话交接」。
+
 - 2026-07-24 (**质保 Round1–3 / DEF-R2-01**)：重复 file-back 保留 judgment 锚点（不踢金丹链）；Shell sticky 记账回退 + Today 报告卡「引用追问」；同 corpus 多轮可点亮 compound_suggest。Plan：`docs/plans/2026-07-24-codex-goal-elixir-maturity-loop.md` + 四 Lane 验收。`verify acceptance` **18**；Jest **189**。
 
 - 2026-07-23 (**Chat-entry 第一刀**)：入口像 ChatGPT、产出仍一问一报告+金丹。落地材料 chips、`runAskCommand(materialPaths)`、`@`/引用当前文件、成功气泡「再生成/编辑问题」。Spec/plan：`docs/specs|plans/2026-07-23-chat-entry-report-elixir.md`。Jest **186**。
@@ -83,10 +85,30 @@
 |---|---|---|
 | P0 | Commercial go-live：真实邮箱、询价决策、商业 EULA | **done（草案）**：`topkyoxp@gmail.com` + `EULA.md`；正式法律签收仍 open |
 | P1 | 分发闭环：`pip install` 或 INSTALL 明确预览边界；版本与 tag 对齐 | **partial**：`pip install -e .` + v0.4.0；PyPI 正式发布待定 |
-| P1 | Jest hard-gate + env-coupled 测试隔离 | **done / moot**：Jest **174** hard-gate；env unit 已退 |
+| P1 | Jest hard-gate + env-coupled 测试隔离 | **done / moot**：Jest **189** hard-gate；env unit 已退 |
 | P1 | Alchemy materialize 等裸 `write_text` → `atomic_write_text` | **done**（ask/alchemy helpers；execution+runner ask 热路径续扫） |
 | P2 | Scorecard hub 行数刷新；PROGRESS 活跃 round 切档卫生 | **done 2026-07-22**：Round 长尾切档 archive snapshot |
 | P2 | Demo Pack 截图/录屏资产（fixture + checklist 已交付） | checklist done；媒体可选待补 |
 | P2 | Active SoT 金丹锚点文档（derived-only → judgments\|derived） | **done 2026-07-18**：Architecture / Evolution / Elixir / Runtime Ops / USER_GUIDE |
 | 观测 | 14/30-day natural dogfood proof（不伪造 PASS） | Scorecard not-yet |
 | Out | 再开 hub 大拆（已清零）、SaaS、全功能 iOS、用 AgentOS 9 冒充商业 9 分 | 禁止 |
+
+---
+
+## 会话交接（给下一轮 agent）
+
+复制下面整段到新对话开头即可：
+
+```text
+说人话。先读 PROGRESS.md 头条 + docs/plans/2026-07-24-codex-goal-elixir-maturity-loop.md。
+
+已完成：chat-entry 第一刀；质保 R1–R3（金丹链/compound_suggest/DEF-R2-01）；文档计数对齐 18/78/189；alchemy --elixir-id 互通；Today 无 pending 也可再生成。
+
+下一刀优先（择一或顺序）：
+1) Commercial Go-Live：EULA 法律签收 / PyPI / Demo 媒体
+2) dogfood 续磨：Obsidian 重载插件后 CDP 验 Today 再生成；可选清炉 UX
+3) 勿宣称 AgentOS 9 live / 诚实可售
+
+Vault：iCloud「炼丹炉」；CDP：9228；验证：bash scripts/verify.sh all
+证据（本机，可能过期）：/tmp/furnace-maturity-2026-07-24/ /tmp/furnace-acceptance-2026-07-24/
+```
