@@ -417,17 +417,28 @@ def curated_asset_section_snapshot(
 def append_review_history_entry(
     markdown: str, *, reviewed_at: str, status: str, note: str | None = None, confidence: str | None = None
 ) -> str:
-    """No-op: do not append unbounded Review History into Obsidian pages.
+    """Write one bounded Review History line (replace placeholder-only section or cap at 3 entries)."""
 
-    Page-local history grew without bound (same failure mode as retired
-    ``wiki/indexes/log.md``). Canonical review events live in
-    ``.aiwiki/state/runtime-history.jsonl`` and execution receipts.
-    ``reviewed_at`` / ``status`` / ``note`` / ``confidence`` are kept for
-    call-site compatibility.
-    """
+    entry_line = f"- `{reviewed_at}` → `{status}`"
+    suffix_parts: list[str] = []
+    if confidence:
+        suffix_parts.append(f"confidence `{confidence}`")
+    if note and note.strip():
+        short_note = note.strip().replace("\n", " ")
+        if len(short_note) > 80:
+            short_note = short_note[:77] + "..."
+        suffix_parts.append(short_note)
+    if suffix_parts:
+        entry_line = f"{entry_line} ({'; '.join(suffix_parts)})"
 
-    _ = (reviewed_at, status, note, confidence)
-    return markdown
+    placeholders = curated_asset_placeholder_lines("Review History")
+    existing_lines = normalized_markdown_section_lines(markdown, "Review History")
+    meaningful = [line for line in existing_lines if line not in placeholders]
+    if not meaningful:
+        history_lines = [entry_line]
+    else:
+        history_lines = meaningful[-2:] + [entry_line]
+    return upsert_markdown_section(markdown, "Review History", "\n".join(history_lines))
 
 
 def review_history_entries(markdown: str) -> list[str]:

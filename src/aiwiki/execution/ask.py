@@ -44,7 +44,7 @@ from ..content.material import (
 from ..input_router import is_obsidian_open_link
 from ..lifecycle.knowledge import refresh_knowledge_lifecycle_state
 from ..lifecycle.status import default_curated_status
-from ..lifecycle.templates import curated_page_template
+from ..lifecycle.templates import curated_page_template, repair_curated_page_body
 from ..memory.graph_query import build_machine_memory_query
 from ..memory.state import load_machine_memory
 from ..notify import notify_report_generated
@@ -828,7 +828,15 @@ def file_back(
         escalate_after=escalate_after,
         supporting_body=stripped,
     )
-    payload = "\n".join([frontmatter, "", *body_lines]).rstrip() + "\n"
+    body_text = repair_curated_page_body(
+        kind=kind,
+        protocol=resolved_protocol,
+        body="\n".join(body_lines),
+        artifact_ref=artifact_ref,
+        revisit_after=revisit_after,
+        escalate_after=escalate_after,
+    )
+    payload = "\n".join([frontmatter, "", body_text]).rstrip() + "\n"
     destination_snapshot = _snapshot_file_bytes(destination)
     output_candidates_snapshot = _snapshot_file_bytes(output_candidates_state_path(root))
     wiki_log_snapshot = _snapshot_file_bytes(root / "wiki" / "indexes" / "log.md")

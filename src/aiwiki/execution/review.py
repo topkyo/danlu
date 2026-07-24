@@ -42,6 +42,7 @@ from ..lifecycle.knowledge import judgment_lifecycle_profile
 from ..lifecycle.status import resolve_thin_review_transition, valid_curated_statuses
 from ..lifecycle.templates import (
     curated_frontmatter_hints,
+    curated_section_is_placeholder,
     curated_structured_value_is_placeholder,
     repair_curated_page_body,
 )
@@ -179,6 +180,13 @@ def review_page(
         revisit_after=revisit_after,
         escalate_after=escalate_after,
     )
+    if kind == "judgment" and status == "confirmed":
+        if curated_section_is_placeholder(body, "Judgment"):
+            raise ValueError(
+                "Cannot confirm judgment while the Judgment section is still a placeholder. "
+                "Edit the Judgment section directly, or file-back from a report with a clear "
+                "conclusion (## 结论 / ## Conclusion) or opening paragraph."
+            )
     repaired_hints = curated_frontmatter_hints(
         kind=kind,
         protocol=str(frontmatter.get("protocol") or DEFAULT_PROTOCOL),

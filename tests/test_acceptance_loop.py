@@ -486,6 +486,93 @@ def test_file_back_accepts_path_inside_vault(tmp_path: Path) -> None:
     assert str(result.get("path") or "").startswith("wiki/judgments/")
 
 
+def test_file_back_prefills_judgment_from_free_markdown(tmp_path: Path) -> None:
+    """file-back repair should lift the first paragraph into Judgment when no ## 结论 exists."""
+    from aiwiki.execution.ask import file_back
+    from aiwiki.lifecycle.templates import curated_section_is_placeholder
+
+    vault = tmp_path / "vault"
+    report_ref = "output/reports/free-markdown-judgment.md"
+    report_path = vault / report_ref
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    conclusion = "The repository README is truncated; treat growth claims as tentative."
+    report_path.write_text(
+        f"---\nprotocol: general\n---\n\n# Growth scan\n\n{conclusion}\n",
+        encoding="utf-8",
+    )
+
+    result = file_back(vault, report_ref)
+    page_text = (vault / str(result["path"])).read_text(encoding="utf-8")
+    assert conclusion in page_text
+    assert not curated_section_is_placeholder(page_text, "Judgment")
+
+
+def test_file_back_prefills_judgment_from_structured_conclusion(tmp_path: Path) -> None:
+    """file-back repair should prefer ## 结论 when present."""
+    from aiwiki.execution.ask import file_back
+    from aiwiki.lifecycle.templates import curated_section_is_placeholder
+
+    vault = tmp_path / "vault"
+    report_ref = "output/reports/structured-conclusion.md"
+    report_path = vault / report_ref
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(
+        "---\nprotocol: general\n---\n\n## 结论\n\nStructured conclusion wins over intro noise.\n\nIntro noise.\n",
+        encoding="utf-8",
+    )
+
+    result = file_back(vault, report_ref)
+    page_text = (vault / str(result["path"])).read_text(encoding="utf-8")
+    assert "Structured conclusion wins" in page_text
+    assert not curated_section_is_placeholder(page_text, "Judgment")
+
+
+def test_review_page_confirm_rejects_placeholder_judgment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """confirm must fail closed when Judgment cannot be repaired from supporting content."""
+    from aiwiki.execution.ask import file_back
+    from aiwiki.execution.review import review_page
+
+    vault = tmp_path / "vault"
+    report_ref = "output/reports/empty-body.md"
+    report_path = vault / report_ref
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text("---\nprotocol: general\n---\n\n# Empty\n", encoding="utf-8")
+
+    filed = file_back(vault, report_ref)
+    judgment_path = str(filed["path"])
+
+    with pytest.raises(ValueError, match="placeholder"):
+        review_page(vault, judgment_path, "confirmed")
+
+
+def test_review_page_confirm_writes_review_history(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Successful confirm should record bounded Review History instead of the placeholder."""
+    from aiwiki.execution.ask import file_back
+    from aiwiki.execution.review import review_page
+
+    fixed_now = "2026-07-24T08:00:00Z"
+    monkeypatch.setattr("aiwiki.utils.time.utc_now", lambda: fixed_now)
+
+    vault = tmp_path / "vault"
+    report_ref = "output/reports/confirmable-judgment.md"
+    report_path = vault / report_ref
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(
+        "---\nprotocol: general\n---\n\n# Confirmable\n\nJudgment body ready for confirmation.\n",
+        encoding="utf-8",
+    )
+
+    filed = file_back(vault, report_ref)
+    result = review_page(vault, str(filed["path"]), "confirmed", confidence="high", note="Looks good")
+    assert result["status"] == "confirmed"
+    assert result["reviewed_at"] == fixed_now
+
+    page_text = (vault / str(filed["path"])).read_text(encoding="utf-8")
+    assert "No review history yet." not in page_text
+    assert f"`{fixed_now}` → `confirmed`" in page_text
+    assert "Looks good" in page_text
+
+
 def test_today_feed_contract(  # pragma: no cover - explicit pytest acceptance gate
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

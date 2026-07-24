@@ -57,12 +57,14 @@ _INSTRUCTION_MARKERS = (
     "State the insight",
     "State the root-cause",
     "Summarize the key",
+    "Summarize the signals",
     "Summarize benchmark",
     "Summarize user signal",
     "Summarize incident",
     "Record the main risks",
     "Record the regression risks",
     "Record what user",
+    "Record what could",
     "Record what would falsify",
     "Keep confidence explicit",
     "Pending counter evidence.",
@@ -70,6 +72,7 @@ _INSTRUCTION_MARKERS = (
     "Pending next signals.",
     "Default revisit window:",
     "Default escalation window:",
+    "Filed from `",
     "review the supporting artifact before confirmation.",
     "review before approving any action.",
     "Evidence is preserved in the supporting artifact",
@@ -78,6 +81,18 @@ _INSTRUCTION_MARKERS = (
     "No counter evidence was found in the filed artifact; verify this during review.",
     "Revisit after `",
     "Revisit this judgment after `",
+)
+
+_LIMITED_EVIDENCE_MARKERS = (
+    "truncated",
+    "截断",
+    "limited evidence",
+    "uncertainty limit",
+    "incomplete evidence",
+    "partial evidence",
+    "README truncated",
+    "证据不足",
+    "信息有限",
 )
 
 
@@ -137,6 +152,113 @@ def _section_is_placeholder(markdown: str, heading: str) -> bool:
     return all(_text_has_instruction_marker(line) for line in lines)
 
 
+def curated_section_is_placeholder(markdown: str, heading: str) -> bool:
+    return _section_is_placeholder(markdown, heading)
+
+
+def _line_has_instruction_marker(line: str) -> bool:
+    plain = re.sub(r"^-+\s*", "", line).strip()
+    plain = re.sub(r"^\d+\.\s*", "", plain).strip()
+    return _text_has_instruction_marker(line) or _text_has_instruction_marker(plain)
+
+
+def _filter_non_placeholder_lines(lines: list[str]) -> list[str]:
+    return [line for line in lines if not _line_has_instruction_marker(line)]
+
+
+def _free_markdown_prose_lines(markdown: str, *, max_lines: int = 6) -> list[str]:
+    """First meaningful paragraph or bullet list from free markdown (no structured headings)."""
+    bullet_lines: list[str] = []
+    paragraph: list[str] = []
+    saw_title = False
+    collecting_bullets = False
+
+    for raw_line in markdown.splitlines():
+        line = raw_line.strip()
+        if not line:
+            if paragraph:
+                break
+            if collecting_bullets and bullet_lines:
+                break
+            continue
+        if line.startswith("```"):
+            continue
+        if line.startswith("# ") and not saw_title:
+            saw_title = True
+            continue
+        if line.startswith("## "):
+            if paragraph or bullet_lines:
+                break
+            continue
+        if _line_has_instruction_marker(line):
+            continue
+        if "_LLM:" in line or "机器记忆提示" in line or line.startswith(("相关来源", "当前协议")):
+            continue
+        if line.startswith(("-", "*")) or re.match(r"^\d+\.", line):
+            if paragraph:
+                break
+            collecting_bullets = True
+            value = re.sub(r"^[-*]\s+", "", line)
+            value = re.sub(r"^\d+\.\s*", "", value).strip()
+            if value and not _line_has_instruction_marker(value):
+                bullet_lines.append(f"- {value}")
+                if len(bullet_lines) >= max_lines:
+                    break
+            continue
+        if collecting_bullets and bullet_lines:
+            break
+        paragraph.append(line)
+        if len(paragraph) >= max_lines:
+            break
+
+    if bullet_lines:
+        return bullet_lines
+    if paragraph:
+        text = " ".join(paragraph).strip()
+        if text and not _text_has_instruction_marker(text):
+            return [f"- {text}"]
+    return []
+
+
+def _limited_evidence_lines(supporting: str, *, max_lines: int = 3) -> list[str]:
+    lines_out: list[str] = []
+    for raw_line in supporting.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        lower = line.lower()
+        if not any(marker in lower or marker in line for marker in _LIMITED_EVIDENCE_MARKERS):
+            continue
+        if _line_has_instruction_marker(line):
+            continue
+        if line.startswith("- "):
+            lines_out.append(line)
+        else:
+            lines_out.append(f"- {line}")
+        if len(lines_out) >= max_lines:
+            break
+    return lines_out
+
+
+def _judgment_conclusion_lines(supporting: str, *, max_lines: int = 6) -> list[str]:
+    structured = _filter_non_placeholder_lines(
+        _section_lines(supporting, "conclusion", fallback=[], max_lines=max_lines)
+    )
+    if structured:
+        return structured
+    return _free_markdown_prose_lines(supporting, max_lines=max_lines)
+
+
+def _curated_risk_lines(supporting: str, *, max_lines: int = 6) -> list[str]:
+    structured = _filter_non_placeholder_lines(_section_lines(supporting, "risks", fallback=[], max_lines=max_lines))
+    if structured:
+        return structured
+    limited = _limited_evidence_lines(supporting, max_lines=max_lines)
+    if limited:
+        return limited
+    return ["- No explicit counter evidence was found in the filed artifact."]
+
+
 def curated_structured_value_is_placeholder(value: Any) -> bool:
     if value is None:
         return False
@@ -148,6 +270,8 @@ def curated_structured_value_is_placeholder(value: Any) -> bool:
 
 
 def _replace_section_if_placeholder(markdown: str, heading: str, lines: list[str]) -> str:
+    if not lines:
+        return markdown
     if not _section_is_placeholder(markdown, heading):
         return markdown
     replacement = f"## {heading}\n" + "\n".join(lines).strip() + "\n\n"
@@ -160,11 +284,9 @@ def _replace_section_if_placeholder(markdown: str, heading: str, lines: list[str
 def curated_asset_section_overrides(
     *, supporting_body: str, revisit_after: str, escalate_after: str
 ) -> dict[str, list[str]]:
-    risks = _section_lines(
-        supporting_body,
-        "risks",
-        fallback=["- No counter evidence was found in the filed artifact; verify this during review."],
-    )
+    risks = _curated_risk_lines(supporting_body)
+    if not _filter_non_placeholder_lines(risks):
+        risks = ["- No counter evidence was found in the filed artifact; verify this during review."]
     signals = _section_lines(
         supporting_body,
         "signals",
@@ -206,19 +328,15 @@ def repair_curated_page_body(
         supporting = body.split("## Filed Content", 1)[1].strip()
     else:
         supporting = body
-    conclusion = _section_lines(
-        supporting,
-        "conclusion",
-        fallback=[f"- Filed from `{artifact_ref}`; review the supporting artifact before confirmation."],
-    )
-    evidence = _section_lines(
-        supporting,
-        "evidence",
-        fallback=[f"- Evidence is preserved in the supporting artifact `{artifact_ref}`."],
-    )
-    risks = _section_lines(
-        supporting, "risks", fallback=["- No explicit counter evidence was found in the filed artifact."]
-    )
+    conclusion = _judgment_conclusion_lines(supporting)
+    evidence = _filter_non_placeholder_lines(
+        _section_lines(
+            supporting,
+            "evidence",
+            fallback=[f"- Evidence is preserved in the supporting artifact `{artifact_ref}`."],
+        )
+    ) or [f"- Evidence is preserved in the supporting artifact `{artifact_ref}`."]
+    risks = _curated_risk_lines(supporting)
     signals = _section_lines(
         supporting,
         "signals",
