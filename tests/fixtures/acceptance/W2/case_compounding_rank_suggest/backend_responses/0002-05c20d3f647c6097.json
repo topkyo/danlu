@@ -1,7 +1,7 @@
 {
   "backend": "opencode-api",
   "model": "stub-model",
-  "prompt_hash": "cffcdea973c58934",
+  "prompt_hash": "05c20d3f647c6097",
   "response_id": "stub-response-id-2",
   "response_text": "---\nkind: output\nformat: report\ngenerated_by: aiwiki-ask\n---\n\n# Stub follow-up\n\n## \u7ed3\u8bba\nCompounding rank replay turn two.\n\n## \u5173\u952e\u8bc1\u636e\n- wiki/judgments/compounding-thesis.md\n- wiki/elixirs/compounding-elixir.md\n\n## \u5f15\u7528\n- wiki/sources/compounding-source.md\n",
   "sequence": 2,
