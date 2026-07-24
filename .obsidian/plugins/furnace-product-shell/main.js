@@ -3477,7 +3477,8 @@ function renderUniversalInput(plugin, container) {
   });
 
   const hint = wrapper.createDiv({ cls: "furnace-universal-input-hint" });
-      hint.setText(plugin.t("Ctrl+Enter 提交 · 拖入文件 · 投料入 raw，提问出报告"));
+      hint.setText(plugin.t("⌘/Ctrl+Enter · @材料 · 拖文件"));
+      hint.setAttr && hint.setAttr("title", plugin.t("Ctrl+Enter 提交 · 拖入文件 · 投料入 raw，提问出报告"));
 
   const stickyMaterialsContainer = wrapper.createDiv({ cls: "furnace-input-sticky-materials" });
   stickyMaterialsContainer.style.display = "none";
@@ -3489,8 +3490,8 @@ function renderUniversalInput(plugin, container) {
   const composerActions = wrapper.createDiv({ cls: "furnace-input-composer-actions" });
   const quoteActiveBtn = composerActions.createEl("button", {
     cls: "furnace-input-quote-active-btn",
-    text: plugin.t("Attach current file"),
-    attr: { type: "button" },
+    text: plugin.t("当前文件"),
+    attr: { type: "button", title: plugin.t("Attach current file") },
   });
 
   let attachedFiles = [];
@@ -3530,7 +3531,7 @@ function renderUniversalInput(plugin, container) {
     stickyMaterialsContainer.style.display = "flex";
     stickyMaterialsContainer.createDiv({
       cls: "furnace-input-sticky-materials-label",
-      text: plugin.t("Sticky materials (used on follow-up)"),
+      text: plugin.t("材料"),
     });
     const chips = stickyMaterialsContainer.createDiv({ cls: "furnace-input-sticky-materials-chips" });
     for (const materialPath of paths) {
@@ -3924,10 +3925,13 @@ function renderUniversalInput(plugin, container) {
   });
 
   textarea.addEventListener("paste", (e) => {
-    if (e.clipboardData && e.clipboardData.files && e.clipboardData.files.length > 0) {
+    // Only intercept pure file pastes (screenshots etc.). Never block text paste.
+    const files = e.clipboardData && e.clipboardData.files;
+    const text = e.clipboardData ? String(e.clipboardData.getData("text/plain") || "") : "";
+    if (files && files.length > 0 && !text.trim()) {
       e.preventDefault();
-      for (let i = 0; i < e.clipboardData.files.length; i++) {
-        const file = e.clipboardData.files[i];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
         addFile(file);
       }
     }

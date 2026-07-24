@@ -573,7 +573,7 @@ test("composer shows read-only sticky material chips without remove controls", (
   const container = document.createElement("div");
   context.renderUniversalInput(plugin, container);
   expect(container.querySelector(".furnace-input-sticky-materials")).toBeTruthy();
-  expect(container.textContent).toContain("Sticky materials (used on follow-up)");
+  expect(container.textContent).toContain("材料");
   const chips = container.querySelectorAll(".furnace-input-sticky-chip");
   expect(chips).toHaveLength(2);
   expect(chips[0].getAttribute("title")).toBe("raw/inbox/sticky.md");

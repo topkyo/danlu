@@ -302,6 +302,7 @@ def build_compound_suggest(
     candidates.sort(
         key=lambda item: (
             -int(item.get("score") or 0),
+            0 if str(item.get("action") or "") == "alchemy-start" else 1,
             str(item.get("report_path") or ""),
         )
     )
