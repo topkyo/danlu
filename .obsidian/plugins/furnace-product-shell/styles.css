@@ -1944,7 +1944,25 @@
 .workspace-leaf-content[data-type="markdown"][data-path^="output/"] .metadata-content,
 .workspace-leaf-content[data-type="markdown"][data-path^="output/"] .metadata-add-button,
 .workspace-leaf-content[data-type="markdown"][data-path^="output/"] .metadata-property-key,
-.workspace-leaf-content[data-type="markdown"][data-path^="output/"] .metadata-property-value {
+.workspace-leaf-content[data-type="markdown"][data-path^="output/"] .metadata-property-value,
+.workspace-leaf-content[data-type="markdown"][data-path^="wiki/judgments/"] .metadata-container,
+.workspace-leaf-content[data-type="markdown"][data-path^="wiki/judgments/"] .metadata-properties,
+.workspace-leaf-content[data-type="markdown"][data-path^="wiki/judgments/"] .metadata-property,
+.workspace-leaf-content[data-type="markdown"][data-path^="wiki/judgments/"] .metadata-properties-heading,
+.workspace-leaf-content[data-type="markdown"][data-path^="wiki/judgments/"] .metadata-properties-title,
+.workspace-leaf-content[data-type="markdown"][data-path^="wiki/judgments/"] .metadata-content,
+.workspace-leaf-content[data-type="markdown"][data-path^="wiki/judgments/"] .metadata-add-button,
+.workspace-leaf-content[data-type="markdown"][data-path^="wiki/judgments/"] .metadata-property-key,
+.workspace-leaf-content[data-type="markdown"][data-path^="wiki/judgments/"] .metadata-property-value,
+.workspace-leaf-content[data-type="markdown"][data-path^="wiki/elixirs/"] .metadata-container,
+.workspace-leaf-content[data-type="markdown"][data-path^="wiki/elixirs/"] .metadata-properties,
+.workspace-leaf-content[data-type="markdown"][data-path^="wiki/elixirs/"] .metadata-property,
+.workspace-leaf-content[data-type="markdown"][data-path^="wiki/elixirs/"] .metadata-properties-heading,
+.workspace-leaf-content[data-type="markdown"][data-path^="wiki/elixirs/"] .metadata-properties-title,
+.workspace-leaf-content[data-type="markdown"][data-path^="wiki/elixirs/"] .metadata-content,
+.workspace-leaf-content[data-type="markdown"][data-path^="wiki/elixirs/"] .metadata-add-button,
+.workspace-leaf-content[data-type="markdown"][data-path^="wiki/elixirs/"] .metadata-property-key,
+.workspace-leaf-content[data-type="markdown"][data-path^="wiki/elixirs/"] .metadata-property-value {
   display: none !important;
 }
 
