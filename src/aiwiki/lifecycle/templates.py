@@ -339,10 +339,14 @@ def resolve_curated_supporting_body(
                 artifact_ref = match.group(1)
                 break
     if root is not None and artifact_ref:
-        candidate = root / artifact_ref
-        if candidate.is_file():
-            from ..utils.markdown import strip_frontmatter
+        from ..utils.markdown import strip_frontmatter
+        from ..utils.security import PathOutsideWorkspaceError, safe_resolve_within
 
+        try:
+            candidate = safe_resolve_within(root / artifact_ref, root)
+        except (OSError, PathOutsideWorkspaceError, ValueError):
+            return raw
+        if candidate.is_file():
             resolved = strip_frontmatter(candidate.read_text(encoding="utf-8", errors="replace")).strip()
             return _strip_machine_appended_sections(resolved)
     return raw
