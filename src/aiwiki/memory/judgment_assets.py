@@ -277,6 +277,11 @@ def attach_judgment_assets_to_machine_memory(
         content = target.read_text(encoding="utf-8", errors="replace") if target.exists() else ""
         frontmatter = parse_frontmatter(content)
         citations = _frontmatter_string_list(frontmatter, "citations")
+        body_fields = {}
+        if target.exists():
+            from ..lifecycle.templates import curated_body_structured_fields
+
+            body_fields = curated_body_structured_fields(root=root, content=content, frontmatter=frontmatter)
         citation_snapshot_state = analyze_citation_snapshots(root, citations, frontmatter)
         source_ids = sorted(
             {
@@ -297,9 +302,11 @@ def attach_judgment_assets_to_machine_memory(
             "confidence": str(page.get("confidence") or frontmatter.get("confidence") or ""),
             "citations": citations,
             "source_ids": source_ids,
-            "counter_evidence": _frontmatter_string_list(frontmatter, "counter_evidence"),
-            "invalidation_rule": str(frontmatter.get("invalidation_rule") or "").strip(),
-            "next_signals": _frontmatter_string_list(frontmatter, "next_signals"),
+            "counter_evidence": _frontmatter_string_list(frontmatter, "counter_evidence")
+            or list(body_fields.get("counter_evidence") or []),
+            "invalidation_rule": str(frontmatter.get("invalidation_rule") or body_fields.get("invalidation_rule") or "").strip(),
+            "next_signals": _frontmatter_string_list(frontmatter, "next_signals")
+            or list(body_fields.get("next_signals") or []),
             "reviewed_at": str(page.get("reviewed_at") or frontmatter.get("reviewed_at") or ""),
             "revisit_after": str(page.get("revisit_after") or frontmatter.get("revisit_after") or ""),
             "escalate_after": str(page.get("escalate_after") or frontmatter.get("escalate_after") or ""),

@@ -41,9 +41,7 @@ from ..content.io import (
 from ..lifecycle.knowledge import judgment_lifecycle_profile
 from ..lifecycle.status import resolve_thin_review_transition, valid_curated_statuses
 from ..lifecycle.templates import (
-    curated_frontmatter_hints,
     curated_section_is_placeholder,
-    curated_structured_value_is_placeholder,
     repair_curated_page_body,
 )
 from ..protocol.review_windows import schedule_review_windows
@@ -55,7 +53,6 @@ from ..utils.hash import sha256_bytes
 from ..utils.io import _restore_snapshots, _snapshot_file_bytes, runtime_write_operation
 from ..utils.markdown import (
     analyze_citation_snapshots,
-    build_citation_snapshots,
     extract_provenance_paths,
     parse_frontmatter,
     render_frontmatter,
@@ -67,41 +64,6 @@ from .audit_preview import AUDIT_STREAM_PATH
 from .history import append_runtime_history
 from .paths import execution_receipt_history_path, runtime_history_path
 from .receipts import write_execution_receipt
-
-
-def _curated_hint_source_body(body: str) -> str:
-    if "## Supporting Artifact" in body:
-        return body.split("## Supporting Artifact", 1)[0].strip()
-    return body
-
-
-def _curated_supporting_body(body: str) -> str:
-    if "## Supporting Artifact" in body:
-        return body.split("## Supporting Artifact", 1)[1].strip()
-    return body
-
-
-def _normalized_curated_value(value: Any) -> Any:
-    if isinstance(value, list):
-        return [str(item).strip() for item in value if str(item).strip()]
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
-def _curated_value_is_empty(value: Any) -> bool:
-    normalized = _normalized_curated_value(value)
-    if isinstance(normalized, list):
-        return not normalized
-    return not normalized
-
-
-def _should_refresh_curated_hint(current: Any, previous_hint: Any) -> bool:
-    return (
-        _curated_value_is_empty(current)
-        or curated_structured_value_is_placeholder(current)
-        or _normalized_curated_value(current) == _normalized_curated_value(previous_hint)
-    )
 
 
 @runtime_write_operation
@@ -146,11 +108,6 @@ def review_page(
     reviewed_at = utc_now()
     frontmatter["status"] = status
     frontmatter["reviewed_at"] = reviewed_at
-    frontmatter["formed_at"] = str(frontmatter.get("formed_at") or frontmatter.get("last_compiled_at") or reviewed_at)
-    frontmatter["last_reviewed"] = reviewed_at
-    frontmatter.setdefault("counter_evidence", [])
-    frontmatter.setdefault("invalidation_rule", "")
-    frontmatter.setdefault("next_signals", [])
     if kind == "judgment" and confidence:
         frontmatter["confidence"] = confidence
     revisit_after, escalate_after = schedule_review_windows(
@@ -161,14 +118,7 @@ def review_page(
         root=root,
     )
     frontmatter["revisit_after"] = revisit_after
-    frontmatter["escalate_after"] = escalate_after
     body = strip_frontmatter(content).strip()
-    previous_supporting_body = _curated_supporting_body(body)
-    previous_hints = curated_frontmatter_hints(
-        kind=kind,
-        protocol=str(frontmatter.get("protocol") or DEFAULT_PROTOCOL),
-        supporting_body=previous_supporting_body,
-    )
     artifact_refs = [
         str(item) for item in frontmatter.get("source_files", []) if isinstance(item, str) and item.strip()
     ]
@@ -179,6 +129,8 @@ def review_page(
         artifact_ref=artifact_refs[0] if artifact_refs else relative_path(root, target),
         revisit_after=revisit_after,
         escalate_after=escalate_after,
+        root=root,
+        source_files=artifact_refs or None,
     )
     if kind == "judgment" and status == "confirmed":
         if curated_section_is_placeholder(body, "Judgment"):
@@ -187,14 +139,6 @@ def review_page(
                 "Edit the Judgment section directly, or file-back from a report with a clear "
                 "conclusion (## 结论 / ## Conclusion) or opening paragraph."
             )
-    repaired_hints = curated_frontmatter_hints(
-        kind=kind,
-        protocol=str(frontmatter.get("protocol") or DEFAULT_PROTOCOL),
-        supporting_body=_curated_hint_source_body(body),
-    )
-    for hint_key, hint_value in repaired_hints.items():
-        if _should_refresh_curated_hint(frontmatter.get(hint_key), previous_hints.get(hint_key)):
-            frontmatter[hint_key] = hint_value
     review_status_lines = [
         f"- Current status: `{status}`",
         f"- Reviewed at: `{reviewed_at}`",
@@ -230,7 +174,6 @@ def review_page(
     )
     citations = extract_provenance_paths(root, updated_body)
     frontmatter["citations"] = citations
-    frontmatter["citation_snapshots"] = build_citation_snapshots(root, citations)
     citation_snapshot_state = analyze_citation_snapshots(root, citations, frontmatter)
     judgment_lifecycle_state, judgment_lifecycle_reason_codes = judgment_lifecycle_profile(
         {

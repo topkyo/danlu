@@ -60,8 +60,6 @@ from ..state.paths import output_candidates_state_path
 from ..utils.hash import question_signature
 from ..utils.io import _restore_file_bytes, _snapshot_file_bytes, atomic_write_text, runtime_write_operation
 from ..utils.markdown import (
-    build_citation_snapshots,
-    extract_provenance_paths,
     parse_frontmatter,
     render_frontmatter,
     strip_frontmatter,
@@ -744,8 +742,6 @@ def file_back(
     )
     original = artifact_path.read_text(encoding="utf-8", errors="replace")
     original_frontmatter = parse_frontmatter(original)
-    citations = extract_provenance_paths(root, original)
-    citation_snapshots = build_citation_snapshots(root, citations)
     source_protocol = str(original_frontmatter.get("protocol") or "").strip()
     resolved_protocol = resolve_protocol(root, protocol or source_protocol or None)
 
@@ -784,8 +780,6 @@ def file_back(
             root=root,
         )
     stripped = strip_frontmatter(original).strip()
-    from aiwiki.lifecycle.templates import curated_frontmatter_hints
-    from aiwiki.protocol.library import protocol_judgment_extra_fields
 
     frontmatter_payload: dict[str, Any] = {
         "id": entry_id,
@@ -793,30 +787,12 @@ def file_back(
         "status": default_curated_status(kind),
         "title": title or artifact_path.stem,
         "protocol": resolved_protocol,
-        "source_files": [artifact_ref],
-        "citations": citations,
-        "citation_snapshots": citation_snapshots,
-        "generated_by": "aiwiki-file-back",
-        "last_compiled_at": filed_at,
         "confidence": "medium",
-        "counter_evidence": [],
-        "invalidation_rule": "",
-        "next_signals": [],
-        "formed_at": filed_at,
-        "last_reviewed": "",
-        "reviewed_at": "",
+        "source_files": [artifact_ref],
         "revisit_after": revisit_after,
-        "escalate_after": escalate_after,
+        "reviewed_at": "",
+        "cssclasses": ["aiwiki-output"],
     }
-    # P4-INV-3 (Round 59): inject protocol-specific frontmatter slots so that
-    # investing pages get thesis / catalyst / risk / invalidation_threshold,
-    # research gets hypothesis / falsification, etc. Empty values are
-    # intentional placeholders — lint stays happy, downstream consumers see
-    # the schema slot.
-    frontmatter_payload.update(protocol_judgment_extra_fields(resolved_protocol, kind))
-    frontmatter_payload.update(
-        curated_frontmatter_hints(kind=kind, protocol=resolved_protocol, supporting_body=stripped)
-    )
     frontmatter = render_frontmatter(frontmatter_payload)
     body_lines = curated_page_template(
         kind=kind,
@@ -835,6 +811,9 @@ def file_back(
         artifact_ref=artifact_ref,
         revisit_after=revisit_after,
         escalate_after=escalate_after,
+        supporting_body=stripped,
+        root=root,
+        source_files=[artifact_ref],
     )
     payload = "\n".join([frontmatter, "", body_text]).rstrip() + "\n"
     destination_snapshot = _snapshot_file_bytes(destination)

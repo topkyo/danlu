@@ -279,7 +279,19 @@ def judgment_asset_frontmatter(
     citations: list[str],
     revisit_after: str,
     escalate_after: str,
+    content: str = "",
+    root: Path | None = None,
 ) -> JudgmentAsset:
+    from .templates import curated_body_structured_fields
+
+    body_fields = (
+        curated_body_structured_fields(root=root, content=content, frontmatter=frontmatter) if content else {}
+    )
+    counter_evidence = frontmatter_string_list(frontmatter, "counter_evidence") or list(
+        body_fields.get("counter_evidence") or []
+    )
+    invalidation_rule = str(frontmatter.get("invalidation_rule") or body_fields.get("invalidation_rule") or "").strip()
+    next_signals = frontmatter_string_list(frontmatter, "next_signals") or list(body_fields.get("next_signals") or [])
     return {
         "page_id": page_id,
         "title": title,
@@ -289,9 +301,9 @@ def judgment_asset_frontmatter(
         "protocol": protocol,
         "citations": citations,
         "confidence": str(frontmatter.get("confidence") or ""),
-        "counter_evidence": frontmatter_string_list(frontmatter, "counter_evidence"),
-        "invalidation_rule": str(frontmatter.get("invalidation_rule") or "").strip(),
-        "next_signals": frontmatter_string_list(frontmatter, "next_signals"),
+        "counter_evidence": counter_evidence,
+        "invalidation_rule": invalidation_rule,
+        "next_signals": next_signals,
         "revisit_after": revisit_after,
         "escalate_after": escalate_after,
         "formed_at": str(frontmatter.get("formed_at") or frontmatter.get("last_compiled_at") or ""),
@@ -341,6 +353,8 @@ def collect_curated_pages(root: Path, folder: str, expected_kind: str) -> list[d
             citations=citations,
             revisit_after=revisit_after,
             escalate_after=escalate_after,
+            content=content,
+            root=root,
         )
         citation_snapshot_state = analyze_citation_snapshots(root, citations, frontmatter)
         review_entries = review_history_entries(content)

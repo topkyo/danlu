@@ -407,6 +407,7 @@ def _scaffold_elixir_markdown(
         "created_at": created_at,
         "updated_at": updated_at,
         "distill_history_json": json.dumps(distill_history or [], ensure_ascii=False),
+        "cssclasses": ["aiwiki-output"],
     }
     body = body or "\n".join(
         [

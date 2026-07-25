@@ -527,6 +527,77 @@ def test_file_back_prefills_judgment_from_structured_conclusion(tmp_path: Path) 
     assert not curated_section_is_placeholder(page_text, "Judgment")
 
 
+def test_file_back_writes_slim_frontmatter_and_linked_supporting_artifact(tmp_path: Path) -> None:
+    """file-back should keep user-visible FM small and link the report instead of embedding it."""
+    from aiwiki.execution.ask import file_back
+    from aiwiki.utils.markdown import parse_frontmatter, strip_frontmatter
+
+    vault = tmp_path / "vault"
+    report_ref = "output/reports/slim-fm.md"
+    report_path = vault / report_ref
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(
+        "---\nprotocol: general\n---\n\n# Slim FM\n\nJudgment from slim report.\n",
+        encoding="utf-8",
+    )
+
+    result = file_back(vault, report_ref)
+    page_text = (vault / str(result["path"])).read_text(encoding="utf-8")
+    frontmatter = parse_frontmatter(page_text)
+    body = strip_frontmatter(page_text)
+
+    for key in (
+        "counter_evidence",
+        "invalidation_rule",
+        "next_signals",
+        "citation_snapshots",
+        "formed_at",
+        "last_reviewed",
+        "escalate_after",
+        "generated_by",
+        "last_compiled_at",
+    ):
+        assert key not in frontmatter, key
+
+    assert frontmatter.get("cssclasses") == ["aiwiki-output"]
+    assert frontmatter.get("source_files") == [report_ref]
+    assert "## Supporting Artifact" in body
+    assert f"Linked report: `{report_ref}`" in body
+    assert "Judgment from slim report." not in body.split("## Supporting Artifact", 1)[-1]
+    assert "Judgment from slim report." in page_text
+
+
+def test_review_page_confirm_lifts_judgment_from_linked_supporting_artifact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """review confirm must resolve linked Supporting Artifact content for repair/lift."""
+    from aiwiki.execution.ask import file_back
+    from aiwiki.execution.review import review_page
+    from aiwiki.lifecycle.templates import curated_section_is_placeholder
+
+    fixed_now = "2026-07-24T09:00:00Z"
+    monkeypatch.setattr("aiwiki.utils.time.utc_now", lambda: fixed_now)
+
+    vault = tmp_path / "vault"
+    report_ref = "output/reports/linked-confirm.md"
+    report_path = vault / report_ref
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(
+        "---\nprotocol: general\n---\n\n# Linked confirm\n\nLinked judgment body for confirm.\n",
+        encoding="utf-8",
+    )
+
+    filed = file_back(vault, report_ref)
+    page_path = vault / str(filed["path"])
+    page_text = page_path.read_text(encoding="utf-8")
+    assert not curated_section_is_placeholder(page_text, "Judgment")
+
+    result = review_page(vault, str(filed["path"]), "confirmed", confidence="high")
+    assert result["status"] == "confirmed"
+    confirmed_text = page_path.read_text(encoding="utf-8")
+    assert "Linked judgment body for confirm." in confirmed_text
+
+
 def test_review_page_confirm_rejects_placeholder_judgment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """confirm must fail closed when Judgment cannot be repaired from supporting content."""
     from aiwiki.execution.ask import file_back

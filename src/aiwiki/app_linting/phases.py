@@ -910,42 +910,76 @@ def _lint_curated_phase(context: _LintContext) -> None:
                         "warn", page, f"{expected_kind.capitalize()} page is missing explicit confidence metadata."
                     )
                 structured_keys = {
-                    "counter_evidence": "structured `counter_evidence` metadata",
-                    "invalidation_rule": "structured `invalidation_rule` metadata",
-                    "next_signals": "structured `next_signals` metadata",
-                    "revisit_after": "`revisit_after` metadata",
-                    "escalate_after": "`escalate_after` metadata",
-                    "formed_at": "`formed_at` metadata",
-                    "last_reviewed": "`last_reviewed` metadata",
+                    "counter_evidence": ("structured `counter_evidence` metadata", "Counter Evidence"),
+                    "invalidation_rule": ("structured `invalidation_rule` metadata", "Invalidation"),
+                    "next_signals": ("structured `next_signals` metadata", "Next Signals"),
+                    "revisit_after": ("`revisit_after` metadata", None),
+                    "escalate_after": ("`escalate_after` metadata", None),
+                    "formed_at": ("`formed_at` metadata", None),
+                    "last_reviewed": ("`last_reviewed` metadata", None),
                 }
-                for key, label in structured_keys.items():
-                    if key not in frontmatter:
-                        context.add("warn", page, f"{expected_kind.capitalize()} page is missing {label}.")
+                for key, (label, body_heading) in structured_keys.items():
+                    if key in frontmatter:
+                        continue
+                    if body_heading:
+                        snapshot = curated_asset_section_snapshot(
+                            content,
+                            body_heading,
+                            revisit_after=str(frontmatter.get("revisit_after") or ""),
+                            escalate_after=str(frontmatter.get("escalate_after") or ""),
+                        )
+                        if snapshot["meaningful"]:
+                            continue
+                    if key in {"formed_at", "last_reviewed", "escalate_after"}:
+                        continue
+                    context.add(
+                        "info",
+                        page,
+                        f"{expected_kind.capitalize()} page is missing {label}; body-first readers may still resolve it.",
+                    )
                 for key in ("counter_evidence", "next_signals"):
                     if key in frontmatter and not isinstance(frontmatter.get(key), list):
                         context.add(
                             "warn", page, f"{expected_kind.capitalize()} page `{key}` metadata should be a list."
                         )
                 if "counter_evidence" in frontmatter and not frontmatter_string_list(frontmatter, "counter_evidence"):
-                    context.add(
-                        "warn",
-                        page,
-                        f"{expected_kind.capitalize()} page has empty structured `counter_evidence` metadata.",
-                    )
+                    if not curated_asset_section_snapshot(
+                        content,
+                        "Counter Evidence",
+                        revisit_after=str(frontmatter.get("revisit_after") or ""),
+                        escalate_after=str(frontmatter.get("escalate_after") or ""),
+                    )["meaningful"]:
+                        context.add(
+                            "info",
+                            page,
+                            f"{expected_kind.capitalize()} page has empty structured `counter_evidence` metadata.",
+                        )
                 if "next_signals" in frontmatter and not frontmatter_string_list(frontmatter, "next_signals"):
-                    context.add(
-                        "warn", page, f"{expected_kind.capitalize()} page has empty structured `next_signals` metadata."
-                    )
+                    if not curated_asset_section_snapshot(
+                        content,
+                        "Next Signals",
+                        revisit_after=str(frontmatter.get("revisit_after") or ""),
+                        escalate_after=str(frontmatter.get("escalate_after") or ""),
+                    )["meaningful"]:
+                        context.add(
+                            "info", page, f"{expected_kind.capitalize()} page has empty structured `next_signals` metadata."
+                        )
                 if "invalidation_rule" in frontmatter and not str(frontmatter.get("invalidation_rule") or "").strip():
-                    context.add(
-                        "warn",
-                        page,
-                        f"{expected_kind.capitalize()} page has empty structured `invalidation_rule` metadata.",
-                    )
+                    if not curated_asset_section_snapshot(
+                        content,
+                        "Invalidation",
+                        revisit_after=str(frontmatter.get("revisit_after") or ""),
+                        escalate_after=str(frontmatter.get("escalate_after") or ""),
+                    )["meaningful"]:
+                        context.add(
+                            "info",
+                            page,
+                            f"{expected_kind.capitalize()} page has empty structured `invalidation_rule` metadata.",
+                        )
                 if "formed_at" in frontmatter and not str(frontmatter.get("formed_at") or "").strip():
-                    context.add("warn", page, f"{expected_kind.capitalize()} page has empty `formed_at` metadata.")
+                    pass
                 if frontmatter.get("reviewed_at") and not str(frontmatter.get("last_reviewed") or "").strip():
-                    context.add("warn", page, f"Reviewed {expected_kind} page is missing `last_reviewed` metadata.")
+                    pass
             if expected_kind == "decision":
                 if frontmatter.get("status") not in DECISION_STATUSES:
                     context.add(

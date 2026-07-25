@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Any
 
 from ..content.io import render_curated_asset_sections, render_review_history_section
@@ -194,6 +195,8 @@ def _free_markdown_prose_lines(markdown: str, *, max_lines: int = 6) -> list[str
             continue
         if "_LLM:" in line or "机器记忆提示" in line or line.startswith(("相关来源", "当前协议")):
             continue
+        if "evidence-graph" in line or "关系图谱" in line:
+            continue
         if line.startswith(("-", "*")) or re.match(r"^\d+\.", line):
             if paragraph:
                 break
@@ -279,6 +282,104 @@ def _replace_section_if_placeholder(markdown: str, heading: str, lines: list[str
     return markdown.rstrip() + "\n\n" + replacement.rstrip() + "\n"
 
 
+_MACHINE_APPENDED_HEADINGS = ("关系图谱锚点",)
+
+
+def _strip_machine_appended_sections(markdown: str) -> str:
+    cleaned = markdown
+    for heading in _MACHINE_APPENDED_HEADINGS:
+        cleaned = re.sub(rf"(?ms)^## {re.escape(heading)}\n.*?(?=^## |\Z)", "", cleaned)
+    return cleaned.strip()
+
+
+def supporting_artifact_link_lines(*, artifact_ref: str) -> list[str]:
+    return [
+        f"- Linked report: `{artifact_ref}`",
+        "- Full report content lives at the linked path; review before confirmation.",
+    ]
+
+
+def _extract_supporting_artifact_raw(body: str) -> str:
+    if "## Supporting Artifact" in body:
+        return body.split("## Supporting Artifact", 1)[1].strip()
+    if "## Filed Content" in body:
+        return body.split("## Filed Content", 1)[1].strip()
+    return ""
+
+
+def _supporting_section_is_link_only(raw: str) -> bool:
+    if not raw.strip():
+        return True
+    lines = [line.strip() for line in raw.splitlines() if line.strip()]
+    if not lines:
+        return True
+    link_markers = ("Linked report:", "Full report content lives at the linked path")
+    return all(any(marker in line for marker in link_markers) for line in lines)
+
+
+def resolve_curated_supporting_body(
+    *,
+    root: Path | None = None,
+    body: str = "",
+    source_files: list[str] | None = None,
+    explicit: str | None = None,
+) -> str:
+    if explicit is not None:
+        return explicit
+    raw = _extract_supporting_artifact_raw(body)
+    if raw and not _supporting_section_is_link_only(raw):
+        return raw
+    artifact_ref = ""
+    if source_files:
+        artifact_ref = str(source_files[0]).strip()
+    if not artifact_ref and raw:
+        for line in raw.splitlines():
+            match = re.search(r"`([^`]+\.(?:md|markdown|txt))`", line)
+            if match:
+                artifact_ref = match.group(1)
+                break
+    if root is not None and artifact_ref:
+        candidate = root / artifact_ref
+        if candidate.is_file():
+            from ..utils.markdown import strip_frontmatter
+
+            resolved = strip_frontmatter(candidate.read_text(encoding="utf-8", errors="replace")).strip()
+            return _strip_machine_appended_sections(resolved)
+    return raw
+
+
+def curated_body_structured_fields(
+    *,
+    root: Path | None,
+    content: str,
+    frontmatter: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    from ..utils.markdown import strip_frontmatter
+
+    frontmatter = frontmatter or {}
+    body = strip_frontmatter(content)
+    source_files = [
+        str(item) for item in frontmatter.get("source_files", []) if isinstance(item, str) and item.strip()
+    ]
+    supporting = resolve_curated_supporting_body(root=root, body=body, source_files=source_files or None)
+    risks = _curated_risk_lines(supporting)
+    signals = _filter_non_placeholder_lines(
+        _section_lines(
+            supporting,
+            "signals",
+            fallback=[],
+            max_lines=6,
+        )
+    )
+    fields: dict[str, Any] = {}
+    if risks:
+        fields["counter_evidence"] = [re.sub(r"^-+\s*", "", item).strip() for item in risks if item.strip()]
+        fields["invalidation_rule"] = _first_plain_line(risks)
+    if signals:
+        fields["next_signals"] = [re.sub(r"^-+\s*", "", item).strip() for item in signals if item.strip()]
+    return fields
+
+
 def curated_asset_section_overrides(
     *, supporting_body: str, revisit_after: str, escalate_after: str
 ) -> dict[str, list[str]]:
@@ -294,7 +395,6 @@ def curated_asset_section_overrides(
     overrides: dict[str, list[str]] = {}
     if risks:
         overrides["Counter Evidence"] = risks
-        overrides["Invalidation"] = risks
     if signals:
         overrides["Next Signals"] = signals
     _ = (revisit_after, escalate_after)
@@ -302,17 +402,8 @@ def curated_asset_section_overrides(
 
 
 def curated_frontmatter_hints(*, kind: str, protocol: str, supporting_body: str) -> dict[str, Any]:
-    _ = protocol
-    risks = _section_lines(supporting_body, "risks", fallback=[])
-    signals = _section_lines(supporting_body, "signals", fallback=[])
-    hints: dict[str, Any] = {}
-    if kind in {"decision", "judgment"}:
-        if risks:
-            hints["counter_evidence"] = [re.sub(r"^-+\s*", "", item).strip() for item in risks if item.strip()]
-            hints["invalidation_rule"] = _first_plain_line(risks)
-        if signals:
-            hints["next_signals"] = [re.sub(r"^-+\s*", "", item).strip() for item in signals if item.strip()]
-    return {key: value for key, value in hints.items() if value}
+    _ = (kind, protocol, supporting_body)
+    return {}
 
 
 def repair_curated_page_body(
@@ -323,13 +414,18 @@ def repair_curated_page_body(
     artifact_ref: str,
     revisit_after: str,
     escalate_after: str,
+    supporting_body: str | None = None,
+    root: Path | None = None,
+    source_files: list[str] | None = None,
 ) -> str:
     _ = protocol
-    if "## Supporting Artifact" in body:
-        supporting = body.split("## Supporting Artifact", 1)[1].strip()
-    elif "## Filed Content" in body:
-        supporting = body.split("## Filed Content", 1)[1].strip()
-    else:
+    supporting = resolve_curated_supporting_body(
+        root=root,
+        body=body,
+        source_files=source_files,
+        explicit=supporting_body,
+    )
+    if not supporting:
         supporting = body
     conclusion = _judgment_conclusion_lines(supporting)
     evidence = _filter_non_placeholder_lines(
@@ -356,7 +452,6 @@ def repair_curated_page_body(
         replacements = {
             "Judgment": conclusion,
             "Signals": evidence,
-            "Counterevidence": risks,
             "Confidence And Follow-up": signals,
         }
     elif kind == "decision":
@@ -432,7 +527,7 @@ def curated_page_template(
             *render_review_history_section(),
             "",
             "## Supporting Artifact",
-            supporting_body,
+            *supporting_artifact_link_lines(artifact_ref=artifact_ref),
         ]
     return [
         f"# {title}",
@@ -443,9 +538,6 @@ def curated_page_template(
         "",
         "## Signals",
         f"- Summarize the signals from `{artifact_ref}` and cite `wiki/sources/*.md` or `raw/` evidence.",
-        "",
-        "## Counterevidence",
-        "- Record what could make this judgment wrong.",
         "",
         "## Confidence And Follow-up",
         "- Keep confidence explicit and list what to watch next.",
@@ -465,5 +557,5 @@ def curated_page_template(
         *render_review_history_section(),
         "",
         "## Supporting Artifact",
-        supporting_body,
+        *supporting_artifact_link_lines(artifact_ref=artifact_ref),
     ]
