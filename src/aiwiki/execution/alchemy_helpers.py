@@ -402,7 +402,6 @@ def _scaffold_elixir_markdown(
         "provenance_corpus": corpus_id,
         "derived_from": source_outputs,
         "topic": topic,
-        "counter_evidence": ["NONE_FOUND"],
         "confidence_level": "low",
         "created_at": created_at,
         "updated_at": updated_at,
@@ -481,12 +480,18 @@ def _seed_elixir_body_from_sources(root: Path, *, topic: str, source_outputs: li
         fallback=[f"- Provenance source: `{ref}`." for ref in refs[:6]],
         max_lines=6,
     )
-    questions = _first_section_lines(
-        merged,
-        ("反证与不确定性", "Open Questions", "Next Signals", "下次观察信号", "Risks And Invalidation"),
-        fallback=["- Review counter evidence and refresh this elixir before relying on it for a stronger claim."],
-        max_lines=5,
+    questions = _meaningful_counter_evidence_items(
+        _first_section_lines(
+            merged,
+            ("反证与不确定性", "Open Questions", "Next Signals", "下次观察信号", "Risks And Invalidation"),
+            fallback=[],
+            max_lines=5,
+        )
     )
+    if not questions:
+        questions = [
+            "Review counter evidence and refresh this elixir before relying on it for a stronger claim."
+        ]
     return "\n".join(
         [
             "# Elixir",
@@ -498,7 +503,7 @@ def _seed_elixir_body_from_sources(root: Path, *, topic: str, source_outputs: li
             *evidence,
             "",
             "## Open Questions",
-            *questions,
+            *[f"- {item}" if not item.startswith("-") else item for item in questions],
             "",
         ]
     )
@@ -567,30 +572,69 @@ def _default_elixir_review_after(*, protocol: str) -> str:
 
 _CONFIDENCE_LEVELS = {"low", "medium", "high"}
 
+_ELIXIR_COUNTER_EVIDENCE_HEADINGS = (
+    "Counter Evidence",
+    "Risks",
+    "Risks And Invalidation",
+    "反证与不确定性",
+    "Open Questions",
+)
 
-def validate_promote_gate(frontmatter: dict[str, Any]) -> None:
-    """Validate promotion-only counter-evidence and confidence frontmatter."""
-    if "counter_evidence" not in frontmatter:
-        raise ValueError("counter_evidence_required: counter_evidence is required")
-    counter_evidence = frontmatter.get("counter_evidence")
-    if not isinstance(counter_evidence, list):
-        raise ValueError("counter_evidence_invalid_format: counter_evidence must be a list")
+_COUNTER_EVIDENCE_PLACEHOLDER_ITEMS = frozenset(
+    {
+        "NONE_FOUND",
+        "NONE",
+        "None",
+        "None.",
+        "Pending refinement.",
+        "Pending refinement",
+    }
+)
+
+
+def _meaningful_counter_evidence_items(items: list[str]) -> list[str]:
+    meaningful: list[str] = []
+    for item in items:
+        stripped = re.sub(r"^-+\s*", "", str(item)).strip()
+        if not stripped or stripped in _COUNTER_EVIDENCE_PLACEHOLDER_ITEMS:
+            continue
+        if _PENDING_REFINEMENT_RE.match(f"- {stripped}"):
+            continue
+        meaningful.append(stripped)
+    return meaningful
+
+
+def _elixir_counter_evidence_from_body(body: str) -> list[str]:
+    lines = _first_section_lines(
+        body,
+        _ELIXIR_COUNTER_EVIDENCE_HEADINGS,
+        fallback=[],
+        max_lines=12,
+    )
+    return _meaningful_counter_evidence_items(lines)
+
+
+def resolve_promote_counter_evidence(frontmatter: dict[str, Any], *, body: str | None = None) -> list[str]:
+    """Resolve promote counter-evidence body-first, falling back to frontmatter."""
+    body_items = _elixir_counter_evidence_from_body(body or "")
+    if body_items:
+        return body_items
+    raw = frontmatter.get("counter_evidence")
+    if not isinstance(raw, list):
+        return []
+    return _meaningful_counter_evidence_items([str(item) for item in raw])
+
+
+def validate_promote_gate(frontmatter: dict[str, Any], *, body: str | None = None) -> None:
+    """Validate promotion counter-evidence (body-first) and confidence frontmatter."""
+    counter_evidence = resolve_promote_counter_evidence(frontmatter, body=body)
     if not counter_evidence:
-        raise ValueError("counter_evidence_required: counter_evidence cannot be empty")
+        raise ValueError("counter_evidence_required: counter_evidence is required")
     for item in counter_evidence:
         if not isinstance(item, str) or not item.strip():
             raise ValueError("counter_evidence_invalid_format: counter_evidence items must be non-empty strings")
 
     confidence_level = str(frontmatter.get("confidence_level") or "").strip()
-    has_none_found = any(item.strip() == "NONE_FOUND" for item in counter_evidence)
-    if has_none_found:
-        if len(counter_evidence) > 1:
-            raise ValueError("counter_evidence_invalid_format: NONE_FOUND must be the only counter_evidence item")
-        if counter_evidence[0].strip() != "NONE_FOUND":
-            raise ValueError("counter_evidence_invalid_format: NONE_FOUND must be the only counter_evidence item")
-        if confidence_level != "low":
-            raise ValueError("none_found_requires_low_confidence: [NONE_FOUND] requires confidence_level=low")
-        return
     if confidence_level not in _CONFIDENCE_LEVELS:
         raise ValueError("confidence_level_required: confidence_level must be one of low/medium/high")
 

@@ -71,6 +71,7 @@ from .alchemy_helpers import (
     _validate_state_for_path,
     _write_elixir_markdown,
     list_promoted_outputs_for_corpus,
+    resolve_promote_counter_evidence,
     validate_promote_gate,
 )
 from .alchemy_migration import (
@@ -346,13 +347,13 @@ def promote_elixir(root: Path, *, elixir_id: str, note: str | None = None) -> di
     if cycle:
         raise ValueError("金丹引用形成环路: " + " → ".join(cycle))
 
-    validate_promote_gate(frontmatter)
-
-    counter_evidence_items = [str(item).strip() for item in frontmatter.get("counter_evidence", [])]
-    counter_evidence_provenance = "none_found" if counter_evidence_items == ["NONE_FOUND"] else "real"
-
     original = candidate_path.read_text(encoding="utf-8", errors="replace")
     body = original.split("---", 2)[-1].lstrip("\n")
+
+    validate_promote_gate(frontmatter, body=body)
+
+    counter_evidence_items = resolve_promote_counter_evidence(frontmatter, body=body)
+    counter_evidence_provenance = "real"
     if _elixir_body_has_pending_refinement(body):
         raise ValueError("elixir_body_placeholder: cannot promote elixir with pending refinement body")
     applied_at_dt = datetime.now(timezone.utc)
