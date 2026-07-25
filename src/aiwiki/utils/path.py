@@ -29,7 +29,24 @@ from urllib.parse import urlparse
 
 
 def relative_path(root: Path, path: Path) -> str:
-    return path.resolve(strict=False).relative_to(root.resolve(strict=False)).as_posix()
+    """Return a vault-relative POSIX path.
+
+    If ``.aiwiki/state`` is a symlink to a directory outside the vault (dogfood
+    anti-iCloud-fork layout), rewrite resolved state paths back to
+    ``.aiwiki/state/...`` so callers keep a stable in-vault logical path.
+    """
+    root_resolved = root.resolve(strict=False)
+    path_resolved = path.resolve(strict=False)
+    try:
+        return path_resolved.relative_to(root_resolved).as_posix()
+    except ValueError:
+        state_link = root_resolved / ".aiwiki" / "state"
+        try:
+            state_target = state_link.resolve(strict=False)
+            under_state = path_resolved.relative_to(state_target)
+        except (OSError, ValueError):
+            raise
+        return (Path(".aiwiki") / "state" / under_state).as_posix()
 
 
 def next_identifier(existing_ids: set[str], seed: str) -> str:
