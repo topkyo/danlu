@@ -277,6 +277,7 @@ AIWIKI_MODEL_FALLBACK="deepseek-chat" \
 | `run-ask` 报 frontmatter / contract 校验失败 | backend 输出有装饰；用 `aiwiki llm-check --probe --format human` 确认；切到 compatible backend |
 | LLM 调用 `unavailable / requires_credential` | 跑 `aiwiki llm-check --probe-all`，按 §4 表选 compatible backend；按 §5 切换 |
 | 多写者抢锁 | `cat .aiwiki/state/runtime.lock` 看 pid；停 watcher 或确认 Obsidian / CLI 是否同时在写 |
+| iCloud 分叉 `.aiwiki/state/execution-policy-decisions N.jsonl` | dogfood vault 的 `.aiwiki/state` 应 symlink 到 `~/Library/Application Support/aiwiki/dogfood-state`（本地，不走 iCloud）；幂等迁移：`bash scripts/relocate_aiwiki_state_out_of_icloud.sh`；原目录保留为 `.aiwiki/state.icloud-backup-*` |
 | 想短期暂停所有自动化 | `systemctl --user stop aiwiki-watch.service aiwiki-nightly.timer`；或更激进：`AIWIKI_DISABLE_AUTOMATION=1` 全局 kill switch |
 
 ---
