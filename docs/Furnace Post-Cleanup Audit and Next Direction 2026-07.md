@@ -2,7 +2,7 @@
 title: "炼丹炉 Post-Cleanup 全量审计与下一步方向"
 kind: "plan"
 status: "active"
-updated_at: "2026-07-22"
+updated_at: "2026-07-26"
 based_on:
   - "docs/archive/Furnace Commercial Grade Cleanup Plan 2026-07.md（executed-reviewed-pass）"
   - "docs/AGOS-9-Scorecard.md"
@@ -25,7 +25,7 @@ supersedes: []
 |---|---|---|
 | Runtime | `src/aiwiki` **155** `.py` / **~62k LOC** | `find` + `wc`（2026-07-18） |
 | Tests | acceptance **24** + llm-integration **79** + Jest **206**（2026-07-26 实测；表内历史快照曾为 24/79/200、18/78/189、17/77/174） | `pytest` + `npm test` |
-| Top hubs | `memory/graph.py` 1758 / `drop.py` 1747 / `execution/alchemy.py` 1680 / `auto_adopt` **DELETED** / `app_state` 1221 | `wc -l` |
+| Top hubs | `memory/graph.py` 1758 / `drop.py` 1747 / `execution/alchemy.py` 1680 / `auto_adopt` **DELETED** / `state/` package（原 `app_state.py` **DELETED**） | `wc -l` |
 | `except Exception` | **~116**（↓ from 172）；裸 `except Exception: pass` **0** | ripgrep |
 | AgentOS Scorecard | **Local Engineering Gate 9.05**；Live Dogfood **not-yet** | `docs/AGOS-9-Scorecard.md` |
 | 商业审计综合 | **~7.8**（cleanup 后再评） | archive Cleanup Plan §1.6 |
@@ -90,7 +90,7 @@ supersedes: []
 
 | ID | 项 | 处置 |
 |---|---|---|
-| D16 | `app_state` / `auto_adopt` / `workflows` / `graph` / `drop` 巨石 | **Conscious debt**；只允许单 seam + 测试边界，禁止 broad rewrite |
+| D16 | `state/`（原 `app_state`）/ `auto_adopt` / `workflows` / `graph` / `drop` 巨石 | **Conscious debt**；只允许单 seam + 测试边界，禁止 broad rewrite |
 | D17 | Windows 正式一等支持 | Out |
 | D18 | hosted SaaS / multi-user / 全功能 iOS | 产品非目标 |
 | D19 | USER_GUIDE 指向 compile 生成态 indexes | 文档脚注即可 |
@@ -138,7 +138,7 @@ supersedes: []
 ### Out（红线）
 
 - 不伪造 14/30-day PASS
-- 不做 `app_state` / `auto_adopt` / alchemy 整文件大拆
+- 不做 `state/`（原 `app_state`）/ `auto_adopt` / alchemy 整文件大拆
 - 不引入 hosted multi-user / heavy RAG / fine-tuning
 - 不把 AgentOS 9.05 写成「商业就绪 9 分」
 - 不扩 L3 无人值守自治
@@ -182,7 +182,8 @@ supersedes: []
 
 | 项 | 内容 |
 |---|---|
-| **In** | Jest soft-skip → hard-gate（`package.json` 入库后由 `verify_product_shell_static` 默认跑）；mock/隔离 env-coupled drop/workspace 测试；可选 coverage `fail_under` 基线拉回 |
+| **In** | Jest soft-skip → hard-gate（`package.json` 入库后由 `verify_product_shell_static` 默认跑）；mock/隔离 env-coupled drop/workspace 测试 |
+| **Out/deferred** | coverage `fail_under` 基线拉回（与 2026-07-15 去 coverage gate 决策冲突） |
 | **Out** | 伪造 long-run proof；broad rewrite |
 | **Done** | 干净 CI `verify.sh all` 无 Jest 盲区；已知 env 失败有明确 mock/skip 策略 |
 
@@ -223,7 +224,7 @@ bash scripts/verify.sh scripts
 bash scripts/verify.sh python-static
 bash scripts/verify.sh smoke
 bash scripts/verify.sh cli-smoke
-# Product Shell：`product-shell-static` = node --check + Jest hard-gate（~179 tests）
+# Product Shell：`product-shell-static` = node --check + Jest hard-gate（~206 tests；见 `bash scripts/verify.sh product-shell-static`）
 # 紧急旁路：AIWIKI_SKIP_PRODUCT_SHELL_JS_TESTS=1
 # go-live 文档门禁：
 ! git grep -E 'commercial@example\.com|support@example\.com' -- LICENSE docs/commercial/
@@ -242,14 +243,14 @@ Review gate：编码 PR 独立 read-only reviewer（correctness / scope / missin
 - [x] 商业 EULA 或等价书面许可流程可指向真实材料（`docs/commercial/EULA.md`；待正式法律审阅）
 - [x] INSTALL 存在一条非开发者可完成的安装路径（`pip install -e .` 预览；PyPI `pip install aiwiki` 仍待发布）
 - [x] Demo 对外 checklist 可跑通且合规（fixture + README checklist；截图/录屏媒体可选待补）
-- [x] Jest 在 release CI 为 hard-gate（`verify.sh product-shell-static`；~179 passed）
+- [x] Jest 在 release CI 为 hard-gate（`verify.sh product-shell-static`；~206 passed）
 - [x] PROGRESS / docs Active Plans / Architecture 无断链 SoT 指针
 - [ ] 商业审计综合可诚实宣称 ≥ **8.0（可售门槛）**；AgentOS 分数不混标 — 触点/EULA/询价/安装预览已齐后复评；正式法律签收与 PyPI 发布可再抬一档
 
 ## 10. 本审计未覆盖 / 限制
 
 - **无真实 dogfood vault**（iCloud Obsidian）可访问；live maturity / compounding 以 Scorecard historical + 本地 release 证据为准，本轮未复算 live。
-- **未跑完整 `verify.sh all` / unit / acceptance**（本轮收集 scripts/static/smoke + docs；全量作为合并前建议）。
+- **未跑完整 `verify.sh all` / acceptance / llm-integration**（本轮收集 scripts/static/smoke + docs；全量作为合并前建议）。
 - Linear MCP 未认证，未同步外部 issue tracker。
 - 商务邮箱/价格/EULA 需人类决策，本文件只立项不伪造。
 - 2026-07-15 Go-Live 波已用真实 owner 邮箱落地触点与询价决策，并提交 EULA 草案；正式法律签收与 PyPI 发布仍属人类/运营步骤。
