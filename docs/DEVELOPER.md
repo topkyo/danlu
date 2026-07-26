@@ -61,9 +61,9 @@ bash scripts/docs_consistency_check.sh
 
 | Target | 内容 |
 |---|---|
-| `acceptance` | **17** tests — `tests/test_acceptance_loop.py`（`case_*` fixture + path safety + provenance GC 等） |
-| `llm-integration` | **76** tests — `tests/test_llm_integration.py`（mock backends） |
-| `product-shell-static` | `node --check` + Jest **173** hard-gate |
+| `acceptance` | **24** tests — `tests/test_acceptance_loop.py`（`case_*` fixture + path safety + provenance GC 等） |
+| `llm-integration` | **79** tests — `tests/test_llm_integration.py`（mock backends） |
+| `product-shell-static` | `node --check` + Jest **200** hard-gate |
 | 其余 | scripts、cli-smoke、smoke、python-static |
 
 本地开发常用：

@@ -2,7 +2,7 @@
 title: "AgentOS 9.0 Scorecard"
 kind: "scorecard"
 status: "active"
-updated_at: "2026-07-24"
+updated_at: "2026-07-26"
 ---
 
 # AgentOS 9.0 Scorecard
@@ -20,13 +20,13 @@ updated_at: "2026-07-24"
 3. **Blocking fail**：任一**该门禁** blocking gate 失败，该门禁不得宣称 ≥ 9.0。
 4. **非目标不变**：hosted service、multi-user sync、heavy RAG、fine-tuning、隐式 cross-backend routing。
 
-## 现行 verify gate（Local Engineering，2026-07-24 实测）
+## 现行 verify gate（Local Engineering，2026-07-26 实测）
 
 | 组件 | 数量 | 命令 |
 |---|---:|---|
-| Acceptance | **18** passed | `bash scripts/verify.sh acceptance` |
-| LLM integration | **78** passed | `bash scripts/verify.sh llm-integration` |
-| Product Shell Jest | **189** passed | `bash scripts/verify.sh product-shell-static` |
+| Acceptance | **24** passed | `bash scripts/verify.sh acceptance` |
+| LLM integration | **79** passed | `bash scripts/verify.sh llm-integration` |
+| Product Shell Jest | **200** passed | `bash scripts/verify.sh product-shell-static` |
 | 全量 | 7 步 | `bash scripts/verify.sh all` |
 | Docs consistency | exit 0 | `bash scripts/docs_consistency_check.sh` |
 | CI | exists | `.github/workflows/verify.yml` |
@@ -83,11 +83,11 @@ updated_at: "2026-07-24"
 
 | 维度 | 权重 | 分 | Blocking? | 现行证据 |
 |------|------|---:|---|---|
-| Dogfood / fixture | 20% | 8.9 | no（live 维 blocking 在 Live gate） | acceptance **17** replay + AOS-C8 **historical** |
-| Product Shell | 12% | 9.3 | yes | Jest **189** + sync `run-ask` 单飞 + Today-first |
+| Dogfood / fixture | 20% | 8.9 | no（live 维 blocking 在 Live gate） | acceptance **24** replay + AOS-C8 **historical** |
+| Product Shell | 12% | 9.3 | yes | Jest **200** + sync `run-ask` 单飞 + Today-first |
 | Runtime correctness | 15% | 9.4 | no | path harden + fail-closed LLM；无 background submit/resume |
 | Planner / signal | 10% | 8.7 | no | internal modules；CLI 已删；acceptance replay |
-| LLM reliability | 12% | 9.0 | no | llm-integration **78** + receipt 聚合 |
+| LLM reliability | 12% | 9.0 | no | llm-integration **79** + receipt 聚合 |
 | Governance | 13% | 9.1 | yes | review-page / alchemy-revert / receipts；**无** L3 apply CLI / auto_adopt |
 | Maintainability | 8% | 9.0 | no | 顶层 `app_*.py` = 0；Ask 路径净删 background |
 | Docs SoT | 10% | 8.9 | yes | active docs 对齐；本轮刷新计数 |
@@ -99,9 +99,9 @@ updated_at: "2026-07-24"
 | # | Gate | 现行命令 |
 |---|------|----------|
 | 1 | Full verify | `bash scripts/verify.sh all` |
-| 2 | Acceptance | **17** — `bash scripts/verify.sh acceptance` |
-| 3 | LLM integration | **78** — `bash scripts/verify.sh llm-integration` |
-| 4 | Product Shell | Jest **189** — `bash scripts/verify.sh product-shell-static` |
+| 2 | Acceptance | **24** — `bash scripts/verify.sh acceptance` |
+| 3 | LLM integration | **79** — `bash scripts/verify.sh llm-integration` |
+| 4 | Product Shell | Jest **200** — `bash scripts/verify.sh product-shell-static` |
 | 5 | Docs consistency | `bash scripts/docs_consistency_check.sh` |
 | 6 | CI | `.github/workflows/verify.yml` |
 
@@ -132,3 +132,4 @@ updated_at: "2026-07-24"
 - 2026-07-22（eng-debt radar）：Jest 实测 **180**；llm-integration 增 multipart HTTP body parse → **77**。
 - 2026-07-22（shell settings less · batch 3）：Jest 实测 **169**（settings fold 测试断言调整；AGENTS/Scorecard 对齐）。
 - 2026-07-24：质保 Round1–3 + DEF-R2-01 后 verify 实测 acceptance **18** / Jest **189** / llm **78**；AGENTS/Scorecard 计数对齐。
+- 2026-07-26：沉淀/金丹写端瘦身 + curated Properties leaf sync + WS2 wheel 后实测 acceptance **24** / Jest **200** / llm **79**；现行 gate 表对齐。
