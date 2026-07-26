@@ -17,12 +17,16 @@ from ..memory.action_core import (
     describe_machine_memory_action,
     safe_apply_preview,
 )
+from ..memory.rewrite_readiness import (
+    _validate_rewrite_candidate_markdown,
+    rewrite_proposal_candidate_is_current,
+    rewrite_proposal_is_apply_ready,
+)
 from ..planner.paths import planner_state_path
 from ..planner.state import load_planner_state
 from ..protocol.focus_scoring import action_focus_score
 from ..render.paths import execution_bundle_path, execution_proposal_path
 from ..state.constants import DEFAULT_PROTOCOL
-from ..utils.markdown import parse_frontmatter
 from ..utils.path import relative_path
 from ..utils.time import utc_now
 from .patch_plan import build_page_patch_plan
@@ -136,60 +140,6 @@ def build_machine_memory_repair_plan(
             "blocked_proposals": int(planner_state.get("counts", {}).get("blocked", 0) or 0),
         },
     }
-
-
-def _validate_rewrite_candidate_markdown(
-    candidate_markdown: str,
-    slug: str,
-    source_signature: str,
-    source_pages: list[str],
-) -> None:
-    frontmatter = parse_frontmatter(candidate_markdown)
-    if str(frontmatter.get("id") or "") != f"concept-{slug}":
-        raise RuntimeError("Rewrite candidate must preserve the concept id.")
-    if str(frontmatter.get("kind") or "") != "concept":
-        raise RuntimeError("Rewrite candidate must preserve `kind: concept`.")
-    if str(frontmatter.get("source_signature") or "") != source_signature:
-        raise RuntimeError("Rewrite candidate source_signature no longer matches the target concept.")
-    candidate_source_pages = frontmatter.get("source_pages", [])
-    if not isinstance(candidate_source_pages, list):
-        raise RuntimeError("Rewrite candidate must preserve source_pages.")
-    normalized_candidate_sources = [str(item) for item in candidate_source_pages if isinstance(item, str)]
-    if normalized_candidate_sources != source_pages:
-        raise RuntimeError("Rewrite candidate source_pages no longer match the target concept.")
-
-
-def rewrite_proposal_candidate_is_current(root: Path, proposal: dict[str, Any]) -> bool:
-    slug = str(proposal.get("slug") or "")
-    candidate_markdown = str(proposal.get("candidate_markdown") or "")
-    if not slug or not candidate_markdown:
-        return False
-    concept_path = root / str(proposal.get("target_path") or f"wiki/concepts/{slug}.md")
-    if not concept_path.exists():
-        return False
-    current_frontmatter = parse_frontmatter(concept_path.read_text(encoding="utf-8", errors="replace"))
-    current_source_signature = str(current_frontmatter.get("source_signature") or "")
-    expected_source_signature = str(proposal.get("source_signature") or "")
-    if expected_source_signature and current_source_signature != expected_source_signature:
-        return False
-    current_source_pages = current_frontmatter.get("source_pages", [])
-    if not isinstance(current_source_pages, list):
-        return False
-    normalized_source_pages = [str(item) for item in current_source_pages if isinstance(item, str)]
-    try:
-        _validate_rewrite_candidate_markdown(
-            candidate_markdown,
-            slug,
-            expected_source_signature,
-            normalized_source_pages,
-        )
-    except RuntimeError:
-        return False
-    return True
-
-
-def rewrite_proposal_is_apply_ready(root: Path, proposal: dict[str, Any]) -> bool:
-    return str(proposal.get("status") or "") == "accepted" and rewrite_proposal_candidate_is_current(root, proposal)
 
 
 def proposal_rollback_summary(proposal: dict[str, Any]) -> str:

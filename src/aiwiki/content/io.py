@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ..execution.history import append_runtime_history
 from ..input_router import is_obsidian_open_link
 from ..protocol.runtime_config import AUTO_PROMOTION_FORMATS
 from ..protocol.scaffold import ensure_layout
@@ -190,6 +189,9 @@ def ingest_source(root: Path, source: str, title: str | None = None) -> dict[str
     from ..state.manifest import save_manifest
 
     save_manifest(root, manifest)
+    # Lazy: keep content loadable without pulling the execution package.
+    from ..execution.history import append_runtime_history
+
     append_runtime_history(
         root,
         {

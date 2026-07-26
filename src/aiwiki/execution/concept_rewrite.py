@@ -37,8 +37,8 @@ from ..content.io import preserved_section
 from ..content.rewrite import load_concept_rewrite_state, save_concept_rewrite_state
 from ..execution.receipts import write_execution_dry_run_document
 from ..lifecycle.status import rewrite_proposal_needs_review
-from ..memory.execution_surfaces import concept_rewrite_proposal_digest
 from ..memory.paths import concept_rewrite_state_path
+from ..memory.rewrite_readiness import concept_rewrite_proposal_digest
 from ..memory.state import load_machine_memory
 from ..protocol.runtime_config import REWRITE_PROPOSAL_STATUSES
 from ..protocol.scaffold import ensure_layout

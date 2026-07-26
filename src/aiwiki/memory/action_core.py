@@ -22,7 +22,6 @@ from ..content.io import (
     source_summary_or_preview,
     sync_manifest_with_raw,
 )
-from ..execution.policy import execution_band_label, execution_policy_profile
 from ..protocol.focus_scoring import action_focus_score
 from ..protocol.runtime_config import LOW_RISK_APPLYABLE_ACTION_KINDS, RESOLVABLE_MONITOR_ACTION_KINDS
 from ..protocol.state import load_protocol_state
@@ -36,9 +35,12 @@ from ..utils.hash import sha256_bytes
 from ..utils.markdown import build_citation_snapshots, parse_frontmatter
 from ..utils.path import relative_path
 from ..utils.text import slugify
+from .action_policy import execution_policy_profile
 from .action_rank import action_priority_rank, action_status_rank
 from .action_state import load_machine_memory_action_state
 from .paths import manual_link_state_path
+
+_EXECUTION_DRY_RUN_KEEP = 20
 
 
 def machine_memory_source_input_signature(
@@ -316,7 +318,8 @@ def remove_stale_generated_execution_bundle_files(root: Path, active_action_ids:
             continue
         path.unlink()
         removed += 1
-    from ..execution.receipts import rotate_execution_dry_runs
-
-    rotate_execution_dry_runs(directory)
+    dry_runs = sorted(directory.glob("*-dry-run.json"))
+    if len(dry_runs) > _EXECUTION_DRY_RUN_KEEP:
+        for old in dry_runs[: len(dry_runs) - _EXECUTION_DRY_RUN_KEEP]:
+            old.unlink(missing_ok=True)
     return removed

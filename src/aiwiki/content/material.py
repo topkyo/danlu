@@ -10,7 +10,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ..execution.history import load_runtime_history
 from ..memory.paths import manual_link_state_path
 from ..memory.scoring import (
     protocol_hints_for_material,
@@ -171,6 +170,9 @@ def build_material_state_documents(
     ensure_layout(root)
     manifest_entries = entries if entries is not None else load_manifest(root).get("entries", [])
     resolved_protocol = active_protocol or load_protocol_state(root)["active_protocol"]
+    # Lazy: keep content loadable without pulling the execution package.
+    from ..execution.history import load_runtime_history
+
     history = load_runtime_history(root)
     active_corpora = reconcile_active_corpora_state(root, changed_at=generated_at)["corpora"]
     reference_state = scan_material_reference_state(root, manifest_entries)

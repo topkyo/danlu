@@ -15,17 +15,6 @@ from typing import Any
 from ..content.concepts import concept_page_snapshot
 from ..content.material import load_manual_link_state
 from ..content.rewrite import load_concept_rewrite_state, save_concept_rewrite_state
-from ..execution.paths import (
-    execution_policy_log_path,
-    execution_receipt_history_path,
-)
-from ..execution.policy import (
-    execution_band_label,
-    execution_policy_profile,
-    load_execution_policy_decision_history_strict,
-    load_execution_receipt_history_strict,
-)
-from ..execution.repair_plan import rewrite_proposal_is_apply_ready
 from ..lifecycle.status import (
     display_action_status,
     display_rewrite_proposal_status,
@@ -39,13 +28,23 @@ from ..protocol.runtime_config import (
     REWRITE_PROPOSAL_STATUSES,
 )
 from ..state.constants import DEFAULT_PROTOCOL
-from ..utils.hash import sha256_bytes
 from ..utils.markdown import parse_frontmatter, render_frontmatter
 from ..utils.path import relative_path
 from ..utils.text import slugify
 from .action_core import action_priority_rank, safe_apply_preview
+from .action_policy import execution_band_label, execution_policy_profile
+from .execution_audit_io import (
+    load_execution_policy_decision_history_strict,
+    load_execution_receipt_history_strict,
+)
 from .execution_surface_helpers import concept_quality_summary_lines
-from .paths import concept_rewrite_proposal_page_path, concept_rewrite_state_path
+from .paths import (
+    concept_rewrite_proposal_page_path,
+    concept_rewrite_state_path,
+    execution_policy_log_path,
+    execution_receipt_history_path,
+)
+from .rewrite_readiness import concept_rewrite_proposal_digest, rewrite_proposal_is_apply_ready
 
 
 def render_execution_proposal_page(proposal: dict[str, Any], *, compiled_at: str) -> str:
@@ -672,12 +671,6 @@ def render_concept_quality(memory: dict[str, Any]) -> str:
         ]
     )
     return "\n".join(lines) + "\n"
-
-
-def concept_rewrite_proposal_digest(candidate_markdown: str) -> str:
-    if not candidate_markdown:
-        return ""
-    return sha256_bytes(candidate_markdown.encode("utf-8"))
 
 
 def reconcile_concept_rewrite_proposals(
