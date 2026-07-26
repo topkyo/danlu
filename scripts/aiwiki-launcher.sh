@@ -45,22 +45,17 @@ _aiwiki_pick_python() {
 AIWIKI_PYTHON_BIN="$(_aiwiki_pick_python)"
 
 PLUGIN_DATA="$TARGET_ROOT/.obsidian/plugins/furnace-product-shell/data.json"
-# Product Shell injects AIWIKI_LLM_* via spawn env; do not replace with stale data.json.
-if [ -f "$PLUGIN_DATA" ] && [ -z "${AIWIKI_LLM_BACKEND:-}" ]; then
-  for env_name in \
-    AIWIKI_LLM_BACKEND AIWIKI_LLM_MODEL AIWIKI_MODEL_FALLBACK \
-    AIWIKI_DEEPSEEK_API_KEY AIWIKI_DEEPSEEK_BASE_URL \
-    AIWIKI_OPENCODE_API_KEY AIWIKI_OPENCODE_BASE_URL \
-    AIWIKI_ANTHROPIC_API_KEY AIWIKI_ANTHROPIC_BASE_URL \
-    AIWIKI_LLM_API_KEY AIWIKI_LLM_BASE_URL \
-    DEEPSEEK_API_KEY DEEPSEEK_BASE_URL \
-    OPENAI_API_KEY OPENAI_BASE_URL OPENAI_MODEL \
-    ANTHROPIC_API_KEY ANTHROPIC_BASE_URL; do
-    unset "$env_name"
-  done
+# Merge data.json into empty LLM env slots only. Product Shell may already inject
+# AIWIKI_LLM_BACKEND (and sometimes keys); never overwrite non-empty values, and
+# still fill missing keys when backend was injected without a secret.
+if [ -f "$PLUGIN_DATA" ]; then
   while IFS= read -r line; do
     [ -n "$line" ] || continue
-    export "$line"
+    env_name="${line%%=*}"
+    env_value="${line#*=}"
+    if [ -z "${!env_name:-}" ] && [ -n "$env_value" ]; then
+      export "$env_name=$env_value"
+    fi
   done < <(
     "$AIWIKI_PYTHON_BIN" - "$PLUGIN_DATA" <<'PY'
 import json
