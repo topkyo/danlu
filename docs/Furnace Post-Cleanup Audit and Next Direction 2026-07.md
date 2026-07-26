@@ -99,13 +99,7 @@ supersedes: []
 
 ## 4. 已知环境耦合失败（非 setup 失败）
 
-继承 Cleanup Plan §12 / `AGENTS.md` Cloud 段：
-
-| 用例 | 性质 | 建议 |
-|---|---|---|
-| `test_obsidian_workspace.test_workspace_defaults_open_home_and_furnace_center` | 已提交 `.obsidian/workspace.json` 可被 Obsidian 漂移 | fixture 隔离或 skip-if-diverged |
-| `test_drop.test_fetch_url_raises_when_no_text_can_be_recovered` | 有真实 Chrome 时走 headless，无网超时 | mock browser 路径 |
-| Darwin-only `/private/var` alias | 非 darwin skip | 保持 |
+原 Cleanup Plan §12 所列 pytest 单测（workspace 漂移 / drop-url headless）已随 unit 段删除而 **moot**。Darwin `/private/var` alias 仍按平台 skip。现行回归看 acceptance + llm-integration + Jest。
 
 ---
 

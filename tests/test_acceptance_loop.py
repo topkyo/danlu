@@ -964,16 +964,7 @@ def test_duplicate_file_back_preserves_judgment_promoted_to(  # pragma: no cover
     judgment_dir = vault / "wiki" / "judgments"
     assert len(list(judgment_dir.glob("*.md"))) == 1
 
-# M9-P1.2: corrupt-state acceptance coverage.
-#
-# Unit tests already cover receipt-failure rollback end-to-end:
-#   - tests/test_alchemy.py::test_promote_rolls_back_when_receipt_history_write_fails
-#   - tests/test_alchemy.py::test_revert_rolls_back_when_receipt_history_write_fails
-#   - tests/test_alchemy.py::test_demote_rolls_back_when_receipt_history_write_fails
-# These exercise the full mutation+receipt+rollback path with realistic fixtures.
-# Re-creating that fixture chain at the acceptance layer adds setup complexity
-# without strengthening the contract, so we hoist only the strict-loader contract
-# (which has no fixture dependency) to acceptance.
+# M9-P1.2: corrupt-state acceptance — strict-loader contract only (no fixture chain).
 
 
 def test_strict_loader_raises_on_corrupt_state(tmp_path: Path) -> None:

@@ -116,9 +116,8 @@ def _file_back_entry_seed(kind: str, title: str) -> str:
 
 
 # ``utc_now`` is resolved lazily via ``aiwiki.utils.time`` inside each
-# function body. Reason: ``utc_now`` is a hot-patch target. Acceptance
-# tests + downstream suites patch it (originally ``tests/test_app.py``) as
-# ``patch("aiwiki.utils.time.utc_now", ...)``. A module-level
+# function body. Reason: ``utc_now`` is a hot-patch target
+# (``patch("aiwiki.utils.time.utc_now", ...)``). A module-level
 # ``from ..utils.time import utc_now`` would bind ``ask.utc_now`` to the
 # original callable at import time and defeat that patch everywhere in
 # this module.

@@ -14,6 +14,8 @@
 
 ## 当前动态
 
+- 2026-07-26 (**旧单测痕迹清理**)：Active SoT（AGENTS/DEVELOPER/Post-Cleanup）与 src 注释去掉已删 144 unit / `tests/unit/` 误导引用；archive/CHANGELOG/Scorecard 冻结史料不动。
+
 - 2026-07-26 (**结构债 audit 簇外提**)：`collect/build/render` execution audit → `memory/execution_audit_surfaces.py`（~400 LOC）；`execution_surfaces` 1003→619，re-export 保持调用方零改。
 
 - 2026-07-26 (**结构债 memory 加载隔离**)：`content/io` + `content/material` 对 `execution.history` 改为函数内 lazy；`import memory.execution_surfaces|action_core` 时 `sys.modules` 无 `aiwiki.execution.*`。
