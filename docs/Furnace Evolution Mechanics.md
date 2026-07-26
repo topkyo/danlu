@@ -36,16 +36,18 @@ related_docs:
 
 | 命令 | 语义 | 写目标 |
 |---|---|---|
-| `compile` / `lint` / `nightly` | 确定性 compile / lint / health | `wiki/`、`.aiwiki/lint/` 等 |
+| `compile` / `lint` | 确定性 compile / lint | `wiki/`、`.aiwiki/lint/` 等 |
 | `run-nightly` | 确定性 compile + lint + health（无 agent-loop） | receipt / runtime history |
 | `run-ask` | LLM 报告主入口 | `output/reports/*.md` + LLM receipt |
 | `file-back <artifact>` | judgment-only 回流 wiki | `wiki/judgments/` |
 | `review-page <path> --status …` | 单页三态审阅 | target page + review queue |
-| `watch` / `auto-once` | deterministic compile+lint on inbox | `wiki/` |
-| `alchemy-start|distill|finalize|promote|revert|demote` | 金丹最小链 | `.aiwiki/staging/elixirs/` → `wiki/elixirs/` |
+| `watch` | deterministic compile+lint on inbox | `wiki/` |
+| `advanced alchemy start\|distill\|finalize\|promote\|revert\|demote` | 金丹最小链 | `.aiwiki/staging/elixirs/` → `wiki/elixirs/` |
 | `trace` / `metrics` / `shell-status` | 诊断与遥测 | 只读或 state append |
 
-**已删除（W3/W6/W8）**：`signals-*`、`planner-log-*`、`audit-*`、`alchemy auto|heavy|light|lane`、`l3-proposal-*`、`apply/revert <proposal>`、`apply-action`、`apply-rewrite`、`apply-archive`、`run-compile`、`run-lint`。完整列表见架构 §8。
+> 金丹：推荐 `advanced alchemy …`；旧 `alchemy-*` hyphen 别名仍可用作 compat（见 `docs/USER_GUIDE.md`）。
+
+**已删除（W3/W6/W8）**：`auto-once`、`signals-*`、`planner-log-*`、`audit-*`、`alchemy auto|heavy|light|lane`、`l3-proposal-*`、`apply/revert <proposal>`、`apply-action`、`apply-rewrite`、`apply-archive`、`run-compile`、`run-lint`。完整列表见架构 §8。
 
 ## 3. Active corpus
 
@@ -69,10 +71,10 @@ related_docs:
 
 | 状态 | 路径 | 入口 |
 |---|---|---|
-| `draft` | `.aiwiki/staging/elixirs/` | `alchemy-start <corpus_id> --topic …` |
-| `distilling` | 同上 | `alchemy-distill <elixir_id> --question …` |
-| `candidate` | 同上 | `alchemy-finalize <elixir-id>` |
-| `settled` | `wiki/elixirs/` | `alchemy-promote --elixir-id …` |
+| `draft` | `.aiwiki/staging/elixirs/` | `advanced alchemy start <corpus_id> --topic …`（compat：`alchemy-start`） |
+| `distilling` | 同上 | `advanced alchemy distill <elixir_id> --question …`（compat：`alchemy-distill`） |
+| `candidate` | 同上 | `advanced alchemy finalize <elixir-id>`（compat：`alchemy-finalize`） |
+| `settled` | `wiki/elixirs/` | `advanced alchemy promote --elixir-id …`（compat：`alchemy-promote`） |
 | `superseded` | staging tombstone | promote 成功后原地墓碑化 |
 
 **约束**：
@@ -84,8 +86,8 @@ related_docs:
 ### 三阶段路线图
 
 1. **Chaining**：`run-ask --corpus <id>` 多轮追问；output 写 `output/reports/`，不自动写 `wiki/`。
-2. **Distillation**：`file-back` → `alchemy-start` → `distill` → `finalize` → `promote`。
-3. **Compounding**：`alchemy-start --include-elixir …` 显式引用 settled 金丹，DAG 校验。
+2. **Distillation**：`file-back` → `advanced alchemy start` → `distill` → `finalize` → `promote`。
+3. **Compounding**：`advanced alchemy start --include-elixir …` 显式引用 settled 金丹，DAG 校验。
 
 ## 5. Signal / planner（internal 目标契约）
 
@@ -102,7 +104,7 @@ L3 产品 CLI 与 library 已移除。prompt/policy 写回须 operator 显式路
 ## 8. Audit / revert
 
 - **Audit 源**：`.aiwiki/state/execution-receipts.jsonl`、`.aiwiki/logs/llm-receipts.jsonl`、`.aiwiki/state/runtime-history.jsonl`（及 direct append 的 universal audit）。
-- **可 revert**：金丹 promotion（`alchemy-revert`）；历史 L3 apply 链已删 CLI。
+- **可 revert**：金丹 promotion（`advanced alchemy revert`；compat：`alchemy-revert`）；历史 L3 apply 链已删 CLI。
 - **不可 revert**：`raw/` 历史事实、audit entry 本体。
 
 ## 9. 向后兼容

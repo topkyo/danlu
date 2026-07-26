@@ -64,7 +64,7 @@
 证据：`/tmp/furnace-maturity-2026-07-24/round-3.md`
 
 - [x] 修 DEF-R2-01（重复 file-back 保留 judgment/`derived` 锚点）
-- [x] acceptance **18** + dogfood 重复 file-back 回归
+- [x] acceptance **18** + dogfood 重复 file-back 回归（**18** 为当时快照；现行 acceptance 为 **24**，见 `docs/DEVELOPER.md` / Scorecard）
 - [x] FEAT-GOV-01 compound_suggest 回归；CDP 点击「沉淀」
 - [x] 非法 review-page fail-closed
 - [ ] 历史 orphan elixir 自动 heal（won't-fix；已有替代 settled）

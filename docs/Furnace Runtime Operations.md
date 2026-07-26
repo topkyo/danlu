@@ -96,7 +96,7 @@ RestartSec=5
 `run_watch.sh` 真实命令：
 
 ```bash
-python3 -m aiwiki.cli --root "$AIWIKI_VAULT" watch \
+python3 -m aiwiki.cli --root "$AIWIKI_VAULT" advanced watch \
   --interval 5 --compile-limit 5 --deterministic-only
 ```
 
@@ -122,7 +122,7 @@ Unit=aiwiki-nightly.service
 aiwiki advanced run-nightly --compile-limit N    ← deterministic compile + lint + nightly health
 ```
 
-> **W8 产品路径说明**：`run-nightly` 不再读取 `AIWIKI_NIGHTLY_AUTO_*` 做 agent-loop、signals 或 debt LLM 消化。installer 仍可能写入这些 env 键作历史 compat，但对当前 nightly 路径 **无效果**；需要 LLM 或治理 apply 请走显式 `run-ask` / operator CLI。
+> **W8 产品路径说明**：`run-nightly` 不再读取 `AIWIKI_NIGHTLY_AUTO_*` 做 agent-loop、signals 或 debt LLM 消化。installer 仍可能写入这些 env 键作历史 compat，但对当前 nightly 路径 **无效果**；需要 LLM 或治理 apply 请走显式 `advanced run-ask` / operator CLI。
 
 关键 env（仍生效）：
 - `AIWIKI_AUTONOMY_PROFILE=agentic` —— runtime profile override；新安装 nightly env 默认写入，保证旧 vault 的 legacy policy 文件不会让 receipt 继续按旧 profile 记账
@@ -174,7 +174,7 @@ watcher 与 nightly timer 默认不调 LLM。LLM 在产品面的默认发生点�
 | `aiwiki advanced compile` | 手动 / watcher / nightly | 是 | 否 | 确定性 compile：manifest → wiki sources/indexes |
 | `aiwiki advanced lint` | 手动 / nightly | 是 | 否 | 确定性 lint + repair backlog |
 | `aiwiki advanced run-nightly` | timer / 手动 | 是 | 否 | 确定性 compile + lint + nightly health |
-| `aiwiki run-ask "<question>" --format report` | 手动 / agent 调用 | 是 | **是** | LLM-backed reasoning：生成 query report |
+| `aiwiki advanced run-ask "<question>" --format report` | 手动 / agent 调用 | 是 | **是** | LLM-backed reasoning：生成 query report |
 | `aiwiki drop …` | 手动 / Shell | 是 | 可选（universal payload 默认 LLM planner；`AIWIKI_LLM_PLANNER=0` 关） | 入 raw 后 **默认** deterministic compile + lint（`--no-auto` 可跳过）。plan/execute：planner 不写 raw，executor 原样落盘。`AIWIKI_LLM_DISTILL` 控制 distill synthesizer（默认开）。 |
 
 `run-ask` 路径会：
@@ -220,7 +220,7 @@ source ~/.aiwiki-secrets/deepseek.env
 AIWIKI_LLM_BACKEND=deepseek-api \
 AIWIKI_LLM_MODEL=deepseek-v4-pro \
 PYTHONPATH=src \
-python3 -m aiwiki.cli --root "$AIWIKI_VAULT" run-ask "..."
+python3 -m aiwiki.cli --root "$AIWIKI_VAULT" advanced run-ask "..."
 ```
 
 ### 5.3 systemd nightly 后端选择
@@ -244,11 +244,11 @@ journalctl --user -u aiwiki-nightly.service --since "1 minute ago"
 |----------|------|------|
 | execution receipt | `.aiwiki/state/execution-receipts/*.json` + `.aiwiki/state/execution-receipts.jsonl` | 保留；回滚依赖 |
 | planner-log | `.aiwiki/state/planner-log.jsonl` | 保留；rollback marker 追加 |
-| LLM receipt | `.aiwiki/logs/llm-receipts.jsonl` | 保留；只读聚合走 `llm-check` / acceptance（CLI `llm-telemetry`/`backend-telemetry` 已删） |
+| LLM receipt | `.aiwiki/logs/llm-receipts.jsonl` | 保留；只读聚合走 `advanced llm-check` / acceptance（CLI `llm-telemetry`/`backend-telemetry` 已删） |
 | LLM raw response | receipt 内 `raw_response_path` | 按路径引用；清理需显式 operator 策略 |
 | maturity gate | `output/control/maturity-gate/run-*.json` | 保留；自然日去重 summarize |
 
-恢复原则：corrupt JSON/JSONL 用 fault-injection tests 锁定；**不**默认删除历史 receipt 解决磁盘膨胀。watcher 仍 deterministic-only。
+恢复原则：corrupt JSON/JSONL 由 acceptance fixture 锁定回归；**不**默认删除历史 receipt 解决磁盘膨胀。watcher 仍 deterministic-only。
 
 ### 5.5 后端切换
 
@@ -262,27 +262,27 @@ journalctl --user -u aiwiki-nightly.service --since "1 minute ago"
 AIWIKI_LLM_BACKEND=deepseek-api \
 AIWIKI_LLM_MODEL=deepseek-v4-pro \
 AIWIKI_MODEL_FALLBACK="deepseek-chat" \
-... run-ask "..."
+... advanced run-ask "..."
 ```
 
 ---
 
-## 6. 监听排障速查
+## 7. 监听排障速查
 
 | 现象 | 排查 |
 |---|---|
 | watcher 不响应新投料 | `systemctl --user status aiwiki-watch.service` 看是否 active；`journalctl --user -u aiwiki-watch.service -n 50` |
 | nightly 没跑 | `systemctl --user list-timers --all` 看 trigger；`journalctl --user -u aiwiki-nightly.service --since today` |
 | dogfood maturity timer 还在跑（2026-07-15 清理前遗留） | `scripts/uninstall_user_service.sh` 会自动清理；保留 vault receipt/data |
-| `run-ask` 报 frontmatter / contract 校验失败 | backend 输出有装饰；用 `aiwiki llm-check --probe --format human` 确认；切到 compatible backend |
-| LLM 调用 `unavailable / requires_credential` | 跑 `aiwiki llm-check --probe-all`，按 §4 表选 compatible backend；按 §5 切换 |
+| `run-ask` 报 frontmatter / contract 校验失败 | backend 输出有装饰；用 `aiwiki advanced llm-check --probe --format human` 确认；切到 compatible backend |
+| LLM 调用 `unavailable / requires_credential` | 跑 `aiwiki advanced llm-check --probe-all`，按 §4 表选 compatible backend；按 §5 切换 |
 | 多写者抢锁 | `cat .aiwiki/state/runtime.lock` 看 pid；停 watcher 或确认 Obsidian / CLI 是否同时在写 |
 | iCloud 分叉 `.aiwiki/state/execution-policy-decisions N.jsonl` | dogfood vault 的 `.aiwiki/state` 应 symlink 到 `~/Library/Application Support/aiwiki/dogfood-state`（本地，不走 iCloud）；幂等迁移：`bash scripts/relocate_aiwiki_state_out_of_icloud.sh`；原目录保留为 `.aiwiki/state.icloud-backup-*` |
 | 想短期暂停所有自动化 | `systemctl --user stop aiwiki-watch.service aiwiki-nightly.timer`；或更激进：`AIWIKI_DISABLE_AUTOMATION=1` 全局 kill switch |
 
 ---
 
-## 7. 与"始终运行"哲学的关系
+## 8. 与"始终运行"哲学的关系
 
 炼丹炉 §3 "deterministic baseline" 不变量保证：**watcher 即使在 LLM 完全不可用的情况下，也能维持 raw → wiki 的最低可用流水线**。这意味着：
 
@@ -296,7 +296,7 @@ AIWIKI_MODEL_FALLBACK="deepseek-chat" \
 
 ---
 
-## 8. 不在本手册定义
+## 9. 不在本手册定义
 
 - 安装初始化：见 `scripts/install_user_service.sh`
 - LLM provider 详细鉴权：见 README §LLM 后端
