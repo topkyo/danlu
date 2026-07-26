@@ -14,6 +14,8 @@
 
 ## 当前动态
 
+- 2026-07-27 (**第二轮 stale 扫除**)：Active 计数/门禁已对齐后残留主战场是缺 `advanced` 与旧名 `nightly`/`auto-once`/`apply|revert`。修 Runtime Ops / Evolution / INSTALL / BOUNDARIES / PRICING；src+vault 模板+Shell i18n+acceptance fixture 同步；Jest 206 仍绿。
+
 - 2026-07-26 (**大扫除 stale SoT/src**)：4-agent 全量扫描后 scrub — CHANGELOG/Post-Cleanup/README/Scorecard/Product Shell/USER_GUIDE 现行计数与 coverage/app_state 误导；src 21 文件去掉「facade 仍在」与缺 `advanced` 的 CLI 提示；`verify_target_rules` 补 acceptance/llm-integration 路径。archive 与 Scorecard 冻结块不动。
 
 - 2026-07-26 (**旧单测痕迹清理**)：Active SoT（AGENTS/DEVELOPER/Post-Cleanup）与 src 注释去掉已删 144 unit / `tests/unit/` 误导引用；archive/CHANGELOG/Scorecard 冻结史料不动。
