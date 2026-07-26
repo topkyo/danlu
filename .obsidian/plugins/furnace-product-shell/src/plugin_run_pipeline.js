@@ -140,14 +140,18 @@ function processProductShellSummaryUpdates(plugin, summary) {
 }
 
 async function refreshProductShellSummaryCommand(plugin) {
+  let payloadApplied = false;
   try {
-    await plugin.runPluginCommand(plugin.t("Refresh Furnace Shell"), ["shell-status"], {
+    const payload = await plugin.runPluginCommand(plugin.t("Refresh Furnace Shell"), ["shell-status"], {
       refreshAfter: false,
       updateSummaryFromPayload: true,
       notice: false,
     });
+    payloadApplied = Boolean(payload && payload.kind === "product-shell-summary");
   } catch (error) {
     // Falling back to the disk summary still advances pending reconciliation.
   }
-  await plugin.loadShellSummaryFromDisk();
+  if (!payloadApplied) {
+    await plugin.loadShellSummaryFromDisk();
+  }
 }

@@ -6931,12 +6931,32 @@ function registerCuratedOutputLeafSync(plugin) {
 
 // --- src/plugin_lifecycle.js ---
 
+const REPORT_OUTPUT_REFRESH_DEBOUNCE_MS = 600;
+
+function scheduleReportShellSummaryRefresh(plugin) {
+  if (!plugin || typeof plugin.refreshShellSummarySilently !== "function") {
+    return;
+  }
+  if (plugin._reportShellSummaryRefreshTimer) {
+    clearTimeout(plugin._reportShellSummaryRefreshTimer);
+  }
+  plugin._reportShellSummaryRefreshTimer = setTimeout(() => {
+    plugin._reportShellSummaryRefreshTimer = null;
+    void plugin.refreshShellSummarySilently();
+  }, REPORT_OUTPUT_REFRESH_DEBOUNCE_MS);
+}
+
 async function handleProductShellVaultChange(plugin, relativePath) {
   if (!relativePath) {
     return;
   }
   if (relativePath === SHELL_SUMMARY_PATH) {
     await plugin.loadShellSummaryFromDisk();
+    return;
+  }
+  if (relativePath.startsWith("output/reports/")) {
+    scheduleReportShellSummaryRefresh(plugin);
+    plugin.refreshOpenViews();
     return;
   }
   if (relativePath.startsWith("output/") || relativePath.startsWith("wiki/indexes/")) {
@@ -7206,16 +7226,7 @@ async function loadProductShellSummaryFromDisk(plugin) {
     return null;
   }
   let text = null;
-  const summaryFile = plugin.app.vault.getAbstractFileByPath(SHELL_SUMMARY_PATH);
-  if (summaryFile) {
-    try {
-      text = await plugin.app.vault.cachedRead(summaryFile);
-    } catch (error) {
-      console.error("[furnace-product-shell] vault read failed for shell summary, falling back to fs", error);
-      text = null;
-    }
-  }
-  if (text === null && plugin.repoState.root) {
+  if (plugin.repoState.root) {
     const absPath = path.join(plugin.repoState.root, SHELL_SUMMARY_PATH);
     try {
       if (fs.existsSync(absPath)) {
@@ -7224,6 +7235,17 @@ async function loadProductShellSummaryFromDisk(plugin) {
     } catch (error) {
       console.error("[furnace-product-shell] fs read failed for shell summary", error);
       text = null;
+    }
+  }
+  if (text === null) {
+    const summaryFile = plugin.app.vault.getAbstractFileByPath(SHELL_SUMMARY_PATH);
+    if (summaryFile) {
+      try {
+        text = await plugin.app.vault.cachedRead(summaryFile);
+      } catch (error) {
+        console.error("[furnace-product-shell] vault read failed for shell summary", error);
+        text = null;
+      }
     }
   }
   if (text === null) {
@@ -7601,16 +7623,20 @@ function processProductShellSummaryUpdates(plugin, summary) {
 }
 
 async function refreshProductShellSummaryCommand(plugin) {
+  let payloadApplied = false;
   try {
-    await plugin.runPluginCommand(plugin.t("Refresh Furnace Shell"), ["shell-status"], {
+    const payload = await plugin.runPluginCommand(plugin.t("Refresh Furnace Shell"), ["shell-status"], {
       refreshAfter: false,
       updateSummaryFromPayload: true,
       notice: false,
     });
+    payloadApplied = Boolean(payload && payload.kind === "product-shell-summary");
   } catch (error) {
     // Falling back to the disk summary still advances pending reconciliation.
   }
-  await plugin.loadShellSummaryFromDisk();
+  if (!payloadApplied) {
+    await plugin.loadShellSummaryFromDisk();
+  }
 }
 
 // --- src/state/health-state.js ---
