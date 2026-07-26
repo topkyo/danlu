@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from ..compile.build import load_concept_build_state
+from ..memory.action_rank import action_priority_rank
 from ..protocol.runtime_config import (
     CAUSAL_RELATION_TYPES,
     CONCEPT_HARDNESS_LEVELS,
@@ -889,7 +890,7 @@ def concept_rewrite_strategy(record: dict[str, Any]) -> str:
 
 
 def build_concept_quality(root: Path, memory: dict[str, Any]) -> dict[str, Any]:
-    placeholder_slugs = set(_placeholder_concept_slugs(root))
+    placeholder_slugs = set(placeholder_concept_slugs(root))
     singleton_slugs = set(memory.get("health", {}).get("singleton_concept_slugs", []))
     concept_nodes = [dict(node) for node in memory.get("concept_nodes", []) if isinstance(node, dict)]
     concept_records: dict[str, dict[str, Any]] = {}
@@ -1075,7 +1076,7 @@ def build_concept_quality(root: Path, memory: dict[str, Any]) -> dict[str, Any]:
     )
     rewrite_candidates.sort(
         key=lambda item: (
-            _action_priority_rank(item.get("priority", "")),
+            action_priority_rank(item.get("priority", "")),
             -int(item.get("score", 0)),
             int(item.get("quality_score", 0)),
             -int(item.get("conflict_count", 0)),
@@ -1171,16 +1172,15 @@ def _active_manual_source_concept_links(root: Path) -> dict[str, set[str]]:
     return active_manual_source_concept_links(root)
 
 
-def _placeholder_concept_slugs(root: Path) -> list[str]:
-    from ..memory.action_core import placeholder_concept_slugs
-
-    return placeholder_concept_slugs(root)
-
-
-def _action_priority_rank(priority: str) -> int:
-    from ..memory.action_core import action_priority_rank
-
-    return action_priority_rank(priority)
+def placeholder_concept_slugs(root: Path) -> list[str]:
+    """Return concept slugs whose Summary matches the legacy placeholder marker."""
+    slugs: list[str] = []
+    for page in sorted((root / "wiki" / "concepts").glob("*.md")):
+        content = page.read_text(encoding="utf-8", errors="replace")
+        summary = preserved_section(content, "Summary", "")
+        if _concept_summary_matches_legacy_placeholder(summary):
+            slugs.append(page.stem)
+    return slugs
 
 
 def concept_page_snapshot(root: Path, slug: str) -> dict[str, Any]:

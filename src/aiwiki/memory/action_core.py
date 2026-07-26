@@ -16,12 +16,12 @@ from ..content.concepts import (
     concept_source_pages,
     normalize_concept_hardness,
     parse_causal_links,
+    placeholder_concept_slugs,
 )
 from ..content.io import (
     source_summary_or_preview,
     sync_manifest_with_raw,
 )
-from ..content.memory import concept_summary_is_placeholder
 from ..execution.policy import execution_band_label, execution_policy_profile
 from ..protocol.focus_scoring import action_focus_score
 from ..protocol.runtime_config import LOW_RISK_APPLYABLE_ACTION_KINDS, RESOLVABLE_MONITOR_ACTION_KINDS
@@ -36,6 +36,7 @@ from ..utils.hash import sha256_bytes
 from ..utils.markdown import build_citation_snapshots, parse_frontmatter
 from ..utils.path import relative_path
 from ..utils.text import slugify
+from .action_rank import action_priority_rank, action_status_rank
 from .action_state import load_machine_memory_action_state
 from .paths import manual_link_state_path
 
@@ -129,14 +130,6 @@ def collect_machine_memory_action_aging(actions: list[dict[str, Any]]) -> dict[s
         "scheduled": scheduled,
         "inactive": inactive,
     }
-
-
-def action_priority_rank(priority: str) -> int:
-    return {"high": 0, "medium": 1, "low": 2}.get(priority, 9)
-
-
-def action_status_rank(status: str) -> int:
-    return {"proposed": 0, "accepted": 1, "deferred": 2, "resolved": 3, "rejected": 4}.get(status, 9)
 
 
 def action_supports_low_risk_apply(action: dict[str, Any]) -> bool:
@@ -289,15 +282,6 @@ def describe_machine_memory_action(action: dict[str, Any], *, root: Path | None 
         "command_hint": command_hint,
         "apply_ready": "true" if action_supports_low_risk_apply(action_with_policy) else "false",
     }
-
-
-def placeholder_concept_slugs(root: Path) -> list[str]:
-    slugs: list[str] = []
-    for page in sorted((root / "wiki" / "concepts").glob("*.md")):
-        content = page.read_text(encoding="utf-8", errors="replace")
-        if concept_summary_is_placeholder(content):
-            slugs.append(page.stem)
-    return slugs
 
 
 def remove_stale_generated_execution_proposal_pages(root: Path, active_action_ids: set[str]) -> int:
