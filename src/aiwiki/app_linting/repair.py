@@ -615,11 +615,11 @@ def render_repair_backlog(
         lines.append("")
         lines.append("### Rewrite Proposals")
         for proposal in rewrite_proposals[:8]:
-            command = f"advanced review-queue / rewrite-proposal `{proposal['slug']}`"
+            command = f"advanced review-queue — proposal `{proposal['slug']}`"
             if proposal.get("status") == "applied" and str(proposal.get("previous_markdown") or ""):
-                command = f"rewrite-proposal `{proposal['slug']}` (revert via audit receipt)"
+                command = f"library receipt / `advanced alchemy-revert` — proposal `{proposal['slug']}`"
             elif proposal.get("apply_ready"):
-                command = f"rewrite-proposal `{proposal['slug']}` (apply-ready)"
+                command = f"advanced review-queue — proposal `{proposal['slug']}` (operator review)"
             lines.append(
                 f"- `{proposal['target_path']}` | status `{display_rewrite_proposal_status(str(proposal.get('status') or 'proposed'))}`"
                 f" | quality `{proposal.get('quality_score', 0)}`"

@@ -69,7 +69,7 @@ Demo Pack 必须显式出现以下口径：
 
 ### 移动 companion 商业包装
 
-- **Mac / Desktop 是主产品**：完整 ingest、LLM、compile、review、apply/revert 和 desktop drain 都在本机 runtime 上执行。
+- **Mac / Desktop 是主产品**：完整 ingest、LLM、compile、review（`advanced review-page` / `file-back`）、金丹治理（`alchemy-*` / `alchemy-revert`）与 library receipt 语义，以及 desktop drain，都在本机 runtime 上执行。
 - **iPad / iOS 是 companion**：只做只读 summary / reports 和 `.aiwiki/queue` 请求投递；queued 只表示“已提交给桌面端待处理”，不等于执行成功。
 - **不单卖全功能移动炼丹炉**：Demo Pack 口径必须避免暗示 iPad 本地能运行 Python runtime、PDF/repo ingest、LLM worker 或完整治理执行。
 

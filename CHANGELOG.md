@@ -78,7 +78,7 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
 - `scripts/install_user_service.sh` / `scripts/uninstall_user_service.sh`：删除所有 `AIWIKI_INSTALL_DOGFOOD_MATURITY` / `run_dogfood_maturity.sh` 分支，仅保留 `watch` + `nightly`；升级路径上对已存在 `aiwiki-dogfood-maturity.*` unit 做清理兜底。
 - `scripts/verify.sh`：`product-shell-static` 不再调 `check_product_shell_bundle.sh` / `run_product_shell_tests.sh`，只跑 `node --check main.js`。
 - `scripts/verify_target_rules.sh`：删除对应被删脚本路径的 case 分支；移除 `unit` 在 `.coveragerc` / `schema/*.json` / `scripts/*.py` / `src/aiwiki/cli*.py` / `src/aiwiki/*.py` / `tests/*.py` 的推荐（这些路径单独改动不再自动触发全量 pytest）。
-- `scripts/run_launchd_watch.sh`：`watch …` argv 改写为 `advanced watch …`，消除 watcher 启动后 stderr `[deprecated] aiwiki watch is a legacy top-level entry` 噪音行（`run_launchd_nightly.sh` 早已用 `advanced nightly`，未动）。
+- `scripts/run_launchd_watch.sh`：`watch …` argv 改写为 `advanced watch …`，消除 watcher 启动后 stderr `[deprecated] aiwiki watch is a legacy top-level entry` 噪音行（`run_launchd_nightly.sh` 早已用 `advanced run-nightly`，未动）。
 - `AGENTS.md` 验证入口：`scripts` 段补「daily / release」边界说明 + 删除 `unit`（pytest，无 coverage）条目；常用 target 列为 `scripts` / `smoke` / `python-static` / `acceptance` / `cli-smoke` / `product-shell-static` / `all`。
 - `AGENTS.md`：把 "tests/ 下 2509 单元测试作为契约保留" 一段重写为 "tests/ 收缩到 acceptance-only（test_acceptance_loop.py + tests/acceptance/ + tests/fixtures/）"，与 commit 2 的 changes 一致。
 - `docs/`：5 个 Furnace legacy docs → `docs/archive/`（git 自动 rename 100%）：`Market Scan 2026Q2.md` / `Product Shell UX Test Checklist.md` / `Investing Dogfood Plan.md` / `RuntimeClient Mobile Companion Design.md` / `Agentic Debt Autopilot.md`。活跃 docs 从 14 → 9。

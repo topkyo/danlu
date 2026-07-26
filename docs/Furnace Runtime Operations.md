@@ -122,7 +122,7 @@ Unit=aiwiki-nightly.service
 aiwiki advanced run-nightly --compile-limit N    ← deterministic compile + lint + nightly health
 ```
 
-> **W8 产品路径说明**：`run-nightly` 不再读取 `AIWIKI_NIGHTLY_AUTO_*` 做 agent-loop、signals 或 debt LLM 消化。installer 仍可能写入这些 env 键作历史 compat，但对当前 nightly 路径 **无效果**；需要 LLM 或治理 apply 请走显式 `advanced run-ask` / operator CLI。
+> **W8 产品路径说明**：`run-nightly` 不再读取 `AIWIKI_NIGHTLY_AUTO_*` 做 agent-loop、signals 或 debt LLM 消化。installer 仍可能写入这些 env 键作历史 compat，但对当前 nightly 路径 **无效果**；需要 LLM 请走显式 `advanced run-ask`；需要治理写回请走 `advanced review-page` / `file-back` / `alchemy-revert` 或 library receipt 路径（L3 apply/revert 等产品 CLI 已删）。
 
 关键 env（仍生效）：
 - `AIWIKI_AUTONOMY_PROFILE=agentic` —— runtime profile override；新安装 nightly env 默认写入，保证旧 vault 的 legacy policy 文件不会让 receipt 继续按旧 profile 记账
