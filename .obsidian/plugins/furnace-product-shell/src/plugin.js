@@ -52,6 +52,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
     await this.loadShellSummaryFromDisk();
 
+    registerCuratedOutputLeafSync(this);
+
     this.updateStatusBar();
   }
 
