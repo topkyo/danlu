@@ -27,6 +27,10 @@ function execLauncher(plugin, args) {
     clearKnownLlmEnv(env);
     Object.assign(env, buildLlmEnv(plugin.settings));
     Object.assign(env, buildNotifyEnv(plugin.settings));
+    const vaultRoot = String(plugin.repoState.root || "").trim();
+    if (vaultRoot) {
+      env.AIWIKI_VAULT = vaultRoot;
+    }
     const child = spawn(plugin.repoState.launcherPath, launcherArgs, {
       cwd: plugin.repoState.root,
       env,

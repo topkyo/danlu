@@ -45,7 +45,8 @@ _aiwiki_pick_python() {
 AIWIKI_PYTHON_BIN="$(_aiwiki_pick_python)"
 
 PLUGIN_DATA="$TARGET_ROOT/.obsidian/plugins/furnace-product-shell/data.json"
-if [ -f "$PLUGIN_DATA" ]; then
+# Product Shell injects AIWIKI_LLM_* via spawn env; do not replace with stale data.json.
+if [ -f "$PLUGIN_DATA" ] && [ -z "${AIWIKI_LLM_BACKEND:-}" ]; then
   for env_name in \
     AIWIKI_LLM_BACKEND AIWIKI_LLM_MODEL AIWIKI_MODEL_FALLBACK \
     AIWIKI_DEEPSEEK_API_KEY AIWIKI_DEEPSEEK_BASE_URL \
