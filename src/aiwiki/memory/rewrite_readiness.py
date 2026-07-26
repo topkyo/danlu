@@ -9,7 +9,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ..utils.hash import sha256_bytes
 from ..utils.markdown import parse_frontmatter
+
+
+def concept_rewrite_proposal_digest(candidate_markdown: str) -> str:
+    if not candidate_markdown:
+        return ""
+    return sha256_bytes(candidate_markdown.encode("utf-8"))
 
 
 def _validate_rewrite_candidate_markdown(

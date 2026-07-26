@@ -6,11 +6,12 @@ from pathlib import Path
 from typing import Any
 
 from ..content.io import preserved_section
-from ..execution.alchemy_helpers import ELIXIR_DIR
 from ..state.constants import DEFAULT_PROTOCOL
 from ..state.manifest import load_manifest
 from ..utils.markdown import analyze_citation_snapshots, parse_frontmatter, strip_frontmatter
 from ..utils.text import tokenize
+
+ELIXIR_DIR = "wiki/elixirs"
 
 
 def _empty_term_bucket() -> dict[str, set[str]]:

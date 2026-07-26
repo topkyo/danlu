@@ -23,3 +23,11 @@ def concept_rewrite_proposal_page_path(root: Path, slug: str) -> Path:
 
 def concept_rewrite_state_path(root: Path) -> Path:
     return root / ".aiwiki" / "state" / "concept-rewrite-proposals.json"
+
+
+def execution_receipt_history_path(root: Path) -> Path:
+    return root / ".aiwiki" / "state" / "execution-receipts.jsonl"
+
+
+def execution_policy_log_path(root: Path) -> Path:
+    return root / ".aiwiki" / "state" / "execution-policy-decisions.jsonl"

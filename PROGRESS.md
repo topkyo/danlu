@@ -14,6 +14,8 @@
 
 ## 当前动态
 
+- 2026-07-26 (**结构债 memory↛execution 清零**)：SoT=`memory` 不得 import `execution`。五刀：digest→`rewrite_readiness`；`ELIXIR_DIR` 本地常量；`action_policy` + `execution_audit_io` + path helpers 下沉 memory；`policy`/`repair_plan` re-export；dry-run rotate 内联。`rg memory→execution` 空；acceptance 24 + llm 79 PASS。
+
 - 2026-07-26 (**结构债 Knife C**)：断 `execution_surfaces → repair_plan` 跨层边——rewrite readiness 三函数迁入 `memory/rewrite_readiness.py`；`repair_plan` re-export；surfaces 直引 memory。
 
 - 2026-07-26 (**结构债第一刀**)：Knife B 断 `content↔memory` 环（`action_rank.py` + `placeholder_concept_slugs` 迁入 concepts；`action_core` re-export）；Knife A 外提 `machine_memory_auto_resolution.py`（actions 1382→1001）。`verify` python-static/smoke/acceptance PASS。
