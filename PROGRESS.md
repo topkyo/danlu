@@ -14,6 +14,8 @@
 
 ## 当前动态
 
+- 2026-07-26 (**结构债 audit 簇外提**)：`collect/build/render` execution audit → `memory/execution_audit_surfaces.py`（~400 LOC）；`execution_surfaces` 1003→619，re-export 保持调用方零改。
+
 - 2026-07-26 (**结构债 memory 加载隔离**)：`content/io` + `content/material` 对 `execution.history` 改为函数内 lazy；`import memory.execution_surfaces|action_core` 时 `sys.modules` 无 `aiwiki.execution.*`。
 
 - 2026-07-26 (**结构债 memory↛execution 清零**)：SoT=`memory` 不得 import `execution`。五刀：digest→`rewrite_readiness`；`ELIXIR_DIR` 本地常量；`action_policy` + `execution_audit_io` + path helpers 下沉 memory；`policy`/`repair_plan` re-export；dry-run rotate 内联。`rg memory→execution` 空；acceptance 24 + llm 79 PASS。
