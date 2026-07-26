@@ -35,7 +35,7 @@
 - build + 同步 Product Shell 到 dogfood vault：`bash scripts/sync_product_shell_to_vault.sh`（`build.sh` 重建 `main.js`，并把 vault 端的 `main.js` / `styles.css` 重新 link 到仓库；`manifest.json` / `data.json` 保持本地不动；vault 路径可被 `FURNACE_DOGFOOD_VAULT` 覆盖）
 - 常用 target：`scripts`、`smoke`、`python-static`、`acceptance`、`llm-integration`、`cli-smoke`、`product-shell-static`、`all`
   - 日常：`scripts` + `python-static` + `smoke`（无 coverage，单次常 ~25s）；用 `bash scripts/verify_target_rules.sh` 按改动路径自动选
-  - `all` 走 `scripts + product-shell-static + cli-smoke + smoke + python-static + acceptance + llm-integration`（常约 1–2 min，**含 acceptance 24 fixture replay + Product Shell Jest 200 + LLM integration 79**）；不含 coverage gate
+  - `all` 走 `scripts + product-shell-static + cli-smoke + smoke + python-static + acceptance + llm-integration`（常约 1–2 min，**含 acceptance 24 fixture replay + Product Shell Jest 206 + LLM integration 79**）；不含 coverage gate
 - 按改动路径建议 target：`bash scripts/verify_target_rules.sh`
 - 已移除：`cache_benchmark.py` / `compile_benchmark.py` / `dogfood_maturity_gate.py` / `agos9_*.sh` 等耗时辅助脚本、`verify.sh` 内的 `coverage run pytest` 段（释放 12 min）以及旧 bundle drift gating；`product-shell-static` 现为 `node --check` + Jest hard-gate（可用 `AIWIKI_SKIP_PRODUCT_SHELL_JS_TESTS=1` 紧急旁路）；脚本侧只保留 vault/runtime/install/uninstall 核心
 - 文档一致性：`bash scripts/docs_consistency_check.sh`
@@ -115,7 +115,7 @@
 4. [已落地] 删除纯 facade 文件：`app_content.py`、`app_render.py`、`app_surfaces.py`、`app_memory_surfaces.py`；`app_memory.py`（Round 8 commit `10a6186`）；`app.py` 缩成极薄入口。
 5. compat oracle（如 `tests/test_execution_compat.py`）与仅断言 re-export 的单测：删除或改成 owner 契约测试；[Round 3 已删除 144 pytest 单元测试 / 退休 `tests/unit/`]。
 6. [已落地 2026-07-18 commit `145276a`] legacy hub 下沉：CLI 顶层只保留 `drop/today/advanced`；**无**顶层旧命令 argv rewrite（`cli/legacy_argv.py` 已删除）。
-7. [已落地 2026-07-18 P2-9 hub 削薄彻底完成] 全部 `app_*` hub + 4 个巨石一次性削薄至零（facade→删除策略）。**`app_*` 文件归零**。现行验证口径见上文验证入口（acceptance **24** + llm-integration **79** + Jest **200**）。
+7. [已落地 2026-07-18 P2-9 hub 削薄彻底完成] 全部 `app_*` hub + 4 个巨石一次性削薄至零（facade→删除策略）。**`app_*` 文件归零**。现行验证口径见上文验证入口（acceptance **24** + llm-integration **79** + Jest **206**）。
 
 ### 禁止
 

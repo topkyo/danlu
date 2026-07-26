@@ -14,7 +14,11 @@
 
 ## 当前动态
 
-- 2026-07-26 (**SoT 计数 + dogfood 收口**)：verify 实测对齐 acceptance **24** / llm **79** / Jest **200**；沉淀/金丹 Properties（Obsidian 1.12 leaf class）CDP PASS；WS2 wheel 本地验收通过（未 upload）；`.aiwiki/state` 外置防 iCloud 分叉。下一刀仍为 EULA/PyPI upload/Demo 媒体。
+- 2026-07-26 (**结构债第一刀**)：Knife B 断 `content↔memory` 环（`action_rank.py` + `placeholder_concept_slugs` 迁入 concepts；`action_core` re-export）；Knife A 外提 `machine_memory_auto_resolution.py`（actions 1382→1001）。`verify` python-static/smoke/acceptance PASS。
+
+- 2026-07-26 (**SoT 卫生**)：Jest 现行实测 **206**（文档曾写 200）；`verify.sh` usage 17/78 → **24/79**；AGENTS/Scorecard/DEVELOPER/Post-Cleanup/PROGRESS 对齐。
+
+- 2026-07-26 (**SoT 计数 + dogfood 收口**)：verify 实测对齐 acceptance **24** / llm **79** / Jest **200**（后同日对齐 **206**）；沉淀/金丹 Properties（Obsidian 1.12 leaf class）CDP PASS；WS2 wheel 本地验收通过（未 upload）；`.aiwiki/state` 外置防 iCloud 分叉。下一刀仍为 EULA/PyPI upload/Demo 媒体。
 
 - 2026-07-24 (**文档对齐 + dogfood/质保维护**)：Scorecard/AGENTS/Post-Cleanup 计数对齐 acceptance **18** / llm **78** / Jest **189**；alchemy CLI 位置参数与 `--elixir-id` 互通；Today 报告卡无 pending 也可再生成/编辑（读报告 `query` + sticky）。下一轮指针见文末「会话交接」。
 
@@ -87,7 +91,7 @@
 |---|---|---|
 | P0 | Commercial go-live：真实邮箱、询价决策、商业 EULA | **done（草案）**：`topkyoxp@gmail.com` + `EULA.md`；正式法律签收仍 open |
 | P1 | 分发闭环：`pip install` 或 INSTALL 明确预览边界；版本与 tag 对齐 | **partial**：`-e .` + 本地 wheel（`build_release_wheel.sh`）+ v0.4.0；**PyPI upload 待运营** |
-| P1 | Jest hard-gate + env-coupled 测试隔离 | **done / moot**：Jest **200** hard-gate；env unit 已退 |
+| P1 | Jest hard-gate + env-coupled 测试隔离 | **done / moot**：Jest **206** hard-gate；env unit 已退 |
 | P1 | Alchemy materialize 等裸 `write_text` → `atomic_write_text` | **done**（ask/alchemy helpers；execution+runner ask 热路径续扫） |
 | P2 | Scorecard hub 行数刷新；PROGRESS 活跃 round 切档卫生 | **done 2026-07-22**：Round 长尾切档 archive snapshot |
 | P2 | Demo Pack 截图/录屏资产（fixture + checklist 已交付） | checklist done；媒体可选待补 |
@@ -104,12 +108,13 @@
 ```text
 说人话。先读 PROGRESS.md 头条 + docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md。
 
-已完成：沉淀/金丹 FM 瘦身 + Properties leaf sync（CDP PASS）；state 外置防 iCloud 分叉；WS2 本地 wheel；verify 计数 24/79/200。
+已完成：沉淀/金丹 FM 瘦身 + Properties leaf sync（CDP PASS）；state 外置防 iCloud 分叉；WS2 本地 wheel；SoT 计数 24/79/206。
 
 下一刀优先（择一）：
 1) Commercial：EULA 法律签收 / twine upload + tag v0.4.0 / Demo 9 PNG
 2) WS6 dogfood 自然观测（不伪造 Live PASS）
-3) 勿宣称 AgentOS 9 live / 诚实可售
+3) 结构债第一刀（断 content↔memory 环 或 外提 machine_memory auto-resolution）
+4) 勿宣称 AgentOS 9 live / 诚实可售
 
 Vault：iCloud「炼丹炉」；state → ~/Library/Application Support/aiwiki/dogfood-state；CDP：9228；验证：bash scripts/verify.sh all
 ```
