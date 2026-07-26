@@ -100,7 +100,7 @@ def render_execution_proposal_page(proposal: dict[str, Any], *, compiled_at: str
     if proposal.get("command_hint"):
         lines.append(f"- Suggested next step: `{proposal['command_hint']}`")
     else:
-        lines.append("- 当前没有直接命令提示；请查看 review-queue 或 execution proposal 页面。")
+        lines.append("- 当前没有直接命令提示；请查看 advanced review-queue 或 execution proposal 页面。")
     safe_preview = proposal.get("safe_apply_preview")
     lines.extend(["", "## Safe Apply Preview"])
     if not safe_preview:
@@ -218,7 +218,7 @@ def render_concept_quality(memory: dict[str, Any]) -> str:
             lines.append(f"  - strategy: {candidate.get('rewrite_strategy', 'n/a')}")
     lines.extend(["", "## Rewrite Proposals"])
     if not rewrite_state.get("proposals"):
-        lines.append("- 当前还没有 concept rewrite proposal。先运行 `compile` 或等待下一次 rewrite proposal 生成。")
+        lines.append("- 当前还没有 concept rewrite proposal。先运行 `advanced compile` 或等待下一次 rewrite proposal 生成。")
     else:
         for proposal in rewrite_state.get("proposals", [])[:10]:
             lines.append(
@@ -533,7 +533,7 @@ def render_concept_rewrite_proposal_page(proposal: dict[str, Any]) -> str:
         f"- Revert note: {proposal.get('revert_note', '') or 'none'}",
         "",
         "## Commands",
-        "- Review queue: `PYTHONPATH=src python3 -m aiwiki.cli --root . review-queue --json`",
+        "- Review queue: `PYTHONPATH=src python3 -m aiwiki.cli --root . advanced review-queue --json`",
         f"- Proposal page: `wiki/rewrite-proposals/{proposal['slug']}.md`",
         "",
         "## Proposed Markdown",
@@ -547,7 +547,7 @@ def render_concept_rewrite_proposal_page(proposal: dict[str, Any]) -> str:
             ]
         )
     else:
-        lines.append("- 当前还没有生成候选重写内容。先运行 `compile`。")
+        lines.append("- 当前还没有生成候选重写内容。先运行 `advanced compile`。")
     return "\n".join(lines) + "\n"
 
 

@@ -124,7 +124,7 @@ def start_compile_context(root: Path) -> CompileContext:
     previous_manifest = load_manifest(root)
     manifest = sync_manifest_with_raw(root)
     entries: list[dict[str, Any]] = manifest["entries"]
-    # Preserve the long-lived test seam that patches `aiwiki.app_compile.utc_now`.
+    # Preserve the long-lived test seam that patches `aiwiki.utils.time.utc_now`.
     from ..utils.time import utc_now
 
     return CompileContext(

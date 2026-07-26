@@ -34,7 +34,7 @@ updated_at: "2026-07-23"
 - **UI 不新增 SoT 字段**：本文档不引入任何新的事实字段、schema 字段或 runtime contract。
 - **不扩 `shell-summary`**：§6 已论证按日分组与通知均可在插件本地 settings / 内存或 Notifier 侧闭环；**不做**插件内未读视觉态、不新增 runtime 未读字段。
 - **不隐式调度 backend**：UI 可以显示显式选择的 backend / model，但不得替用户自动切换。
-- **不绕过审计闭环**：UI 层触发的执行仍必须走既有 CLI、receipt、review / apply / revert / audit 边界。
+- **不绕过审计闭环**：UI 层触发的执行仍必须走既有 CLI、receipt、`advanced review-page` / `file-back` 与 library receipt 语义（L3 apply/revert 等产品 CLI 已删）。
 
 ## 1. Executive Summary
 
@@ -236,7 +236,7 @@ M-PS.1 实施后，Product Shell 仍只作为 surface / trigger 运行；Notifie
 - **Provenance**：报告、简报和输出卡片只展示已有 provenance 的 runtime 产出，不制造无来源结论。
 - **Deterministic baseline**：UI 重写不改变 backend / model selection；Notifier 只接 report-generated hook，成功无审计副作用，失败仅追加 `notify_failed` audit，不改变 report generation exit code。
 - **Backend 显式手动选择**：UI 不做 hidden backend routing；backend / model 切换仍由操作者显式选择。
-- **Review-apply-revert-audit**：治理仍走 CLI / wiki indexes 的可审计、可回滚路径；W8 起 Advanced 抽屉仅 diagnostics/history，不含 Review/Execution Center 视图。
+- **Review-page / file-back / receipt-audit**：治理仍走 `advanced review-page`、`file-back` 与 wiki indexes 的可审计、可回滚路径；W8 起 Advanced 抽屉仅 diagnostics/history，不含 Review/Execution Center 视图。
 - **Advanced 抽屉不删除 CLI 能力**：System Status / LLM Health / Repair Backlog 等 operator 面仍可通过 CLI / wiki indexes 访问；W8 起 Product Shell **不再注册** Review Center / Execution Center / Recent Runs 视图。
 - **同步审查要求**：当 `docs/Furnace Agent Architecture.md` §3 的不变量发生变化时，本文档必须同步审查。
 

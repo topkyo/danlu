@@ -71,6 +71,14 @@ emit_targets_for_path() {
       echo python-static
       return 0
       ;;
+    tests/test_acceptance_loop.py|tests/acceptance/*|tests/acceptance/**/*)
+      echo acceptance
+      return 0
+      ;;
+    tests/test_llm_integration.py)
+      echo llm-integration
+      return 0
+      ;;
     tests/*.py|tests/*/*.py|tests/*/*/*.py)
       echo python-static
       return 0

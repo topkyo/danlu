@@ -1,7 +1,6 @@
 """Machine-memory status / health / index / actions / repair-plan renderers.
 
-EP-017B step 3: extracted from app_memory_surfaces.py. Re-exported via the
-facade at aiwiki.app_memory_surfaces for backward compatibility.
+EP-017B step 3: extracted from app_memory_surfaces.py.
 """
 
 from __future__ import annotations
@@ -190,12 +189,12 @@ def render_machine_memory_index(memory: dict[str, Any]) -> str:
         "",
         "## Action Workflow",
         f"- 状态文件：`{health.get('action_state_path', '.aiwiki/state/machine-memory-actions.json')}`",
-        "- 通过 `review-queue --bucket mm_actions` 查看 machine-memory action 状态。",
+        "- 通过 `advanced review-queue --bucket mm_actions` 查看 machine-memory action 状态。",
         "- nightly 会继续追踪 action 的 occurrences、aging 和 escalation。",
         "- repair 计划页：`wiki/indexes/machine-memory-repair-plan.md`",
         "",
         "## 查询加速",
-        "- `run-ask` 先用机器记忆 term index 做第一轮查询规划。",
+        "- `advanced run-ask` 先用机器记忆 term index 做第一轮查询规划。",
         "- source-to-concept 和 concept-to-concept 边会在组装 prompt 前扩展候选范围。",
         "- 查询规划还会提取最短图路径和触达分量，支持更深的检索。",
         "- 图谱导出主要给 agent / tooling 使用，不建议直接人工修改。",

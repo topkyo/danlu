@@ -146,7 +146,7 @@
     "relevant_actions": [
       {
         "apply_ready": "false",
-        "command_hint": "PYTHONPATH=src python3 -m aiwiki.cli --root . review-queue --bucket mm_actions --json",
+        "command_hint": "PYTHONPATH=src python3 -m aiwiki.cli --root . advanced review-queue --bucket mm_actions --json",
         "execution_policy": "triage",
         "focus_score": 0,
         "id": "refresh-citation-snapshots-compounding-thesis",
@@ -164,7 +164,7 @@
       },
       {
         "apply_ready": "false",
-        "command_hint": "PYTHONPATH=src python3 -m aiwiki.cli --root . review-queue --bucket mm_actions --json",
+        "command_hint": "PYTHONPATH=src python3 -m aiwiki.cli --root . advanced review-queue --bucket mm_actions --json",
         "execution_policy": "triage",
         "focus_score": 0,
         "id": "singleton-concept-compounding",

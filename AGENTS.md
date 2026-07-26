@@ -39,7 +39,7 @@
 - 按改动路径建议 target：`bash scripts/verify_target_rules.sh`
 - 已移除：`cache_benchmark.py` / `compile_benchmark.py` / `dogfood_maturity_gate.py` / `agos9_*.sh` 等耗时辅助脚本、`verify.sh` 内的 `coverage run pytest` 段（释放 12 min）以及旧 bundle drift gating；`product-shell-static` 现为 `node --check` + Jest hard-gate（可用 `AIWIKI_SKIP_PRODUCT_SHELL_JS_TESTS=1` 紧急旁路）；脚本侧只保留 vault/runtime/install/uninstall 核心
 - 文档一致性：`bash scripts/docs_consistency_check.sh`
-- `tests/` 范围已收缩到 acceptance-only + llm-integration：`tests/test_acceptance_loop.py` + `tests/acceptance/` + `tests/fixtures/` + `tests/test_llm_integration.py`（79 条 LLM 集成测试，mock backends），由 `bash scripts/verify.sh` 默认 `all` 跑 **24** acceptance tests + **79** llm-integration tests（含 plan/execute / CJK tokenize / distill synthesizer / GitHub raw rewrite / path false-positive 契约）；旧 144 个 pytest 单元测试文件（118 顶层 + 26 `tests/unit/`，约 56k LOC）作为 contract 已 retire，`coverage>=7.6,<8` 已从 dev deps 中移除
+- `tests/` 仅 acceptance + llm-integration：`tests/test_acceptance_loop.py` + `tests/acceptance/` + `tests/fixtures/` + `tests/test_llm_integration.py`；`verify.sh all` 跑 **24** acceptance + **79** llm-integration（含 plan/execute / CJK / distill / GitHub raw / path 契约）。无 `tests/unit/`，无 coverage gate
 
 ## 风格
 
@@ -107,15 +107,11 @@
 **定案（最优解）**：纯 re-export facade 对产品运行几乎无价值，只服务历史 import / `patch("aiwiki.app_*")` 习惯。  
 **禁止**“再迁一批（可选）”式半迁移；要做就一轮做完，不留中间态尾巴。
 
-### 彻底做干净 = 一次做完这些，不做中间态
+### 已落地（勿回退）
 
-1. 生产与测试全部改直引 owner（`content.*` / `render.*` / `memory.*` / `execution.*` / `compile.*`）。
-2. [已落地] 旧 `patch("aiwiki.app_content|app_render|app_surfaces|app_memory_surfaces|app_compile.<lazy>")` 改到真实 owner 模块 — 上述 facade 已在 prior rounds 整体删除，新 patch 只剩 owner module namespace。
-3. 去掉 owner 为了 patch 又绕回 facade 的 `_facade` 回环（如 `content/*`、`memory/graph.py`）— `[已闭环 via commit 29ed655]` `memory/graph.py → app_memory` facade回环已拆。
-4. [已落地] 删除纯 facade 文件：`app_content.py`、`app_render.py`、`app_surfaces.py`、`app_memory_surfaces.py`；`app_memory.py`（Round 8 commit `10a6186`）；`app.py` 缩成极薄入口。
-5. compat oracle（如 `tests/test_execution_compat.py`）与仅断言 re-export 的单测：删除或改成 owner 契约测试；[Round 3 已删除 144 pytest 单元测试 / 退休 `tests/unit/`]。
-6. [已落地 2026-07-18 commit `145276a`] legacy hub 下沉：CLI 顶层只保留 `drop/today/advanced`；**无**顶层旧命令 argv rewrite（`cli/legacy_argv.py` 已删除）。
-7. [已落地 2026-07-18 P2-9 hub 削薄彻底完成] 全部 `app_*` hub + 4 个巨石一次性削薄至零（facade→删除策略）。**`app_*` 文件归零**。现行验证口径见上文验证入口（acceptance **24** + llm-integration **79** + Jest **206**）。
+- 生产/测试直引 owner（`content.*` / `render.*` / `memory.*` / `execution.*` / `compile.*`）；根级 `app_*.py` 与纯 facade **归零**。
+- CLI 顶层仅 `drop/today/advanced`；无顶层旧命令 argv rewrite。
+- 验证口径见上文（acceptance **24** + llm-integration **79** + Jest **206**）。
 
 ### 禁止
 
@@ -168,10 +164,9 @@
 
 面向后续 cloud agent（假定 update script 已跑过、依赖已就绪）的运行态注意事项。标准命令见 `README.md`（`## 验证` / `## 开发说明`）和 `scripts/verify.sh`，这里只记非显而易见的坑。
 
-- 技术栈是 stdlib-first，`pyproject.toml` 里 `dependencies = []`；开发依赖 `ruff` + `pytest` (+ `beautifulsoup4` 可选)（`[project.optional-dependencies].dev`）。系统 Python 有 PEP 668 限制，pip 安装用 `--break-system-packages`（update script 已处理）。`coverage>=7.6,<8` 是 dev deps 旧条目，post 2026-07-15 已从 `[project.optional-dependencies].dev` 移除（因 `verify.sh all` 不再走 `coverage run pytest`，`.coveragerc` 同次 commit 删除）。
+- 技术栈是 stdlib-first，`pyproject.toml` 里 `dependencies = []`；开发依赖 `ruff` + `pytest` (+ `beautifulsoup4` 可选)。系统 Python 有 PEP 668 限制，pip 安装用 `--break-system-packages`（update script 已处理）。
 - `bs4`（`beautifulsoup4`）是可选 HTML 抽取增强：不装时 `drop-url` 退化成 `regex-fallback`。update script 已一并安装。
-- 入口：`bash scripts/verify.sh [target]`（所有 target 走 `scripts + product-shell-static + cli-smoke + smoke + python-static + acceptance + llm-integration` 7 步，不含 `coverage`/`unittest discover`）；单跑 acceptance：`PYTHONPATH=src python3 -m pytest tests/test_acceptance_loop.py`；单跑 LLM 集成：`bash scripts/verify.sh llm-integration`；跑应用 `PYTHONPATH=src python3 -m aiwiki.cli --root <vault> <cmd>`。注：`tests/` 2026-07-15 后收缩到 acceptance-only + `tests/test_llm_integration.py`（79 条 LLM 集成，含 2026-07-19/07-20 契约测 + multipart content parse）；云端 agent 若有 pytest 单元测试脚本指向具体 `tests/test_*.py`，已不再成立，统一改成 `tests/test_acceptance_loop.py`。
-- 应用是纯 CLI，没有需要常驻的 web/GUI 服务；Obsidian 只是前端，cloud 里跑不起来，不用去起 server。
-- 跑应用时用临时 `--root`（如 `/tmp/furnace-demo`）做冒烟，别直接写仓库里已提交的 `raw/wiki/output`（`single writer, many readers`）。确定性链路 `layout -> drop-note -> compile -> lint` 完全离线可跑；**LLM 路径**需显式 `AIWIKI_LLM_BACKEND` 与凭据，入口为 `run-ask`、universal `drop` planner（及 Shell 触发的等价 CLI）；`AIWIKI_LLM_PLANNER=0` / `AIWIKI_LLM_DISTILL=0` 可关闭对应 LLM 侧门。无默认 `run-compile` 硬要求。
-- 历史（已删）：`test_obsidian_workspace.test_workspace_defaults_open_home_and_furnace_center` / `test_drop.test_fetch_url_raises_when_no_text_can_be_recovered` 等 pytest 单测在 2026-07-15 已随 144 个 `tests/test_*.py` 一起退役；所述环境耦合故障在 acceptance-only 路径下不再复现，遇到类似问题请翻对应 src module（`src/aiwiki/obsidian/workspace.py`、`src/aiwiki/drop.py`）直接调 helper，或改 acceptance fixture。
+- 入口：`bash scripts/verify.sh [target]`；单跑 acceptance：`PYTHONPATH=src python3 -m pytest tests/test_acceptance_loop.py`；单跑 LLM：`bash scripts/verify.sh llm-integration`；跑应用 `PYTHONPATH=src python3 -m aiwiki.cli --root <vault> <cmd>`。pytest 只跑上述两个文件，勿再找 `tests/unit/`。
+- 应用是纯 CLI，没有需要常驻的 web/GUI 服务；Obsidian 只是前端，云端跑不起来，不用起 server。
+- 跑应用时用临时 `--root`（如 `/tmp/furnace-demo`）做冒烟，别直接写仓库里已提交的 `raw/wiki/output`（`single writer, many readers`）。确定性链路 `layout -> drop-note -> compile -> lint` 完全离线可跑；**LLM 路径**需显式 `AIWIKI_LLM_BACKEND` 与凭据；`AIWIKI_LLM_PLANNER=0` / `AIWIKI_LLM_DISTILL=0` 可关对应侧门。
 

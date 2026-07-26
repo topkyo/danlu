@@ -18,7 +18,7 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
 - URL 投料幂等：`normalize_ingest_url` + manifest 短路；同规范化 URL 默认 `reused` 不新建 `-N`；`drop url|plan --refresh` 覆盖同 path。
 - Universal drop **plan/execute**：`src/aiwiki/input_planner.py`（LLM 分类 Plan，不写 `raw/`）+ `src/aiwiki/executor.py`（deterministic 原样落盘 + SSRF `safe_fetch` + 事务回滚）；CLI `drop plan <payload>`；默认 `drop <payload>` 走 planner（`AIWIKI_LLM_PLANNER=0` 关闭）。
 - Alchemy distill 可选 LLM body synthesizer（`runner/alchemy.py` 编排层注入；mutation 层仍 deterministic；`AIWIKI_LLM_DISTILL=0` 关闭）。
-- `tests/test_llm_integration.py`：现行 **76** 条（含 ingest 幂等 / refresh、plan/execute、CJK、path containment、distill synthesizer）；历史起点为 42 条。
+- `tests/test_llm_integration.py`：现行 **79** 条（含 ingest 幂等 / refresh、plan/execute、CJK、path containment、distill synthesizer）；历史起点为 42 条。
 - `.pre-commit-config.yaml`：pre-commit hook（ruff check + ruff-format check + check-merge-conflict / check-yaml / check-added-large-files 500KB），轻量 gate；完整验证仍靠 `bash scripts/verify.sh`。
 - `src/aiwiki/utils/` 子包：`io` / `security` / `markdown` / `text` / `hash` / `time` / `path` / `json_utils` / `audit`（原 `app_utils.py` 下沉）。
 - `src/aiwiki/state/` + owner 子包：`io` / `constants` / `manifest` / `cache` / `compile/state` / `compile/build` / `content/material` / `content/archive` / `content/rewrite` / `execution/history` / `memory/action_state` / `memory/state` / `planner/state`（原 `app_state.py` 下沉）。
@@ -28,14 +28,14 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
 ### Changed
 - `utils/text.tokenize`：CJK Lucene-style bigram 切分（拉丁不变），修复中文检索/concept ranking 静默失效。
 - `drop/repo` / `drop/url` / `protocol/runtime_config.CONFLICT_SIGNAL_PAIRS`：扩后缀、正文选择器与中英冲突信号对。
-- Hub decomposition（用户显式覆盖原 AGENTS.md 「legacy hub 另一条搬迁线」定案）：`app_utils.py` / `app_state.py` 删除，函数体原样下沉到 `utils/` + `state/` + owner 子包；`content/memory.py` 1350 行拆到 4 个 owner 模块，缩为仅含 2 个 A 域辅助函数；`app_compile.py` 587→18 行（ranking 迁到 `compile/ranking`）。约 165 文件 import 更新，测试 patch target 同步迁移。无 re-export compat 保留。
+- Hub decomposition（用户显式覆盖原 AGENTS.md 「legacy hub 另一条搬迁线」定案）：`app_utils.py` / `app_state.py` / `app_compile.py` 删除，函数体原样下沉到 `utils/` + `state/` + owner 子包；`content/memory.py` 1350 行拆到 4 个 owner 模块，缩为仅含 2 个 A 域辅助函数；原 `app_compile` ranking 迁至 `compile/ranking.py`。约 165 文件 import 更新，测试 patch target 同步迁移。无 re-export compat 保留。
 - `compile/__init__.py` 改惰性 `__getattr__` 暴露 `compile_wiki`，解决 hub 下沉后的循环 import。
-- `AGENTS.md` L115 CLI 入口描述修复：`drop/today/metrics/advanced` → `drop/today/advanced`（`metrics` 经 argv rewrite 作为 `advanced` 子命令）。
+- `AGENTS.md` L115 CLI 入口描述修复：顶层仅 `drop/today/advanced`；`metrics` / `file-back` / `review-page` / `compile` 等 operator 命令仅经 `advanced` 子命令（非顶层）。
 - `src/aiwiki/trace.py` docstring 资产种类数 `6 类` → `9 类`。
 - `execution/{archive,lifecycle,ask,runtime_surfaces,concept_rewrite}.py` stale docstring 修复：删除对已移除 `_LAZY_OWNERS` / `app_compile.utc_now` 的引用。
-- verify 现行口径：acceptance **16** + llm-integration **76** + Jest **174**（历史 24/42/60/65 为沿革快照）。
+- verify 现行口径：acceptance **24** + llm-integration **79** + Jest **206**（历史 16/17/18/25、42/65/76/78、174/189 等为沿革快照）。
 - Capability follow-up：CJK concept/slug/stopwords；`fetch_raw` fail-loud；local-path fail-loud + containment；distill LLM outside write lock + `llm_invoked` receipt；GitHub blob/tree planner few-shot。
-- Rescan follow-up：见 Fixed；verify llm-integration **76**。
+- Rescan follow-up：见 Fixed；verify llm-integration **79**。
 
 ### Removed
 - `src/aiwiki/app_utils.py`：已下沉到 `utils/` 子包（1200 行/52 符号/89 文件引用）。
@@ -68,17 +68,17 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
 - `tests/`：删除 `test_compile_benchmark_smoke.py` / `test_long_window_proof_probe.py` / `test_local_worktree.py` / `test_product_shell_smoke.py` / `test_dogfood_maturity_gate.py` / `test_cache_benchmark_script_outputs_status_and_timings`；`test_app_runtime.py` / `test_app_misc.py` / `test_deploy_defaults.py` 同步剪除 dogfood maturity / product shell smoke 相关断言。
 - `tests/fixtures/acceptance/M6.1b/README.md`：refresh 工具条目从「脚本调用」改为「手动 hash 重命名」，因为 refresh 脚本已删除。
 - `scripts/verify.sh` 整个 `unit` target（含 `verify_unit()` 函数 + dispatch case + usage help 一行）删除；与 `all` 唯一差别是 coverage overhead，`unit` 是 `all` 的"裸测版本"，被证实为冗余单独入口。
-- `scripts/verify.sh` 中 `all|full)` 后串行落点里 `coverage erase + coverage run pytest + coverage report` 三段（约 12 min）一并删除；`.coveragerc` 同步删，`pyproject.toml` 中 `coverage>=7.6,<8` dev 依赖同步移除。`verify.sh all` 退化为 `scripts + product-shell-static + cli-smoke + smoke + python-static + acceptance`（≈18 s daily-feasible；**acceptance 17** 为 2026-07-15 historical 口径；现行见 Unreleased：**25**）。
+- `scripts/verify.sh` 中 `all|full)` 后串行落点里 `coverage erase + coverage run pytest + coverage report` 三段（约 12 min）一并删除；`.coveragerc` 同步删，`pyproject.toml` 中 `coverage>=7.6,<8` dev 依赖同步移除。`verify.sh all` 退化为 `scripts + product-shell-static + cli-smoke + smoke + python-static + acceptance + llm-integration`（无 coverage gate；**acceptance 17** 为 2026-07-15 historical 口径；现行见 Unreleased：**24** / llm-integration **79** / Jest **206**）。
 - `scripts/verify_target_rules.sh`：`.coveragerc` 路径 case 一并删除（文件已无）。
-- `tests/` 收缩到 acceptance-only：删除 118 个顶层 `tests/test_*.py`（除 `tests/test_acceptance_loop.py`） + 26 个 `tests/unit/test_*.py`，合计 144 个 pytest 单元测试文件 / 约 56k LOC 退役。`tests/` 现仅含 `tests/test_acceptance_loop.py`（acceptance loop runner）+ `tests/acceptance/`（`case_runner.py` / `llm_replay.py` / `__init__.py`）+ `tests/fixtures/`（259 个 acceptance fixture），由 `bash scripts/verify.sh all` 默认跑 acceptance replay（**17** 为 2026-07-15 historical；**24**/llm-integration **42** 为 2026-07-18/19 快照；现行 **25** + llm-integration **65**）。`tests/unit/` 整目录也从 git 跟踪中清空。
+- `tests/` 收缩到 acceptance-only + llm-integration：删除 118 个顶层 `tests/test_*.py`（除 `tests/test_acceptance_loop.py` / `tests/test_llm_integration.py`） + 26 个 `tests/unit/test_*.py`，合计 144 个 pytest 单元测试文件 / 约 56k LOC 退役。`tests/` 现含 `tests/test_acceptance_loop.py` + `tests/test_llm_integration.py` + `tests/acceptance/` + `tests/fixtures/`，由 `bash scripts/verify.sh all` 默认跑 acceptance replay + llm-integration（**17** 为 2026-07-15 historical；**18**/llm-integration **78**/Jest **189** 等为中间快照；现行 **24** + llm-integration **79** + Jest **206**）。`tests/unit/` 整目录也从 git 跟踪中清空。
 - `scripts/archive/` 整目录删除（5 文件：`dogfood-watch.sh` / `p0_operational_setup.sh` / `p1_p2_gate_review.sh` / `extract_rounds.py` + `README.md`）：它们没有 live 调用者，只在 `docs/archive/` 与 `archive/rounds/` 历史文档中作为 runbook evidence 出现，README 自白为 "new automation should not depend on archived scripts"。
-- **[Round 7 cross-review]**: `tests/fixtures/{planner_log, signals, signals_collector}/` 三个孤立目录共 42 文件（307 LOC）：acceptance/case_runner.py 与 `tests/test_acceptance_loop.py` 全部 case 均不引用此 fixtures，pure 孤立 cleanup，零风险（**17** case 为 historical 口径；现行 **25** acceptance）。
+- **[Round 7 cross-review]**: `tests/fixtures/{planner_log, signals, signals_collector}/` 三个孤立目录共 42 文件（307 LOC）：acceptance/case_runner.py 与 `tests/test_acceptance_loop.py` 全部 case 均不引用此 fixtures，pure 孤立 cleanup，零风险（**17** case 为 historical 口径；现行 **24** acceptance）。
 
 ### Changed
 - `scripts/install_user_service.sh` / `scripts/uninstall_user_service.sh`：删除所有 `AIWIKI_INSTALL_DOGFOOD_MATURITY` / `run_dogfood_maturity.sh` 分支，仅保留 `watch` + `nightly`；升级路径上对已存在 `aiwiki-dogfood-maturity.*` unit 做清理兜底。
 - `scripts/verify.sh`：`product-shell-static` 不再调 `check_product_shell_bundle.sh` / `run_product_shell_tests.sh`，只跑 `node --check main.js`。
 - `scripts/verify_target_rules.sh`：删除对应被删脚本路径的 case 分支；移除 `unit` 在 `.coveragerc` / `schema/*.json` / `scripts/*.py` / `src/aiwiki/cli*.py` / `src/aiwiki/*.py` / `tests/*.py` 的推荐（这些路径单独改动不再自动触发全量 pytest）。
-- `scripts/run_launchd_watch.sh`：`watch …` argv 改写为 `advanced watch …`，消除 watcher 启动后 stderr `[deprecated] aiwiki watch is a legacy top-level entry` 噪音行（`run_launchd_nightly.sh` 早已用 `advanced nightly`，未动）。
+- `scripts/run_launchd_watch.sh`：`watch …` argv 改写为 `advanced watch …`，消除 watcher 启动后 stderr `[deprecated] aiwiki watch is a legacy top-level entry` 噪音行（`run_launchd_nightly.sh` 早已用 `advanced run-nightly`，未动）。
 - `AGENTS.md` 验证入口：`scripts` 段补「daily / release」边界说明 + 删除 `unit`（pytest，无 coverage）条目；常用 target 列为 `scripts` / `smoke` / `python-static` / `acceptance` / `cli-smoke` / `product-shell-static` / `all`。
 - `AGENTS.md`：把 "tests/ 下 2509 单元测试作为契约保留" 一段重写为 "tests/ 收缩到 acceptance-only（test_acceptance_loop.py + tests/acceptance/ + tests/fixtures/）"，与 commit 2 的 changes 一致。
 - `docs/`：5 个 Furnace legacy docs → `docs/archive/`（git 自动 rename 100%）：`Market Scan 2026Q2.md` / `Product Shell UX Test Checklist.md` / `Investing Dogfood Plan.md` / `RuntimeClient Mobile Companion Design.md` / `Agentic Debt Autopilot.md`。活跃 docs 从 14 → 9。
@@ -89,7 +89,7 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
 - `PROGRESS.md` head：删除 R68 结构 v2 备注（`结构 v2` 自 2026-07 cross-review 后已无实际约束）+ `archive/rounds/` round 文档指针（archive/rounds/ 不再作为新 round 落点）+ `archive/rounds/index.json` 机器索引指针（同步失效）+ `archive/PROGRESS-pre-round1.md` 切档历史指针（已 sink）。只保留 `PROGRESS.md 是 SoT` 的明示 + `## SoT 引用` 段。
 - `docs/DEVELOPER.md` / `docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md` / `docs/AGOS-9-Scorecard.md` / `docs/Furnace-Optional-Deps-Matrix.md` / `docs/Furnace Product Shell UX Test Checklist.md`：同步移除对已删脚本的引用，明确 release gate 不再依赖被移除的 release-evidence / maturity pipeline。
 - `docs/AGOS-9-Dogfood-Proof-Runbook.md` / `docs/AGOS-9-Investing-Preflight-Runbook.md`：移入 `docs/archive/`，标记 superseded。
-- `verify.sh all`（仅 release 用）行为不变，仍按 `coverage erase + coverage run pytest + coverage report + acceptance` 跑出 ~13 min 周期；只是被依赖的辅助脚本集已精简。
+- `verify.sh all`（release 用）不再跑 pytest unit / coverage gate；现行为 7 步（scripts + product-shell-static + cli-smoke + smoke + python-static + acceptance + llm-integration，见 Unreleased 现行口径 **24** / **79** / **206**）。
 - **[Round 7 cross-review]**: `docs/AGOS-9-Scorecard.md`：在 2026-05-24 AOS-C8 frozen evidence 段顶部加 banner 说明 "post-2026-07-15 verify.sh all 不再走 pytest/coverage"；在所有 `tests/test_*.py` 与 `dogfood_maturity_gate.py` / `agos9_*.sh` 引用行加 `[AOS-C8 frozen 2026-05-24]` / `[已删]` inline 注；保留 scorecard 的 AOS-C8 milestone frozen 史料价值。约 12 行改写。
 - **[Round 7 cross-review]**: `AGENTS.md` Cursor Cloud 段：删除 `coverage` / `unittest discover` stale lines（3 处）；dev deps 改写为 `ruff + pytest + beautifulsoup4`；历史 `test_obsidian_workspace.test_workspace_defaults_open_home_and_furnace_center` 与 `test_drop.test_fetch_url_raises_when_no_text_can_be_recovered` 改为 "历史（已删）" 说明并指向对应 src module 自检路径。
 - **[Round 7 cross-review]**: `docs/DEVELOPER.md` verify target list：`bash scripts/verify.sh [scripts|smoke|python-static|unit|...]` 删除 `unit|` 一行。

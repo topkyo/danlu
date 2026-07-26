@@ -131,5 +131,5 @@ updated_at: "2026-07-26"
 - 2026-07-22：Ask sync-chat（删 submit/resume/background）后四路复评 — Local Eng **9.05**；Live 维 **7.0**（Gate not-yet）；Commercial **7.8**；Ask 架构 A/B **8.0**。verify：acceptance **17** / Jest **179** / llm **76**。
 - 2026-07-22（eng-debt radar）：Jest 实测 **180**；llm-integration 增 multipart HTTP body parse → **77**。
 - 2026-07-22（shell settings less · batch 3）：Jest 实测 **169**（settings fold 测试断言调整；AGENTS/Scorecard 对齐）。
-- 2026-07-24：质保 Round1–3 + DEF-R2-01 后 verify 实测 acceptance **18** / Jest **189** / llm **78**；AGENTS/Scorecard 计数对齐。
+- 2026-07-24：质保 Round1–3 + DEF-R2-01 后 verify 实测 acceptance **18** / Jest **189** / llm **78**；AGENTS/Scorecard 计数对齐（**已被 2026-07-26 实测 24/79/206 取代**）。
 - 2026-07-26：沉淀/金丹写端瘦身 + curated Properties leaf sync + WS2 wheel 后实测 acceptance **24** / Jest **200** / llm **79**；同日晚 SoT 卫生对齐 Jest **206**（实测）。

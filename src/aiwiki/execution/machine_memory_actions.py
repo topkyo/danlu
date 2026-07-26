@@ -15,12 +15,7 @@ Migration invariants (same as B1..B5):
 - All dependencies are imported from their **true origin** module, not
   via a re-export chain. In particular:
   * ``append_wiki_log``, ``execution_bundle_path``,
-    ``execution_receipt_path`` come from ``..app_render`` — they are
-    double-defined in ``app_content`` but ``app_content.py:3061-3063``
-    has a late re-bind that makes ``app_render`` the runtime-effective
-    origin. B2 ``ask`` and B5 ``concept_rewrite`` already enforce this;
-    B3 / B4 still route through ``app_content`` and should be realigned
-    as cross-group tech debt.
+    ``execution_receipt_path`` come from ``..render.paths``.
   * ``compile_wiki`` comes from ``..compile.pipeline``, not from the
     ``..compile`` package ``__init__`` re-export (B4 oracle rule).
 - ``utc_now`` is resolved lazily at **call time** via

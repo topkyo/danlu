@@ -263,7 +263,7 @@ def build_domain_pilot_scorecard(
     if metrics["sop_drafts"] == 0 and metrics["execution_proposals"] > 0:
         gaps.append("执行提案还没有形成 SOP drafts。")
     if metrics["receipts"] == 0 and metrics["sop_drafts"] > 0:
-        gaps.append("还没有 execution receipt，可先从 dry-run / low-risk apply 开始。")
+        gaps.append("还没有 execution receipt，可先从 `advanced review-queue` 审阅低风险 machine-memory 动作开始。")
     next_moves = [
         PROTOCOL_LIBRARY[protocol]["focus"][0],
         PROTOCOL_LIBRARY[protocol]["review"][0],

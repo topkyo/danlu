@@ -1,7 +1,6 @@
 """Machine-memory topology slice renderer.
 
-EP-017B step 2: extracted from app_memory_surfaces.py. Re-exported via the
-facade at aiwiki.app_memory_surfaces for backward compatibility.
+EP-017B step 2: extracted from app_memory_surfaces.py.
 """
 
 from __future__ import annotations

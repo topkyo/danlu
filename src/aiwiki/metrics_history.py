@@ -11,8 +11,7 @@ Design notes:
   small — one line per metrics command invocation).
 - No third-party deps; stdlib datetime only.
 - 7 metric key names are frozen by acceptance tests in
-  `tests/test_acceptance_loop.py` (originally asserted in
-  `tests/test_metrics.py`); this module never rewrites them.
+  `tests/test_acceptance_loop.py`; this module never rewrites them.
 """
 
 from __future__ import annotations

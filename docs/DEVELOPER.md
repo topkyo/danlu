@@ -75,7 +75,7 @@ bash scripts/verify.sh llm-integration
 PYTHONPATH=src python3 -m aiwiki.cli --root . advanced shell-status
 ```
 
-旧 144 pytest 单元测试已 retire；不以 `coverage run pytest` 为 gate。
+不以 `coverage run pytest` / `tests/unit/` 为 gate。
 
 ## 自动化
 

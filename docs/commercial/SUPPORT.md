@@ -50,14 +50,12 @@ related_docs:
 
 ## 4. 已知环境耦合问题（用户视角）
 
-以下测试/行为在特定环境下可能失败或超时，属于已知环境耦合问题，不影响产品核心功能：
+以下行为在特定环境下可能异常，属于已知环境耦合，不影响产品核心功能：
 
 | 问题 | 表现 | 说明 |
 |------|------|------|
-| Obsidian workspace 默认布局差异 | `test_obsidian_workspace.test_workspace_defaults_open_home_and_furnace_center` 可能与测试期望不一致 | `.obsidian/workspace.json` 是 Obsidian 保存过的真实布局，与默认模板可能不同。 |
-| `drop-url` browser 渲染超时 | `test_drop.test_fetch_url_raises_when_no_text_can_be_recovered` 在无网环境下可能 ~45s 超时 | 环境安装了真实 Chrome 时会尝试渲染；依赖网络状态。 |
-
-> 以上两项来自 `AGENTS.md` Cursor Cloud specific instructions，从开发者视角迁入为用户可见说明。
+| Obsidian workspace 默认布局差异 | 打开 vault 后面板布局与文档示意图不一致 | `.obsidian/workspace.json` 是 Obsidian 保存过的真实布局，与默认模板可能不同。 |
+| `drop-url` browser 渲染超时 | 本机有 Chrome 且无网时，抓取可能卡住约数十秒 | 有真实 Chrome 时可能走 headless 渲染；依赖网络状态。 |
 
 ## 5. 问题提交建议
 

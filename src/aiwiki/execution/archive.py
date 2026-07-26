@@ -19,11 +19,6 @@ Import policy (mirrors EP-018B1/B2/B3):
   so that ``patch("aiwiki.utils.time.utc_now")`` patches
   (acceptance tests + downstream suites) still intercept the call
   through the migrated path.
-* ``execution_bundle_path`` / ``execution_receipt_path`` / ``append_wiki_log``
-  have dual definitions in the codebase (``app_content`` and
-  ``app_render``). This migration keeps the ``app_content`` source that
-  ``app_compile`` originally imported from — the pre-existing duplicate
-  is a known technical-debt item, out-of-scope for EP-018B.
 """
 
 from __future__ import annotations

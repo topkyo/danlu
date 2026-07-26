@@ -231,7 +231,7 @@ def _save_concept_rewrite_proposals(root: Path, proposals: list[dict[str, Any]])
 
 
 def _evaluate_concept_rewrite_verification(root: Path, proposal: dict[str, Any]) -> dict[str, Any]:
-    # Lazy-resolve ``utc_now`` via ``app_compile`` so that any
+    # Lazy-resolve ``utc_now`` via ``utils.time`` so that any
     # ``patch("aiwiki.utils.time.utc_now", ...)`` monkeypatch sites
     # (acceptance tests including test_acceptance_loop's _copy_case_and_fix_clock_from
     # and downstream suites) still take effect on this migrated function.
@@ -381,7 +381,7 @@ def review_concept_rewrite(
     target = _find_concept_rewrite_proposal(proposals, slug)
     if status == "accepted" and not rewrite_proposal_candidate_is_current(root, target):
         raise RuntimeError(
-            "Concept rewrite proposal candidate is stale or invalid. Run run-compile again before accepting."
+            "Concept rewrite proposal candidate is stale or invalid. Run advanced compile again before accepting."
         )
     reviewed_at = utc_now()
     target["status"] = status

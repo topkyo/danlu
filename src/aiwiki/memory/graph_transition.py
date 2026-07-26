@@ -1,8 +1,7 @@
 """Machine-memory transition / history surfaces.
 
 EP-017B step 2: extracted from memory/graph.py. Holds the transition diff
-summarizer and the history-append helper. Re-exported via the thin
-``memory.graph`` facade for backward compatibility.
+summarizer and the history-append helper.
 """
 
 from __future__ import annotations

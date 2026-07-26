@@ -76,9 +76,9 @@ def render_furnace_center(
     if judgment_review_actions:
         next_steps.append(f"先清理 `{min(len(judgment_review_actions), 5)}` 个 judgment review action。")
     if apply_ready_actions:
-        next_steps.append(f"先处理 `{len(apply_ready_actions)}` 个低风险 machine-memory 动作（见 review-queue）。")
+        next_steps.append(f"先处理 `{len(apply_ready_actions)}` 个低风险 machine-memory 动作（见 `advanced review-queue`）。")
     if apply_ready_rewrites:
-        next_steps.append(f"应用 `{len(apply_ready_rewrites)}` 个已接受的 concept rewrite proposal。")
+        next_steps.append(f"审阅 `{len(apply_ready_rewrites)}` 个已接受的 concept rewrite proposal（见 `advanced review-queue`）。")
     if aging.get("escalated"):
         next_steps.append(f"优先复查 `{len(aging.get('escalated', []))}` 个升级项。")
     if pending_items:

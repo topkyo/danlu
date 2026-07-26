@@ -263,7 +263,7 @@ def _build_judgment_review_actions(
                 "reason_codes": [],
                 "candidate_count": 0,
                 "review_command": (
-                    f"PYTHONPATH=src python3 -m aiwiki.cli --root . review-page {page_path} --status {default_transition}"
+                    f"PYTHONPATH=src python3 -m aiwiki.cli --root . advanced review-page {page_path} --status {default_transition}"
                     if default_transition
                     else ""
                 ),

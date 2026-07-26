@@ -24,7 +24,7 @@ raw → compile → wiki → ask → output → file-back → review
 
 ### 入口一：Obsidian Product Shell
 
-打开 vault 后，左侧边栏的 **Furnace Product Shell** 是默认极简工作台。首屏只暴露最常用的动作：
+打开 vault 后，左侧边栏的 **Furnace Product Shell** 是默认极简工作台（**Desktop Obsidian only**；iPad/iOS 不提供全功能移植）。首屏只暴露最常用的动作：
 
 - **投料**：Drop URL / Drop File / Drop Image / Drop Text
 - **Ask**：输入问题，走 `run-ask`

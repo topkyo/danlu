@@ -423,7 +423,7 @@ def _render_vault_readme(runtime_root: Path) -> str:
                 "1. 默认在 Obsidian 中工作：主区 Product Shell 是日常入口，`HOME.md` 只做说明和关键链接。",
                 "2. 投料从 Product Shell 输入框或 CLI / agent 的 `drop url / drop pdf / drop image / drop repo / drop markdown` 开始；Markdown / 文本材料可直接投，不要从文件树理解 runtime 分层。",
                 "3. 提问也有两个入口：Obsidian Product Shell 的 `Ask`，以及 `./scripts/aiwiki-launcher.sh advanced run-ask ... --format report`；默认生成 `output/reports/*.md` 报告。",
-                "4. `compile / nightly / apply / revert` 这类写操作不要双开；同一时刻只保留一个写入口。",
+                "4. `advanced compile / advanced run-nightly` 以及 `advanced review-page` / `advanced file-back` 这类写操作不要双开；同一时刻只保留一个写入口（无顶层 `apply` / `revert` 产品 CLI）。",
                 "",
                 "## Runtime 目录职责",
                 "",
@@ -482,7 +482,7 @@ def _render_vault_home() -> str:
                 "- [[README|使用说明]]",
                 "- [[wiki/indexes/README|索引策略（compile 后生成面板页）]]",
                 "",
-                "`wiki/indexes/` 下的炉心 / 审阅 / 判断资产等面板页由 `compile` 生成；先跑 compile 再打开。",
+                "`wiki/indexes/` 下的炉心 / 审阅 / 判断资产等面板页由 `advanced compile` 生成；先跑 advanced compile 再打开。",
                 "",
                 "## 备用命令",
                 "",
@@ -493,7 +493,7 @@ def _render_vault_home() -> str:
                 "./scripts/aiwiki-launcher.sh advanced run-nightly",
                 "```",
                 "",
-                "写操作遵守单写约束：不要同时在 Obsidian 和终端里各跑一个 `compile / nightly / apply / revert`。",
+                "写操作遵守单写约束：不要同时在 Obsidian 和终端里各跑一个 `advanced compile / advanced run-nightly`（审阅用 `advanced review-page` / `advanced file-back`）。",
                 "",
             ]
         )

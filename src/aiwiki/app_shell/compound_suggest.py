@@ -170,11 +170,11 @@ def _signal_label(*, multi_turn: bool, has_linked: bool, has_conflict: bool) -> 
 
 
 def _file_back_command(report_path: str) -> str:
-    return f"{_CLI_PREFIX} file-back {shlex.quote(report_path)}"
+    return f"{_CLI_PREFIX} advanced file-back {shlex.quote(report_path)}"
 
 
 def _alchemy_start_command(*, corpus_id: str, topic: str) -> str:
-    return f"{_CLI_PREFIX} alchemy-start {shlex.quote(corpus_id)} --topic {shlex.quote(topic)}"
+    return f"{_CLI_PREFIX} advanced alchemy start {shlex.quote(corpus_id)} --topic {shlex.quote(topic)}"
 
 
 def build_compound_suggest(

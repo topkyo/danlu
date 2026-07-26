@@ -102,4 +102,4 @@ cd ../demo-furnace-vault
 bash scripts/verify.sh
 ```
 
-按改动路径选 target、coverage、acceptance 等细节见 [docs/DEVELOPER.md](./docs/DEVELOPER.md)。
+按改动路径选 target、acceptance / llm-integration 等细节见 [docs/DEVELOPER.md](./docs/DEVELOPER.md)。
