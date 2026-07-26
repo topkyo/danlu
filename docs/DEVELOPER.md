@@ -45,6 +45,10 @@ related_docs:
 | `advanced` | **日常/运维**：compile、lint、run-ask*、file-back、review-page、watch、run-nightly、gc-orphans、金丹链、shell-status、llm-check、trace… |
 | `诊断` | `metrics`（复利指标快照；非日常主路径，复盘时再跑） |
 
+## Release checklist（wheel 本地验收；非 PyPI upload）
+
+发版前：`bash scripts/build_release_wheel.sh` → 干净 venv 安装 `dist/aiwiki-*.whl` → `aiwiki --help` + `default_prompts` 断言（步骤见 [INSTALL.md](./INSTALL.md) 方式三）；**禁止**在本任务流中 `twine upload` 或宣称已上架。
+
 ## 验证
 
 ```bash

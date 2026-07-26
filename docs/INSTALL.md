@@ -30,18 +30,19 @@ pip install -e ".[dev]" --break-system-packages   # 若无 PEP 668，可去掉 -
 
 后续可用 `aiwiki ...`，或继续用 `PYTHONPATH=src python3 -m aiwiki.cli ...` / vault 内 `scripts/aiwiki-launcher.sh`。
 
-### 方式二：pip 预览安装（CLI 主路径已可用；PyPI 正式发布待定）
+### 方式二：pip 预览安装（CLI 主路径已可用；PyPI 上架待定）
 
 **边界（诚实预览）**：
 
 - **可用**：在克隆仓库根执行 `pip install -e .`（或 `pip install .`）后，用 `aiwiki` 做 `new-vault` / `advanced compile` / `today` / `drop` 等 CLI。
-- **仍依赖 checkout**：创建带 Product Shell 的 vault 需要本仓库里的 `.obsidian/plugins/furnace-product-shell/` 三件套；**尚未**发布到 PyPI 的 `pip install aiwiki` 一键包。
+- **仍依赖 checkout**：创建带 Product Shell 的 vault 需要本仓库里的 `.obsidian/plugins/furnace-product-shell/` 三件套；**尚未**在 PyPI 运营上架，`pip install aiwiki` 目前不可用。
 - 版本与 CHANGELOG AgentOS gate 对齐为 **0.4.0**（见 `pyproject.toml` / `src/aiwiki/__init__.py`）。
+- **许可**：默认 AGPL-3.0-or-later；商业许可单独签署，见 [LICENSE](../LICENSE) 与 [docs/commercial/BOUNDARIES.md](./commercial/BOUNDARIES.md)。
 
 ```bash
 git clone https://github.com/topkyo/danlu.git aiwiki
 cd aiwiki
-pip install -e . --break-system-packages   # 预览；正式 PyPI 名待发布后改为 pip install aiwiki
+pip install -e . --break-system-packages   # 预览；PyPI 正式上架后改为 pip install aiwiki
 aiwiki --help
 ```
 
@@ -54,6 +55,32 @@ aiwiki --root /tmp/furnace-preview-vault today
 ```
 
 > 若你的环境已有 `aiwiki` console script，vault 内 `scripts/aiwiki-launcher.sh` 会优先调用它；否则回退到 `PYTHONPATH=src python3 -m aiwiki.cli`。
+
+### 方式三：本地 wheel 验收（发布工程；非 PyPI 上架）
+
+维护者与 CI 在 **upload 到 PyPI 之前**，用仓库脚本构建 wheel 并在干净 venv 里验收。本步骤**不宣称已上架**，也**不包含** `twine upload`。
+
+**前置**：Python 3.10+、`pip install build`（PEP 668 环境可加 `--break-system-packages`）。
+
+```bash
+# 1. 在仓库根构建 sdist + wheel → dist/
+python3 -m pip install build --break-system-packages   # 若无 PEP 668 可省略 flag
+bash scripts/build_release_wheel.sh
+
+# 2. 干净 venv 安装 wheel（不要用 editable）
+python3 -m venv /tmp/aiwiki-wheel-test
+/tmp/aiwiki-wheel-test/bin/pip install dist/aiwiki-*.whl
+
+# 3. CLI 与包内资源（default_prompts）验收
+/tmp/aiwiki-wheel-test/bin/aiwiki --help
+/tmp/aiwiki-wheel-test/bin/python -c "import aiwiki, pathlib; assert list(pathlib.Path(aiwiki.__file__).parent.glob('default_prompts/*.md'))"
+
+# 4. 可选：vault 最小链路（--root 仍指向 runtime checkout）
+/tmp/aiwiki-wheel-test/bin/aiwiki advanced new-vault /tmp/furnace-wheel-vault
+/tmp/aiwiki-wheel-test/bin/aiwiki --root /tmp/furnace-wheel-vault advanced compile
+```
+
+**PyPI 运营边界**：`scripts/build_release_wheel.sh` 只产出 `dist/` 产物；实际上传 PyPI（`twine upload`、账号、project 占位）由运营另行开启，不在本仓库默认 workflow 中执行。
 
 ## 首次创建 vault
 

@@ -5,10 +5,36 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "aiwiki"
 version = "0.4.0"
-description = "Local-first knowledge compiler scaffold"
+description = "Local-first knowledge compiler for 炼丹炉 (aiwiki runtime). Dual-licensed: AGPL-3.0-or-later by default; commercial license available — see LICENSE and docs/commercial/BOUNDARIES.md."
 readme = "README.md"
 requires-python = ">=3.10"
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [
+    { name = "炼丹炉 authors", email = "topkyoxp@gmail.com" },
+]
+keywords = ["knowledge-management", "local-first", "wiki", "obsidian"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Text Processing :: Markup :: Markdown",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
 dependencies = []
+
+[project.urls]
+Repository = "https://github.com/topkyo/danlu"
+Documentation = "https://github.com/topkyo/danlu/blob/main/docs/INSTALL.md"
+Changelog = "https://github.com/topkyo/danlu/blob/main/CHANGELOG.md"
+"Issue Tracker" = "https://github.com/topkyo/danlu/issues"
+"Commercial License" = "https://github.com/topkyo/danlu/blob/main/docs/commercial/BOUNDARIES.md"
 
 [project.optional-dependencies]
 dev = [
