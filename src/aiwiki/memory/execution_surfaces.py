@@ -25,7 +25,6 @@ from ..execution.policy import (
     load_execution_policy_decision_history_strict,
     load_execution_receipt_history_strict,
 )
-from ..execution.repair_plan import rewrite_proposal_is_apply_ready
 from ..lifecycle.status import (
     display_action_status,
     display_rewrite_proposal_status,
@@ -46,6 +45,7 @@ from ..utils.text import slugify
 from .action_core import action_priority_rank, safe_apply_preview
 from .execution_surface_helpers import concept_quality_summary_lines
 from .paths import concept_rewrite_proposal_page_path, concept_rewrite_state_path
+from .rewrite_readiness import rewrite_proposal_is_apply_ready
 
 
 def render_execution_proposal_page(proposal: dict[str, Any], *, compiled_at: str) -> str:
