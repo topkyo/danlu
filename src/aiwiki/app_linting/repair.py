@@ -447,7 +447,7 @@ def render_repair_backlog(
     if repair_plan.get("counts", {}).get("proposals", 0):
         lines.append(f"9b. 参考 `{repair_plan.get('counts', {}).get('proposals', 0)}` 个页级执行提案决定下一批修复。")
     if apply_ready_actions:
-        lines.append(f"9c. 其中 `{len(apply_ready_actions)}` 个低风险动作可在 review-queue 中查看。")
+        lines.append(f"9c. 其中 `{len(apply_ready_actions)}` 个低风险动作可在 advanced review-queue 中查看。")
     if overdue_actions:
         lines.append(f"10. 优先清理 `{len(overdue_actions)}` 个已到期待处理的 machine-memory 动作。")
     if escalated_actions:
@@ -615,7 +615,7 @@ def render_repair_backlog(
         lines.append("")
         lines.append("### Rewrite Proposals")
         for proposal in rewrite_proposals[:8]:
-            command = f"review-queue / rewrite-proposal `{proposal['slug']}`"
+            command = f"advanced review-queue / rewrite-proposal `{proposal['slug']}`"
             if proposal.get("status") == "applied" and str(proposal.get("previous_markdown") or ""):
                 command = f"rewrite-proposal `{proposal['slug']}` (revert via audit receipt)"
             elif proposal.get("apply_ready"):

@@ -65,14 +65,14 @@ def preflight_check_backend(root: Path, *, timeout_seconds: int = 30) -> dict[st
     backend = str(result.get("backend", "")) if isinstance(result, dict) else ""
     model = str(result.get("model", "")) if isinstance(result, dict) else ""
     hint = str(result.get("compatibility_hint", "")) if isinstance(result, dict) else ""
-    message_template = "backend %s/%s probe=%s; hint=%s; see 'aiwiki llm-check --probe-all --format human'"
+    message_template = "backend %s/%s probe=%s; hint=%s; see 'aiwiki advanced llm-check --probe-all --format human'"
 
     if require_compatible:
         raise RuntimeError(
             f"backend {backend}/{model} probe={compatibility or 'unknown'} "
             f"(hint={hint or '-'}); "
             f"{_REQUIRE_COMPATIBLE_ENV} blocks non-compatible backends. "
-            f"See 'aiwiki llm-check --probe-all --format human' to diagnose."
+            f"See 'aiwiki advanced llm-check --probe-all --format human' to diagnose."
         )
 
     _LOGGER.warning(message_template, backend, model, compatibility or "unknown", hint or "-")

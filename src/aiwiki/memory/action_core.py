@@ -236,7 +236,7 @@ def describe_machine_memory_action(action: dict[str, Any], *, root: Path | None 
     kind = str(action.get("kind") or "")
     status = str(action.get("status") or "proposed")
     active = bool(action.get("active", True))
-    review_prefix = "PYTHONPATH=src python3 -m aiwiki.cli --root . review-queue --bucket mm_actions --json"
+    review_prefix = "PYTHONPATH=src python3 -m aiwiki.cli --root . advanced review-queue --bucket mm_actions --json"
     kind_steps = {
         "add-source-concept-link": "检查来源页与概念页是否应补引用或反链。",
         "connect-isolated-source": "把孤立来源接入至少一个稳定概念。",

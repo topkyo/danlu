@@ -100,7 +100,7 @@ def _review_page_command(item: dict[str, object]) -> str:
 
 def _action_command(item: dict[str, object]) -> str:
     _ = item
-    return "PYTHONPATH=src python3 -m aiwiki.cli --root . review-queue --bucket mm_actions --json"
+    return "PYTHONPATH=src python3 -m aiwiki.cli --root . advanced review-queue --bucket mm_actions --json"
 
 
 def _page_review_item(item: dict[str, object]) -> dict[str, object]:
@@ -151,7 +151,7 @@ def _ready_actions_batch_helper(items: list[dict[str, object]]) -> dict[str, obj
         "protocol": "",
         "kind": "batch-helper",
         "status": "suggested",
-        "command": "PYTHONPATH=src python3 -m aiwiki.cli --root . review-queue --bucket ready_actions --json",
+        "command": "PYTHONPATH=src python3 -m aiwiki.cli --root . advanced review-queue --bucket ready_actions --json",
         "can_review": True,
         "can_apply": False,
     }

@@ -1004,8 +1004,7 @@ def test_drop_url_writes_raw_note_and_logs(  # pragma: no cover - explicit pytes
     - .aiwiki/state/audit.jsonl (auto-mirrored from runtime-history)
 
     External boundary `_fetch_url` is stubbed by `_run_drop_url` via the default
-    fetched payload (image_urls=[] keeps asset download path out of scope; safety
-    reject / rollback paths are covered by existing unit tests).
+    fetched payload (image_urls=[] keeps asset download path out of scope).
     """
     case, vault = _copy_case_and_fix_clock_from("C", "case_drop_url", tmp_path, monkeypatch)
     result = _run_drop_url(vault, monkeypatch, url="https://example.com/agents")
