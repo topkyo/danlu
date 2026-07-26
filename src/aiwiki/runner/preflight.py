@@ -1,4 +1,4 @@
-"""Backend preflight checks for run-compile / run-ask entry points."""
+"""Backend preflight checks for advanced compile / run-ask entry points."""
 
 from __future__ import annotations
 

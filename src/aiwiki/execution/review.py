@@ -9,15 +9,14 @@ Migration invariants (same as B1..B6):
 
 - Dependencies imported from their **true origin** module, not via a
   re-export chain. In particular:
-  * ``append_wiki_log`` comes from ``..render.paths``; legacy facades
-    keep re-exporting it for external compatibility.
+  * ``append_wiki_log`` comes from ``..render.paths``.
   * ``compile_wiki`` comes from ``..compile.pipeline``, not from the
     ``..compile`` package ``__init__`` re-export (B4 oracle rule).
   * ``extract_provenance_paths`` / ``build_citation_snapshots`` /
     ``analyze_citation_snapshots`` come from ``..utils.markdown``.
   * ``append_review_history_entry`` / ``review_history_entries`` /
     ``entry_lookup_maps`` / ``entry_ids_from_paths`` come from
-    ``..app_content``.
+    ``..content.io``.
 - ``utc_now`` is resolved lazily at **call time** via
   ``from ..utils.time import utc_now; utc_now()``
   so that ``patch("aiwiki.utils.time.utc_now", ...)`` patches
@@ -93,7 +92,7 @@ def review_page(
     if kind == "derived":
         raise ValueError(
             f"Page kind 'derived' is the machine-memory terminal layer and is not subject to review-page workflow. "
-            f"To enter review, run aiwiki file-back <artifact> to write wiki/judgments/. "
+            f"To enter review, run aiwiki advanced file-back <artifact> to write wiki/judgments/. "
             f"(page: {target})"
         )
     if kind not in {"decision", "judgment"}:

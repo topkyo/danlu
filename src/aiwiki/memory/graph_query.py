@@ -1,8 +1,7 @@
 """Machine-memory query / traversal surfaces.
 
 EP-017B step 2: extracted from memory/graph.py. Holds the query JSON builder
-and its cache-aware public entry point. Re-exported via the thin
-``memory.graph`` facade for backward compatibility.
+and its cache-aware public entry point.
 """
 
 from __future__ import annotations

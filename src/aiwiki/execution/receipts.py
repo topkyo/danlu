@@ -1,8 +1,7 @@
 """Authoritative execution receipt writers for runtime actions.
 
 Owner for execution bundle/receipt assembly (apply/archive/elixir/batch).
-Extracted from the legacy ``app_execution`` hub; the thin ``app_execution``
-facade re-exports these names for backward compatibility.
+Extracted from the legacy ``app_execution`` hub.
 """
 
 from __future__ import annotations

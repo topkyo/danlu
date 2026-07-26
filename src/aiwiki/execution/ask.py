@@ -75,11 +75,11 @@ from .run_notes import run_id_for_artifact, write_run_notes, write_run_notes_fro
 NEXT_STEP_HINTS = {
     "derived": (
         "wiki/derived 是机器记忆终态层；不进入 review-page 工作流。"
-        "如需人工审阅，请用 aiwiki file-back <artifact> 写入 wiki/judgments/。"
-        "如需进入金丹链路（alchemy-start），请先用 aiwiki promote <output_ref> 注册 corpus candidate。"
+        "如需人工审阅，请用 aiwiki advanced file-back <artifact> 写入 wiki/judgments/。"
+        "如需进入金丹链路，请先用 aiwiki advanced alchemy promote <output_ref> 注册 corpus candidate，再运行 advanced alchemy start。"
     ),
-    "judgment": ("next: aiwiki review-page {path} --status <tentative|tracking|confirmed|rejected>"),
-    "decision": ("next: aiwiki review-page {path} --status <proposed|approved|needs-revisit|superseded>"),
+    "judgment": ("next: aiwiki advanced review-page {path} --status <tentative|tracking|confirmed|rejected>"),
+    "decision": ("next: aiwiki advanced review-page {path} --status <proposed|approved|needs-revisit|superseded>"),
 }
 
 READABLE_FILENAME_MAX_CHARS = 72

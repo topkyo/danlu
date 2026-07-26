@@ -300,7 +300,7 @@ def rewrite_followup_action(control: dict[str, Any]) -> dict[str, Any] | None:
             **base,
             "kind": "rewrite-proposal",
             "title": title,
-            "command": "PYTHONPATH=src python3 -m aiwiki.cli --root . review-queue --json",
+            "command": "PYTHONPATH=src python3 -m aiwiki.cli --root . advanced review-queue --json",
             "path": proposal_path or target_path,
             "reason": "rewrite-apply-ready"
             if bool(control.get("can_apply"))

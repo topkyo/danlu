@@ -521,7 +521,7 @@ def _collect_batch_hints(
         emit(
             "review-queue",
             f"查看 {count} 个 {action_kind} machine-memory 候选",
-            "PYTHONPATH=src python3 -m aiwiki.cli --root . review-queue --bucket mm_actions --json",
+            "PYTHONPATH=src python3 -m aiwiki.cli --root . advanced review-queue --bucket mm_actions --json",
             f"batch-hint:review-queue:{action_kind}",
             count,
         )
@@ -604,7 +604,7 @@ def shell_suggested_next_actions(
         add_action(
             "review",
             str(page.get("title") or path),
-            f"PYTHONPATH=src python3 -m aiwiki.cli --root . review-page {path} --status {status}",
+            f"PYTHONPATH=src python3 -m aiwiki.cli --root . advanced review-page {path} --status {status}",
             path,
             ",".join(str(item) for item in page.get("reasons", [])[:2]) or "review-needed",
         )

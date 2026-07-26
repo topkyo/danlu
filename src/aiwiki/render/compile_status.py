@@ -256,7 +256,7 @@ def render_compile_status(
         "- 图谱健康页位于 `graph-health.md`。",
         "- 漂移报告位于 `drift-report.md`。",
         "- 修复待办位于 `repair-backlog.md`。",
-        "- derived、decision、judgment 页面通过 `aiwiki file-back` 显式回流。",
+        "- derived、decision、judgment 页面通过 `aiwiki advanced file-back` 显式回流。",
         "- lint 结果输出在 `.aiwiki/lint/`。",
         "",
         "## Compile Phases",

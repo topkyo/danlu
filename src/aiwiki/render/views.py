@@ -1,7 +1,7 @@
 """Dashboard view renderers extracted from app_render.
 
 20 symbols (curated/judgment/review/aging + agent + furnace + master index +
-pilots index + thin wrappers around app_surfaces).
+pilots index).
 """
 
 from __future__ import annotations
@@ -1020,7 +1020,7 @@ def compact_source_link_lines(
     entries: list[dict[str, Any]],
     *,
     limit: int = 5,
-    empty_message: str = "- 还没有排好序的来源。先在 ingest 后运行 `aiwiki compile`。",
+    empty_message: str = "- 还没有排好序的来源。先在 ingest 后运行 `aiwiki advanced compile`。",
 ) -> list[str]:
     if not entries:
         return [empty_message]

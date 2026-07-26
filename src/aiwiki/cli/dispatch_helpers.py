@@ -95,7 +95,7 @@ def _review_page_command(item: dict[str, object]) -> str:
     )
     if not transition:
         return ""
-    return f"PYTHONPATH=src python3 -m aiwiki.cli --root . review-page {path} --status {transition}"
+    return f"PYTHONPATH=src python3 -m aiwiki.cli --root . advanced review-page {path} --status {transition}"
 
 
 def _action_command(item: dict[str, object]) -> str:

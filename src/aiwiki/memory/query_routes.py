@@ -1,9 +1,7 @@
 """Machine-memory query routing helpers extracted from app_memory_query.
 
 Owns the deterministic route selection / adjacency / path-finding primitives
-used by the machine-memory query pipeline. Behavioral equivalence with the
-legacy `app_memory_query` facade is preserved; the facade re-exports these
-symbols for backward compatibility.
+used by the machine-memory query pipeline.
 """
 
 from __future__ import annotations

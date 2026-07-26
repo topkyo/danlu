@@ -20,8 +20,8 @@ These modules implement the **scoped primitives** protected by the 9+
 Feasibility Contract in ``docs/Furnace Agent Architecture.md`` §2.2 and
 ``docs/Furnace Evolution Mechanics.md`` §12.3: future scheduling / planner /
 proposal layers must compose these primitives rather than replace them.
-Post-W3/W8 operator surface is ``advanced compile`` / ``review-page`` /
-``alchemy-revert``; library apply/revert paths have no matching CLI.
+Post-W3/W8 operator surface is ``advanced compile`` / ``advanced review-page`` /
+``advanced alchemy-revert``; library apply/revert paths have no matching CLI.
 """
 
 from __future__ import annotations
