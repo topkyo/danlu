@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-from ..protocol.scaffold import ensure_layout
 from ..utils.io import atomic_write_text
 from .io import load_json_document_strict
 from .paths import manifest_path
@@ -24,6 +23,8 @@ def load_manifest(root: Path) -> dict[str, Any]:
 
 
 def save_manifest(root: Path, manifest: dict[str, Any]) -> None:
-    ensure_layout(root)
+    # State owns only its file path; full vault/protocol scaffold stays at
+    # entry points that already call ``protocol.scaffold.ensure_layout``.
     path = manifest_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_text(path, json.dumps(manifest, indent=2, sort_keys=True) + "\n")
