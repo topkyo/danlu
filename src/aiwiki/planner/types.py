@@ -1,4 +1,4 @@
-"""Planner domain TypedDict contracts."""
+"""Planner domain TypedDict contracts (not yet imported by callers; keep as schema)."""
 
 from __future__ import annotations
 

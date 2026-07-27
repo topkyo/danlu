@@ -16,7 +16,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ..app_shell.meta import write_shell_summary
 from ..app_shell.summary import build_shell_summary
@@ -311,7 +311,9 @@ from ..utils.markdown import (
 from ..utils.path import next_available_stem, relative_path
 from ..utils.text import slugify, tokenize
 from ..utils.time import utc_now
-from .core import _LintContext
+
+if TYPE_CHECKING:
+    from .core import _LintContext
 
 _REVIEW_LIFECYCLE_OVERRIDE_STATES = {"active", "deferred", "review"}
 _PENDING_REFINEMENT_RE = re.compile(r"(?im)^\s*-\s*pending\s+refinement\.?\s*$")

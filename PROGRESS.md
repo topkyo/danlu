@@ -14,6 +14,10 @@
 
 ## 当前动态
 
+- 2026-07-27 (**SCC / planner / Post-Cleanup 卫生**)：断 `app_linting.phases→core`（TYPE_CHECKING，全库仅剩此 1 个模块级 SCC）；`planner/` docstring 标明 state/paths live（非空壳）；Post-Cleanup §1 Top hubs 去掉已删 `graph.py`/`drop.py`，对齐 202/51.6k 与现行巨石。
+
+- 2026-07-27 (**会话交接刷新**)：结构债第 3 条从「第一刀 content↔memory / auto-resolution」改为续刀（巨石 / 剩余 SCC）；已完成段补记 07-26/27 结构债与 stale 扫除。
+
 - 2026-07-27 (**acceptance prompt_hash 漂移**)：`M6.1b/case_backend_failure` 两帧 hash 重算（call1 `362a531dbb999d74` / call2 `bd9a5ac99b472325`）；保留 `failure` 字段。acceptance **24** PASS。
 
 - 2026-07-27 (**结构债 state↛protocol**)：`save_manifest` 不再调用 `ensure_layout`；只 `mkdir` manifest 父目录。`state/` 零 import `protocol`（单向分层越界切断）。调用方仍自备 `ensure_layout`。
@@ -128,12 +132,12 @@
 ```text
 说人话。先读 PROGRESS.md 头条 + docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md。
 
-已完成：沉淀/金丹 FM 瘦身 + Properties leaf sync（CDP PASS）；state 外置防 iCloud 分叉；WS2 本地 wheel；SoT 计数 24/79/206。
+已完成：沉淀/金丹 FM + Properties leaf sync（CDP PASS）；state 外置防 iCloud 分叉；WS2 本地 wheel；SoT 计数 24/79/206；结构债 Knife A/B + memory↛execution + audit 外提 + state↛protocol；stale SoT/CLI 三轮扫除；M6.1b prompt_hash 刷新。
 
 下一刀优先（择一）：
 1) Commercial：EULA 法律签收 / twine upload + tag v0.4.0 / Demo 9 PNG
 2) WS6 dogfood 自然观测（不伪造 Live PASS）
-3) 结构债第一刀（断 content↔memory 环 或 外提 machine_memory auto-resolution）
+3) 结构债续刀（非阻塞开售）：巨石 concepts/views/phases 单 seam 外提（模块级 SCC 已清零）— 禁止 broad hub rewrite
 4) 勿宣称 AgentOS 9 live / 诚实可售
 
 Vault：iCloud「炼丹炉」；state → ~/Library/Application Support/aiwiki/dogfood-state；CDP：9228；验证：bash scripts/verify.sh all

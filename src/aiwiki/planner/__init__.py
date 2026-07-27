@@ -1,5 +1,6 @@
-"""Planner state package.
+"""Planner state I/O for repair-plan and query-route telemetry.
 
-The removed AgentOS signal-to-plan dry-run pipeline no longer has public
-planner APIs; runtime query routing continues to use ``planner.state``.
+Removed: AgentOS signal-to-plan dry-run pipeline (``planner/dry_run``, ``signals/``).
+Live: ``planner.state`` and ``planner.paths`` (compile / lint / shell / ask importers).
+Note: LLM universal-drop planning lives in ``input_planner.py``, not this package.
 """

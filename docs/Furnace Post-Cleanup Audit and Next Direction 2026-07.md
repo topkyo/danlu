@@ -2,7 +2,7 @@
 title: "炼丹炉 Post-Cleanup 全量审计与下一步方向"
 kind: "plan"
 status: "active"
-updated_at: "2026-07-26"
+updated_at: "2026-07-27"
 based_on:
   - "docs/archive/Furnace Commercial Grade Cleanup Plan 2026-07.md（executed-reviewed-pass）"
   - "docs/AGOS-9-Scorecard.md"
@@ -23,9 +23,9 @@ supersedes: []
 
 | 指标 | 当前值 | 来源 |
 |---|---|---|
-| Runtime | `src/aiwiki` **155** `.py` / **~62k LOC** | `find` + `wc`（2026-07-18） |
+| Runtime | `src/aiwiki` **202** `.py` / **~51.6k LOC** | `find` + `wc`（2026-07-27） |
 | Tests | acceptance **24** + llm-integration **79** + Jest **206**（2026-07-26 实测；表内历史快照曾为 24/79/200、18/78/189、17/77/174） | `pytest` + `npm test` |
-| Top hubs | `memory/graph.py` 1758 / `drop.py` 1747 / `execution/alchemy.py` 1680 / `auto_adopt` **DELETED** / `state/` package（原 `app_state.py` **DELETED**） | `wc -l` |
+| Top hubs（单文件） | `content/concepts.py` 1209 / `render/views.py` 1178 / `app_linting/phases.py` 1062 / `execution/machine_memory_actions.py` 996 / `execution/ask.py` 893；`auto_adopt` **DELETED**；`app_state.py` hub **DELETED**（`state/` 包仍 live）；旧 `memory/graph.py` / `drop.py` 已拆包 | `wc -l` 2026-07-27 |
 | `except Exception` | **~116**（↓ from 172）；裸 `except Exception: pass` **0** | ripgrep |
 | AgentOS Scorecard | **Local Engineering Gate 9.05**；Live Dogfood **not-yet** | `docs/AGOS-9-Scorecard.md` |
 | 商业审计综合 | **~7.8**（cleanup 后再评） | archive Cleanup Plan §1.6 |
@@ -69,7 +69,7 @@ supersedes: []
 | ID | 缺陷 | 证据 | 影响 | 本 PR |
 |---|---|---|---|---|
 | D4 | `PROGRESS.md`「改进方向」段曾缺失 | 曾仅有 L15 指针 | 任务 SoT 断链 | **fixed**：已恢复底部「改进方向」段 |
-| D5 | Product Shell Jest 默认可 soft-skip | `scripts/run_product_shell_tests.sh`（本轮清理删除） | `verify` 可绿但 UI 回归未跑 | **fixed 2026-07-15**：`package.json` 入库 + `verify_product_shell_static` Jest hard-gate（168 tests） |
+| D5 | Product Shell Jest 默认可 soft-skip | `scripts/run_product_shell_tests.sh`（本轮清理删除） | `verify` 可绿但 UI 回归未跑 | **fixed 2026-07-15**：Jest hard-gate（当时 168；现行见 §1：**206**） |
 | D6 | Alchemy materialize 等路径裸 `Path.write_text` | `runner/alchemy_materialize.py` L53/127/156 | 有锁仍可能崩溃半写 | **fixed 2026-07-15**：改 `atomic_write_text` |
 | D7 | Env-coupled 单测可假失败/挂起 | workspace / Chrome drop 用例 | CI/cloud 噪音 | **moot**：unit 网已退；acceptance 不跑这些用例 |
 | D8 | Active 架构文档曾指向不存在的 `.codex/plans/active.md` | Architecture / Evolution Mechanics | 执行入口误导 | **fixed**：改为本计划 + PROGRESS |
@@ -79,18 +79,18 @@ supersedes: []
 
 | ID | 缺陷 | 证据 | 影响 | 本 PR |
 |---|---|---|---|---|
-| D10 | Scorecard hub 行数曾过期 | 曾写 alchemy 2589 / protocol ~1750 | Maintainability 证据失真 | **fixed**：刷新为 ~917 / ~442 |
+| D10 | Scorecard hub 行数曾过期 | 曾写 alchemy 2589 / protocol ~1750 | Maintainability 证据失真 | **fixed**：曾刷新；现行单文件见 §1 Top hubs（勿钉死旧 LOC） |
 | D11 | Demo Pack / RuntimeClient 曾挂 Active Plans | `docs/README.md` | 假活跃 | **fixed**：降为 Delivered specs |
 | D12 | coverage `fail_under=89` + omit `legacy_argv` | `.coveragerc` | 门禁偏松 | **closed**：Round 2 (commit `5a1c20c`) 删 `.coveragerc` + `pyproject.toml` dev-dep `coverage>=7.6,<8` + `verify.sh all` coverage block；coverage hard gate 不再触发 |
 | D13 | PROGRESS「活跃 3 轮」名实不符 | 仅 Round 92.8 | 结构债 | **closed**：Round 9 (`b4e160f`) + Round 10 (`e69bc4a`) archive 树统一进 `docs/archive/`，顶级 `archive/` 清空；PROGRESS head 重写 + SoT 索句 explicit |
-| D14 | JS 行为测试偏弱（grep token） | Round 92.8 Residual | plugin 大改回归弱 | **improved 2026-07-15**：Jest 168 tests hard-gate；行为覆盖仍可加深 |
+| D14 | JS 行为测试偏弱（grep token） | Round 92.8 Residual | plugin 大改回归弱 | **improved**：Jest hard-gate（当时 168；现行 **206**）；行为覆盖仍可加深 |
 | D15 | 14/30-day natural dogfood proof | Scorecard `not-yet` | 长期证据不足 | 诚实 defer → WS6 |
 
 ### P3 — 低优先 / 刻意不做
 
 | ID | 项 | 处置 |
 |---|---|---|
-| D16 | `state/`（原 `app_state`）/ `auto_adopt` / `workflows` / `graph` / `drop` 巨石 | **Conscious debt**；只允许单 seam + 测试边界，禁止 broad rewrite |
+| D16 | `content/concepts` / `render/views` / `app_linting/phases` / `drop/` 包 / `memory/graph_*` / `runner/workflows*.py` 巨石；`auto_adopt` DELETED | **Conscious debt**；只允许单 seam + 测试边界，禁止 broad rewrite |
 | D17 | Windows 正式一等支持 | Out |
 | D18 | hosted SaaS / multi-user / 全功能 iOS | 产品非目标 |
 | D19 | USER_GUIDE 指向 compile 生成态 indexes | 文档脚注即可 |
@@ -109,7 +109,7 @@ supersedes: []
 已完成：AgentOS 9 本地 gate + Commercial Cleanup（~7.6）
         │
         ▼
-下一波主线：Commercial Go-Live（本计划 WS1–WS5）
+下一波主线：Commercial Go-Live（本计划 WS1–WS6）
         │
         ├── 商务触点可真实使用（邮箱 / 价格决策 / EULA）
         ├── 分发可复现（pip 或明确放弃并改 INSTALL）
@@ -138,7 +138,7 @@ supersedes: []
 ### Out（红线）
 
 - 不伪造 14/30-day PASS
-- 不做 `state/`（原 `app_state`）/ `auto_adopt` / alchemy 整文件大拆
+- 不做 `state/` 包 / `concepts`/`views`/`phases` / alchemy 整文件大拆（`app_state.py` / `auto_adopt` hub 已删）
 - 不引入 hosted multi-user / heavy RAG / fine-tuning
 - 不把 AgentOS 9.05 写成「商业就绪 9 分」
 - 不扩 L3 无人值守自治
