@@ -137,7 +137,7 @@
 下一刀优先（择一）：
 1) Commercial：EULA 法律签收 / twine upload + tag v0.4.0 / Demo 9 PNG
 2) WS6 dogfood 自然观测（不伪造 Live PASS）
-3) 结构债续刀（非阻塞开售）：巨石 concepts/views/phases 单 seam 外提；或剩余 SCC（alchemy / machine_memory_actions↔auto_resolution 等）— 禁止 broad hub rewrite
+3) 结构债续刀（非阻塞开售）：巨石 concepts/views/phases 单 seam 外提（模块级 SCC 已清零）— 禁止 broad hub rewrite
 4) 勿宣称 AgentOS 9 live / 诚实可售
 
 Vault：iCloud「炼丹炉」；state → ~/Library/Application Support/aiwiki/dogfood-state；CDP：9228；验证：bash scripts/verify.sh all
