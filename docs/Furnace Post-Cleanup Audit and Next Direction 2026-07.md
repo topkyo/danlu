@@ -2,7 +2,7 @@
 title: "炼丹炉 Post-Cleanup 全量审计与下一步方向"
 kind: "plan"
 status: "active"
-updated_at: "2026-07-26"
+updated_at: "2026-07-27"
 based_on:
   - "docs/archive/Furnace Commercial Grade Cleanup Plan 2026-07.md（executed-reviewed-pass）"
   - "docs/AGOS-9-Scorecard.md"
