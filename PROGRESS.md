@@ -14,6 +14,8 @@
 
 ## 当前动态
 
+- 2026-07-27 (**acceptance prompt_hash 漂移**)：`M6.1b/case_backend_failure` 两帧 hash 重算（call1 `362a531dbb999d74` / call2 `bd9a5ac99b472325`）；保留 `failure` 字段。acceptance **24** PASS。
+
 - 2026-07-27 (**结构债 state↛protocol**)：`save_manifest` 不再调用 `ensure_layout`；只 `mkdir` manifest 父目录。`state/` 零 import `protocol`（单向分层越界切断）。调用方仍自备 `ensure_layout`。
 
 - 2026-07-27 (**third-pass residual CLI wording scrub**)：CHANGELOG `advanced run-nightly`；Demo Pack / Runtime Ops 去掉 apply/revert 产品 CLI 暗示；vault templates / repair / pilots / furnace_center 对齐 `advanced review-page|file-back|review-queue|alchemy-revert` 现行 operator 路径。验证：`docs_consistency_check` + ruff。
