@@ -40,8 +40,6 @@ test("active file helpers derive concept, output, and curated paths", () => {
   expect(context.getActiveFilePathFromApp(app)).toBe("wiki/concepts/model-quality.md");
   expect(context.getConceptSlugForPath("wiki/concepts/model-quality.md")).toBe("model-quality");
   expect(context.getConceptSlugForPath("wiki/sources/model-quality.md")).toBe("");
-  expect(context.getOutputPathForPath("output/reports/report.md")).toBe("output/reports/report.md");
-  expect(context.getOutputPathForPath("wiki/reports/report.md")).toBe("");
 });
 
 test("curated page helper follows summary roots instead of hardcoded prefixes", () => {

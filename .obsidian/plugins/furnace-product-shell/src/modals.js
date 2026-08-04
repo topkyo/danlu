@@ -1,41 +1,5 @@
 // Modal subclasses (StructuredCommand, ContextPicker).
 
-// Shared modal helpers
-function modalSubmitRow(containerEl, submitLabel, cancelLabel, onSubmit, onCancel) {
-  var row = containerEl.createDiv({ cls: "furnace-modal-submit-row" });
-  if (onCancel) {
-    var cancelBtn = row.createEl("button", { text: cancelLabel || "Cancel" });
-    cancelBtn.addClass("furnace-shell-ghost-button");
-    cancelBtn.addEventListener("click", function () { onCancel(); });
-  }
-  var submitBtn = row.createEl("button", { text: submitLabel || "Submit" });
-  submitBtn.addClass("mod-cta");
-  submitBtn.addEventListener("click", function () { onSubmit(submitBtn); });
-  return { row: row, submitBtn: submitBtn };
-}
-
-function setSubmitLoading(button, loadingText) {
-  button.disabled = true;
-  button.setText(loadingText || "处理中…");
-}
-
-function setSubmitReady(button, text) {
-  button.disabled = false;
-  button.setText(text);
-}
-
-function showInlineError(el, text) {
-  if (!el) return;
-  el.setText(text);
-  el.addClass("is-visible");
-}
-
-function clearInlineError(el) {
-  if (!el) return;
-  el.setText("");
-  el.removeClass("is-visible");
-}
-
 class StructuredCommandModal extends Modal {
   constructor(app, plugin, spec) {
     super(app);

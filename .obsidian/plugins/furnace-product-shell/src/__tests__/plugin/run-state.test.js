@@ -116,57 +116,6 @@ test("normalizeProductShellRecentRuns hydrates persisted run records", () => {
   ]);
 });
 
-test("renderProductShellRunLog writes summary, proposals, and captured streams", () => {
-  const context = loadRunStateContext();
-  const record = {
-    id: "run-1",
-    status: "success",
-    protocol: "research",
-    backend: "opencode-api",
-    backendRequested: "opencode-api",
-    backendEffective: "opencode-api",
-    model: "deepseek-v4-pro",
-    modelSelected: "deepseek-v4-pro",
-    modelFinal: "deepseek-v4-pro",
-    codexReasoningEffort: "high",
-    args: "review-rewrite concept-a",
-    resultPath: "output/reports/a.md",
-    receiptPath: "output/receipts/a.json",
-    exitCode: 0,
-    startedAt: "2026-05-25T00:00:00Z",
-    finishedAt: "2026-05-25T00:00:01Z",
-    rewriteProposalObjects: [
-      {
-        slug: "concept-a",
-        title: "Concept A",
-        proposalPath: "output/_proposals/rewrite/concept-a.md",
-      },
-    ],
-    timeline: [
-      { at: "2026-05-25T00:00:00Z", stage: "Submitted", summary: "review-rewrite concept-a" },
-      { at: "2026-05-25T00:00:01Z", stage: "Completed", summary: "output/reports/a.md" },
-    ],
-  };
-
-  const rendered = context.renderProductShellRunLog({
-    record,
-    details: { stdoutRaw: "ok", stderrRaw: "warn" },
-    t,
-    repoRoot: "/vault",
-  });
-
-  expect(rendered.logPath).toBe("output/control/plugin-runs/run-1.md");
-  expect(rendered.content).toContain("# Product Shell Run Log");
-  expect(rendered.content).toContain("- Working directory: /vault");
-  expect(rendered.content).toContain("- Result path: output/reports/a.md");
-  expect(rendered.content).toContain("- rewrite proposals: 1");
-  expect(rendered.content).toContain("  - Concept A: output/_proposals/rewrite/concept-a.md");
-  expect(rendered.content).toContain("## Standard output");
-  expect(rendered.content).toContain("ok");
-  expect(rendered.content).toContain("## Standard error");
-  expect(rendered.content).toContain("warn");
-});
-
 test("run state helpers classify degraded ask runs and build completed updates", () => {
   const context = loadRunStateContext();
   const record = context.createProductShellRunRecord({

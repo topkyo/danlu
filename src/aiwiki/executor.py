@@ -117,11 +117,11 @@ def _execute_fetch_raw(root: Path, plan: Plan, original_payload: str, *, refresh
             )
         except FetchPolicyError as exc:
             _LOGGER.warning("fetch_raw target blocked by policy: %s -> %s", target, exc)
-            fetched.append({"url": target, "content": f"[fetch blocked: {exc}]", "ok": False})
+            fetched.append({"url": target, "content": "", "ok": False, "error": f"fetch blocked: {exc}"})
             continue
         except Exception as exc:  # network errors, timeouts
             _LOGGER.warning("fetch_raw target failed: %s -> %s", target, exc)
-            fetched.append({"url": target, "content": f"[fetch failed: {exc}]", "ok": False})
+            fetched.append({"url": target, "content": "", "ok": False, "error": f"fetch failed: {exc}"})
             continue
         text = payload_bytes.decode("utf-8", errors="replace").strip()
         text = _truncate_text(text, _FETCH_RAW_PER_TARGET_CHAR_LIMIT)
@@ -131,7 +131,7 @@ def _execute_fetch_raw(root: Path, plan: Plan, original_payload: str, *, refresh
     if ok_count == 0:
         # Match drop_url / drop_repo fail-loud: never persist a placeholder-only
         # note that compile would treat as real material.
-        details = "; ".join(f"{item['url']}: {item['content']}" for item in fetched) or "no targets"
+        details = "; ".join(f"{item['url']}: {item.get('error', 'no content')}" for item in fetched) or "no targets"
         raise RuntimeError(f"fetch_raw failed for all targets ({details})")
 
     markdown = _build_fetch_raw_note(display_title, fetched, original_payload, plan.reason)
@@ -142,6 +142,11 @@ def _execute_fetch_raw(root: Path, plan: Plan, original_payload: str, *, refresh
         "plan_reason": plan.reason,
         "fetched_at": _utc_now(),
     }
+    # Partial failures are provenance, not note body content: keep placeholder
+    # text out of raw/ so compile never mistakes it for real material.
+    fetch_errors = [{"url": item["url"], "error": item["error"]} for item in fetched if not item.get("ok")]
+    if fetch_errors:
+        ingest_metadata["fetch_errors"] = fetch_errors
     created_paths: list[Path] = []
     append_file_sizes = _snapshot_append_files(root)
     note_snapshot: bytes | None = None
@@ -244,6 +249,10 @@ def _build_fetch_raw_note(
     lines.append(f"> original input: `{original_payload}`")
     lines.append("")
     for item in fetched:
+        if not item.get("ok"):
+            # Failed targets are recorded in manifest ingest_metadata.fetch_errors;
+            # the raw note body only carries actually-fetched bytes.
+            continue
         url = item["url"]
         content = item["content"]
         lines.append(f"## Source: {url}")

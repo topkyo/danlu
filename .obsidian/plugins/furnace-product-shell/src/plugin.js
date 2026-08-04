@@ -178,10 +178,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return getConceptSlugForPath(this.getActiveFilePath());
   }
 
-  getActiveOutputPath() {
-    return getOutputPathForPath(this.getActiveFilePath());
-  }
-
   getActiveCuratedPagePath() {
     return getCuratedPagePathForSummary(this.getActiveFilePath(), this.shellSummary);
   }
@@ -238,21 +234,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return reviewPageControlItems(this);
   }
 
-  nextReviewCandidate() {
-    const candidates = this.visibleReviewPageCandidates();
-    return candidates.length ? candidates[0] : null;
-  }
-
   reviewKindLabel(kind, count = 1) {
     return reviewKindLabel(this, kind, count);
-  }
-
-  commonReviewTransitionOptions(pages) {
-    return commonReviewTransitionOptions(this, pages);
-  }
-
-  reviewBatchSuggestions() {
-    return reviewBatchSuggestions(this);
   }
 
   rewriteControlItems(mode = "review") {
@@ -263,28 +246,12 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return actionControlItems(this, mode);
   }
 
-  archiveControlItems(mode = "apply") {
-    return archiveControlItems(this, mode);
-  }
-
-  actionControlsById() {
-    return actionControlsById(this);
-  }
-
-  archiveControlsById() {
-    return archiveControlsById(this);
-  }
-
   transitionLabel(controlType, transition) {
     return transitionLabel(this, controlType, transition);
   }
 
   transitionOptions(controlType, control) {
     return transitionOptions(this, controlType, control);
-  }
-
-  preferredTransitionOptions(controlType, control) {
-    return preferredTransitionOptions(this, controlType, control);
   }
 
   manualReviewOption(controlType) {
@@ -301,10 +268,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   visibleReviewPageCandidates() {
     return this.reviewPageControlItems();
-  }
-
-  visibleActionCandidates(mode = "review") {
-    return this.actionControlItems(mode);
   }
 
   openContextAwareAction(spec) {
@@ -339,16 +302,21 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   resolveAbsoluteWorkspacePath(relativePath) {
-    return resolveProductShellRunLogPath(this.repoState.root, relativePath);
+    const normalized = String(relativePath || "").trim();
+    const root = String(this.repoState.root || "").trim();
+    if (!normalized || !root) {
+      return "";
+    }
+    return path.join(root, normalized);
   }
 
   persistRunLog(record, details = {}) {
-    persistProductShellRunLog({
-      record,
-      details,
-      t: this.t.bind(this),
-      repoRoot: this.repoState.root || ".",
-    });
+    // Run-log markdown persistence retired: canonical history lives in
+    // .aiwiki/logs/runs.jsonl plus in-memory recentRuns.
+    void details;
+    if (record && typeof record === "object") {
+      record.logPath = "";
+    }
   }
 
   async copyText(value) {
@@ -418,22 +386,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     await this.runPluginCommand(this.t("Nightly"), ["run-nightly"], { refreshAfter: true });
   }
 
-  async runTodaySnoozeCommand(target, days = 1) {
-    new Notice(this.t("Today snooze was removed in W4; handle the item directly from Today."));
-  }
-
-  async runShellSearchCommand(query, limit = 8) {
-    new Notice(this.t("Shell search was removed in W4; use Obsidian search and wiki pages instead."));
-  }
-
-  async runApplyAllAcceptedLowRiskCommand() {
-    new Notice(this.t("Batch review was removed in W4; use review-page for explicit page transitions."));
-  }
-
-  async runRevertLastBatchCommand() {
-    new Notice(this.t("Batch revert commands were removed in W3; inspect execution receipts manually."));
-  }
-
   async openHomeNote() {
     return openProductShellHomeNote(this);
   }
@@ -452,10 +404,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   markPendingSubmissionDone(id, reconcileTarget, reconcilePath) {
     return markPendingSubmissionRuntimeDone(this, id, reconcileTarget, reconcilePath);
-  }
-
-  isPendingSubmissionDegraded(entry) {
-    return isPendingSubmissionDegradedEntry(entry);
   }
 
   markPendingSubmissionFailed(id, error) {
@@ -532,14 +480,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   async runCliAction(label, command, args = []) {
     return runProductShellCliAction(this, label, command, args);
-  }
-
-  async runLauncherCommand(fullCommandStr, label = "Suggested Action") {
-    return runProductShellLauncherCommand(this, fullCommandStr, label);
-  }
-
-  openFileBackModal(prefill = {}) {
-    this.openStructuredCommandModal(buildFileBackModalSpec(this, prefill));
   }
 
   openAlchemyStartModal(prefill = {}) {
@@ -641,14 +581,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   // --- Render method wrappers (delegate to render.js standalone functions) ---
 
-  renderCardGrid(container, cards) {
-    renderCardGrid(this, container, cards);
-  }
-
-  renderActionButtons(container, buttons) {
-    renderActionButtons(this, container, buttons);
-  }
-
   renderPanel(container, title, description = "", options = {}) {
     return renderPanel(this, container, title, description, options);
   }
@@ -661,20 +593,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return renderPill(this, container, text, extraClass);
   }
 
-  renderMainHeader(container) {
-    renderMainHeader(this, container);
-  }
-
   renderStatusPanel(container) {
     renderStatusPanel(this, container);
-  }
-
-  renderDigestRow(container, label, value) {
-    renderDigestRow(this, container, label, value);
-  }
-
-  renderDigestPanel(container) {
-    renderDigestPanel(this, container);
   }
 
   renderAdvancedDrawer(container) {

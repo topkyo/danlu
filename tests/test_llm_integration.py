@@ -35,12 +35,9 @@ from aiwiki.config import (
     BACKEND_OPENCODE_API,
     DEFAULT_ANTHROPIC_API_MODEL,
     DEFAULT_ANTHROPIC_BASE_URL,
-    DEFAULT_BASE_URL,
-    DEFAULT_DEEPSEEK_BASE_URL,
     DEFAULT_DEEPSEEK_MODEL,
     DEFAULT_OPENAI_API_MODEL,
     DEFAULT_OPENCODE_BASE_URL,
-    DEFAULT_OPENCODE_MODEL,
     LLMConfig,
 )
 from aiwiki.execution.ask import ask_question
@@ -1149,6 +1146,46 @@ def test_fetch_raw_all_fail_raises(tmp_path: Path) -> None:
     assert not any((tmp_path / "raw" / "inbox").glob("*.md"))
 
 
+def test_fetch_raw_partial_failure_records_fetch_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """部分成功 + 部分失败：失败 target 进 manifest fetch_errors，不进 raw 正文。"""
+
+    from aiwiki.executor import execute_plan
+    from aiwiki.input_planner import Plan
+    from aiwiki.protocol.scaffold import ensure_layout
+
+    ensure_layout(tmp_path)
+    ok_url = "https://example.com/ok"
+    bad_url = "https://example.com/dead"
+
+    def _fake_safe_fetch(url: str, **kwargs: object) -> tuple[bytes, str]:
+        if url == ok_url:
+            return b"real fetched content", url
+        raise TimeoutError("simulated fetch timeout")
+
+    monkeypatch.setattr("aiwiki.executor.safe_fetch", _fake_safe_fetch)
+    plan = Plan(action="fetch_raw", targets=[ok_url, bad_url], title="partial", reason="test")
+    execute_plan(tmp_path, plan, f"{ok_url} {bad_url}")
+
+    notes = sorted((tmp_path / "raw" / "inbox").glob("*.md"))
+    assert len(notes) == 1, f"expected 1 raw note, got {len(notes)}"
+    note_text = notes[0].read_text(encoding="utf-8")
+    assert "real fetched content" in note_text
+    # 失败 target 不产生 Source 段或占位文本（original input 行的 provenance 除外）
+    assert f"## Source: {bad_url}" not in note_text
+    assert "[fetch failed:" not in note_text and "[fetch blocked:" not in note_text
+
+    history = [
+        json.loads(line)
+        for line in (tmp_path / ".aiwiki" / "state" / "runtime-history.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    raw_added = [entry for entry in history if entry.get("event_type") == "raw-added"]
+    assert raw_added, "expected a raw-added history entry"
+    fetch_errors = raw_added[-1]["ingest_metadata"]["fetch_errors"]
+    assert [item["url"] for item in fetch_errors] == [bad_url]
+    assert "simulated fetch timeout" in fetch_errors[0]["error"]
+
+
 def test_executor_rejects_path_escape(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from aiwiki.executor import execute_plan
     from aiwiki.input_planner import Plan
@@ -1369,3 +1406,104 @@ def test_executor_rejects_unrelated_vault_internal(tmp_path: Path) -> None:
     plan = Plan(action="read_local_repo", targets=[str(internal)], title="x", reason="injection")
     with pytest.raises(PathOutsideWorkspaceError):
         execute_plan(tmp_path, plan, "https://example.com/unrelated")
+
+
+def test_reconcile_rewrite_proposals_preserves_user_notes(tmp_path: Path) -> None:
+    """Stale generated proposal pages are pruned; user notes in the same dir survive.
+
+    Regression for the ownership guard in ``reconcile_concept_rewrite_proposals``:
+    previously any ``wiki/rewrite-proposals/*.md`` whose stem was not a known slug
+    was unlinked unconditionally, silently deleting user notes dropped into the
+    directory from Obsidian.
+    """
+
+    from aiwiki.memory.execution_surfaces import reconcile_concept_rewrite_proposals
+    from aiwiki.protocol.scaffold import ensure_layout
+
+    ensure_layout(tmp_path)
+    proposal_dir = tmp_path / "wiki" / "rewrite-proposals"
+    proposal_dir.mkdir(parents=True, exist_ok=True)
+
+    stale_generated = proposal_dir / "stale-concept.md"
+    stale_generated.write_text(
+        "---\n"
+        "id: rewrite-proposal-stale-concept\n"
+        "kind: rewrite-proposal\n"
+        "generated_by: aiwiki-run-compile\n"
+        "---\n\n# Stale proposal\n",
+        encoding="utf-8",
+    )
+    user_note = proposal_dir / "my-own-note.md"
+    user_note.write_text("# 用户手写笔记\n\n不应被 compile 删除。\n", encoding="utf-8")
+    foreign_generated = proposal_dir / "other-tool.md"
+    foreign_generated.write_text(
+        "---\nkind: rewrite-proposal\ngenerated_by: someone-else\n---\n\n# Not ours\n",
+        encoding="utf-8",
+    )
+
+    reconcile_concept_rewrite_proposals(tmp_path, {"rewrite_candidates": [], "weak_concepts": []}, compiled_at="2026-08-03T00:00:00+00:00")
+
+    assert not stale_generated.exists()
+    assert user_note.exists()
+    assert foreign_generated.exists()
+
+
+def test_today_feed_schema_contract() -> None:
+    """schema/today-feed.json is enforced against the Python feed + wire format.
+
+    The schema is the declared shared contract between ``today_feed.py`` and the
+    Product Shell ``today_feed.js`` mirror; this test makes drift a test failure
+    instead of a silent documentation lie.
+    """
+
+    from typing import get_args
+
+    from aiwiki.cli.dispatch_helpers import _today_feed_to_json
+    from aiwiki.today_feed import FeedEntry, FeedKind, build_today_feed, priority_for_kind
+
+    schema_path = Path(__file__).resolve().parent.parent / "schema" / "today-feed.json"
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+
+    # Mirror pin: schema enum must equal the Python FeedKind literal set.
+    assert set(schema["properties"]["kind"]["enum"]) == set(get_args(FeedKind))
+
+    def assert_entry_conforms(entry: dict[str, Any]) -> None:
+        for key in schema["required"]:
+            assert key in entry, f"missing required key: {key}"
+        assert entry["kind"] in schema["properties"]["kind"]["enum"]
+        for key in ("kind", "title", "summary", "target", "timestamp", "protocol"):
+            assert isinstance(entry[key], str), f"{key} must be a string"
+        priority = entry["priority"]
+        assert isinstance(priority, int)
+        assert schema["properties"]["priority"]["minimum"] <= priority <= schema["properties"]["priority"]["maximum"]
+        assert priority == priority_for_kind(entry["kind"])
+
+    # Every kind, constructed directly, survives the wire serializer.
+    feed = [
+        FeedEntry(kind=kind, title="t", summary="s", target="x", timestamp="2026-08-03T00:00:00+00:00", protocol="")
+        for kind in get_args(FeedKind)
+    ]
+    wire = _today_feed_to_json(feed, {"generated_at": "2026-08-03T00:00:00+00:00", "active_protocol": "general"})
+    for json_key in ("todays_reports", "automation_status", "needs_review", "completed_elixirs", "suggested_next_actions"):
+        for entry in wire[json_key]:
+            assert_entry_conforms(entry)
+    assert sum(len(wire[key]) for key in wire if isinstance(wire[key], list)) == len(feed)
+
+    # End-to-end sample through build_today_feed (report kind).
+    summary = {
+        "generated_at": "2026-08-03T12:00:00+00:00",
+        "active_protocol": "general",
+        "recent_outputs": [
+            {
+                "path": "output/reports/2026-08-03-report.md",
+                "title": "报告 A",
+                "format": "report",
+                "generated_at": "2026-08-03T10:00:00+00:00",
+            }
+        ],
+    }
+    entries = build_today_feed(summary)
+    assert [entry.kind for entry in entries] == ["report"]
+    wire = _today_feed_to_json(entries, summary)
+    for entry in wire["todays_reports"]:
+        assert_entry_conforms(entry)

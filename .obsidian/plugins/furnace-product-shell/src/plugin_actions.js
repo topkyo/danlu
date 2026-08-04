@@ -178,33 +178,3 @@ async function runProductShellDropNoteCommand(plugin, { text, title, kind }) {
 async function runProductShellCliAction(plugin, label, command, args = []) {
   await plugin.runPluginCommand(label, [command, ...args], { refreshAfter: true });
 }
-
-async function runProductShellLauncherCommand(plugin, fullCommandStr, label = "Suggested Action") {
-  let trimmed = String(fullCommandStr || "").trim();
-  const prefixPattern = /^(?:PYTHONPATH=\S+\s+)?(?:python3?\s+-m\s+aiwiki\.cli\s+)?(?:--root\s+\S+\s+)?/;
-  trimmed = trimmed.replace(prefixPattern, "").trim();
-  if (!trimmed) {
-    new Notice(plugin.t("Cannot parse command: {command}", { command: truncateText(fullCommandStr, 80) }));
-    return;
-  }
-  const args = [];
-  let current = "";
-  let inQuote = false;
-  for (let i = 0; i < trimmed.length; i++) {
-    const ch = trimmed[i];
-    if (ch === '"') {
-      inQuote = !inQuote;
-    } else if (ch === " " && !inQuote) {
-      if (current) {
-        args.push(current);
-        current = "";
-      }
-    } else {
-      current += ch;
-    }
-  }
-  if (current) {
-    args.push(current);
-  }
-  await plugin.runPluginCommand(label, args, { refreshAfter: true });
-}

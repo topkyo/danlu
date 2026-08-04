@@ -17,8 +17,8 @@ import aiwiki.drop as _drop_pkg
 from ..drop_helpers import strip_leading_title_echo, timestamped_stem
 from ..protocol.scaffold import ensure_layout
 from ..render.paths import append_wiki_log
-from ..state.manifest import load_manifest, save_manifest
-from ..utils.io import _restore_file_bytes, _snapshot_file_bytes, atomic_write_bytes, runtime_write_lock
+from ..state.manifest import load_manifest
+from ..utils.io import _restore_file_bytes, _snapshot_file_bytes, runtime_write_lock
 from ..utils.path import relative_path
 from ..utils.security import FetchPolicyError, _validate_safe_url, safe_fetch, safe_resolve_within
 from .common import (
@@ -28,7 +28,6 @@ from .common import (
     _append_manifest_entry,
     _append_raw_added_history,
     _append_run_event,
-    _cleanup_tmp_dir,
     _label_from_url,
     _normalize_text,
     _rollback_created_paths,

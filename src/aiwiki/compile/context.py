@@ -17,7 +17,6 @@ from ..utils.io import (
     write_json_document_if_changed_ignoring_generated_timestamps,
 )
 from ..utils.path import relative_path
-from ..utils.time import utc_now
 from .state import load_compile_state
 
 

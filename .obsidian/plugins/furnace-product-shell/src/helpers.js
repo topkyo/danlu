@@ -285,24 +285,6 @@ function inferAutoAskFormat(question, materialPaths) {
   return "report";
 }
 
-function buildAutoAskQuestionLegacy(question, materialPaths) {
-  const normalizedQuestion = String(question || "").trim();
-  if (!normalizedQuestion) {
-    return "";
-  }
-  const paths = normalizeMaterialPaths(materialPaths);
-  const pathBlock = paths.length ? `- ${paths.join("\n- ")}` : "- (drop payload 未返回可用路径)";
-  return [
-    "请基于以下本次投喂材料回答用户问题。",
-    "",
-    "本次投喂材料路径：",
-    pathBlock,
-    "",
-    "用户问题：",
-    normalizedQuestion,
-  ].join("\n");
-}
-
 function looksLikeUniversalMaterialPayload(value) {
   const text = String(value || "").trim();
   if (!text) return false;

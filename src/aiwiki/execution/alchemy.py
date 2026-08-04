@@ -28,31 +28,18 @@ from ..utils.io import _restore_file_bytes, _snapshot_file_bytes, atomic_write_t
 from ..utils.path import next_available_stem
 from ..utils.text import slugify
 from ..utils.time import utc_now  # noqa: F401
-from .alchemy_cleanup import (
-    apply_superseded_elixir_cleanup,
-    preview_superseded_elixir_cleanup,
-)
 from .alchemy_helpers import (
     _ACTIVE_ELIXIR_STATES,
     _ELIXIR_SOURCE_PREFIXES,
     _PROMOTION_TS_FIELD,
     CANDIDATE_ELIXIR_DIR,
     ELIXIR_DIR,
-    ELIXIR_STATE_VALUES,
     DemoteHalfWriteError,
     DemoteReceiptError,
-    LegacyMigrationApplyError,
-    LegacyMigrationHalfWriteError,
-    LegacyMigrationPlanError,
-    LegacyMigrationReceiptError,
     PromoteHalfWriteError,
     PromoteReceiptError,
     RevertHalfWriteError,
     RevertReceiptError,
-    SupersededCleanupApplyError,
-    SupersededCleanupHalfWriteError,
-    SupersededCleanupPlanError,
-    SupersededCleanupReceiptError,
     _candidate_path,
     _collect_dependent_elixir_ids,
     _default_elixir_review_after,
@@ -73,10 +60,6 @@ from .alchemy_helpers import (
     list_promoted_outputs_for_corpus,
     resolve_promote_counter_evidence,
     validate_promote_gate,
-)
-from .alchemy_migration import (
-    apply_legacy_elixir_migration,
-    preview_legacy_elixir_migration,
 )
 from .alchemy_receipts import _persist_receipt_transactionally
 

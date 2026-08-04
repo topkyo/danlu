@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import subprocess
@@ -278,12 +279,41 @@ def _analyze_image_asset(
     backend_name = _client_backend_name(effective_client)
     try:
         result = effective_client.analyze_image(system_prompt, user_prompt, image_path)
-    except (LLMError, RuntimeError, OSError):
+    except (LLMError, RuntimeError, OSError) as exc:
+        _record_image_llm_attempt(root, effective_client, status="failed", error=str(exc))
         return {"analysis": "", "backend": backend_name, "status": "failed"}
     analysis = _normalize_text(result.text)
     if not analysis:
+        _record_image_llm_attempt(root, effective_client, status="failed", error="empty analysis")
         return {"analysis": "", "backend": backend_name, "status": "failed"}
+    _record_image_llm_attempt(root, effective_client, status="success", usage=getattr(result, "usage", None))
     return {"analysis": analysis, "backend": backend_name, "status": "generated"}
+
+
+def _record_image_llm_attempt(
+    root: Path,
+    client: Any,
+    *,
+    status: str,
+    error: str = "",
+    usage: dict[str, Any] | None = None,
+) -> None:
+    """Best-effort LLM receipt for the vision path; never breaks image drop."""
+
+    try:
+        from aiwiki.runner.receipts import _build_llm_audit, record_llm_attempt
+
+        record_llm_attempt(
+            root,
+            {"event": "drop-image-vision"},
+            _build_llm_audit(client),
+            status=status,
+            error=error,
+            usage=usage,
+            error_class="llm" if status != "success" else "",
+        )
+    except Exception:  # noqa: BLE001 - observability must not break the drop path
+        logging.getLogger("aiwiki").warning("image vision LLM receipt append failed", exc_info=True)
 
 
 def _maybe_create_image_client(root: Path) -> Any | None:

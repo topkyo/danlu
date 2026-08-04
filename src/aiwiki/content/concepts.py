@@ -15,23 +15,15 @@ from ..protocol.runtime_config import (
     CONFLICT_SIGNAL_PAIRS,
     EVIDENCE_GAP_MARKERS,
 )
-from ..utils.hash import compiled_source_sha, sha256_bytes
+from ..utils.hash import sha256_bytes
 from ..utils.markdown import (
-    build_citation_snapshots,
-    extract_provenance_paths,
-    first_markdown_heading,
     parse_frontmatter,
-    raw_note_metadata,
     render_frontmatter,
-    replace_first_markdown_heading,
-    strip_frontmatter,
-    upsert_markdown_section,
 )
-from ..utils.path import normalize_workspace_path, relative_path
+from ..utils.path import relative_path
 from ..utils.text import STOP_WORDS, slugify, tokenize
 from ..utils.time import parse_iso_datetime, utc_now
 from .io import load_source_page_context, preserved_section, source_summary_or_preview
-from .material import load_manual_link_state
 
 CONCEPT_RENDER_SCHEMA_VERSION = 4
 
@@ -278,7 +270,7 @@ def build_concept_records(
             terms = [str(label) for label in cached_terms if str(label)]
             clean_concept_source_ids.append(entry_id)
         else:
-            terms = _entry_concept_terms_via_facade(entry, context)
+            terms = entry_concept_terms(entry, context)
             dirty_concept_source_ids.append(entry_id)
         for manual_slug in manual_slugs:
             manual_label = manual_slug.replace("-", " ")
@@ -1160,10 +1152,6 @@ def build_concept_quality(root: Path, memory: dict[str, Any]) -> dict[str, Any]:
             "medium_or_hard": hardness_counts["medium"] + hardness_counts["hard"],
         },
     }
-
-
-def _entry_concept_terms_via_facade(entry: dict[str, Any], context: str) -> list[str]:
-    return entry_concept_terms(entry, context)
 
 
 def _active_manual_source_concept_links(root: Path) -> dict[str, set[str]]:

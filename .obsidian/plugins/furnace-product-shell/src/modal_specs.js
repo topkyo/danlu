@@ -1,32 +1,5 @@
 // Structured command modal specs for Product Shell operator actions.
 
-function buildFileBackModalSpec(plugin, prefill = {}) {
-  return {
-    title: plugin.t("File Back"),
-    description: plugin.t("File an output artifact back into wiki/judgments for thin review."),
-    fields: [
-      {
-        key: "artifact",
-        label: plugin.t("Artifact path"),
-        required: true,
-        placeholder: plugin.t("output/reports/....md"),
-        initialValue: () => prefill.artifact || plugin.getActiveOutputPath(),
-      },
-      {
-        key: "title",
-        label: plugin.t("Title"),
-        placeholder: plugin.t("Optional filed-back title"),
-        initialValue: prefill.title || "",
-      },
-    ],
-    onSubmit: async (values) => {
-      const args = [values.artifact];
-      appendOptionalArg(args, "--title", values.title);
-      await plugin.runCliAction(plugin.t("File Back"), "file-back", args);
-    },
-  };
-}
-
 function buildAlchemyStartModalSpec(plugin, prefill = {}) {
   return {
     title: plugin.t("Alchemy Start"),

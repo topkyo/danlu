@@ -14,6 +14,8 @@
 
 ## 当前动态
 
+- 2026-08-03 (**多 agent 全量审计 + 7 波收口全执行**)：6-agent 全量扫描综合评分 **7.4/10**（vs 自评 9.05），计划落 `docs/plans/2026-08-03-multi-agent-audit-remediation.md` 并全部跑完。W0：rewrite-proposal 清理循环加归属守卫（kind + `generated_by: aiwiki-run-compile` 双判据，P0 误删用户笔记洞）。W1：ruff F401 启用（1594 fix，5 处 re-export compat seam 加 noqa 保留）；`docs_consistency_check` rg 硬依赖 + mktemp；`verify_target_rules` 核心模块覆盖。W2：删 `vault_queue.py` 死模块、`nightly_health` 等死函数；JS 删 ~25 死符号 + `run_log_persistence.js` + 4 处重复收敛。W3：bridge launcher 180s 超时 + 4MB stdout/stderr 上限 + settled-guard。W4：today-feed schema 重写对齐 Python SoT（修掉 JS 幻影 `proposal` kind 真实漂移）+ 双侧契约测试；compile-state 键 6 份拷贝收敛为 `compile/types.py` 注册表（附带行为变化：loader 对缺 `phase_summary`/`drift_warnings` 的旧 state 文件从整文档重置放宽为容忍，正常写出的文件不受影响）。W5：ask/distill prompt 加 `<untrusted_source>` 注入边界包装；planner/distill/vision 三路 LLM receipt 补齐；fetch_raw 失败从正文挪 manifest `fetch_errors`；config env int/float 解析保护。acceptance 5 帧 prompt_hash 按既有流程重算（脚本化迭代）。W6：巨石四刀——graph_query 474→375、workflows_ask 490→226（三写入分支 + 锁语义不变）、repair 416→78、mm_actions 361→328（snapshot 双份实现收敛 utils/io，`_rollback_snapshots` 因返回错误列表语义差异保留适配层）；JS `renderUniversalInput` 刀评估后 0 收敛（helper 是 regenerate 语义，与首次提交流有 6 条测试锁定差异，强行收敛会改行为）。verify 实测 acceptance **24** / Jest **203** / llm **82** 全绿。
+
 - 2026-07-27 (**SCC / planner / Post-Cleanup 卫生**)：断 `app_linting.phases→core`（TYPE_CHECKING，全库仅剩此 1 个模块级 SCC）；`planner/` docstring 标明 state/paths live（非空壳）；Post-Cleanup §1 Top hubs 去掉已删 `graph.py`/`drop.py`，对齐 202/51.6k 与现行巨石。
 
 - 2026-07-27 (**会话交接刷新**)：结构债第 3 条从「第一刀 content↔memory / auto-resolution」改为续刀（巨石 / 剩余 SCC）；已完成段补记 07-26/27 结构债与 stale 扫除。

@@ -22,14 +22,6 @@ function getConceptSlugForPath(activePath) {
   return path.basename(normalized, ".md");
 }
 
-function getOutputPathForPath(activePath) {
-  const normalized = String(activePath || "");
-  if (normalized.startsWith("output/") && normalized.endsWith(".md")) {
-    return normalized;
-  }
-  return "";
-}
-
 function getCuratedPagePathForSummary(activePath, summary) {
   const normalized = String(activePath || "");
   if (!normalized.endsWith(".md")) {

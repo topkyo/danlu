@@ -16,7 +16,7 @@ from ..content.concepts import (
     concept_source_pages,
     normalize_concept_hardness,
     parse_causal_links,
-    placeholder_concept_slugs,
+    placeholder_concept_slugs,  # noqa: F401  # re-export compat seam
 )
 from ..content.io import (
     source_summary_or_preview,
@@ -26,9 +26,7 @@ from ..protocol.focus_scoring import action_focus_score
 from ..protocol.runtime_config import LOW_RISK_APPLYABLE_ACTION_KINDS, RESOLVABLE_MONITOR_ACTION_KINDS
 from ..protocol.state import load_protocol_state
 from ..render.paths import (
-    execution_bundle_path,
     execution_bundles_dir,
-    execution_proposal_path,
     execution_proposals_dir,
 )
 from ..utils.hash import sha256_bytes
@@ -36,7 +34,7 @@ from ..utils.markdown import build_citation_snapshots, parse_frontmatter
 from ..utils.path import relative_path
 from ..utils.text import slugify
 from .action_policy import execution_policy_profile
-from .action_rank import action_priority_rank, action_status_rank
+from .action_rank import action_priority_rank, action_status_rank  # noqa: F401  # re-export compat seam
 from .action_state import load_machine_memory_action_state
 from .paths import manual_link_state_path
 

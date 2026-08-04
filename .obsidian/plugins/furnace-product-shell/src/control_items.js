@@ -114,58 +114,6 @@ function transitionOptions(plugin, controlType, control) {
     });
 }
 
-function preferredTransitionOptions(plugin, controlType, control) {
-  return transitionOptions(plugin, controlType, control).filter((option) => option.isPreferred).slice(0, 2);
-}
-
-function commonReviewTransitionOptions(plugin, pages) {
-  const controls = Array.isArray(pages) ? pages.filter((page) => page && typeof page === "object") : [];
-  if (!controls.length) {
-    return [];
-  }
-  const stats = new Map();
-  controls.forEach((page) => {
-    const seen = new Set();
-    transitionOptions(plugin, "page", page).forEach((option) => {
-      if (seen.has(option.value)) {
-        return;
-      }
-      seen.add(option.value);
-      const current = stats.get(option.value) || {
-        value: option.value,
-        label: option.label,
-        sharedCount: 0,
-        preferredCount: 0,
-        defaultCount: 0,
-      };
-      current.label = option.label;
-      current.sharedCount += 1;
-      if (option.isPreferred) {
-        current.preferredCount += 1;
-      }
-      if (option.isDefault) {
-        current.defaultCount += 1;
-      }
-      stats.set(option.value, current);
-    });
-  });
-  return Array.from(stats.values())
-    .filter((option) => option.sharedCount === controls.length)
-    .sort((left, right) => {
-      if (left.defaultCount !== right.defaultCount) {
-        return right.defaultCount - left.defaultCount;
-      }
-      if (left.preferredCount !== right.preferredCount) {
-        return right.preferredCount - left.preferredCount;
-      }
-      return String(left.label || "").localeCompare(String(right.label || ""));
-    });
-}
-
-function reviewBatchSuggestions(_plugin) {
-  return [];
-}
-
 function rewriteControlItems(plugin, mode = "review") {
   const proposals = reviewControlList(plugin, "rewrite_proposals");
   return uniqueContextOptions(
@@ -225,45 +173,6 @@ function actionControlItems(plugin, mode = "review") {
         };
       }),
     "actionId"
-  );
-}
-
-function archiveControlItems(plugin, mode = "apply") {
-  return uniqueContextOptions(
-    executionControlList(plugin, "archives")
-      .filter((entry) => (mode === "revert" ? Boolean(entry.can_revert) : Boolean(entry.can_apply)))
-      .map((entry) => {
-        const candidateStatus = String(entry.candidate_status || "").trim();
-        const currentTemperature = String(entry.current_temperature || "").trim();
-        return {
-          value: entry.entry_id,
-          label: entry.title || entry.entry_id || "archive-entry",
-          description: `${plugin.t(candidateStatus || currentTemperature || "archive")} | ${entry.source_path || ""}`,
-          entryId: String(entry.entry_id || ""),
-          allowedTransitions: Array.isArray(entry.allowed_transitions) ? entry.allowed_transitions : [],
-          preferredTransitions: Array.isArray(entry.preferred_transitions) ? entry.preferred_transitions : [],
-          defaultTransition: String(entry.default_transition || ""),
-        };
-      }),
-    "entryId"
-  );
-}
-
-function actionControlsById(plugin) {
-  const controls = executionControlList(plugin, "actions");
-  return new Map(
-    controls
-      .filter((action) => action && typeof action === "object" && String(action.action_id || "").trim())
-      .map((action) => [String(action.action_id || "").trim(), action])
-  );
-}
-
-function archiveControlsById(plugin) {
-  const controls = executionControlList(plugin, "archives");
-  return new Map(
-    controls
-      .filter((entry) => entry && typeof entry === "object" && String(entry.entry_id || "").trim())
-      .map((entry) => [String(entry.entry_id || "").trim(), entry])
   );
 }
 

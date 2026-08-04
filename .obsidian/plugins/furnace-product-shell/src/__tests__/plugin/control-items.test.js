@@ -118,13 +118,10 @@ test("control item builders normalize and dedupe review and execution controls",
     "wiki/decisions/a.md",
     "wiki/judgments/b.md",
   ]);
-  expect(context.reviewBatchSuggestions(plugin)).toEqual([]);
   expect(context.rewriteControlItems(plugin, "review").map((item) => item.slug)).toEqual(["rewrite-a"]);
   expect(context.rewriteControlItems(plugin, "apply").map((item) => item.slug)).toEqual(["rewrite-b"]);
   expect(context.actionControlItems(plugin, "apply").map((item) => item.actionId)).toEqual(["act-1"]);
   expect(context.actionControlItems(plugin, "revert").map((item) => item.actionId)).toEqual(["act-2"]);
-  expect(context.archiveControlItems(plugin, "apply").map((item) => item.entryId)).toEqual(["arch-1"]);
-  expect(context.archiveControlItems(plugin, "revert").map((item) => item.entryId)).toEqual(["arch-2"]);
 });
 
 test("transition options prioritize default, preferred, then label", () => {

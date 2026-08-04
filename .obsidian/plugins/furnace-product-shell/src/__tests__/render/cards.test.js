@@ -40,7 +40,7 @@ if (!HTMLElement.prototype.addClass) {
   };
 }
 
-const { renderFeedCard, renderReportCard, renderConfirmationCard, renderCompoundSuggestActions } = require("../../render/cards");
+const { renderFeedCard, renderReportCard, renderConfirmationCard } = require("../../render/cards");
 
 function makeMockPlugin() {
   return {

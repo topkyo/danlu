@@ -6,26 +6,13 @@
  */
 "use strict";
 
+// MIRROR of src/aiwiki/today_feed.py _PRIORITY (schema/today-feed.json pins the contract).
 const PRIORITY = {
   report: 1,
   automation: 2,
   decision: 3,
-  proposal: 4,
-  elixir: 5,
-  action: 6,
-};
-
-const REVIEW_BUCKET_COPY = {
-  counter_evidence_candidates: ["补充反证候选", "检查新来源是否足以反驳既有判断"],
-  escalated_actions: ["处理升级动作", "处理已升级、需要人工确认的动作"],
-  escalation_candidates: ["处理升级候选", "确认是否需要人工介入"],
-  judgment_review_actions: ["复核研究判断", "处理需要重新判断的结论"],
-  machine_memory_actions: ["修复机器记忆", "处理可审计的记忆修复动作"],
-  overdue_actions: ["处理逾期动作", "确认是否继续执行或关闭"],
-  overdue_reviews: ["处理逾期复审", "确认旧判断是否仍成立"],
-  pending_decisions: ["处理待定决策", "确认待定判断与执行入口"],
-  pending_judgments: ["复核待定判断", "推进仍在等待复核的判断"],
-  ready_actions: ["确认待执行动作", "复核已经准备好的安全动作"],
+  elixir: 4,
+  action: 5,
 };
 
 const PRIMARY_REVIEW_BUCKETS = new Set([
@@ -115,19 +102,6 @@ function isDeliverableReportOutput(item) {
   return true;
 }
 
-function isMaintenanceCommandAction(target, reason) {
-  const targetText = ` ${String(target || "").trim()} `;
-  const reasonText = String(reason || "").trim();
-  if (reasonText.startsWith("batch-hint:")) return true;
-  const maintenanceTokens = [
-    " review-page ",
-    " review-queue ",
-    " --batch ",
-    " --next ",
-  ];
-  return maintenanceTokens.some((token) => targetText.includes(token));
-}
-
 // Helpers
 
 function todayDateOf(summary) {
@@ -156,13 +130,6 @@ function firstText(item, ...keys) {
   return "";
 }
 
-function reviewBucketCopy(kindText) {
-  const copy = REVIEW_BUCKET_COPY[kindText];
-  if (copy) return copy;
-  const label = String(kindText || "").replace(/[_-]/g, " ").trim();
-  return [label ? `处理审阅队列：${label}` : "处理审阅队列", "进入审阅中心确认下一步"];
-}
-
 function priorityForKind(kind) {
   return PRIORITY[String(kind)] || 99;
 }
@@ -182,9 +149,7 @@ module.exports = {
   buildTodayFeed,
   compareEntries,
   todayDateOf,
-  reviewBucketCopy,
   priorityForKind,
-  isMaintenanceCommandAction,
   compoundSuggestItems,
   compoundSuggestIndex,
   PRIORITY,

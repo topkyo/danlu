@@ -66,7 +66,7 @@ from ..utils.markdown import (
     upsert_markdown_section,
 )
 from ..utils.path import next_available_stem, relative_path
-from ..utils.text import human_query_title, slugify
+from ..utils.text import human_query_title
 from .candidates import load_output_candidates_state, upsert_output_candidate
 from .history import append_runtime_history, load_runtime_history
 from .receipts import write_execution_receipt
@@ -389,7 +389,6 @@ def ask_question(
     notify: bool = True,
 ) -> dict[str, Any]:
     from ..compile.ranking import rank_concepts
-    from ..utils.security import safe_resolve_within
     from ..utils.time import utc_now
 
     if is_obsidian_open_link(question):

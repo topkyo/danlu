@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 from ..state.constants import DEFAULT_PROTOCOL
 from ..state.io import load_json_document_strict
-from ..utils.io import atomic_write_text, runtime_write_operation, write_if_changed
+from ..utils.io import atomic_write_text
 from ..utils.path import relative_path
-from ..utils.time import utc_now
 from .descriptors import protocol_descriptor
 from .scaffold import available_protocols, ensure_protocol_scaffold
 from .types import ProtocolState
@@ -54,36 +53,3 @@ def resolve_protocol(root: Path, protocol: str | None = None) -> str:
     if candidate != DEFAULT_PROTOCOL:
         raise ValueError(f"Unknown protocol: {protocol}. Only '{DEFAULT_PROTOCOL}' is supported.")
     return candidate
-
-
-@runtime_write_operation
-def set_active_protocol(root: Path, protocol: str) -> dict[str, Any]:
-    from ..lifecycle.knowledge import load_knowledge_lifecycle_state
-    from ..render.paths import append_wiki_log
-    from ..render.protocols import render_protocols_dashboard
-
-    candidate = protocol.strip().lower()
-    if candidate != DEFAULT_PROTOCOL:
-        raise ValueError(f"Unknown protocol: {protocol}. Only '{DEFAULT_PROTOCOL}' is supported.")
-    active = resolve_protocol(root, protocol)
-    path = protocol_state_path(root)
-    atomic_write_text(path, json.dumps({"version": 1, "active_protocol": active}, indent=2, sort_keys=True) + "\n")
-    state = load_protocol_state(root)
-    write_if_changed(
-        root / "wiki" / "indexes" / "protocols.md",
-        render_protocols_dashboard(
-            root,
-            utc_now(),
-            knowledge_lifecycle=load_knowledge_lifecycle_state(root),
-        ),
-    )
-    append_wiki_log(
-        root,
-        "protocol",
-        "switch active protocol",
-        [
-            f"active_protocol: `{active}`",
-            f"state_path: `{state['state_path']}`",
-        ],
-    )
-    return state

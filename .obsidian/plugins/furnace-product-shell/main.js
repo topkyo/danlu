@@ -1182,24 +1182,6 @@ function inferAutoAskFormat(question, materialPaths) {
   return "report";
 }
 
-function buildAutoAskQuestionLegacy(question, materialPaths) {
-  const normalizedQuestion = String(question || "").trim();
-  if (!normalizedQuestion) {
-    return "";
-  }
-  const paths = normalizeMaterialPaths(materialPaths);
-  const pathBlock = paths.length ? `- ${paths.join("\n- ")}` : "- (drop payload 未返回可用路径)";
-  return [
-    "请基于以下本次投喂材料回答用户问题。",
-    "",
-    "本次投喂材料路径：",
-    pathBlock,
-    "",
-    "用户问题：",
-    normalizedQuestion,
-  ].join("\n");
-}
-
 function looksLikeUniversalMaterialPayload(value) {
   const text = String(value || "").trim();
   if (!text) return false;
@@ -2162,14 +2144,6 @@ function getConceptSlugForPath(activePath) {
   return path.basename(normalized, ".md");
 }
 
-function getOutputPathForPath(activePath) {
-  const normalized = String(activePath || "");
-  if (normalized.startsWith("output/") && normalized.endsWith(".md")) {
-    return normalized;
-  }
-  return "";
-}
-
 function getCuratedPagePathForSummary(activePath, summary) {
   const normalized = String(activePath || "");
   if (!normalized.endsWith(".md")) {
@@ -2205,19 +2179,6 @@ const PRIORITY = {
   proposal: 4,
   elixir: 5,
   action: 6,
-};
-
-const REVIEW_BUCKET_COPY = {
-  counter_evidence_candidates: ["补充反证候选", "检查新来源是否足以反驳既有判断"],
-  escalated_actions: ["处理升级动作", "处理已升级、需要人工确认的动作"],
-  escalation_candidates: ["处理升级候选", "确认是否需要人工介入"],
-  judgment_review_actions: ["复核研究判断", "处理需要重新判断的结论"],
-  machine_memory_actions: ["修复机器记忆", "处理可审计的记忆修复动作"],
-  overdue_actions: ["处理逾期动作", "确认是否继续执行或关闭"],
-  overdue_reviews: ["处理逾期复审", "确认旧判断是否仍成立"],
-  pending_decisions: ["处理待定决策", "确认待定判断与执行入口"],
-  pending_judgments: ["复核待定判断", "推进仍在等待复核的判断"],
-  ready_actions: ["确认待执行动作", "复核已经准备好的安全动作"],
 };
 
 const PRIMARY_REVIEW_BUCKETS = new Set([
@@ -2307,19 +2268,6 @@ function isDeliverableReportOutput(item) {
   return true;
 }
 
-function isMaintenanceCommandAction(target, reason) {
-  const targetText = ` ${String(target || "").trim()} `;
-  const reasonText = String(reason || "").trim();
-  if (reasonText.startsWith("batch-hint:")) return true;
-  const maintenanceTokens = [
-    " review-page ",
-    " review-queue ",
-    " --batch ",
-    " --next ",
-  ];
-  return maintenanceTokens.some((token) => targetText.includes(token));
-}
-
 // Helpers
 
 function todayDateOf(summary) {
@@ -2348,13 +2296,6 @@ function firstText(item, ...keys) {
   return "";
 }
 
-function reviewBucketCopy(kindText) {
-  const copy = REVIEW_BUCKET_COPY[kindText];
-  if (copy) return copy;
-  const label = String(kindText || "").replace(/[_-]/g, " ").trim();
-  return [label ? `处理审阅队列：${label}` : "处理审阅队列", "进入审阅中心确认下一步"];
-}
-
 function priorityForKind(kind) {
   return PRIORITY[String(kind)] || 99;
 }
@@ -2374,9 +2315,7 @@ module.exports = {
   buildTodayFeed,
   compareEntries,
   todayDateOf,
-  reviewBucketCopy,
   priorityForKind,
-  isMaintenanceCommandAction,
   compoundSuggestItems,
   compoundSuggestIndex,
   PRIORITY,
@@ -2386,42 +2325,6 @@ module.exports = {
 // --- src/modals.js ---
 
 // Modal subclasses (StructuredCommand, ContextPicker).
-
-// Shared modal helpers
-function modalSubmitRow(containerEl, submitLabel, cancelLabel, onSubmit, onCancel) {
-  var row = containerEl.createDiv({ cls: "furnace-modal-submit-row" });
-  if (onCancel) {
-    var cancelBtn = row.createEl("button", { text: cancelLabel || "Cancel" });
-    cancelBtn.addClass("furnace-shell-ghost-button");
-    cancelBtn.addEventListener("click", function () { onCancel(); });
-  }
-  var submitBtn = row.createEl("button", { text: submitLabel || "Submit" });
-  submitBtn.addClass("mod-cta");
-  submitBtn.addEventListener("click", function () { onSubmit(submitBtn); });
-  return { row: row, submitBtn: submitBtn };
-}
-
-function setSubmitLoading(button, loadingText) {
-  button.disabled = true;
-  button.setText(loadingText || "处理中…");
-}
-
-function setSubmitReady(button, text) {
-  button.disabled = false;
-  button.setText(text);
-}
-
-function showInlineError(el, text) {
-  if (!el) return;
-  el.setText(text);
-  el.addClass("is-visible");
-}
-
-function clearInlineError(el) {
-  if (!el) return;
-  el.setText("");
-  el.removeClass("is-visible");
-}
 
 class StructuredCommandModal extends Modal {
   constructor(app, plugin, spec) {
@@ -2667,6 +2570,9 @@ module.exports = { refreshRepoState, resolveLauncherPath, launcherIsExecutable }
 
 const PRIMARY_SURFACE_COMMANDS = new Set(["drop", "today", "advanced"]);
 
+const EXEC_LAUNCHER_TIMEOUT_MS = 180_000;
+const EXEC_LAUNCHER_MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
+
 function normalizeLauncherArgv(args) {
   const argv = Array.isArray(args) ? args.map((item) => String(item)) : [];
   const command = argv[0] || "";
@@ -2700,23 +2606,72 @@ function execLauncher(plugin, args) {
     });
     let stdout = "";
     let stderr = "";
+    let settled = false;
+    const killChild = () => {
+      try {
+        child.kill("SIGTERM");
+      } catch (killError) {
+        // The child may already be gone; the rejection still applies.
+      }
+    };
+    const settleWithError = (error) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timeoutTimer);
+      error.stdout = stdout;
+      error.stderr = stderr;
+      reject(error);
+    };
+    const timeoutTimer = setTimeout(() => {
+      const error = new Error(plugin.t("Command timed out after {ms} ms", { ms: EXEC_LAUNCHER_TIMEOUT_MS }));
+      error.code = "timeout";
+      settleWithError(error);
+      killChild();
+    }, EXEC_LAUNCHER_TIMEOUT_MS);
+    const failOutputOverflow = () => {
+      if (settled) {
+        return;
+      }
+      const error = new Error(plugin.t("Command output exceeded {bytes} bytes", { bytes: EXEC_LAUNCHER_MAX_OUTPUT_BYTES }));
+      error.code = "output-overflow";
+      settleWithError(error);
+      killChild();
+    };
     child.stdout.on("data", (chunk) => {
       stdout += String(chunk);
+      if (stdout.length > EXEC_LAUNCHER_MAX_OUTPUT_BYTES) {
+        failOutputOverflow();
+      }
     });
     child.stderr.on("data", (chunk) => {
       stderr += String(chunk);
+      if (stderr.length > EXEC_LAUNCHER_MAX_OUTPUT_BYTES) {
+        failOutputOverflow();
+      }
     });
     child.on("error", (error) => {
-      reject(error);
+      settleWithError(error);
     });
     child.on("close", (code) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timeoutTimer);
       let payload = null;
+      let parseFailed = false;
       try {
         payload = readJsonText(stdout);
       } catch (error) {
         payload = null;
+        parseFailed = true;
       }
       if (code === 0) {
+        if (parseFailed) {
+          console.warn("[furnace-product-shell] launcher returned non-JSON stdout", stdout.slice(0, 200));
+        }
         resolve({ stdout, stderr, payload, code });
         return;
       }
@@ -2901,10 +2856,6 @@ function renderCompoundSuggestActionCard(plugin, cardEl, entry) {
   renderCompoundLootBanner(plugin, cardEl, suggest);
 }
 
-function renderCompoundSuggestActions(plugin, actionsEl, suggest) {
-  renderCompoundLootBanner(plugin, actionsEl, suggest);
-}
-
 function renderConfirmationCard(plugin, cardEl, entry) {
   const actions = cardEl.createDiv({ cls: "furnace-feed-card-actions" });
 
@@ -2951,7 +2902,6 @@ module.exports = {
   renderConfirmationCard,
   renderAutomationCard,
   renderCompoundSuggestActionCard,
-  renderCompoundSuggestActions,
   renderCompoundLootBanner,
   compoundLootCopy,
 };
@@ -3148,30 +3098,6 @@ class FurnaceProductShellSettingTab extends PluginSettingTab {
 
 // Render primitives shared by Product Shell sections.
 
-function renderCardGrid(plugin, container, cards) {
-  const grid = container.createDiv({ cls: "furnace-shell-grid" });
-  cards.forEach((card) => {
-    const cardEl = grid.createDiv({ cls: "furnace-shell-card" });
-    cardEl.createDiv({ cls: "furnace-shell-card-label", text: plugin.t(card.label) });
-    const valueText = typeof card.value === "string" ? plugin.t(card.value) : String(card.value);
-    cardEl.createDiv({ cls: "furnace-shell-card-value", text: valueText });
-  });
-}
-
-function renderActionButtons(plugin, container, buttons) {
-  const actions = container.createDiv({ cls: "furnace-shell-actions" });
-  buttons.forEach((buttonConfig) => {
-    const localizedLabel = plugin.t(buttonConfig.label);
-    const button = actions.createEl("button", { text: localizedLabel });
-    if (buttonConfig.cta) {
-      button.addClass("mod-cta");
-    }
-    button.addEventListener("click", () => {
-      plugin.runUiAction(() => buttonConfig.onClick(), localizedLabel);
-    });
-  });
-}
-
 function renderPanel(plugin, container, title, description = "", options = {}) {
   const panel = container.createDiv({ cls: "furnace-shell-panel" });
   const header = panel.createDiv({ cls: "furnace-shell-panel-header" });
@@ -3215,24 +3141,6 @@ function renderPill(plugin, container, text, extraClass = "") {
     pill.addClass(extraClass);
   }
   return pill;
-}
-
-function renderMainHeader(plugin, container) {
-  const header = container.createDiv({ cls: "furnace-shell-main-header" });
-  const copy = header.createDiv({ cls: "furnace-shell-main-copy" });
-  copy.createEl("h2", { text: plugin.t("Furnace") });
-  copy.createDiv({ cls: "furnace-shell-main-subtitle", text: path.basename(plugin.repoState.root || "") || plugin.repoState.root || "" });
-
-  const badges = header.createDiv({ cls: "furnace-shell-pill-row" });
-  plugin.renderPill(badges, plugin.t(plugin.getActiveProtocol()));
-  const llmStatus = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary.llm_status || {} : {};
-  if (llmStatus.backend) {
-    plugin.renderPill(badges, llmStatus.backend);
-  }
-  const runningCount = plugin.pluginState.recentRuns.filter((entry) => entry.status === "running").length;
-  if (runningCount) {
-    plugin.renderPill(badges, `${runningCount} ${plugin.t("running")}`, "is-running");
-  }
 }
 
 function llmHealthToneClass(status) {
@@ -3407,138 +3315,6 @@ function renderStatusPanel(plugin, container) {
   plugin.renderInlineButtons(panel, [
     { label: "Refresh Furnace Shell", onClick: async () => plugin.refreshShellSummaryCommand() },
   ]);
-}
-
-function renderSuggestedNextActionsBlock(plugin, container, options = {}) {
-  const maxItems = Number.isFinite(Number(options.maxItems)) ? Math.max(1, Number(options.maxItems)) : 2;
-  const summary = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary : null;
-  const actions = summary && Array.isArray(summary.suggested_next_actions) ? summary.suggested_next_actions : [];
-  if (!actions.length) {
-    return false;
-  }
-  const list = container.createDiv({ cls: "furnace-shell-inline-list" });
-  actions.slice(0, maxItems).forEach((action) => {
-    const item = list.createDiv({ cls: "furnace-shell-inline-item" });
-    const copy = item.createDiv({ cls: "furnace-shell-output-copy" });
-    copy.createEl("strong", { text: action.title || action.path || plugin.t("Next Action") });
-    const metaParts = [];
-    if (action.kind) {
-      metaParts.push(plugin.t(action.kind));
-    }
-    if (action.reason) {
-      metaParts.push(plugin.t("reason {value}", { value: action.reason }));
-    }
-    if (action.path) {
-      metaParts.push(action.path);
-    }
-    if (metaParts.length) {
-      copy.createDiv({ cls: "furnace-shell-meta", text: metaParts.join(" | ") });
-    }
-    const buttons = item.createDiv({ cls: "furnace-shell-inline-actions furnace-shell-inline-actions-compact" });
-    if (action.kind === "compound-suggest") {
-      const compoundAction = String(action.action || "").trim();
-      if (compoundAction === "file-back-judgment") {
-        const fileBackBtn = buttons.createEl("button", { text: plugin.t("沉淀"), cls: "mod-cta" });
-        fileBackBtn.addEventListener("click", () => {
-          plugin.runUiAction(() => plugin.runCompoundFileBack(action), `Compound file-back: ${action.title || action.path}`);
-        });
-      } else if (compoundAction === "alchemy-start") {
-        const alchemyBtn = buttons.createEl("button", { text: plugin.t("凝丹"), cls: "mod-cta" });
-        alchemyBtn.addEventListener("click", () => {
-          plugin.runUiAction(() => plugin.openCompoundAlchemyStart(action), `Compound alchemy-start: ${action.title || action.path}`);
-        });
-      }
-    }
-    if (action.path) {
-      const openButton = buttons.createEl("button", { text: plugin.t("Open") });
-      openButton.addEventListener("click", () => {
-        plugin.runUiAction(() => plugin.openWorkspacePath(action.path), `Open next action path: ${action.path}`);
-      });
-    }
-    if (action.command) {
-      const copyButton = buttons.createEl("button", { text: plugin.t("Copy command") });
-      copyButton.addEventListener("click", () => {
-        plugin.runUiAction(() => plugin.copyText(action.command), `Copy next action command: ${action.command}`);
-      });
-    }
-  });
-  return true;
-}
-
-function renderDigestRow(plugin, container, label, value) {
-  const row = container.createDiv({ cls: "furnace-shell-digest-row" });
-  row.createDiv({ cls: "furnace-shell-digest-label", text: plugin.t(label) });
-  row.createDiv({ cls: "furnace-shell-digest-value", text: value });
-}
-
-function renderDigestPanel(plugin, container) {
-  const panel = plugin.renderPanel(container, "Daily Digest", "A compact pulse for knowledge, review, and nightly health.");
-  if (!plugin.shellSummary) {
-    panel.createDiv({ cls: "furnace-shell-empty", text: plugin.t("Summary unavailable. The panel will sync automatically when possible.") });
-    plugin.renderInlineButtons(panel, [
-      { label: "Compile", cta: true, onClick: async () => plugin.runCompileCommand() },
-      { label: "Sync now", kind: "ghost", onClick: async () => plugin.refreshShellSummaryCommand() },
-    ]);
-    return;
-  }
-
-  const knowledgeStats = plugin.shellSummary.knowledge_stats || {};
-  const review = plugin.shellSummary.review_backlog_counts || {};
-  const aging = plugin.shellSummary.aging_summary || {};
-  const nightly = plugin.shellSummary.nightly || {};
-  const watcher = plugin.shellSummary.watcher || {};
-  const llmStatus = plugin.shellSummary.llm_status || {};
-  const lintCounts = nightly.lint_counts || {};
-  const lintTotal = sumNumericValues(lintCounts);
-  const nightlyReceipt = nightly.llm_receipt || {};
-  const rerunCommand = String(
-    nightly.rerun_command
-      || nightlyReceipt.rerun_command
-      || watcher.rerun_command
-      || nightly["recovery_" + "command"]
-      || nightlyReceipt["recovery_" + "command"]
-      || watcher["recovery_" + "command"]
-      || ""
-  ).trim();
-
-  plugin.renderDigestRow(
-    panel,
-    "Knowledge Base",
-    `${knowledgeStats.source_nodes || 0} ${plugin.t("Sources")} · ${knowledgeStats.concept_nodes || 0} ${plugin.t("Concepts")} · ${knowledgeStats.judgments || 0} ${plugin.t("Judgments")} · ${knowledgeStats.decisions || 0} ${plugin.t("Decisions")}`
-  );
-  plugin.renderDigestRow(
-    panel,
-    "Review queue",
-    `${Number(review.pending_decisions || 0) + Number(review.pending_judgments || 0)} ${plugin.t("Pending Reviews")} · ${aging.overdue_count || 0} ${plugin.t("Overdue")} · ${aging.escalated_count || 0} ${plugin.t("Escalation")}`
-  );
-  plugin.renderDigestRow(
-    panel,
-    "Execution queue",
-    `${plugin.t("Protocol")} ${plugin.t(plugin.getActiveProtocol())} · ${plugin.t("LLM Backend")} ${llmStatus.backend || plugin.t("unconfigured")}`
-  );
-  plugin.renderDigestRow(
-    panel,
-    "Nightly",
-    nightly.available
-      ? `${lintTotal || 0} ${plugin.t("warnings")} · ${formatDisplayTime(nightly.generated_at, plugin.locale()) || plugin.t("healthy")}`
-      : plugin.t("No nightly state yet.")
-  );
-  if (rerunCommand) {
-    renderDigestRow(plugin, panel, "Rerun command", rerunCommand);
-  }
-  panel.createDiv({
-    cls: "furnace-shell-panel-note",
-    text: `${plugin.t("Last sync")} ${formatDisplayTime(plugin.shellSummary.generated_at, plugin.locale()) || plugin.t("unknown")}`,
-  });
-}
-
-function isHttpUrl(value) {
-  try {
-    const url = new URL(String(value || "").trim());
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch (error) {
-    return false;
-  }
 }
 
 // --- src/render_input.js ---
@@ -4420,17 +4196,6 @@ function isPrimaryReviewBacklogBucket(bucketKey) {
   ].includes(key);
 }
 
-function activityTimelineTodayDateOf(summary) {
-  return activityTimelineDatePart(String(summary.generated_at || ""));
-}
-
-function activityTimelineDatePart(value) {
-  const text = String(value || "").trim();
-  if (text.includes("T")) return text.split("T")[0];
-  if (text.includes(" ")) return text.split(" ")[0];
-  return text.substring(0, 10);
-}
-
 function furnaceActivityKindLabel(plugin, kind) {
   switch (kind) {
     case "plugin-run": return plugin.t("Plugin run");
@@ -4660,7 +4425,7 @@ function renderPendingSubmissionsGroup(plugin, section) {
         }
       }
       const actions = aiBubble.createDiv({ cls: "furnace-bubble-actions furnace-artifact-actions" });
-      const degradedOutput = target === "outputs" && pendingSubmissionIsDegraded(entry);
+      const degradedOutput = target === "outputs" && isPendingSubmissionDegradedEntry(entry);
       const openReceiptTarget = () => plugin.openPendingDoneTarget("receipts", reconcilePath);
       if (target === "outputs") {
         const openBtn = actions.createEl("button", { cls: "mod-cta furnace-pending-open-report-btn", text: degradedOutput ? plugin.t("打开产物") : plugin.t("打开报告") });
@@ -4774,7 +4539,7 @@ function hydratePendingArtifactSnippet(plugin, snippetEl, entry) {
 
 function pendingSubmissionSnippetFallback(plugin, entry) {
   const target = String(entry && entry.reconcileTarget || "");
-  if (pendingSubmissionIsDegraded(entry)) return plugin.t("LLM 未完成；这是失败说明（非最终答案），可打开查看后重试。");
+  if (isPendingSubmissionDegradedEntry(entry)) return plugin.t("LLM 未完成；这是失败说明（非最终答案），可打开查看后重试。");
   if (target === "outputs") return plugin.t("报告已写入本地文件；摘要加载中…");
   if (target === "receipts") return plugin.t("回执已写入控制层，可用于审计与回滚追踪。");
   if (target === "raw") {
@@ -4788,7 +4553,7 @@ function pendingSubmissionSnippetFallback(plugin, entry) {
 
 function pendingSubmissionArtifactKind(plugin, entry) {
   const target = String(entry && entry.reconcileTarget || "");
-  if (pendingSubmissionIsDegraded(entry)) return plugin.t("失败说明 Artifact");
+  if (isPendingSubmissionDegradedEntry(entry)) return plugin.t("失败说明 Artifact");
   if (target === "outputs") return plugin.t("本地报告 Artifact");
   if (target === "receipts") return plugin.t("执行回执 Receipt");
   if (target === "raw") return plugin.t("原料 Raw Input");
@@ -4797,7 +4562,7 @@ function pendingSubmissionArtifactKind(plugin, entry) {
 
 function pendingSubmissionArtifactMeta(plugin, entry) {
   const target = String(entry && entry.reconcileTarget || "");
-  if (pendingSubmissionIsDegraded(entry)) return plugin.t("LLM 未完成；不是最终报告，可打开、查看进度或重试");
+  if (isPendingSubmissionDegradedEntry(entry)) return plugin.t("LLM 未完成；不是最终报告，可打开、查看进度或重试");
   if (target === "outputs") return plugin.t("文件是事实源，可打开继续阅读");
   if (target === "receipts") return plugin.t("保留 provenance / audit 线索");
   if (target === "raw") return plugin.t("后续 compile 会沉淀到 wiki/output");
@@ -4809,7 +4574,7 @@ function pendingSubmissionStageLabel(plugin, entry, now = Date.now()) {
   const pureMaterial = isPureMaterialPendingEntry(entry);
   if (status === "degraded") return plugin.t("LLM 未完成，已保留失败说明");
   if (status === "done") {
-    if (pendingSubmissionIsDegraded(entry)) return plugin.t("LLM 未完成，已保留失败说明");
+    if (isPendingSubmissionDegradedEntry(entry)) return plugin.t("LLM 未完成，已保留失败说明");
     if (entry && entry.reconcileTarget === "receipts") return plugin.t("已记录回执");
     if (entry && entry.reconcileTarget === "raw") return plugin.t("已收料");
     return plugin.t("报告已生成");
@@ -4826,28 +4591,11 @@ function pendingSubmissionStageLabel(plugin, entry, now = Date.now()) {
 
 function pendingSubmissionResultTitle(plugin, entry) {
   const target = String(entry && entry.reconcileTarget || "");
-  if (pendingSubmissionIsDegraded(entry)) return plugin.t("失败说明已就绪");
+  if (isPendingSubmissionDegradedEntry(entry)) return plugin.t("失败说明已就绪");
   if (target === "outputs") return plugin.t("报告卡片已就绪");
   if (target === "receipts") return plugin.t("回执已就绪");
   if (target === "raw") return plugin.t("原料已入库");
   return plugin.t("任务已完成");
-}
-
-function pendingSubmissionIsDegraded(entry) {
-  const status = String(entry && entry.status || "").trim();
-  if (status === "degraded") return true;
-  const deliveryMode = String(entry && entry.deliveryMode || entry && entry.delivery_mode || "").trim();
-  const llmStatus = String(entry && entry.llmStatus || entry && entry.llm_status || "").trim();
-  const backgroundStatus = String(entry && entry.backgroundStatus || entry && entry.background_status || "").trim();
-  const artifactQuality = String(entry && entry.artifactQuality || entry && entry.artifact_quality || "").trim();
-  return deliveryMode === "deterministic-fallback"
-    || deliveryMode === "llm-failed"
-    || llmStatus === "timeout_or_unavailable"
-    || llmStatus === "validation_failed"
-    || llmStatus === "failed"
-    || llmStatus === "degraded"
-    || backgroundStatus === "degraded"
-    || artifactQuality === "degraded";
 }
 
 function findPendingAskForReportPath(plugin, reportPath) {
@@ -4859,7 +4607,7 @@ function findPendingAskForReportPath(plugin, reportPath) {
     if (!entry) continue;
     if (String(entry.reconcilePath || "").trim() !== path) continue;
     if (String(entry.reconcileTarget || "") !== "outputs") continue;
-    if (pendingSubmissionIsDegraded(entry)) continue;
+    if (isPendingSubmissionDegradedEntry(entry)) continue;
     if (!pendingAskQuestionFromEntry(entry)) continue;
     return entry;
   }
@@ -5063,57 +4811,6 @@ function renderTodayFeedItem(plugin, listEl, entry) {
       meta.setText(targetLabel);
     }
   }
-}
-
-function todayFeedActions(plugin, entry) {
-  const target = String(entry && entry.target || "").trim();
-  if (!target) {
-    return [];
-  }
-  if (isReviewTarget(target)) {
-    return [
-      {
-        label: "Review",
-        description: `Review next item for: ${target}`,
-        onClick: async () => plugin.openReviewPageContextPicker(),
-      },
-    ];
-  }
-  if (isWorkspaceTarget(target)) {
-    const openTarget = async () => {
-      if (
-        target.startsWith("output/reports/")
-        && typeof plugin.openPendingDoneTarget === "function"
-      ) {
-        await plugin.openPendingDoneTarget("outputs", target);
-        return;
-      }
-      await plugin.openWorkspacePath(target);
-    };
-    return [
-      {
-        label: workspaceTargetActionLabel(target, entry),
-        description: `Open today target: ${target}`,
-        onClick: openTarget,
-      },
-    ];
-  }
-  if (entry.kind === "action" || looksLikeCommandTarget(target)) {
-    return [
-      {
-        label: "Copy command",
-        description: `Copy today command: ${target}`,
-        onClick: async () => plugin.copyText(target),
-      },
-    ];
-  }
-  return [
-    {
-      label: "Copy target",
-      description: `Copy today target: ${target}`,
-      onClick: async () => plugin.copyText(target),
-    },
-  ];
 }
 
 function todayFeedTargetLabel(plugin, entry) {
@@ -5428,32 +5125,10 @@ function trimDiagnosticText(value, limit = 16000) {
   return `${text.slice(0, limit)}\n...[truncated]`;
 }
 
-// extracted from plugin.js lines 426-432
-function isLlmRelevantRecord(record) {
-  if (!record || typeof record !== "object") {
-    return false;
-  }
-  const command = String(record.command || "").trim();
-  return command === "run-ask" || command === "run-ask-frontdoor" || String(record.fallbackFrom || "").trim() === "run-ask";
-}
-
 // extracted from plugin.js lines 529-532
 function parseTimestampMs(value) {
   const timestamp = Date.parse(String(value || ""));
   return Number.isFinite(timestamp) ? timestamp : NaN;
-}
-
-// extracted from plugin.js lines 711-721
-function launcherIsExecutable(launcherPath) {
-  if (!launcherPath || !fs.existsSync(launcherPath)) {
-    return false;
-  }
-  try {
-    fs.accessSync(launcherPath, fs.constants.X_OK);
-    return true;
-  } catch (error) {
-    return false;
-  }
 }
 
 // extracted from plugin.js lines 822-829
@@ -5464,18 +5139,6 @@ function appendOptionalArg(args, flag, value) {
   }
   args.push(flag, normalized);
   return args;
-}
-
-// extracted from plugin.js lines 831-840
-function parseLineList(value) {
-  return Array.from(
-    new Set(
-      String(value || "")
-        .split(/\r?\n/)
-        .map((item) => String(item || "").trim())
-        .filter(Boolean)
-    )
-  );
 }
 
 // extracted from plugin.js lines 842-851
@@ -5639,11 +5302,6 @@ function inferActionIdFromReceipt(receipt) {
     return "";
   }
   return String(receipt.action_id || "").trim();
-}
-
-// extracted from plugin.js lines 1657-1659
-function runLogRelativePath(record) {
-  return `output/control/plugin-runs/${String(record && record.id ? record.id : "").trim()}.md`;
 }
 
 // extracted from plugin.js lines 1872-1884
@@ -5910,58 +5568,6 @@ function transitionOptions(plugin, controlType, control) {
     });
 }
 
-function preferredTransitionOptions(plugin, controlType, control) {
-  return transitionOptions(plugin, controlType, control).filter((option) => option.isPreferred).slice(0, 2);
-}
-
-function commonReviewTransitionOptions(plugin, pages) {
-  const controls = Array.isArray(pages) ? pages.filter((page) => page && typeof page === "object") : [];
-  if (!controls.length) {
-    return [];
-  }
-  const stats = new Map();
-  controls.forEach((page) => {
-    const seen = new Set();
-    transitionOptions(plugin, "page", page).forEach((option) => {
-      if (seen.has(option.value)) {
-        return;
-      }
-      seen.add(option.value);
-      const current = stats.get(option.value) || {
-        value: option.value,
-        label: option.label,
-        sharedCount: 0,
-        preferredCount: 0,
-        defaultCount: 0,
-      };
-      current.label = option.label;
-      current.sharedCount += 1;
-      if (option.isPreferred) {
-        current.preferredCount += 1;
-      }
-      if (option.isDefault) {
-        current.defaultCount += 1;
-      }
-      stats.set(option.value, current);
-    });
-  });
-  return Array.from(stats.values())
-    .filter((option) => option.sharedCount === controls.length)
-    .sort((left, right) => {
-      if (left.defaultCount !== right.defaultCount) {
-        return right.defaultCount - left.defaultCount;
-      }
-      if (left.preferredCount !== right.preferredCount) {
-        return right.preferredCount - left.preferredCount;
-      }
-      return String(left.label || "").localeCompare(String(right.label || ""));
-    });
-}
-
-function reviewBatchSuggestions(_plugin) {
-  return [];
-}
-
 function rewriteControlItems(plugin, mode = "review") {
   const proposals = reviewControlList(plugin, "rewrite_proposals");
   return uniqueContextOptions(
@@ -6021,45 +5627,6 @@ function actionControlItems(plugin, mode = "review") {
         };
       }),
     "actionId"
-  );
-}
-
-function archiveControlItems(plugin, mode = "apply") {
-  return uniqueContextOptions(
-    executionControlList(plugin, "archives")
-      .filter((entry) => (mode === "revert" ? Boolean(entry.can_revert) : Boolean(entry.can_apply)))
-      .map((entry) => {
-        const candidateStatus = String(entry.candidate_status || "").trim();
-        const currentTemperature = String(entry.current_temperature || "").trim();
-        return {
-          value: entry.entry_id,
-          label: entry.title || entry.entry_id || "archive-entry",
-          description: `${plugin.t(candidateStatus || currentTemperature || "archive")} | ${entry.source_path || ""}`,
-          entryId: String(entry.entry_id || ""),
-          allowedTransitions: Array.isArray(entry.allowed_transitions) ? entry.allowed_transitions : [],
-          preferredTransitions: Array.isArray(entry.preferred_transitions) ? entry.preferred_transitions : [],
-          defaultTransition: String(entry.default_transition || ""),
-        };
-      }),
-    "entryId"
-  );
-}
-
-function actionControlsById(plugin) {
-  const controls = executionControlList(plugin, "actions");
-  return new Map(
-    controls
-      .filter((action) => action && typeof action === "object" && String(action.action_id || "").trim())
-      .map((action) => [String(action.action_id || "").trim(), action])
-  );
-}
-
-function archiveControlsById(plugin) {
-  const controls = executionControlList(plugin, "archives");
-  return new Map(
-    controls
-      .filter((entry) => entry && typeof entry === "object" && String(entry.entry_id || "").trim())
-      .map((entry) => [String(entry.entry_id || "").trim(), entry])
   );
 }
 
@@ -6140,33 +5707,6 @@ function openContextAwareActionForSpec(plugin, spec) {
 // --- src/modal_specs.js ---
 
 // Structured command modal specs for Product Shell operator actions.
-
-function buildFileBackModalSpec(plugin, prefill = {}) {
-  return {
-    title: plugin.t("File Back"),
-    description: plugin.t("File an output artifact back into wiki/judgments for thin review."),
-    fields: [
-      {
-        key: "artifact",
-        label: plugin.t("Artifact path"),
-        required: true,
-        placeholder: plugin.t("output/reports/....md"),
-        initialValue: () => prefill.artifact || plugin.getActiveOutputPath(),
-      },
-      {
-        key: "title",
-        label: plugin.t("Title"),
-        placeholder: plugin.t("Optional filed-back title"),
-        initialValue: prefill.title || "",
-      },
-    ],
-    onSubmit: async (values) => {
-      const args = [values.artifact];
-      appendOptionalArg(args, "--title", values.title);
-      await plugin.runCliAction(plugin.t("File Back"), "file-back", args);
-    },
-  };
-}
 
 function buildAlchemyStartModalSpec(plugin, prefill = {}) {
   return {
@@ -6635,121 +6175,6 @@ function buildProductShellFailedLlmHealthOverrides(record, error) {
     stderrSummary: truncateText(error && error.stderr || ""),
     stderrRaw: trimDiagnosticText(error && (error.stderr || error.stdout) || ""),
   };
-}
-
-function renderProductShellRunLog({ record, details = {}, t, repoRoot = "" }) {
-  if (!record || typeof record !== "object") {
-    return null;
-  }
-  const translate = typeof t === "function" ? t : (text, variables = {}) => String(text || "").replace(/\{(\w+)\}/g, (_, key) => String(variables[key] ?? ""));
-  const logPath = String(record.logPath || runLogRelativePath(record)).trim();
-  if (!logPath) {
-    return null;
-  }
-  const stdoutText = String(details.stdoutRaw || record.stdoutRaw || "").trim();
-  const stderrText = String(details.stderrRaw || record.stderrRaw || "").trim();
-  const rewriteProposalObjects = normalizeRewriteProposalObjects(record.rewriteProposalObjects || []);
-  const rewriteProposalCount = rewriteProposalObjects.length || (Array.isArray(record.rewriteProposalPaths) ? record.rewriteProposalPaths.length : 0);
-  const lines = [
-    "# Product Shell Run Log",
-    "",
-    translate("Generated by Product Shell run logging."),
-    "",
-    `- ${translate("Status")}: ${translate(record.status || "unknown")}`,
-    `- ${translate("Protocol")}: ${record.protocol ? translate(record.protocol) : translate("unknown")}`,
-    `- ${translate("LLM Backend")}: ${record.backend || translate("unconfigured")}`,
-    `- backend requested: ${record.backendRequested || "-"}`,
-    `- backend effective: ${record.backendEffective || record.backend || "-"}`,
-    `- ${translate("LLM Model")}: ${record.model || translate("default")}`,
-    `- model selected: ${record.modelSelected || "-"}`,
-    `- model final: ${record.modelFinal || record.model || "-"}`,
-    `- ${translate("Codex effort")}: ${record.codexReasoningEffort || "-"}`,
-    `- ${translate("Prompt profile")}: ${record.promptProfile || "-"}`,
-    `- ${translate("Retry prompt")}: ${record.retryPromptProfile || "-"}`,
-    `- fallback stage: ${record.fallbackStage || "-"}`,
-    `- fallback reason: ${record.fallbackReason || "-"}`,
-    `- contract validated: ${record.contractValidated ? "yes" : "no"}`,
-    `- ${translate("Working directory")}: ${repoRoot || "."}`,
-    `- ${translate("Arguments")}: ${record.args || record.command || ""}`,
-    `- ${translate("Fallback from")}: ${record.fallbackFrom || "-"}`,
-    `- ${translate("Result path")}: ${record.resultPath || "-"}`,
-    `- ${translate("Receipt path")}: ${record.receiptPath || "-"}`,
-    ...(rewriteProposalCount
-      ? [`- ${translate("rewrite proposals: {count}", { count: rewriteProposalCount })}`]
-      : []),
-    `- ${translate("Log path")}: ${logPath}`,
-    `- ${translate("Exit code")}: ${record.exitCode === "" ? "-" : String(record.exitCode)}`,
-    `- started: ${record.startedAt || "-"}`,
-    `- finished: ${record.finishedAt || "-"}`,
-    "",
-    "## Timeline",
-    "",
-  ];
-  const timeline = Array.isArray(record.timeline) ? record.timeline : [];
-  if (!timeline.length) {
-    lines.push(`- ${translate("No stage events recorded.")}`);
-  } else {
-    timeline.forEach((event) => {
-      lines.push(`- ${event.at || "-"} | ${translate(event.stage || "event")} | ${event.summary || "-"}`);
-    });
-  }
-  if (record.resultPath || record.receiptPath || record.errorSummary) {
-    lines.push("", "## Summary", "");
-    if (record.resultPath) {
-      lines.push(`- ${translate("Result path")}: ${record.resultPath}`);
-    }
-    if (record.receiptPath) {
-      lines.push(`- ${translate("Receipt path")}: ${record.receiptPath}`);
-    }
-    if (record.errorSummary) {
-      lines.push(`- error: ${record.errorSummary}`);
-    }
-    if (rewriteProposalObjects.length) {
-      lines.push(`- ${translate("rewrite proposals: {count}", { count: rewriteProposalObjects.length })}`);
-      rewriteProposalObjects.forEach((proposal) => {
-        lines.push(`  - ${proposal.title || proposal.slug}: ${proposal.proposalPath || proposal.targetPath || proposal.slug}`);
-      });
-    } else if (Array.isArray(record.rewriteProposalPaths) && record.rewriteProposalPaths.length) {
-      lines.push(`- ${translate("rewrite proposals: {count}", { count: record.rewriteProposalPaths.length })}`);
-      record.rewriteProposalPaths.forEach((proposalPath) => {
-        lines.push(`  - ${proposalPath}`);
-      });
-    }
-  }
-  if (stdoutText) {
-    lines.push("", "## Standard output", "", "```text", stdoutText, "```");
-  }
-  if (stderrText) {
-    lines.push("", "## Standard error", "", "```text", stderrText, "```");
-  }
-  return { logPath, content: `${lines.join("\n")}\n` };
-}
-
-// --- src/run_log_persistence.js ---
-
-// Product Shell run-log persistence helpers.
-
-function resolveProductShellRunLogPath(repoRoot, relativePath) {
-  const normalized = String(relativePath || "").trim();
-  const root = String(repoRoot || "").trim();
-  if (!normalized || !root) {
-    return "";
-  }
-  return path.join(root, normalized);
-}
-
-function persistProductShellRunLog({ record, details = {}, t, repoRoot = "" }) {
-  // Retired: do not write Obsidian-visible output/control/plugin-runs/*.md.
-  // Unbounded per-run markdown (stdout dumps) bloated the vault and fought
-  // Obsidian indexing. Canonical run history lives in .aiwiki/logs/runs.jsonl
-  // plus in-memory recentRuns; renderProductShellRunLog remains for tests.
-  void details;
-  void t;
-  void repoRoot;
-  if (record && typeof record === "object") {
-    record.logPath = "";
-  }
-  return "";
 }
 
 // --- src/plugin_state.js ---
@@ -7447,36 +6872,6 @@ async function runProductShellDropNoteCommand(plugin, { text, title, kind }) {
 
 async function runProductShellCliAction(plugin, label, command, args = []) {
   await plugin.runPluginCommand(label, [command, ...args], { refreshAfter: true });
-}
-
-async function runProductShellLauncherCommand(plugin, fullCommandStr, label = "Suggested Action") {
-  let trimmed = String(fullCommandStr || "").trim();
-  const prefixPattern = /^(?:PYTHONPATH=\S+\s+)?(?:python3?\s+-m\s+aiwiki\.cli\s+)?(?:--root\s+\S+\s+)?/;
-  trimmed = trimmed.replace(prefixPattern, "").trim();
-  if (!trimmed) {
-    new Notice(plugin.t("Cannot parse command: {command}", { command: truncateText(fullCommandStr, 80) }));
-    return;
-  }
-  const args = [];
-  let current = "";
-  let inQuote = false;
-  for (let i = 0; i < trimmed.length; i++) {
-    const ch = trimmed[i];
-    if (ch === '"') {
-      inQuote = !inQuote;
-    } else if (ch === " " && !inQuote) {
-      if (current) {
-        args.push(current);
-        current = "";
-      }
-    } else {
-      current += ch;
-    }
-  }
-  if (current) {
-    args.push(current);
-  }
-  await plugin.runPluginCommand(label, args, { refreshAfter: true });
 }
 
 // --- src/plugin_run_pipeline.js ---
@@ -8222,10 +7617,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return getConceptSlugForPath(this.getActiveFilePath());
   }
 
-  getActiveOutputPath() {
-    return getOutputPathForPath(this.getActiveFilePath());
-  }
-
   getActiveCuratedPagePath() {
     return getCuratedPagePathForSummary(this.getActiveFilePath(), this.shellSummary);
   }
@@ -8282,21 +7673,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return reviewPageControlItems(this);
   }
 
-  nextReviewCandidate() {
-    const candidates = this.visibleReviewPageCandidates();
-    return candidates.length ? candidates[0] : null;
-  }
-
   reviewKindLabel(kind, count = 1) {
     return reviewKindLabel(this, kind, count);
-  }
-
-  commonReviewTransitionOptions(pages) {
-    return commonReviewTransitionOptions(this, pages);
-  }
-
-  reviewBatchSuggestions() {
-    return reviewBatchSuggestions(this);
   }
 
   rewriteControlItems(mode = "review") {
@@ -8307,28 +7685,12 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return actionControlItems(this, mode);
   }
 
-  archiveControlItems(mode = "apply") {
-    return archiveControlItems(this, mode);
-  }
-
-  actionControlsById() {
-    return actionControlsById(this);
-  }
-
-  archiveControlsById() {
-    return archiveControlsById(this);
-  }
-
   transitionLabel(controlType, transition) {
     return transitionLabel(this, controlType, transition);
   }
 
   transitionOptions(controlType, control) {
     return transitionOptions(this, controlType, control);
-  }
-
-  preferredTransitionOptions(controlType, control) {
-    return preferredTransitionOptions(this, controlType, control);
   }
 
   manualReviewOption(controlType) {
@@ -8345,10 +7707,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   visibleReviewPageCandidates() {
     return this.reviewPageControlItems();
-  }
-
-  visibleActionCandidates(mode = "review") {
-    return this.actionControlItems(mode);
   }
 
   openContextAwareAction(spec) {
@@ -8383,16 +7741,21 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
   }
 
   resolveAbsoluteWorkspacePath(relativePath) {
-    return resolveProductShellRunLogPath(this.repoState.root, relativePath);
+    const normalized = String(relativePath || "").trim();
+    const root = String(this.repoState.root || "").trim();
+    if (!normalized || !root) {
+      return "";
+    }
+    return path.join(root, normalized);
   }
 
   persistRunLog(record, details = {}) {
-    persistProductShellRunLog({
-      record,
-      details,
-      t: this.t.bind(this),
-      repoRoot: this.repoState.root || ".",
-    });
+    // Run-log markdown persistence retired: canonical history lives in
+    // .aiwiki/logs/runs.jsonl plus in-memory recentRuns.
+    void details;
+    if (record && typeof record === "object") {
+      record.logPath = "";
+    }
   }
 
   async copyText(value) {
@@ -8462,22 +7825,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     await this.runPluginCommand(this.t("Nightly"), ["run-nightly"], { refreshAfter: true });
   }
 
-  async runTodaySnoozeCommand(target, days = 1) {
-    new Notice(this.t("Today snooze was removed in W4; handle the item directly from Today."));
-  }
-
-  async runShellSearchCommand(query, limit = 8) {
-    new Notice(this.t("Shell search was removed in W4; use Obsidian search and wiki pages instead."));
-  }
-
-  async runApplyAllAcceptedLowRiskCommand() {
-    new Notice(this.t("Batch review was removed in W4; use review-page for explicit page transitions."));
-  }
-
-  async runRevertLastBatchCommand() {
-    new Notice(this.t("Batch revert commands were removed in W3; inspect execution receipts manually."));
-  }
-
   async openHomeNote() {
     return openProductShellHomeNote(this);
   }
@@ -8496,10 +7843,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   markPendingSubmissionDone(id, reconcileTarget, reconcilePath) {
     return markPendingSubmissionRuntimeDone(this, id, reconcileTarget, reconcilePath);
-  }
-
-  isPendingSubmissionDegraded(entry) {
-    return isPendingSubmissionDegradedEntry(entry);
   }
 
   markPendingSubmissionFailed(id, error) {
@@ -8576,14 +7919,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   async runCliAction(label, command, args = []) {
     return runProductShellCliAction(this, label, command, args);
-  }
-
-  async runLauncherCommand(fullCommandStr, label = "Suggested Action") {
-    return runProductShellLauncherCommand(this, fullCommandStr, label);
-  }
-
-  openFileBackModal(prefill = {}) {
-    this.openStructuredCommandModal(buildFileBackModalSpec(this, prefill));
   }
 
   openAlchemyStartModal(prefill = {}) {
@@ -8685,14 +8020,6 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
 
   // --- Render method wrappers (delegate to render.js standalone functions) ---
 
-  renderCardGrid(container, cards) {
-    renderCardGrid(this, container, cards);
-  }
-
-  renderActionButtons(container, buttons) {
-    renderActionButtons(this, container, buttons);
-  }
-
   renderPanel(container, title, description = "", options = {}) {
     return renderPanel(this, container, title, description, options);
   }
@@ -8705,20 +8032,8 @@ module.exports = class FurnaceProductShellPlugin extends Plugin {
     return renderPill(this, container, text, extraClass);
   }
 
-  renderMainHeader(container) {
-    renderMainHeader(this, container);
-  }
-
   renderStatusPanel(container) {
     renderStatusPanel(this, container);
-  }
-
-  renderDigestRow(container, label, value) {
-    renderDigestRow(this, container, label, value);
-  }
-
-  renderDigestPanel(container) {
-    renderDigestPanel(this, container);
   }
 
   renderAdvancedDrawer(container) {

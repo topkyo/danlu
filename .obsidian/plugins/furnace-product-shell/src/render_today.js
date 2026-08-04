@@ -225,17 +225,6 @@ function isPrimaryReviewBacklogBucket(bucketKey) {
   ].includes(key);
 }
 
-function activityTimelineTodayDateOf(summary) {
-  return activityTimelineDatePart(String(summary.generated_at || ""));
-}
-
-function activityTimelineDatePart(value) {
-  const text = String(value || "").trim();
-  if (text.includes("T")) return text.split("T")[0];
-  if (text.includes(" ")) return text.split(" ")[0];
-  return text.substring(0, 10);
-}
-
 function furnaceActivityKindLabel(plugin, kind) {
   switch (kind) {
     case "plugin-run": return plugin.t("Plugin run");
@@ -465,7 +454,7 @@ function renderPendingSubmissionsGroup(plugin, section) {
         }
       }
       const actions = aiBubble.createDiv({ cls: "furnace-bubble-actions furnace-artifact-actions" });
-      const degradedOutput = target === "outputs" && pendingSubmissionIsDegraded(entry);
+      const degradedOutput = target === "outputs" && isPendingSubmissionDegradedEntry(entry);
       const openReceiptTarget = () => plugin.openPendingDoneTarget("receipts", reconcilePath);
       if (target === "outputs") {
         const openBtn = actions.createEl("button", { cls: "mod-cta furnace-pending-open-report-btn", text: degradedOutput ? plugin.t("打开产物") : plugin.t("打开报告") });
@@ -579,7 +568,7 @@ function hydratePendingArtifactSnippet(plugin, snippetEl, entry) {
 
 function pendingSubmissionSnippetFallback(plugin, entry) {
   const target = String(entry && entry.reconcileTarget || "");
-  if (pendingSubmissionIsDegraded(entry)) return plugin.t("LLM 未完成；这是失败说明（非最终答案），可打开查看后重试。");
+  if (isPendingSubmissionDegradedEntry(entry)) return plugin.t("LLM 未完成；这是失败说明（非最终答案），可打开查看后重试。");
   if (target === "outputs") return plugin.t("报告已写入本地文件；摘要加载中…");
   if (target === "receipts") return plugin.t("回执已写入控制层，可用于审计与回滚追踪。");
   if (target === "raw") {
@@ -593,7 +582,7 @@ function pendingSubmissionSnippetFallback(plugin, entry) {
 
 function pendingSubmissionArtifactKind(plugin, entry) {
   const target = String(entry && entry.reconcileTarget || "");
-  if (pendingSubmissionIsDegraded(entry)) return plugin.t("失败说明 Artifact");
+  if (isPendingSubmissionDegradedEntry(entry)) return plugin.t("失败说明 Artifact");
   if (target === "outputs") return plugin.t("本地报告 Artifact");
   if (target === "receipts") return plugin.t("执行回执 Receipt");
   if (target === "raw") return plugin.t("原料 Raw Input");
@@ -602,7 +591,7 @@ function pendingSubmissionArtifactKind(plugin, entry) {
 
 function pendingSubmissionArtifactMeta(plugin, entry) {
   const target = String(entry && entry.reconcileTarget || "");
-  if (pendingSubmissionIsDegraded(entry)) return plugin.t("LLM 未完成；不是最终报告，可打开、查看进度或重试");
+  if (isPendingSubmissionDegradedEntry(entry)) return plugin.t("LLM 未完成；不是最终报告，可打开、查看进度或重试");
   if (target === "outputs") return plugin.t("文件是事实源，可打开继续阅读");
   if (target === "receipts") return plugin.t("保留 provenance / audit 线索");
   if (target === "raw") return plugin.t("后续 compile 会沉淀到 wiki/output");
@@ -614,7 +603,7 @@ function pendingSubmissionStageLabel(plugin, entry, now = Date.now()) {
   const pureMaterial = isPureMaterialPendingEntry(entry);
   if (status === "degraded") return plugin.t("LLM 未完成，已保留失败说明");
   if (status === "done") {
-    if (pendingSubmissionIsDegraded(entry)) return plugin.t("LLM 未完成，已保留失败说明");
+    if (isPendingSubmissionDegradedEntry(entry)) return plugin.t("LLM 未完成，已保留失败说明");
     if (entry && entry.reconcileTarget === "receipts") return plugin.t("已记录回执");
     if (entry && entry.reconcileTarget === "raw") return plugin.t("已收料");
     return plugin.t("报告已生成");
@@ -631,28 +620,11 @@ function pendingSubmissionStageLabel(plugin, entry, now = Date.now()) {
 
 function pendingSubmissionResultTitle(plugin, entry) {
   const target = String(entry && entry.reconcileTarget || "");
-  if (pendingSubmissionIsDegraded(entry)) return plugin.t("失败说明已就绪");
+  if (isPendingSubmissionDegradedEntry(entry)) return plugin.t("失败说明已就绪");
   if (target === "outputs") return plugin.t("报告卡片已就绪");
   if (target === "receipts") return plugin.t("回执已就绪");
   if (target === "raw") return plugin.t("原料已入库");
   return plugin.t("任务已完成");
-}
-
-function pendingSubmissionIsDegraded(entry) {
-  const status = String(entry && entry.status || "").trim();
-  if (status === "degraded") return true;
-  const deliveryMode = String(entry && entry.deliveryMode || entry && entry.delivery_mode || "").trim();
-  const llmStatus = String(entry && entry.llmStatus || entry && entry.llm_status || "").trim();
-  const backgroundStatus = String(entry && entry.backgroundStatus || entry && entry.background_status || "").trim();
-  const artifactQuality = String(entry && entry.artifactQuality || entry && entry.artifact_quality || "").trim();
-  return deliveryMode === "deterministic-fallback"
-    || deliveryMode === "llm-failed"
-    || llmStatus === "timeout_or_unavailable"
-    || llmStatus === "validation_failed"
-    || llmStatus === "failed"
-    || llmStatus === "degraded"
-    || backgroundStatus === "degraded"
-    || artifactQuality === "degraded";
 }
 
 function findPendingAskForReportPath(plugin, reportPath) {
@@ -664,7 +636,7 @@ function findPendingAskForReportPath(plugin, reportPath) {
     if (!entry) continue;
     if (String(entry.reconcilePath || "").trim() !== path) continue;
     if (String(entry.reconcileTarget || "") !== "outputs") continue;
-    if (pendingSubmissionIsDegraded(entry)) continue;
+    if (isPendingSubmissionDegradedEntry(entry)) continue;
     if (!pendingAskQuestionFromEntry(entry)) continue;
     return entry;
   }
@@ -868,57 +840,6 @@ function renderTodayFeedItem(plugin, listEl, entry) {
       meta.setText(targetLabel);
     }
   }
-}
-
-function todayFeedActions(plugin, entry) {
-  const target = String(entry && entry.target || "").trim();
-  if (!target) {
-    return [];
-  }
-  if (isReviewTarget(target)) {
-    return [
-      {
-        label: "Review",
-        description: `Review next item for: ${target}`,
-        onClick: async () => plugin.openReviewPageContextPicker(),
-      },
-    ];
-  }
-  if (isWorkspaceTarget(target)) {
-    const openTarget = async () => {
-      if (
-        target.startsWith("output/reports/")
-        && typeof plugin.openPendingDoneTarget === "function"
-      ) {
-        await plugin.openPendingDoneTarget("outputs", target);
-        return;
-      }
-      await plugin.openWorkspacePath(target);
-    };
-    return [
-      {
-        label: workspaceTargetActionLabel(target, entry),
-        description: `Open today target: ${target}`,
-        onClick: openTarget,
-      },
-    ];
-  }
-  if (entry.kind === "action" || looksLikeCommandTarget(target)) {
-    return [
-      {
-        label: "Copy command",
-        description: `Copy today command: ${target}`,
-        onClick: async () => plugin.copyText(target),
-      },
-    ];
-  }
-  return [
-    {
-      label: "Copy target",
-      description: `Copy today target: ${target}`,
-      onClick: async () => plugin.copyText(target),
-    },
-  ];
 }
 
 function todayFeedTargetLabel(plugin, entry) {

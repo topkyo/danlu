@@ -12,32 +12,10 @@ function trimDiagnosticText(value, limit = 16000) {
   return `${text.slice(0, limit)}\n...[truncated]`;
 }
 
-// extracted from plugin.js lines 426-432
-function isLlmRelevantRecord(record) {
-  if (!record || typeof record !== "object") {
-    return false;
-  }
-  const command = String(record.command || "").trim();
-  return command === "run-ask" || command === "run-ask-frontdoor" || String(record.fallbackFrom || "").trim() === "run-ask";
-}
-
 // extracted from plugin.js lines 529-532
 function parseTimestampMs(value) {
   const timestamp = Date.parse(String(value || ""));
   return Number.isFinite(timestamp) ? timestamp : NaN;
-}
-
-// extracted from plugin.js lines 711-721
-function launcherIsExecutable(launcherPath) {
-  if (!launcherPath || !fs.existsSync(launcherPath)) {
-    return false;
-  }
-  try {
-    fs.accessSync(launcherPath, fs.constants.X_OK);
-    return true;
-  } catch (error) {
-    return false;
-  }
 }
 
 // extracted from plugin.js lines 822-829
@@ -48,18 +26,6 @@ function appendOptionalArg(args, flag, value) {
   }
   args.push(flag, normalized);
   return args;
-}
-
-// extracted from plugin.js lines 831-840
-function parseLineList(value) {
-  return Array.from(
-    new Set(
-      String(value || "")
-        .split(/\r?\n/)
-        .map((item) => String(item || "").trim())
-        .filter(Boolean)
-    )
-  );
 }
 
 // extracted from plugin.js lines 842-851
@@ -223,11 +189,6 @@ function inferActionIdFromReceipt(receipt) {
     return "";
   }
   return String(receipt.action_id || "").trim();
-}
-
-// extracted from plugin.js lines 1657-1659
-function runLogRelativePath(record) {
-  return `output/control/plugin-runs/${String(record && record.id ? record.id : "").trim()}.md`;
 }
 
 // extracted from plugin.js lines 1872-1884

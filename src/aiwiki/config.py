@@ -45,6 +45,24 @@ def l3_auto_adopt_min_evidence_from_env() -> int:
         return DEFAULT_L3_AUTO_ADOPT_MIN_EVIDENCE
 
 
+def _int_env(name: str, default: int) -> int:
+    raw = os.environ.get(name, str(default))
+    try:
+        return int(str(raw).strip())
+    except (TypeError, ValueError):
+        _logger.warning("Invalid %s=%r; using default %s", name, raw, default)
+        return default
+
+
+def _float_env(name: str, default: float) -> float:
+    raw = os.environ.get(name, str(default))
+    try:
+        return float(str(raw).strip())
+    except (TypeError, ValueError):
+        _logger.warning("Invalid %s=%r; using default %s", name, raw, default)
+        return default
+
+
 @dataclass
 class LLMConfig:
     backend: str
@@ -258,8 +276,8 @@ def _read_env() -> dict[str, Any]:
         "/"
     )
     anthropic_base_url = (os.environ.get("AIWIKI_ANTHROPIC_BASE_URL") or DEFAULT_ANTHROPIC_BASE_URL).rstrip("/")
-    timeout_seconds = int(os.environ.get("AIWIKI_LLM_TIMEOUT", "120"))
-    temperature = float(os.environ.get("AIWIKI_LLM_TEMPERATURE", "0.2"))
+    timeout_seconds = _int_env("AIWIKI_LLM_TIMEOUT", 120)
+    temperature = _float_env("AIWIKI_LLM_TEMPERATURE", 0.2)
     max_context_chars_override = (os.environ.get("AIWIKI_LLM_MAX_CONTEXT_CHARS") or "").strip()
     require_explicit_model = (os.environ.get("AIWIKI_REQUIRE_EXPLICIT_MODEL") or "").strip() == "1"
     return {

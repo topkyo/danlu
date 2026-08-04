@@ -18,9 +18,9 @@ from ..memory.action_core import (
     safe_apply_preview,
 )
 from ..memory.rewrite_readiness import (
-    _validate_rewrite_candidate_markdown,
-    rewrite_proposal_candidate_is_current,
-    rewrite_proposal_is_apply_ready,
+    _validate_rewrite_candidate_markdown,  # noqa: F401  # re-export compat seam
+    rewrite_proposal_candidate_is_current,  # noqa: F401  # re-export compat seam
+    rewrite_proposal_is_apply_ready,  # noqa: F401  # re-export compat seam
 )
 from ..planner.paths import planner_state_path
 from ..planner.state import load_planner_state

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..compile.state import default_compile_state
+from ..compile.types import COMPILE_STATE_STR_LIST_KEYS
 from ..lifecycle.aging import collect_aging_signals
 from ..lifecycle.status import review_queue
 from ..protocol.descriptors import protocol_title
@@ -156,30 +157,7 @@ def render_compile_status(
     ]
     lists = {
         key: compile_state_string_list(compile_state, key)
-        for key in (
-            "dirty_source_ids",
-            "clean_source_ids",
-            "dirty_concept_source_ids",
-            "clean_concept_source_ids",
-            "dirty_concept_slugs",
-            "clean_concept_slugs",
-            "dirty_machine_memory_source_ids",
-            "clean_machine_memory_source_ids",
-            "dirty_machine_memory_concept_slugs",
-            "clean_machine_memory_concept_slugs",
-            "dirty_ranking_source_ids",
-            "clean_ranking_source_ids",
-            "dirty_ranking_concept_slugs",
-            "clean_ranking_concept_slugs",
-            "dirty_output_pack_groups",
-            "clean_output_pack_groups",
-            "dirty_domain_pilot_protocols",
-            "clean_domain_pilot_protocols",
-            "dirty_index_artifacts",
-            "clean_index_artifacts",
-            "dirty_maintenance_artifacts",
-            "clean_maintenance_artifacts",
-        )
+        for key in COMPILE_STATE_STR_LIST_KEYS
     }
     entry_by_id = {
         str(entry.get("id") or ""): entry for entry in entries if isinstance(entry, dict) and str(entry.get("id") or "")

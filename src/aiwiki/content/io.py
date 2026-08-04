@@ -13,7 +13,7 @@ from ..protocol.runtime_config import AUTO_PROMOTION_FORMATS
 from ..protocol.scaffold import ensure_layout
 from ..state.constants import DEFAULT_PROTOCOL
 from ..state.manifest import load_manifest
-from ..utils.hash import compiled_source_sha, sha256_bytes, sha256_file
+from ..utils.hash import compiled_source_sha, sha256_file
 from ..utils.io import atomic_copy_file, atomic_write_text, is_atomic_write_tmp_path, runtime_write_operation
 from ..utils.markdown import (
     build_citation_snapshots,
@@ -27,8 +27,8 @@ from ..utils.markdown import (
     upsert_markdown_section,
 )
 from ..utils.path import next_identifier, normalize_workspace_path, relative_path
-from ..utils.text import detect_kind, slugify, tokenize
-from ..utils.time import parse_iso_datetime, utc_now
+from ..utils.text import detect_kind, slugify
+from ..utils.time import utc_now
 from .material import load_manual_link_state
 from .outputs import normalize_query_signature
 

@@ -31,6 +31,7 @@ from .paths import (
     ranking_build_state_path,
 )
 from .state import save_compile_state
+from .types import COMPILE_STATE_STR_LIST_KEYS
 
 
 def _build_compile_phase_summary(context: CompileContext) -> list[dict[str, Any]]:
@@ -180,29 +181,10 @@ def _build_compile_state_document(
         "version": 1,
         "compiled_at": context.compiled_at,
         "manifest_entry_count": len(context.entries),
-        "dirty_source_ids": context.dirty_source_ids,
-        "clean_source_ids": context.clean_source_ids,
-        "dirty_concept_source_ids": context.dirty_concept_source_ids,
-        "clean_concept_source_ids": context.clean_concept_source_ids,
-        "dirty_concept_slugs": context.dirty_concept_slugs,
-        "clean_concept_slugs": context.clean_concept_slugs,
-        "dirty_machine_memory_source_ids": context.dirty_machine_memory_source_ids,
-        "clean_machine_memory_source_ids": context.clean_machine_memory_source_ids,
-        "dirty_machine_memory_concept_slugs": context.dirty_machine_memory_concept_slugs,
-        "clean_machine_memory_concept_slugs": context.clean_machine_memory_concept_slugs,
+        # CompileContext attribute names mirror the state keys 1:1; the key set
+        # comes from the compile.types registry so new pairs cannot desync.
+        **{key: getattr(context, key) for key in COMPILE_STATE_STR_LIST_KEYS},
         "machine_memory_core_reused": context.machine_memory_core_reused,
-        "dirty_ranking_source_ids": context.dirty_ranking_source_ids,
-        "clean_ranking_source_ids": context.clean_ranking_source_ids,
-        "dirty_ranking_concept_slugs": context.dirty_ranking_concept_slugs,
-        "clean_ranking_concept_slugs": context.clean_ranking_concept_slugs,
-        "dirty_output_pack_groups": context.dirty_output_pack_groups,
-        "clean_output_pack_groups": context.clean_output_pack_groups,
-        "dirty_domain_pilot_protocols": context.dirty_domain_pilot_protocols,
-        "clean_domain_pilot_protocols": context.clean_domain_pilot_protocols,
-        "dirty_index_artifacts": context.dirty_index_artifacts,
-        "clean_index_artifacts": context.clean_index_artifacts,
-        "dirty_maintenance_artifacts": context.dirty_maintenance_artifacts,
-        "clean_maintenance_artifacts": context.clean_maintenance_artifacts,
         "drift_warnings": drift_warnings,
         "phase_summary": phase_summary,
     }
@@ -300,6 +282,8 @@ def _build_compile_drift_warnings(context: CompileContext) -> list[dict[str, Any
 
 
 def _compile_log_details(context: CompileContext) -> list[str]:
+    # Derived log view with its own label namespace; the authoritative key set
+    # lives in compile.types (COMPILE_STATE_STR_LIST_KEYS).
     return [
         f"compiled_at: `{context.compiled_at}`",
         f"compile_state: `{relative_path(context.root, compile_state_path(context.root))}`",

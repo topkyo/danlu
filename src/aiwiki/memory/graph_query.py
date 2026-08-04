@@ -32,82 +32,20 @@ from .action_core import action_priority_rank
 from .scoring import machine_memory_query_time_focus
 
 
-def _build_machine_memory_query_json(
-    memory: dict[str, Any],
-    question: str,
+def _score_machine_memory_term_hits(
+    question_tokens: list[str],
     *,
-    root: Path | None = None,
-    protocol: str = DEFAULT_PROTOCOL,
-    material_state: dict[str, Any] | None = None,
-    routing_state: dict[str, Any] | None = None,
-    archive_candidates: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    term_index = memory.get("term_index", {})
-    edges = memory.get("edges", {})
-    source_nodes = {node["id"]: node for node in memory.get("source_nodes", [])}
-    concept_nodes = {node["slug"]: node for node in memory.get("concept_nodes", [])}
-    question_tokens = tokenize(question)
-    health = memory.get("health", {})
-    adjacency = build_machine_memory_adjacency(memory)
-    material_state = material_state or {"entries": []}
-    routing_state = routing_state or {"entries": []}
-    archive_candidates = archive_candidates or {"entries": []}
-    material_by_entry = {
-        str(entry.get("entry_id") or ""): entry
-        for entry in material_state.get("entries", [])
-        if isinstance(entry, dict) and entry.get("entry_id")
-    }
-    routing_by_entry = {
-        str(entry.get("entry_id") or ""): entry
-        for entry in routing_state.get("entries", [])
-        if isinstance(entry, dict) and entry.get("entry_id")
-    }
-    archive_candidates_by_entry = {
-        str(entry.get("entry_id") or ""): entry
-        for entry in archive_candidates.get("entries", [])
-        if isinstance(entry, dict) and entry.get("entry_id")
-    }
-    time_focus_state = machine_memory_query_time_focus(question)
-    time_focus = str(time_focus_state.get("focus") or "")
-
+    term_index: dict[str, Any],
+    source_nodes: dict[str, dict[str, Any]],
+    concept_nodes: dict[str, dict[str, Any]],
+    confirmed_judgment_nodes: dict[str, dict[str, Any]],
+    elixir_nodes: dict[str, dict[str, Any]],
+) -> tuple[list[str], dict[str, int], dict[str, int], dict[str, int], dict[str, int]]:
     direct_source_scores: dict[str, int] = {}
     direct_concept_scores: dict[str, int] = {}
     direct_judgment_scores: dict[str, int] = {}
     direct_elixir_scores: dict[str, int] = {}
     matched_terms: list[str] = []
-
-    confirmed_judgment_nodes = {
-        str(node.get("page_id") or ""): node
-        for node in memory.get("judgment_nodes", [])
-        if isinstance(node, dict)
-        and str(node.get("kind") or "") == "judgment"
-        and str(node.get("status") or "") == "confirmed"
-        and node.get("page_id")
-    }
-    elixir_nodes = {
-        str(node.get("elixir_id") or ""): node
-        for node in memory.get("elixir_nodes", [])
-        if isinstance(node, dict) and node.get("elixir_id")
-    }
-
-    source_to_concepts: dict[str, set[str]] = {}
-    concept_to_sources: dict[str, set[str]] = {}
-    for edge in edges.get("source_to_concept", []):
-        source_id = edge.get("source_id")
-        concept_slug = edge.get("concept_slug")
-        if not isinstance(source_id, str) or not isinstance(concept_slug, str):
-            continue
-        source_to_concepts.setdefault(source_id, set()).add(concept_slug)
-        concept_to_sources.setdefault(concept_slug, set()).add(source_id)
-
-    related_concepts: dict[str, set[str]] = {}
-    for edge in edges.get("concept_to_concept", []):
-        left = edge.get("from")
-        right = edge.get("to")
-        if not isinstance(left, str) or not isinstance(right, str):
-            continue
-        related_concepts.setdefault(left, set()).add(right)
-        related_concepts.setdefault(right, set()).add(left)
 
     for token in question_tokens:
         payload = term_index.get(token)
@@ -127,14 +65,53 @@ def _build_machine_memory_query_json(
             if elixir_id in elixir_nodes:
                 direct_elixir_scores[elixir_id] = direct_elixir_scores.get(elixir_id, 0) + 6
 
-    route_strategy = select_machine_memory_query_strategy(
-        question,
-        direct_source_scores=direct_source_scores,
-        direct_concept_scores=direct_concept_scores,
-        protocol=protocol,
-        root=root,
+    return (
+        matched_terms,
+        direct_source_scores,
+        direct_concept_scores,
+        direct_judgment_scores,
+        direct_elixir_scores,
     )
-    selected_strategy = str(route_strategy.get("selected_strategy") or "concept-first")
+
+
+def _expand_machine_memory_graph_scores(
+    memory: dict[str, Any],
+    *,
+    direct_source_scores: dict[str, int],
+    direct_concept_scores: dict[str, int],
+    direct_judgment_scores: dict[str, int],
+    direct_elixir_scores: dict[str, int],
+    confirmed_judgment_nodes: dict[str, dict[str, Any]],
+    elixir_nodes: dict[str, dict[str, Any]],
+    selected_strategy: str,
+) -> tuple[
+    dict[str, int],
+    dict[str, int],
+    dict[str, int],
+    dict[str, int],
+    set[tuple[str, str, str]],
+    list[dict[str, Any]],
+]:
+    edges = memory.get("edges", {})
+    adjacency = build_machine_memory_adjacency(memory)
+    source_to_concepts: dict[str, set[str]] = {}
+    concept_to_sources: dict[str, set[str]] = {}
+    for edge in edges.get("source_to_concept", []):
+        source_id = edge.get("source_id")
+        concept_slug = edge.get("concept_slug")
+        if not isinstance(source_id, str) or not isinstance(concept_slug, str):
+            continue
+        source_to_concepts.setdefault(source_id, set()).add(concept_slug)
+        concept_to_sources.setdefault(concept_slug, set()).add(source_id)
+
+    related_concepts: dict[str, set[str]] = {}
+    for edge in edges.get("concept_to_concept", []):
+        left = edge.get("from")
+        right = edge.get("to")
+        if not isinstance(left, str) or not isinstance(right, str):
+            continue
+        related_concepts.setdefault(left, set()).add(right)
+        related_concepts.setdefault(right, set()).add(left)
 
     expanded_source_scores = dict(direct_source_scores)
     expanded_concept_scores = dict(direct_concept_scores)
@@ -221,6 +198,108 @@ def _build_machine_memory_query_json(
             continue
         expanded_elixir_scores[elixir_id] = expanded_elixir_scores.get(elixir_id, 0) + 3
         supporting_edges.add(("ELIXIR_DERIVED_FROM", from_id, elixir_id))
+
+    return (
+        expanded_source_scores,
+        expanded_concept_scores,
+        expanded_judgment_scores,
+        expanded_elixir_scores,
+        supporting_edges,
+        query_routes,
+    )
+
+
+def _build_machine_memory_query_json(
+    memory: dict[str, Any],
+    question: str,
+    *,
+    root: Path | None = None,
+    protocol: str = DEFAULT_PROTOCOL,
+    material_state: dict[str, Any] | None = None,
+    routing_state: dict[str, Any] | None = None,
+    archive_candidates: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    term_index = memory.get("term_index", {})
+    source_nodes = {node["id"]: node for node in memory.get("source_nodes", [])}
+    concept_nodes = {node["slug"]: node for node in memory.get("concept_nodes", [])}
+    question_tokens = tokenize(question)
+    health = memory.get("health", {})
+    material_state = material_state or {"entries": []}
+    routing_state = routing_state or {"entries": []}
+    archive_candidates = archive_candidates or {"entries": []}
+    material_by_entry = {
+        str(entry.get("entry_id") or ""): entry
+        for entry in material_state.get("entries", [])
+        if isinstance(entry, dict) and entry.get("entry_id")
+    }
+    routing_by_entry = {
+        str(entry.get("entry_id") or ""): entry
+        for entry in routing_state.get("entries", [])
+        if isinstance(entry, dict) and entry.get("entry_id")
+    }
+    archive_candidates_by_entry = {
+        str(entry.get("entry_id") or ""): entry
+        for entry in archive_candidates.get("entries", [])
+        if isinstance(entry, dict) and entry.get("entry_id")
+    }
+    time_focus_state = machine_memory_query_time_focus(question)
+    time_focus = str(time_focus_state.get("focus") or "")
+
+    confirmed_judgment_nodes = {
+        str(node.get("page_id") or ""): node
+        for node in memory.get("judgment_nodes", [])
+        if isinstance(node, dict)
+        and str(node.get("kind") or "") == "judgment"
+        and str(node.get("status") or "") == "confirmed"
+        and node.get("page_id")
+    }
+    elixir_nodes = {
+        str(node.get("elixir_id") or ""): node
+        for node in memory.get("elixir_nodes", [])
+        if isinstance(node, dict) and node.get("elixir_id")
+    }
+
+    (
+        matched_terms,
+        direct_source_scores,
+        direct_concept_scores,
+        direct_judgment_scores,
+        direct_elixir_scores,
+    ) = _score_machine_memory_term_hits(
+        question_tokens,
+        term_index=term_index,
+        source_nodes=source_nodes,
+        concept_nodes=concept_nodes,
+        confirmed_judgment_nodes=confirmed_judgment_nodes,
+        elixir_nodes=elixir_nodes,
+    )
+
+    route_strategy = select_machine_memory_query_strategy(
+        question,
+        direct_source_scores=direct_source_scores,
+        direct_concept_scores=direct_concept_scores,
+        protocol=protocol,
+        root=root,
+    )
+    selected_strategy = str(route_strategy.get("selected_strategy") or "concept-first")
+
+    (
+        expanded_source_scores,
+        expanded_concept_scores,
+        expanded_judgment_scores,
+        expanded_elixir_scores,
+        supporting_edges,
+        query_routes,
+    ) = _expand_machine_memory_graph_scores(
+        memory,
+        direct_source_scores=direct_source_scores,
+        direct_concept_scores=direct_concept_scores,
+        direct_judgment_scores=direct_judgment_scores,
+        direct_elixir_scores=direct_elixir_scores,
+        confirmed_judgment_nodes=confirmed_judgment_nodes,
+        elixir_nodes=elixir_nodes,
+        selected_strategy=selected_strategy,
+    )
 
     source_rank_records = [
         machine_memory_source_runtime_record(

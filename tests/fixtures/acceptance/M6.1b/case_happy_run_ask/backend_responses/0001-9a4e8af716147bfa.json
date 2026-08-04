@@ -1,0 +1,12 @@
+{
+  "backend": "opencode-api",
+  "model": "stub-model",
+  "prompt_hash": "9a4e8af716147bfa",
+  "response_id": "stub-response-id",
+  "response_text": "---\nkind: output\nformat: report\ngenerated_by: aiwiki-ask\n---\n\n# Stub response\n\n## \u7ed3\u8bba\nSource A confirms deterministic replay.\n\n## \u5173\u952e\u8bc1\u636e\n- Source A says source-a replay acceptance is deterministic (wiki/sources/source-a.md).\n- Recorded fixture digest matches the live response digest.\n- Stub backend reuses prompt_hash bf7ad8d2478a4007 to seed the replay.\n\n## \u53cd\u8bc1\u4e0e\u4e0d\u786e\u5b9a\u6027\n- No counter-evidence observed in the stub corpus.\n\n## \u884c\u52a8\u5efa\u8bae\n- Continue using deterministic replay for acceptance gates.\n\n## \u4e0b\u6b21\u89c2\u5bdf\u4fe1\u53f7\n- Revisit if backend behavior diverges from recorded fixtures.\n\n## \u5f15\u7528\n- wiki/sources/source-a.md\n",
+  "sequence": 1,
+  "usage": {
+    "input_tokens": 10,
+    "output_tokens": 20
+  }
+}

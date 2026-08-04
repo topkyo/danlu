@@ -12,7 +12,6 @@ from ..render.paths import execution_receipts_dir
 from ..utils.io import _restore_snapshots, _snapshot_file_bytes, atomic_write_text
 from ..utils.path import relative_path
 from .alchemy_helpers import (
-    CANDIDATE_ELIXIR_DIR,
     ELIXIR_DIR,
     LegacyMigrationApplyError,
     LegacyMigrationHalfWriteError,

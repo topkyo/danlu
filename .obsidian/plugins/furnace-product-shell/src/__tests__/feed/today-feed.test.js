@@ -4,9 +4,7 @@ const {
   buildTodayFeed,
   compareEntries,
   todayDateOf,
-  reviewBucketCopy,
   priorityForKind,
-  isMaintenanceCommandAction,
   PRIORITY,
   PRIMARY_REVIEW_BUCKETS,
 } = require("../../today_feed");
@@ -31,12 +29,13 @@ function makeSummary(overrides = {}) {
 // ── PRIORITY ──────────────────────────────────────────────────────────
 
 test("PRIORITY defines correct ordering", () => {
+  // Mirrors src/aiwiki/today_feed.py _PRIORITY exactly (schema/today-feed.json contract).
   expect(PRIORITY.report).toBe(1);
   expect(PRIORITY.automation).toBe(2);
   expect(PRIORITY.decision).toBe(3);
-  expect(PRIORITY.proposal).toBe(4);
-  expect(PRIORITY.elixir).toBe(5);
-  expect(PRIORITY.action).toBe(6);
+  expect(PRIORITY.elixir).toBe(4);
+  expect(PRIORITY.action).toBe(5);
+  expect(Object.keys(PRIORITY)).toHaveLength(5);
   // Lower number = higher priority
   expect(PRIORITY.report).toBeLessThan(PRIORITY.action);
 });
@@ -81,19 +80,6 @@ test("todayDateOf handles empty summary", () => {
   expect(todayDateOf({})).toBe("");
 });
 
-// ── reviewBucketCopy ──────────────────────────────────────────────────
-
-test("reviewBucketCopy returns known chinese labels", () => {
-  const [title, hint] = reviewBucketCopy("counter_evidence_candidates");
-  expect(title).toBe("补充反证候选");
-  expect(hint).toBeTruthy();
-});
-
-test("reviewBucketCopy falls back for unknown kind", () => {
-  const [title] = reviewBucketCopy("unknown_kind");
-  expect(title).toContain("unknown kind");
-});
-
 test("PRIMARY_REVIEW_BUCKETS contains expected keys", () => {
   expect(PRIMARY_REVIEW_BUCKETS.has("counter_evidence_candidates")).toBe(true);
   expect(PRIMARY_REVIEW_BUCKETS.has("escalated_actions")).toBe(true);
@@ -106,24 +92,6 @@ test("PRIMARY_REVIEW_BUCKETS contains expected keys", () => {
   expect(PRIMARY_REVIEW_BUCKETS.has("overdue_reviews")).toBe(false);
   expect(PRIMARY_REVIEW_BUCKETS.has("ready_actions")).toBe(false);
   expect(PRIMARY_REVIEW_BUCKETS.has("machine_memory_actions")).toBe(false);
-});
-
-// ── isMaintenanceCommandAction ────────────────────────────────────────
-
-test("isMaintenanceCommandAction detects batch-hint prefix", () => {
-  expect(isMaintenanceCommandAction(" review-page foo.md ", "batch-hint:concept")).toBe(true);
-});
-
-test("isMaintenanceCommandAction detects maintenance tokens", () => {
-  expect(isMaintenanceCommandAction(" review-page foo.md ", "")).toBe(true);
-  expect(isMaintenanceCommandAction(" review-page --batch wiki/a.md ", "")).toBe(true);
-  expect(isMaintenanceCommandAction(" review-page --next ", "")).toBe(true);
-  expect(isMaintenanceCommandAction(" wiki/indexes/repair-backlog.md ", "")).toBe(false);
-});
-
-test("isMaintenanceCommandAction returns false for user commands", () => {
-  expect(isMaintenanceCommandAction(" PYTHONPATH=src python3 -m aiwiki.cli --root . run-ask ", "")).toBe(false);
-  expect(isMaintenanceCommandAction(" compile ", "")).toBe(false);
 });
 
 // ── buildTodayFeed ────────────────────────────────────────────────────
@@ -370,4 +338,49 @@ test("buildTodayFeed keeps metric trend alerts out of primary Today", () => {
   const feed = buildTodayFeed(summary);
   const metrics = feed.filter((e) => e.title.startsWith("指标变化"));
   expect(metrics).toHaveLength(0);
+});
+
+// ── schema/today-feed.json contract ─────────────────────────────────
+
+const fs = require("fs");
+const path = require("path");
+
+const TODAY_FEED_SCHEMA = JSON.parse(
+  fs.readFileSync(path.join(__dirname, "../../../../../../schema/today-feed.json"), "utf8")
+);
+
+describe("today-feed schema contract (schema/today-feed.json)", () => {
+  test("PRIORITY keys match schema kind enum exactly", () => {
+    expect([...TODAY_FEED_SCHEMA.properties.kind.enum].sort()).toEqual(Object.keys(PRIORITY).sort());
+  });
+
+  test("buildTodayFeed entries conform to schema", () => {
+    const summary = makeSummary({
+      recent_outputs: [
+        {
+          path: "output/reports/2026-05-03-report.md",
+          title: "报告 A",
+          format: "report",
+          generated_at: "2026-05-03T10:00:00Z",
+        },
+      ],
+    });
+    const entries = buildTodayFeed(summary);
+    expect(entries.length).toBeGreaterThan(0);
+    for (const entry of entries) {
+      for (const key of TODAY_FEED_SCHEMA.required) {
+        expect(entry).toHaveProperty(key);
+      }
+      expect(TODAY_FEED_SCHEMA.properties.kind.enum).toContain(entry.kind);
+      expect(typeof entry.title).toBe("string");
+      expect(typeof entry.summary).toBe("string");
+      expect(typeof entry.target).toBe("string");
+      expect(typeof entry.timestamp).toBe("string");
+      expect(Number.isInteger(entry.priority)).toBe(true);
+      expect(entry.priority).toBeGreaterThanOrEqual(TODAY_FEED_SCHEMA.properties.priority.minimum);
+      expect(entry.priority).toBeLessThanOrEqual(TODAY_FEED_SCHEMA.properties.priority.maximum);
+      expect(entry.priority).toBe(priorityForKind(entry.kind));
+      expect(typeof entry.protocol).toBe("string");
+    }
+  });
 });

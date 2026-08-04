@@ -1,22 +1,22 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": 1,
   "title": "TodayFeedEntry",
-  "description": "Shared contract between src/aiwiki/today_feed.py and Product Shell today_feed.js",
+  "description": "Shared contract between src/aiwiki/today_feed.py and Product Shell today_feed.js. Enforced by tests/test_llm_integration.py (Python) and src/__tests__/feed/today-feed.test.js (Product Shell); keep all three in sync.",
   "type": "object",
-  "required": ["kind", "title", "summary", "target", "timestamp", "priority"],
+  "required": ["kind", "title", "summary", "target", "timestamp", "priority", "protocol"],
   "properties": {
     "kind": {
       "type": "string",
-      "enum": ["decision", "proposal", "report", "elixir", "automation", "action"]
+      "enum": ["decision", "report", "elixir", "automation", "action"]
     },
     "title": { "type": "string" },
     "summary": { "type": "string" },
     "target": { "type": "string" },
     "timestamp": { "type": "string" },
-    "priority": { "type": "integer", "minimum": 1, "maximum": 6 },
-    "bucket": { "type": "string" },
-    "status": { "type": "string" },
-    "protocol": { "type": "string" }
+    "priority": { "type": "integer", "minimum": 1, "maximum": 5 },
+    "protocol": { "type": "string" },
+    "compound_suggest": { "type": ["object", "null"] }
   },
   "additionalProperties": true
 }

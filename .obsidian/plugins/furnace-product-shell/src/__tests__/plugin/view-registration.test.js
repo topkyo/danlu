@@ -151,18 +151,6 @@ test("advanced drawer only exposes diagnostics and inline history", () => {
   expect(renderAdvancedSrc).toMatch(/pluginState\.recentRuns/);
 });
 
-test("digest panel exposes shell recovery commands when available", () => {
-  const renderPrimitivesSrc = fs.readFileSync(
-    path.resolve(__dirname, "../../render_primitives.js"),
-    "utf8"
-  );
-
-  expect(renderPrimitivesSrc).toMatch(/nightly\.rerun_command/);
-  expect(renderPrimitivesSrc).toMatch(/nightlyReceipt\.rerun_command/);
-  expect(renderPrimitivesSrc).toMatch(/watcher\.rerun_command/);
-  expect(renderPrimitivesSrc).toMatch(/Rerun command/);
-});
-
 test("pending submissions have a first-class degraded terminal state", () => {
   const pluginSrc = fs.readFileSync(
     path.resolve(__dirname, "../../plugin.js"),
@@ -174,7 +162,6 @@ test("pending submissions have a first-class degraded terminal state", () => {
   );
 
   expect(pluginSrc).toMatch(/running \| done \| failed \| degraded/);
-  expect(pluginSrc).toMatch(/isPendingSubmissionDegradedEntry\(entry\)/);
   expect(pendingStateSrc).toMatch(/markPendingSubmissionEntryDone/);
   expect(pendingStateSrc).toMatch(/isPendingSubmissionDegradedEntry\(entry\) \? "degraded" : "done"/);
   expect(pendingStateSrc).toMatch(/entry\.status === "degraded"/);

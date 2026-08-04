@@ -104,10 +104,6 @@ function renderCompoundSuggestActionCard(plugin, cardEl, entry) {
   renderCompoundLootBanner(plugin, cardEl, suggest);
 }
 
-function renderCompoundSuggestActions(plugin, actionsEl, suggest) {
-  renderCompoundLootBanner(plugin, actionsEl, suggest);
-}
-
 function renderConfirmationCard(plugin, cardEl, entry) {
   const actions = cardEl.createDiv({ cls: "furnace-feed-card-actions" });
 
@@ -154,7 +150,6 @@ module.exports = {
   renderConfirmationCard,
   renderAutomationCard,
   renderCompoundSuggestActionCard,
-  renderCompoundSuggestActions,
   renderCompoundLootBanner,
   compoundLootCopy,
 };

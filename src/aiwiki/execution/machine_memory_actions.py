@@ -50,7 +50,6 @@ from ..lifecycle.paths import (
 )
 from ..lifecycle.status import action_needs_review
 from ..memory.action_core import (
-    action_supports_low_risk_apply,
     safe_apply_preview,
     validate_low_risk_action_targets,
 )
@@ -68,7 +67,7 @@ from ..render.paths import (
 )
 from ..state.constants import DEFAULT_PROTOCOL
 from ..state.io import load_json_document_strict
-from ..utils.io import atomic_write_text, runtime_write_operation
+from ..utils.io import _restore_file_bytes, _snapshot_file_bytes, atomic_write_text, runtime_write_operation
 from ..utils.markdown import parse_frontmatter, render_frontmatter, strip_frontmatter
 from ..utils.path import relative_path
 from ..utils.security import safe_resolve_within
@@ -100,52 +99,14 @@ class MachineMemoryActionHalfWriteError(RuntimeError):
     """
 
 
-def _snapshot_file_bytes(path: Path) -> bytes | None:
-    """Return current bytes of *path*, or ``None`` if it does not exist.
-
-    The snapshot is taken eagerly so that callers can restore the file
-    even if it is deleted before rollback runs.
-    """
-    try:
-        return path.read_bytes()
-    except FileNotFoundError:
-        return None
-
-
-def _restore_file_bytes(path: Path, original: bytes | None) -> None:
-    """Restore *path* to its snapshot. None means the file did not exist.
-
-    Uses atomic tmp + ``os.replace`` for the data restore so a crash
-    during rollback cannot leave a half-written file. If ``original`` is
-    ``None`` and the file currently exists, it is unlinked.
-    """
-    import os
-    import tempfile
-
-    if original is None:
-        if path.exists():
-            try:
-                path.unlink()
-            except FileNotFoundError:
-                pass
-        return
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".restore")
-    tmp_path = Path(tmp_name)
-    try:
-        with os.fdopen(fd, "wb") as handle:
-            handle.write(original)
-        os.replace(tmp_path, path)
-    except Exception:
-        try:
-            tmp_path.unlink()
-        except FileNotFoundError:
-            pass
-        raise
-
-
 def _rollback_snapshots(snapshots: list[tuple[Path, bytes | None]]) -> list[str]:
-    """Restore all snapshots in reverse order. Returns list of restore failures."""
+    """Restore all snapshots in reverse order. Returns list of restore failures.
+
+    Adapter over ``aiwiki.utils.io._restore_file_bytes``: the generic
+    ``_restore_snapshots`` Mapping variant raises the first failure, while
+    machine-memory TX callers need the full formatted failure list to build
+    ``MachineMemoryActionHalfWriteError`` messages.
+    """
     failures: list[str] = []
     for path, original in reversed(snapshots):
         try:
@@ -410,6 +371,79 @@ def review_machine_memory_actions_batch(
         "reviewed_at": reviewed_at,
         "receipts": receipts,
     }
+
+
+def _auto_revert_after_verify_failure(
+    root: Path,
+    *,
+    resolved_action_id: str,
+    receipt_path: Path,
+    verify_exc: Exception,
+) -> None:
+    """Auto-revert a completed apply whose post-apply verify failed, then raise.
+
+    Always raises a wrapped RuntimeError describing whether the auto-revert
+    completed or itself failed.
+    """
+    from ..utils.time import utc_now
+
+    try:
+        revert_result = revert_machine_memory_action(
+            root,
+            resolved_action_id,
+            note=f"auto-revert after apply verify failure: {type(verify_exc).__name__}: {verify_exc}",
+            verify=False,
+        )
+        append_runtime_history(
+            root,
+            {
+                "event_type": "action-auto-revert-on-verify-failure",
+                "occurred_at": utc_now(),
+                "action_id": resolved_action_id,
+                "apply_receipt_path": relative_path(root, receipt_path),
+                "revert_receipt_path": str(revert_result.get("receipt_path") or ""),
+                "verify_error": f"{type(verify_exc).__name__}: {verify_exc}",
+            },
+        )
+    except Exception as revert_exc:
+        raise RuntimeError(
+            "machine-memory apply verify failed and auto-revert also failed: "
+            f"verify={type(verify_exc).__name__}: {verify_exc}; "
+            f"revert={type(revert_exc).__name__}: {revert_exc}. "
+            "Try `aiwiki advanced alchemy-revert` or manual repair."
+        ) from verify_exc
+    raise RuntimeError(
+        "machine-memory apply verify failed; auto-revert completed: "
+        f"{type(verify_exc).__name__}: {verify_exc}. "
+        "Inspect receipts and retry via nightly reconcile or `advanced review-page`."
+    ) from verify_exc
+
+
+def _verify_apply_compile_or_auto_revert(
+    root: Path,
+    *,
+    resolved_action_id: str,
+    receipt_path: Path,
+) -> None:
+    """Compile-verify a completed apply; on failure auto-revert when policy allows.
+
+    Re-raises the original verify error when ``auto_revert_on_verify_failure``
+    is disabled; otherwise delegates to ``_auto_revert_after_verify_failure``,
+    which always raises.
+    """
+    try:
+        compile_wiki(root)
+    except Exception as verify_exc:
+        from ..autonomy_policy import load_policy
+
+        if not load_policy(root).auto_revert_on_verify_failure:
+            raise
+        _auto_revert_after_verify_failure(
+            root,
+            resolved_action_id=resolved_action_id,
+            receipt_path=receipt_path,
+            verify_exc=verify_exc,
+        )
 
 
 @runtime_write_operation
@@ -720,43 +754,11 @@ def apply_machine_memory_action(
             f"primary: `{target.get('primary_path', '')}`",
         ],
     )
-    try:
-        compile_wiki(root)
-    except Exception as verify_exc:
-        from ..autonomy_policy import load_policy
-
-        if load_policy(root).auto_revert_on_verify_failure:
-            try:
-                revert_result = revert_machine_memory_action(
-                    root,
-                    resolved_action_id,
-                    note=f"auto-revert after apply verify failure: {type(verify_exc).__name__}: {verify_exc}",
-                    verify=False,
-                )
-                append_runtime_history(
-                    root,
-                    {
-                        "event_type": "action-auto-revert-on-verify-failure",
-                        "occurred_at": utc_now(),
-                        "action_id": resolved_action_id,
-                        "apply_receipt_path": relative_path(root, receipt_path),
-                        "revert_receipt_path": str(revert_result.get("receipt_path") or ""),
-                        "verify_error": f"{type(verify_exc).__name__}: {verify_exc}",
-                    },
-                )
-            except Exception as revert_exc:
-                raise RuntimeError(
-                    "machine-memory apply verify failed and auto-revert also failed: "
-                    f"verify={type(verify_exc).__name__}: {verify_exc}; "
-                    f"revert={type(revert_exc).__name__}: {revert_exc}. "
-                    "Try `aiwiki advanced alchemy-revert` or manual repair."
-                ) from verify_exc
-            raise RuntimeError(
-                "machine-memory apply verify failed; auto-revert completed: "
-                f"{type(verify_exc).__name__}: {verify_exc}. "
-                "Inspect receipts and retry via nightly reconcile or `advanced review-page`."
-            ) from verify_exc
-        raise
+    _verify_apply_compile_or_auto_revert(
+        root,
+        resolved_action_id=resolved_action_id,
+        receipt_path=receipt_path,
+    )
     response: dict[str, Any] = {
         "id": resolved_action_id,
         "status": "resolved",
@@ -989,8 +991,4 @@ def revert_machine_memory_action(
     }
 
 # Re-export auto-resolution public API (owner: machine_memory_auto_resolution).
-from .machine_memory_auto_resolution import (  # noqa: E402
-    auto_resolve_machine_memory_actions,
-    machine_memory_action_auto_resolution_policy,
-)
 

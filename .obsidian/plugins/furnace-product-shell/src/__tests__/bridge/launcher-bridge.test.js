@@ -27,6 +27,8 @@ function loadLauncherBridgeContext(overrides = {}) {
     String,
     module: { exports: {} },
     exports: {},
+    setTimeout,
+    clearTimeout,
     spawn,
     readJsonText: jest.fn(() => ({ ok: true })),
     buildLlmEnv: jest.fn(() => ({

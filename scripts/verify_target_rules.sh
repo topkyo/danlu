@@ -67,6 +67,13 @@ emit_targets_for_path() {
       echo cli-smoke
       return 0
       ;;
+    src/aiwiki/execution/*|src/aiwiki/execution/**/*|src/aiwiki/memory/*|src/aiwiki/memory/**/*|src/aiwiki/runner/*|src/aiwiki/runner/**/*|src/aiwiki/compile/*|src/aiwiki/compile/**/*)
+      # Core pipeline modules: static checks alone miss contract regressions.
+      echo python-static
+      echo acceptance
+      echo llm-integration
+      return 0
+      ;;
     src/aiwiki/*.py|src/aiwiki/*/*.py|src/aiwiki/*/*/*.py)
       echo python-static
       return 0

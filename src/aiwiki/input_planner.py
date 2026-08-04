@@ -134,12 +134,44 @@ def plan_input(payload: str, root: Path) -> Plan:
     try:
         result = client.complete(PLANNER_SYSTEM_PROMPT, user_prompt)
     except LLMError as exc:
+        _record_planner_llm_attempt(root, client, status="failed", error=str(exc))
         raise PlannerError(f"LLM planner call failed: {exc}") from exc
 
-    plan = _parse_plan(result.text)
-    plan.validate()
+    try:
+        plan = _parse_plan(result.text)
+        plan.validate()
+    except PlannerError as exc:
+        _record_planner_llm_attempt(root, client, status="failed", error=str(exc))
+        raise
+    _record_planner_llm_attempt(root, client, status="success", usage=result.usage)
     _LOGGER.info("planner produced plan: action=%s targets=%d reason=%s", plan.action, len(plan.targets), plan.reason)
     return plan
+
+
+def _record_planner_llm_attempt(
+    root: Path,
+    client: Any,
+    *,
+    status: str,
+    error: str = "",
+    usage: dict[str, Any] | None = None,
+) -> None:
+    """Best-effort LLM receipt for the planner path; never breaks drop routing."""
+
+    try:
+        from .runner.receipts import _build_llm_audit, record_llm_attempt
+
+        record_llm_attempt(
+            root,
+            {"event": "input-planner"},
+            _build_llm_audit(client),
+            status=status,
+            error=error,
+            usage=usage,
+            error_class="llm" if status != "success" else "",
+        )
+    except Exception:  # noqa: BLE001 - observability must not break the drop path
+        _LOGGER.warning("planner LLM receipt append failed", exc_info=True)
 
 
 def _parse_plan(text: str) -> Plan:

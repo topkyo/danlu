@@ -13,7 +13,6 @@ from typing import Any
 from ..memory.paths import manual_link_state_path
 from ..memory.scoring import (
     protocol_hints_for_material,
-    recency_score_for_timestamp,
     timestamp_is_newer,
     update_latest_timestamp,
 )

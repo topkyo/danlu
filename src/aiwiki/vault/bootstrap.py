@@ -35,12 +35,6 @@ def _ensure_target_is_safe(target_root: Path, *, force: bool) -> None:
     if has_entries and not force:
         raise FileExistsError(f"target vault already exists and is not empty: {target_root}")
 
-def _write_json(path: Path, payload: dict[str, Any] | list[Any]) -> bool:
-    if isinstance(payload, dict):
-        return write_if_changed(path, render_json_document(payload))
-    text = render_json_document({"items": payload})
-    return write_if_changed(path, text.replace('{\n  "items": ', "").rstrip("}\n") + "\n")
-
 def bootstrap_new_vault(runtime_root: Path, target_root: Path, *, force: bool = False) -> dict[str, Any]:
     runtime_root = runtime_root.resolve()
     target_root = target_root.resolve()

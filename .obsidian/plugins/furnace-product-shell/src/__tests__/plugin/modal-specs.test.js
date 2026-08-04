@@ -86,23 +86,6 @@ test("review page modal spec keeps fields and submit args stable", async () => {
   });
 });
 
-test("file back modal submits judgment-only file-back args", async () => {
-  const context = loadModalSpecContext();
-  const plugin = makePlugin();
-  const spec = context.buildFileBackModalSpec(plugin, {});
-
-  expect(spec.fields.map((field) => field.key)).toEqual(["artifact", "title"]);
-  await spec.onSubmit({
-    artifact: "output/reports/current.md",
-    title: "Follow-up",
-  });
-  expect(plugin.calls[0]).toEqual({
-    label: "File Back",
-    command: "file-back",
-    args: ["output/reports/current.md", "--title", "Follow-up"],
-  });
-});
-
 test("alchemy start modal spec submits corpus and topic args", async () => {
   const context = loadModalSpecContext();
   const plugin = makePlugin();

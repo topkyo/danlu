@@ -6,15 +6,25 @@ SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"
 
+# Negative checks below silently "pass" when rg is missing (command-not-found
+# exits non-zero, which the if-else reads as "no match"). Fail loudly instead.
+if ! command -v rg >/dev/null 2>&1; then
+  echo "[FAIL] rg (ripgrep) is required for docs consistency checks" >&2
+  exit 1
+fi
+
+HITS_FILE="$(mktemp -t docs-consistency-hits)"
+trap 'rm -f "$HITS_FILE"' EXIT
+
 FAIL=0
 
 check_no_match() {
   local label="$1"
   local pattern="$2"
   shift 2
-  if rg -n "$pattern" "$@" >/tmp/docs-consistency-hits.txt 2>/dev/null; then
+  if rg -n "$pattern" "$@" >"$HITS_FILE" 2>/dev/null; then
     echo "[FAIL] $label"
-    cat /tmp/docs-consistency-hits.txt
+    cat "$HITS_FILE"
     FAIL=1
   else
     echo "[OK] $label"
@@ -73,9 +83,9 @@ do
 done
 
 # Active docs/scripts should not hard-code developer home paths (archive exempt).
-if git grep -nE "^/home/" -- scripts/ docs/ ':!docs/archive/' >/tmp/docs-consistency-hits.txt 2>/dev/null; then
+if git grep -nE "^/home/" -- scripts/ docs/ ':!docs/archive/' >"$HITS_FILE" 2>/dev/null; then
   echo "[FAIL] no /home/ hard paths in active docs/scripts"
-  cat /tmp/docs-consistency-hits.txt
+  cat "$HITS_FILE"
   FAIL=1
 else
   echo "[OK] no /home/ hard paths in active docs/scripts"

@@ -12,10 +12,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from ..memory.action_policy import execution_band_label, execution_policy_profile
 from ..memory.execution_audit_io import (
-    load_execution_policy_decision_history_strict,
-    load_execution_receipt_history_strict,
+    load_execution_receipt_history_strict,  # noqa: F401  # re-export compat seam
 )
 from ..state.constants import DEFAULT_PROTOCOL
 from ..utils.io import atomic_append_jsonl, runtime_write_operation

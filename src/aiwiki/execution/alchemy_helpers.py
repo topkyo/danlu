@@ -13,7 +13,6 @@ from ..content.material import load_active_corpora_state
 from ..protocol.runtime_config import PROTOCOL_ELIXIR_REVIEW_DAYS
 from ..utils.io import atomic_write_text
 from ..utils.markdown import parse_frontmatter, strip_frontmatter
-from ..utils.path import relative_path
 from .candidates import load_output_candidates_state
 
 ELIXIR_DIR = "wiki/elixirs"

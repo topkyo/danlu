@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 
 PRIMARY_SURFACE_COMMANDS: tuple[str, ...] = ("drop", "today", "advanced")
 

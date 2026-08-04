@@ -7,7 +7,7 @@ from typing import Any
 
 from aiwiki.runner.report_refs import OUTPUT_OBSIDIAN_CSSCLASS, OUTPUT_REPORT_LEAF_CSSCLASS
 from aiwiki.utils.io import atomic_write_text
-from aiwiki.utils.markdown import parse_frontmatter, render_frontmatter, strip_frontmatter
+from aiwiki.utils.markdown import parse_frontmatter, render_frontmatter
 
 _REPORT_SKELETON_REFERENCE_HEADINGS = {"## 参考"}
 

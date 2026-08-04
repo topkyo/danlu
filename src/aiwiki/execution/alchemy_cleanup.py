@@ -20,7 +20,6 @@ from .alchemy_helpers import (
     _parse_elixir_frontmatter,
     _resolve_elixir_id,
     _settled_path,
-    _validate_state_for_path,
 )
 from .alchemy_receipts import _persist_receipt_transactionally
 
