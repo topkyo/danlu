@@ -23,11 +23,13 @@ Targets:
   scripts               Check project shell scripts only.
   smoke                 Run lightweight aiwiki CLI smoke.
   python-static         Run Python lint and bytecode compile checks.
+  unit                  Run library-level unit tests (security / vault plugin).
   acceptance            Run acceptance replay checks.
-  llm-integration       Run LLM integration tests (79 tests, mock backends).
+  llm-integration       Run LLM integration tests (83 tests, mock backends).
   cli-smoke             Check aiwiki CLI startup/help.
-  product-shell-static  Run Product Shell JavaScript syntax checks.
-  all                   Run scripts + product-shell-static + cli-smoke + smoke + python-static + acceptance (24) + llm-integration (79); no coverage / legacy unit. Default.
+  product-shell-static  Run Product Shell JS syntax + bundle drift gate + Jest.
+  coverage              Print coverage report over all tests (informational, no gate).
+  all                   Run scripts + product-shell-static + cli-smoke + smoke + python-static + unit + acceptance (24) + llm-integration (83) + coverage report. Default.
 USAGE
 }
 
@@ -69,6 +71,23 @@ verify_llm_integration() {
   "$PYTHON" -m pytest tests/test_llm_integration.py -q
 }
 
+verify_unit() {
+  "$PYTHON" -m pytest tests/test_security.py tests/test_vault_plugin.py -q
+}
+
+# Informational only: prints a coverage report over the full test suite.
+# Never gates (no threshold); if coverage is not installed, skips with a note.
+verify_coverage() {
+  if ! "$PYTHON" -m coverage --version >/dev/null 2>&1; then
+    echo "coverage not installed; skipping coverage report (pip install -e '.[dev]')"
+    return 0
+  fi
+  "$PYTHON" -m coverage run --source=src/aiwiki -m pytest \
+    tests/test_acceptance_loop.py tests/test_llm_integration.py \
+    tests/test_security.py tests/test_vault_plugin.py -q
+  "$PYTHON" -m coverage report | tail -n 5
+}
+
 verify_cli_smoke() {
   "$PYTHON" -m aiwiki.cli --help >/dev/null
   # Top-level operator verbs must fail (no legacy argv rewrite).
@@ -107,6 +126,23 @@ verify_product_shell_static() {
   done < <(find "$product_shell_dir" \
     \( -path "$product_shell_dir/node_modules" -o -path "$product_shell_dir/.git" \) -prune \
     -o -name '*.js' -print0)
+
+  # Bundle drift hard-gate: committed main.js must equal a fresh build of src/.
+  # The bundle is the only file Obsidian actually loads and the only file
+  # sync_product_shell_plugin distributes, so it must never diverge from src/.
+  local bundle_out=""
+  bundle_out="$(mktemp -t furnace-mainjs)"
+  if ! OUT="$bundle_out" bash "$product_shell_dir/build.sh" >/dev/null; then
+    rm -f "$bundle_out"
+    echo "Product Shell build.sh failed; cannot verify bundle freshness" >&2
+    return 1
+  fi
+  if ! diff -q "$bundle_out" "$product_shell_dir/main.js" >/dev/null; then
+    rm -f "$bundle_out"
+    echo "main.js has drifted from src/; run 'bash $product_shell_dir/build.sh' and commit the result" >&2
+    return 1
+  fi
+  rm -f "$bundle_out"
 
   # Jest hard-gate (package.json tracked). Set AIWIKI_SKIP_PRODUCT_SHELL_JS_TESTS=1 only for emergency local bypass.
   if [[ "${AIWIKI_SKIP_PRODUCT_SHELL_JS_TESTS:-}" == "1" ]]; then
@@ -153,6 +189,14 @@ case "$TARGET" in
     verify_llm_integration
     exit 0
     ;;
+  unit)
+    verify_unit
+    exit 0
+    ;;
+  coverage)
+    verify_coverage
+    exit 0
+    ;;
   cli-smoke)
     verify_cli_smoke
     exit 0
@@ -175,5 +219,7 @@ case "$TARGET" in
 esac
 
 verify_python_static
+verify_unit
 verify_acceptance
 verify_llm_integration
+verify_coverage

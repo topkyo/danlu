@@ -85,64 +85,6 @@ class DemoteReceiptError(ElixirMutationBoundaryError):
     pass
 
 
-class LegacyMigrationPlanError(ElixirMutationBoundaryError):
-    """Raised when legacy migration planning fails before any mutation occurs.
-
-    No rollback is needed — planning is read-only.
-    """
-
-    pass
-
-
-class LegacyMigrationApplyError(ElixirMutationBoundaryError):
-    """Raised when legacy migration mutation or receipt persistence fails.
-
-    Implies rollback has been attempted (and succeeded); callers must NOT retry
-    without re-running preview because the in-memory plan is stale.
-    """
-
-    pass
-
-
-LegacyMigrationReceiptError = LegacyMigrationApplyError
-
-
-class LegacyMigrationHalfWriteError(RuntimeError):
-    def __init__(self, *, phase: str = "rollback") -> None:
-        self.phase = phase
-        super().__init__(
-            f"legacy_migration_half_write_error[{phase}]: failed to rollback after legacy migration failure; "
-            "manual repair required"
-        )
-
-
-class SupersededCleanupPlanError(ElixirMutationBoundaryError):
-    """Raised when superseded-cleanup planning fails before any mutation occurs."""
-
-    pass
-
-
-class SupersededCleanupApplyError(ElixirMutationBoundaryError):
-    """Raised when superseded-cleanup mutation or receipt persistence fails.
-
-    Implies rollback has been attempted.
-    """
-
-    pass
-
-
-SupersededCleanupReceiptError = SupersededCleanupApplyError
-
-
-class SupersededCleanupHalfWriteError(RuntimeError):
-    def __init__(self, *, phase: str = "rollback") -> None:
-        self.phase = phase
-        super().__init__(
-            f"superseded_cleanup_half_write_error[{phase}]: failed to rollback after superseded cleanup failure; "
-            "manual repair required"
-        )
-
-
 def list_promoted_outputs_for_corpus(root: Path, corpus_id: str) -> list[dict[str, Any]]:
     """List every currently-promoted candidate belonging to ``corpus_id``.
 

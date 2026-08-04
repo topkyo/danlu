@@ -67,6 +67,12 @@ emit_targets_for_path() {
       echo cli-smoke
       return 0
       ;;
+    src/aiwiki/utils/security.py|src/aiwiki/vault/*|src/aiwiki/vault/**/*)
+      # Guarded by tests/test_security.py / tests/test_vault_plugin.py.
+      echo python-static
+      echo unit
+      return 0
+      ;;
     src/aiwiki/execution/*|src/aiwiki/execution/**/*|src/aiwiki/memory/*|src/aiwiki/memory/**/*|src/aiwiki/runner/*|src/aiwiki/runner/**/*|src/aiwiki/compile/*|src/aiwiki/compile/**/*)
       # Core pipeline modules: static checks alone miss contract regressions.
       echo python-static
@@ -84,6 +90,10 @@ emit_targets_for_path() {
       ;;
     tests/test_llm_integration.py)
       echo llm-integration
+      return 0
+      ;;
+    tests/test_security.py|tests/test_vault_plugin.py)
+      echo unit
       return 0
       ;;
     tests/*.py|tests/*/*.py|tests/*/*/*.py)

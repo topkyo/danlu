@@ -106,40 +106,7 @@ class OpenAICompatClient:
                 {"role": "user", "content": user_prompt},
             ],
         }
-        endpoint = f"{self.config.base_url}/chat/completions"
-        body = json.dumps(payload).encode("utf-8")
-        headers = {
-            "Authorization": f"Bearer {self.config.api_key}",
-            "Content-Type": "application/json",
-        }
-
-        retry_attempts = _llm_retry_attempts()
-        for attempt_index in range(retry_attempts + 1):
-            try:
-                response_body, _ = safe_fetch(
-                    endpoint,
-                    method="POST",
-                    data=body,
-                    headers=headers,
-                    max_bytes=_LLM_MAX_BYTES,
-                    timeout=self.config.timeout_seconds,
-                )
-                raw = response_body.decode("utf-8")
-                break
-            except FetchPolicyError as exc:
-                raise LLMError(f"unsafe LLM endpoint: {exc}") from exc
-            except (TimeoutError, socket.timeout) as exc:
-                raise LLMError(f"LLM endpoint timed out after {self.config.timeout_seconds} seconds.") from exc
-            except error.HTTPError as exc:  # pragma: no cover - exercised via CLI/network usage
-                details = exc.read().decode("utf-8", errors="replace")
-                if exc.code in _RETRYABLE_HTTP_STATUS_CODES and attempt_index < retry_attempts:
-                    time.sleep(_http_retry_delay_seconds(exc, attempt_index))
-                    continue
-                raise LLMError(f"HTTP {exc.code} from LLM endpoint: {details}") from exc
-            except error.URLError as exc:  # pragma: no cover - exercised via CLI/network usage
-                raise LLMError(f"Unable to reach LLM endpoint: {exc.reason}") from exc
-        else:  # pragma: no cover - loop either breaks or raises
-            raise LLMError("LLM endpoint did not return a response.")
+        raw = self._post_chat_completions(payload)
 
         try:
             parsed = json.loads(raw)
@@ -185,32 +152,7 @@ class OpenAICompatClient:
                 },
             ],
         }
-        endpoint = f"{self.config.base_url}/chat/completions"
-        body = json.dumps(payload).encode("utf-8")
-        headers = {
-            "Authorization": f"Bearer {self.config.api_key}",
-            "Content-Type": "application/json",
-        }
-
-        try:
-            response_body, _ = safe_fetch(
-                endpoint,
-                method="POST",
-                data=body,
-                headers=headers,
-                max_bytes=_LLM_MAX_BYTES,
-                timeout=self.config.timeout_seconds,
-            )
-            raw = response_body.decode("utf-8")
-        except FetchPolicyError as exc:
-            raise LLMError(f"unsafe LLM endpoint: {exc}") from exc
-        except (TimeoutError, socket.timeout) as exc:
-            raise LLMError(f"LLM endpoint timed out after {self.config.timeout_seconds} seconds.") from exc
-        except error.HTTPError as exc:  # pragma: no cover - exercised via CLI/network usage
-            details = exc.read().decode("utf-8", errors="replace")
-            raise LLMError(f"HTTP {exc.code} from LLM endpoint: {details}") from exc
-        except error.URLError as exc:  # pragma: no cover - exercised via CLI/network usage
-            raise LLMError(f"Unable to reach LLM endpoint: {exc.reason}") from exc
+        raw = self._post_chat_completions(payload)
 
         try:
             parsed = json.loads(raw)
@@ -233,6 +175,43 @@ class OpenAICompatClient:
             usage=parsed.get("usage") or {},
             raw_response_path=raw_response_path,
         )
+
+    def _post_chat_completions(self, payload: dict[str, Any]) -> str:
+        endpoint = f"{self.config.base_url}/chat/completions"
+        body = json.dumps(payload).encode("utf-8")
+        headers = {
+            "Authorization": f"Bearer {self.config.api_key}",
+            "Content-Type": "application/json",
+        }
+
+        retry_attempts = _llm_retry_attempts()
+        for attempt_index in range(retry_attempts + 1):
+            try:
+                response_body, _ = safe_fetch(
+                    endpoint,
+                    method="POST",
+                    data=body,
+                    headers=headers,
+                    max_bytes=_LLM_MAX_BYTES,
+                    timeout=self.config.timeout_seconds,
+                )
+                raw = response_body.decode("utf-8")
+                break
+            except FetchPolicyError as exc:
+                raise LLMError(f"unsafe LLM endpoint: {exc}") from exc
+            except (TimeoutError, socket.timeout) as exc:
+                raise LLMError(f"LLM endpoint timed out after {self.config.timeout_seconds} seconds.") from exc
+            except error.HTTPError as exc:  # pragma: no cover - exercised via CLI/network usage
+                details = exc.read().decode("utf-8", errors="replace")
+                if exc.code in _RETRYABLE_HTTP_STATUS_CODES and attempt_index < retry_attempts:
+                    time.sleep(_http_retry_delay_seconds(exc, attempt_index))
+                    continue
+                raise LLMError(f"HTTP {exc.code} from LLM endpoint: {details}") from exc
+            except error.URLError as exc:  # pragma: no cover - exercised via CLI/network usage
+                raise LLMError(f"Unable to reach LLM endpoint: {exc.reason}") from exc
+        else:  # pragma: no cover - loop either breaks or raises
+            raise LLMError("LLM endpoint did not return a response.")
+        return raw
 
 
 class AnthropicClient:

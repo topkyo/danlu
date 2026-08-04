@@ -312,6 +312,32 @@ def test_openai_compat_client_non_retryable_http_raises_immediately(
     assert len(calls) == 1
 
 
+def test_openai_compat_analyze_image_retry_then_success(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """analyze_image shares the retrying POST helper: retryable 503 -> retry -> success."""
+
+    monkeypatch.setenv("AIWIKI_LLM_RETRY_ATTEMPTS", "2")
+    calls: list[str] = []
+
+    def _fake_safe_fetch(url: str, **_kwargs: Any) -> tuple[bytes, str]:
+        calls.append(url)
+        if len(calls) == 1:
+            raise _make_http_error(503, b"service unavailable")
+        return _ok_response_bytes(), "application/json"
+
+    monkeypatch.setattr("aiwiki.llm.safe_fetch", _fake_safe_fetch)
+    monkeypatch.setattr("aiwiki.llm.time.sleep", lambda _seconds: None)
+
+    image_path = tmp_path / "probe.png"
+    image_path.write_bytes(b"\x89PNG\r\n\x1a\n")
+
+    client = OpenAICompatClient(_openai_compat_config(), workdir=tmp_path)
+    result = client.analyze_image("system", "user", image_path)
+
+    assert len(calls) == 2
+    assert result.text == "# answer\n\nbody text"
+    assert result.response_id == "resp-1"
+
+
 def test_openai_compat_client_timeout_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """TimeoutError from safe_fetch surfaces as LLMError classified as 'timeout'."""
 

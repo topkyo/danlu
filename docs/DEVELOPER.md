@@ -29,13 +29,13 @@ related_docs:
 | `content/` | source / concept / material / archive / rewrite |
 | `render/` | views / packs / pilots / protocols |
 | `memory/` | graph_* 子模块、query_routes、trace/recall |
-| `execution/` | receipts、history、alchemy_*、l3_proposals（library）、machine_memory_actions |
+| `execution/` | receipts、history、alchemy_*、review / gc_orphans / repair_plan 等治理执行面 |
 | `runner/` | workflows（compile/lint/nightly）、workflows_ask*、watch、alchemy 编排 |
 | `cache/`、`vault/` | cache 子系统、Obsidian bootstrap |
 | `app_shell/` | Product Shell summary / controls / status |
 | `app_linting/` | lint phases、repair backlog、nightly health |
 
-热点（deferred seam）：`execution/machine_memory_actions.py`、`runner/alchemy.py`、Product Shell `plugin.js`。
+热点（deferred seam）：`content/concepts.py`、`render/views.py`、`app_linting/phases.py`（巨石单 seam 外提，节奏见 PROGRESS）。
 
 ### CLI taxonomy
 
@@ -53,7 +53,7 @@ related_docs:
 
 ```bash
 bash scripts/verify_target_rules.sh          # 按改动路径选 target
-bash scripts/verify.sh [target]              # scripts|smoke|python-static|acceptance|llm-integration|cli-smoke|product-shell-static|all
+bash scripts/verify.sh [target]              # scripts|smoke|python-static|unit|acceptance|llm-integration|cli-smoke|product-shell-static|coverage|all
 bash scripts/docs_consistency_check.sh
 ```
 
@@ -62,8 +62,10 @@ bash scripts/docs_consistency_check.sh
 | Target | 内容 |
 |---|---|
 | `acceptance` | **24** tests — `tests/test_acceptance_loop.py`（`case_*` fixture + path safety + provenance GC 等） |
-| `llm-integration` | **79** tests — `tests/test_llm_integration.py`（mock backends） |
-| `product-shell-static` | `node --check` + Jest **206** hard-gate |
+| `llm-integration` | **83** tests — `tests/test_llm_integration.py`（mock backends） |
+| `unit` | **67** tests — `tests/test_security.py`（utils/security.py 99%）+ `tests/test_vault_plugin.py`（plugin sync / new-vault） |
+| `product-shell-static` | `node --check` + **bundle drift 硬门禁**（main.js 必须等于 src/ 现构建）+ Jest **203** hard-gate |
+| `coverage` | informational 报告（**无门禁**；2026-08-04 实测全量 **64%**） |
 | 其余 | scripts、cli-smoke、smoke、python-static |
 
 本地开发常用：
@@ -75,7 +77,7 @@ bash scripts/verify.sh llm-integration
 PYTHONPATH=src python3 -m aiwiki.cli --root . advanced shell-status
 ```
 
-不以 `coverage run pytest` / `tests/unit/` 为 gate。
+coverage 只报告不卡线（`bash scripts/verify.sh coverage`，informational）；无 `tests/unit/` 目录，library 级单测仅 `tests/test_security.py` 与 `tests/test_vault_plugin.py` 两个文件，经 `unit` target 硬门禁。
 
 ## 自动化
 

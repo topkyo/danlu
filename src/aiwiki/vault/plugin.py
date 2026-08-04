@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,7 @@ def _validate_runtime_root(runtime_root: Path) -> None:
     required = [
         runtime_root / "src" / "aiwiki" / "cli" / "__init__.py",
         runtime_root / "src" / "aiwiki" / "cli" / "__main__.py",
+        runtime_root / ".obsidian" / "plugins" / PLUGIN_ID / "build.sh",
         runtime_root / ".obsidian" / "plugins" / PLUGIN_ID / "main.js",
         runtime_root / ".obsidian" / "plugins" / PLUGIN_ID / "manifest.json",
         runtime_root / ".obsidian" / "plugins" / PLUGIN_ID / "styles.css",
@@ -29,6 +31,33 @@ def _validate_runtime_root(runtime_root: Path) -> None:
     if missing:
         joined = ", ".join(missing)
         raise FileNotFoundError(f"runtime root is missing required vault template assets: {joined}")
+
+def _build_product_shell_bundle(runtime_root: Path) -> None:
+    """Rebuild the Product Shell bundle so a stale main.js is never distributed."""
+
+    plugin_root = runtime_root / ".obsidian" / "plugins" / PLUGIN_ID
+    build_script = plugin_root / "build.sh"
+    hint = (
+        "Product Shell bundle build failed; "
+        f"run `bash .obsidian/plugins/{PLUGIN_ID}/build.sh` in the runtime repo and retry"
+    )
+    if not build_script.exists():
+        raise RuntimeError(f"{hint} (missing {build_script})")
+    try:
+        completed = subprocess.run(
+            ["bash", "build.sh"],
+            cwd=plugin_root,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=120,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise RuntimeError(f"{hint} ({exc})") from exc
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout or "").strip()
+        suffix = f": {detail}" if detail else ""
+        raise RuntimeError(f"{hint}{suffix}")
 
 def _plugin_release_targets(target_root: Path) -> dict[str, Path]:
     return {
@@ -52,6 +81,7 @@ def sync_product_shell_plugin(runtime_root: Path, target_root: Path) -> dict[str
     _validate_runtime_root(runtime_root)
     if not target_root.exists() or not target_root.is_dir():
         raise FileNotFoundError(f"target vault does not exist or is not a directory: {target_root}")
+    _build_product_shell_bundle(runtime_root)
 
     source_paths = _plugin_template_paths(runtime_root)
     target_paths = _plugin_release_targets(target_root)

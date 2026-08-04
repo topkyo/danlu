@@ -9,32 +9,6 @@ from typing import Any
 from aiwiki.utils.io import runtime_write_lock, runtime_write_operation
 
 
-def run_alchemy_legacy_migration_preview(root: Path, *, limit: int = 50) -> dict[str, Any]:
-    from aiwiki.execution.alchemy_migration import preview_legacy_elixir_migration
-
-    return preview_legacy_elixir_migration(root, limit=limit)
-
-
-@runtime_write_operation
-def run_alchemy_legacy_migration_apply(root: Path, *, limit: int = 50, note: str | None = None) -> dict[str, Any]:
-    from aiwiki.execution.alchemy_migration import apply_legacy_elixir_migration
-
-    return apply_legacy_elixir_migration(root, limit=limit, note=note)
-
-
-def run_alchemy_superseded_cleanup_preview(root: Path, *, limit: int = 50) -> dict[str, Any]:
-    from aiwiki.execution.alchemy_cleanup import preview_superseded_elixir_cleanup
-
-    return preview_superseded_elixir_cleanup(root, limit=limit)
-
-
-@runtime_write_operation
-def run_alchemy_superseded_cleanup_apply(root: Path, *, limit: int = 50, note: str | None = None) -> dict[str, Any]:
-    from aiwiki.execution.alchemy_cleanup import apply_superseded_elixir_cleanup
-
-    return apply_superseded_elixir_cleanup(root, limit=limit, note=note)
-
-
 @runtime_write_operation
 def run_alchemy_start(
     root: Path,

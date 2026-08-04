@@ -1,7 +1,7 @@
 """Material routing / archive-candidates / material-archive state helpers.
 
 Extracted from the legacy app_state hub. Owned by the content layer (routing + archive
-state lives here; the archive *execution* path remains in execution.archive).
+state lives here; the orphaned archive execution/apply modules were deleted 2026-08-04).
 """
 
 from __future__ import annotations

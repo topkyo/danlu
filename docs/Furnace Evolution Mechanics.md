@@ -81,7 +81,7 @@ related_docs:
 
 - `elixir_refs` 必须 DAG；须锚定 `wiki/judgments/`（产品路径：`file-back`）或 legacy `wiki/derived/`。
 - `counter_evidence` 在 promote gate 强制非空；无反证时写 `[NONE_FOUND]` + `confidence_level: low`。
-- promote / demote / revert 复用 `build_execution_receipt`（`subject_kind`: `elixir_promotion` 等）。
+- promote / demote / revert 分别由 `build_elixir_promotion_receipt` / `build_elixir_demotion_receipt` / `build_elixir_revert_receipt` 构建（`subject_kind`: `elixir_promotion` 等）。
 
 ### 三阶段路线图
 

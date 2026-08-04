@@ -16,13 +16,9 @@ from aiwiki.runner.alchemy import (  # noqa: F401
     run_alchemy_demote,
     run_alchemy_distill,
     run_alchemy_finalize,
-    run_alchemy_legacy_migration_apply,
-    run_alchemy_legacy_migration_preview,
     run_alchemy_promote,
     run_alchemy_revert,
     run_alchemy_start,
-    run_alchemy_superseded_cleanup_apply,
-    run_alchemy_superseded_cleanup_preview,
 )
 from aiwiki.runner.automation import (  # noqa: F401
     _pending_summary_count,

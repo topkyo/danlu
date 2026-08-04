@@ -33,13 +33,13 @@
 
 - 主验证入口：`bash scripts/verify.sh [target]`
 - build + 同步 Product Shell 到 dogfood vault：`bash scripts/sync_product_shell_to_vault.sh`（`build.sh` 重建 `main.js`，并把 vault 端的 `main.js` / `styles.css` 重新 link 到仓库；`manifest.json` / `data.json` 保持本地不动；vault 路径可被 `FURNACE_DOGFOOD_VAULT` 覆盖）
-- 常用 target：`scripts`、`smoke`、`python-static`、`acceptance`、`llm-integration`、`cli-smoke`、`product-shell-static`、`all`
+- 常用 target：`scripts`、`smoke`、`python-static`、`unit`、`acceptance`、`llm-integration`、`cli-smoke`、`product-shell-static`、`coverage`、`all`
   - 日常：`scripts` + `python-static` + `smoke`（无 coverage，单次常 ~25s）；用 `bash scripts/verify_target_rules.sh` 按改动路径自动选
-  - `all` 走 `scripts + product-shell-static + cli-smoke + smoke + python-static + acceptance + llm-integration`（常约 1–2 min，**含 acceptance 24 fixture replay + Product Shell Jest 203 + LLM integration 82**）；不含 coverage gate
+  - `all` 走 `scripts + product-shell-static + cli-smoke + smoke + python-static + unit + acceptance + llm-integration + coverage`（常约 1–2 min，**含 acceptance 24 fixture replay + Product Shell Jest 203 + LLM integration 83 + unit 67**）；`product-shell-static` 含 main.js bundle drift 硬门禁；`coverage` 仅打印报告（2026-08-04 实测 64%），**不设门禁**
 - 按改动路径建议 target：`bash scripts/verify_target_rules.sh`
 - 已移除：`cache_benchmark.py` / `compile_benchmark.py` / `dogfood_maturity_gate.py` / `agos9_*.sh` 等耗时辅助脚本、`verify.sh` 内的 `coverage run pytest` 段（释放 12 min）以及旧 bundle drift gating；`product-shell-static` 现为 `node --check` + Jest hard-gate（可用 `AIWIKI_SKIP_PRODUCT_SHELL_JS_TESTS=1` 紧急旁路）；脚本侧只保留 vault/runtime/install/uninstall 核心
 - 文档一致性：`bash scripts/docs_consistency_check.sh`
-- `tests/` 仅 acceptance + llm-integration：`tests/test_acceptance_loop.py` + `tests/acceptance/` + `tests/fixtures/` + `tests/test_llm_integration.py`；`verify.sh all` 跑 **24** acceptance + **82** llm-integration（含 plan/execute / CJK / distill / GitHub raw / path 契约）。无 `tests/unit/`，无 coverage gate
+- `tests/` = acceptance + llm-integration + 两个 library 级单测文件：`tests/test_acceptance_loop.py` + `tests/acceptance/` + `tests/fixtures/` + `tests/test_llm_integration.py` + `tests/test_security.py` + `tests/test_vault_plugin.py`；`verify.sh all` 跑 **24** acceptance + **83** llm-integration（含 plan/execute / CJK / distill / GitHub raw / path 契约）+ **67** unit。coverage 仅 informational 报告，无门禁
 
 ## 风格
 
@@ -77,7 +77,7 @@
 - 维持 deterministic baseline + 显式 LLM 执行层；Shell/CLI 默认主路由是 `opencode-api/deepseek-v4-pro`，不自动跨 backend fallback，也不写占位式 deterministic fallback 成功内容。
 - 维持直接投喂入口：万能 `drop <payload>`（默认 LLM plan → deterministic execute；`AIWIKI_LLM_PLANNER=0` 可关）与 typed `drop url|pdf|image|repo|markdown|plan`。
 - 维持单协议 runtime：`general` only。
-- 维持治理与执行层（CLI 入口经 W3 后收敛为 `advanced` 子命令或 library API）：`review-page`、`file-back`、金丹 `alchemy-*`、`run-nightly`、`watch`、`trace`、`shell-status` 等；L3 apply/revert、signals/planner-log、apply-action/rewrite/archive 等产品 CLI 已删，library 与 receipt 语义保留。
+- 维持治理与执行层（CLI 入口经 W3 后收敛为 `advanced` 子命令或 library API）：`review-page`、`file-back`、金丹 `alchemy-*`、`run-nightly`、`watch`、`trace`、`shell-status` 等；L3 apply/revert、signals/planner-log、apply-action/rewrite/archive 等产品 CLI 已删；2026-08-04 起其背后的无入口 library 簇（machine_memory_actions / concept_rewrite / archive / lifecycle / alchemy_migration / alchemy_cleanup 等 8 模块）也已整簇删除，git 历史可回查。
 - 保持 `raw/ -> wiki/ -> output/` 分层，不引入 hosted service、multi-user sync、heavy RAG infra 或 fine-tuning。
 - Product Shell 正式支持 Desktop Obsidian only；iPad/iOS 不做全功能直移植。
 
@@ -111,7 +111,7 @@
 
 - 生产/测试直引 owner（`content.*` / `render.*` / `memory.*` / `execution.*` / `compile.*`）；根级 `app_*.py` 与纯 facade **归零**。
 - CLI 顶层仅 `drop/today/advanced`；无顶层旧命令 argv rewrite。
-- 验证口径见上文（acceptance **24** + llm-integration **82** + Jest **203**）。
+- 验证口径见上文（acceptance **24** + llm-integration **83** + Jest **203**）。
 
 ### 禁止
 
@@ -166,7 +166,7 @@
 
 - 技术栈是 stdlib-first，`pyproject.toml` 里 `dependencies = []`；开发依赖 `ruff` + `pytest` (+ `beautifulsoup4` 可选)。系统 Python 有 PEP 668 限制，pip 安装用 `--break-system-packages`（update script 已处理）。
 - `bs4`（`beautifulsoup4`）是可选 HTML 抽取增强：不装时 `drop-url` 退化成 `regex-fallback`。update script 已一并安装。
-- 入口：`bash scripts/verify.sh [target]`；单跑 acceptance：`PYTHONPATH=src python3 -m pytest tests/test_acceptance_loop.py`；单跑 LLM：`bash scripts/verify.sh llm-integration`；跑应用 `PYTHONPATH=src python3 -m aiwiki.cli --root <vault> <cmd>`。pytest 只跑上述两个文件，勿再找 `tests/unit/`。
+- 入口：`bash scripts/verify.sh [target]`；单跑 acceptance：`PYTHONPATH=src python3 -m pytest tests/test_acceptance_loop.py`；单跑 LLM：`bash scripts/verify.sh llm-integration`；跑应用 `PYTHONPATH=src python3 -m aiwiki.cli --root <vault> <cmd>`。pytest 只跑 `tests/test_acceptance_loop.py` / `tests/test_llm_integration.py` / `tests/test_security.py` / `tests/test_vault_plugin.py` 四个文件，勿再找 `tests/unit/`。
 - 应用是纯 CLI，没有需要常驻的 web/GUI 服务；Obsidian 只是前端，云端跑不起来，不用起 server。
 - 跑应用时用临时 `--root`（如 `/tmp/furnace-demo`）做冒烟，别直接写仓库里已提交的 `raw/wiki/output`（`single writer, many readers`）。确定性链路 `layout -> drop-note -> compile -> lint` 完全离线可跑；**LLM 路径**需显式 `AIWIKI_LLM_BACKEND` 与凭据；`AIWIKI_LLM_PLANNER=0` / `AIWIKI_LLM_DISTILL=0` 可关对应侧门。
 

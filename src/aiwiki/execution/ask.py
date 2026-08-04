@@ -125,10 +125,6 @@ def _file_back_entry_seed(kind: str, title: str) -> str:
 # ``rank_concepts`` is imported lazily from ``aiwiki.compile.ranking``
 # (its owner since the reverse-dependency cleanup) inside the function
 # body for symmetry with ``utc_now``.
-#
-# The same rationale applies to ``apply_machine_memory_action`` in
-# ``execution/runtime_surfaces.py``; see that module for the matching
-# pattern.
 
 
 def _append_run_event(root: Path, event: dict[str, Any]) -> None:

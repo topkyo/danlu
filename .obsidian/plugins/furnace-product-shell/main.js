@@ -2172,13 +2172,13 @@ function getCuratedPagePathForSummary(activePath, summary) {
  */
 "use strict";
 
+// MIRROR of src/aiwiki/today_feed.py _PRIORITY (schema/today-feed.json pins the contract).
 const PRIORITY = {
   report: 1,
   automation: 2,
   decision: 3,
-  proposal: 4,
-  elixir: 5,
-  action: 6,
+  elixir: 4,
+  action: 5,
 };
 
 const PRIMARY_REVIEW_BUCKETS = new Set([

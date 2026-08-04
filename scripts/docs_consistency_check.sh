@@ -108,4 +108,31 @@ for doc in "${ACTIVE_DOCS[@]}"; do
     "$doc"
 done
 
+# Verify-gate count pins: keep verify.sh usage and SoT docs in sync with the
+# real test counts. Update these pins whenever test counts change.
+check_match() {
+  local label="$1"
+  local pattern="$2"
+  local file="$3"
+  if rg -q "$pattern" "$file" 2>/dev/null; then
+    echo "[OK] $label"
+  else
+    echo "[FAIL] $label (missing /$pattern/ in $file)" >&2
+    FAIL=1
+  fi
+}
+
+check_match "verify.sh usage pins acceptance 24" 'acceptance \(24\)' scripts/verify.sh
+check_match "verify.sh usage pins llm-integration 83" 'llm-integration \(83' scripts/verify.sh
+check_match "AGENTS.md pins acceptance 24" 'acceptance 24 fixture replay' AGENTS.md
+check_match "AGENTS.md pins llm 83" 'LLM integration 83' AGENTS.md
+check_match "AGENTS.md pins unit 67" 'unit 67' AGENTS.md
+check_match "AGENTS.md pins Jest 203" 'Jest 203' AGENTS.md
+check_match "Scorecard pins llm 83" 'LLM integration \| \*\*83\*\* passed' docs/AGOS-9-Scorecard.md
+check_match "Scorecard pins unit 67" 'Unit（library 级） \| \*\*67\*\* passed' docs/AGOS-9-Scorecard.md
+check_match "Scorecard pins Jest 203" 'Product Shell Jest \| \*\*203\*\* passed' docs/AGOS-9-Scorecard.md
+check_match "DEVELOPER.md pins llm 83" '\*\*83\*\* tests' docs/DEVELOPER.md
+check_match "DEVELOPER.md pins unit 67" '\*\*67\*\* tests' docs/DEVELOPER.md
+check_match "DEVELOPER.md pins Jest 203" 'Jest \*\*203\*\*' docs/DEVELOPER.md
+
 exit "$FAIL"
