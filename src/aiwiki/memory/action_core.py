@@ -27,7 +27,7 @@ from ..utils.markdown import build_citation_snapshots, parse_frontmatter
 from ..utils.path import relative_path
 from ..utils.text import slugify
 from .action_policy import execution_policy_profile
-from .action_rank import action_priority_rank, action_status_rank  # noqa: F401  # re-export compat seam
+from ..corpus.ranks import action_priority_rank, action_status_rank  # noqa: F401  # re-export compat seam
 from .action_state import load_machine_memory_action_state
 from .paths import manual_link_state_path
 

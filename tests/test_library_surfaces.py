@@ -190,6 +190,14 @@ def test_no_package_level_app_shell_or_linting_imports() -> None:
     assert offenders == []
 
 
+def test_memory_scoring_and_action_rank_compat_facades_removed() -> None:
+    for relative in (
+        "src/aiwiki/memory/scoring.py",
+        "src/aiwiki/memory/action_rank.py",
+    ):
+        assert not Path(relative).exists(), f"compat facade must be deleted: {relative}"
+
+
 def test_corpus_package_does_not_import_content_or_memory() -> None:
     root = Path("src/aiwiki/corpus")
     offenders: list[str] = []
