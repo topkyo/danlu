@@ -163,6 +163,20 @@ if rg -n 'from \.\.content|from \.\.memory|from aiwiki\.(content|memory)' src/ai
 else
   echo "[OK] corpus ↛ content/memory"
 fi
+if rg -n 'from \.\.execution|from aiwiki\.execution' src/aiwiki/memory --glob '*.py' >/dev/null 2>&1; then
+  echo "[FAIL] memory must not import execution" >&2
+  FAIL=1
+else
+  echo "[OK] memory ↛ execution"
+fi
+for facade_path in src/aiwiki/memory/scoring.py src/aiwiki/memory/action_rank.py; do
+  if [[ -e "$facade_path" ]]; then
+    echo "[FAIL] memory facade resurrection: $facade_path must not exist" >&2
+    FAIL=1
+  else
+    echo "[OK] memory facade absent: $facade_path"
+  fi
+done
 if rg -n '_CompatModule' src/aiwiki/app_shell/__init__.py src/aiwiki/app_linting/__init__.py >/dev/null 2>&1; then
   echo "[FAIL] app_shell/app_linting __init__ must not contain _CompatModule" >&2
   FAIL=1

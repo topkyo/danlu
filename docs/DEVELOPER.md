@@ -38,6 +38,19 @@ related_docs:
 
 热点（deferred seam）：`content/concepts.py`、`drop/url.py`（巨石单 seam 外提，节奏见 PROGRESS）；views/ask/io 已外提 ask_report / file_back / output_artifacts。
 
+### 已知包级环（acknowledged debt）
+
+`scripts/docs_consistency_check.sh` 只锁**已声明红线**（如 `content ↛ memory`、`memory ↛ content/execution`、corpus 隔离、facade 清零）；下列 import 环仍存在，本轮**不拆**：
+
+- `compile` ↔ `content` / `render` / `memory` / `execution`
+- `memory` ↔ `render`
+- `cache` ↔ `*`（多域读 cache）
+- `lifecycle` ↔ `memory`
+- `app_shell` ↔ `*`（Product Shell 聚合读）
+- `execution` ↔ `notify`
+
+新增代码勿扩大环；拆环见 Post-Cleanup / PROGRESS。
+
 ### CLI taxonomy
 
 | Layer | Commands |
