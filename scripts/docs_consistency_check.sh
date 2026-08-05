@@ -129,13 +129,14 @@ check_match "verify.sh usage line pins llm-integration 85 tests" 'Run LLM integr
 check_match "verify.sh all line pins llm-integration 85" 'llm-integration \(85\)' scripts/verify.sh
 check_match "AGENTS.md pins acceptance 24" 'acceptance 24 fixture replay' AGENTS.md
 check_match "AGENTS.md pins llm 85" 'LLM integration 85' AGENTS.md
-check_match "AGENTS.md pins unit 143" 'unit 143' AGENTS.md
+check_match "AGENTS.md pins unit 147" 'unit 147' AGENTS.md
 check_match "AGENTS.md pins Jest 203" 'Jest 203' AGENTS.md
 check_match "Scorecard pins llm 85" 'LLM integration \| \*\*85\*\* passed' docs/AGOS-9-Scorecard.md
-check_match "Scorecard pins unit 143" 'Unit（library 级） \| \*\*143\*\* passed' docs/AGOS-9-Scorecard.md
+check_match "Scorecard pins unit 147" 'Unit（library 级） \| \*\*147\*\* passed' docs/AGOS-9-Scorecard.md
 check_match "Scorecard pins Jest 203" 'Product Shell Jest \| \*\*203\*\* passed' docs/AGOS-9-Scorecard.md
 check_match "DEVELOPER.md pins llm 85" '\*\*85\*\* tests' docs/DEVELOPER.md
-check_match "DEVELOPER.md pins unit 143" '\*\*143\*\* tests' docs/DEVELOPER.md
+check_match "DEVELOPER.md pins unit 147" '\*\*147\*\* tests' docs/DEVELOPER.md
 check_match "DEVELOPER.md pins Jest 203" 'Jest \*\*203\*\*' docs/DEVELOPER.md
+check_match "Post-Cleanup §1 pins unit 147" 'unit \*\*147\*\*' "docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md"
 
 exit "$FAIL"

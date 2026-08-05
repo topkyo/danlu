@@ -23,7 +23,7 @@ Targets:
   scripts               Check project shell scripts only.
   smoke                 Run lightweight aiwiki CLI smoke.
   python-static         Run Python lint and bytecode compile checks.
-  unit                  Run library-level unit tests (security / vault / library surfaces / repair).
+  unit                  Run library-level unit tests (security / vault / library surfaces / repair / alchemy-revert).
   acceptance            Run acceptance replay checks.
   llm-integration       Run LLM integration tests (85 tests, mock backends).
   cli-smoke             Check aiwiki CLI startup/help.
@@ -72,7 +72,13 @@ verify_llm_integration() {
 }
 
 verify_unit() {
-  "$PYTHON" -m pytest tests/test_security.py tests/test_vault_plugin.py tests/test_library_surfaces.py tests/test_repair.py -q
+  "$PYTHON" -m pytest \
+    tests/test_security.py \
+    tests/test_vault_plugin.py \
+    tests/test_library_surfaces.py \
+    tests/test_repair.py \
+    tests/test_alchemy_revert.py \
+    -q
 }
 
 # Informational only: prints a coverage report over the full test suite.
@@ -85,7 +91,7 @@ verify_coverage() {
   "$PYTHON" -m coverage run --source=src/aiwiki -m pytest \
     tests/test_acceptance_loop.py tests/test_llm_integration.py \
     tests/test_security.py tests/test_vault_plugin.py tests/test_library_surfaces.py \
-    tests/test_repair.py -q
+    tests/test_repair.py tests/test_alchemy_revert.py -q
   "$PYTHON" -m coverage report | tail -n 5
 }
 

@@ -15,6 +15,8 @@
 
 ## 当前动态
 
+- 2026-08-05 (**优先债收口，不含 Commercial 三阻断**)：Post-Cleanup/Scorecard/DEVELOPER 对齐 unit **147** / coverage **69%** / 工程实测 **8.2**；`untrusted_source` + `alchemy-revert` library 测入 `verify unit`；`docs_consistency` 钉 Post-Cleanup。报告 R2 + 结构债分析见会话。
+
 - 2026-08-05 (**repair 路径补测**)：`app_linting/repair.py` 3%→**100%**、`execution/repair_plan.py` 27%→**100%**、`execution/patch_plan.py` 21%→**99%**（余 1 行 dead-by-config）；新增 `tests/test_repair.py` 62 例，unit **81→143**。verify 绿。
 
 - 2026-08-05 (**verify 单行钉 + R-7 + 归档裁定**)：`docs_consistency` 钉死 `Run LLM integration tests (85 tests`（防 all 行掩盖）；Today 去掉 legacy `proposal` feed 桶；USER_GUIDE/INSTALL 术语对齐 Today；Post-Cleanup **暂不归档**（仍为 Go-Live SoT）。
@@ -144,14 +146,14 @@
 复制下面整段到新对话开头即可：
 
 ```text
-说人话。先读 PROGRESS.md 头条 + docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md；评分勿混：Local Eng 9.05 ≠ 工程实测 7.9 ≠ 商业 ~7.8。
+说人话。先读 PROGRESS.md 头条 + docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md；评分勿混：Local Eng 9.05 ≠ 工程实测 8.2 ≠ 商业 ~7.8。
 
-已完成：F-1~F-13 收口；文档卫生 R-1~R-4；覆盖归属 R-5（0% 孤儿删 + library surfaces 9 测）；SoT 计数 acceptance 24 / llm 85 / unit 143 / Jest 203；结构债 Knife A/B + memory↛execution + F-11 三刀（views/ask 仍可续）；WS2 本地 wheel。
+已完成：F-1~F-13；R-1~R-7；优先债 D-1/D-2/S-1/G-1（unit 147、coverage 69%、alchemy-revert + untrusted_source 测）；结构债仍开（content↔memory 环 / hub / facade）。Commercial 三阻断未做。
 
 下一刀优先（择一）：
-1) Commercial：EULA 法律签收 / twine upload + tag v0.4.0 / Demo 媒体
-2) WS6 dogfood 自然观测（不伪造 Live PASS）
-3) hub 单 seam 续刀（views/ask）或剩余低覆盖活模块— 禁止 broad rewrite
+1) 结构债：按「彻底解法」单 seam 拆 content↔memory（禁止 broad rewrite）
+2) Commercial：EULA 法律签收 / twine + tag / Demo 媒体
+3) T-1 低覆盖活路径（memory/status、drop/*、trace）— 可选
 4) 勿宣称 AgentOS 9 live / 诚实可售 / 用 9.05 冒充工程实测
 
 Vault：iCloud「炼丹炉」；state → ~/Library/Application Support/aiwiki/dogfood-state；CDP：9228；验证：bash scripts/verify.sh all
