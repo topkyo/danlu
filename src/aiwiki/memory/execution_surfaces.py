@@ -9,8 +9,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..content.concepts import concept_page_snapshot
-from ..content.rewrite import load_concept_rewrite_state, save_concept_rewrite_state
+from ..corpus.link_state import load_concept_rewrite_state, save_concept_rewrite_state
+from ..corpus.snapshots import concept_page_snapshot
 from ..lifecycle.status import (
     display_action_status,
     display_rewrite_proposal_status,

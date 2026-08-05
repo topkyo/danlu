@@ -20,6 +20,7 @@ from ..content.paths import (
     archive_candidates_state_path,
     material_routing_state_path,
 )
+from ..corpus.snapshots import placeholder_concept_slugs
 from ..execution.history import append_runtime_history
 from ..lifecycle.aging import collect_aging_signals
 from ..lifecycle.knowledge import (
@@ -34,9 +35,6 @@ from ..lifecycle.paths import (
 from ..lifecycle.status import (
     collect_curated_pages,
     review_queue,
-)
-from ..memory.action_core import (
-    placeholder_concept_slugs,
 )
 from ..memory.state import load_machine_memory
 from ..planner.paths import planner_state_path

@@ -35,11 +35,11 @@
 - build + 同步 Product Shell 到 dogfood vault：`bash scripts/sync_product_shell_to_vault.sh`（`build.sh` 重建 `main.js`，并把 vault 端的 `main.js` / `styles.css` 重新 link 到仓库；`manifest.json` / `data.json` 保持本地不动；vault 路径可被 `FURNACE_DOGFOOD_VAULT` 覆盖）
 - 常用 target：`scripts`、`smoke`、`python-static`、`unit`、`acceptance`、`llm-integration`、`cli-smoke`、`product-shell-static`、`coverage`、`all`
   - 日常：`scripts` + `python-static` + `smoke`（无 coverage，单次常 ~25s）；用 `bash scripts/verify_target_rules.sh` 按改动路径自动选
-  - `all` 走 `scripts + product-shell-static + cli-smoke + smoke + python-static + unit + acceptance + llm-integration + coverage`（常约 1–2 min，**含 acceptance 24 fixture replay + Product Shell Jest 203 + LLM integration 85 + unit 153**）；`product-shell-static` 含 main.js bundle drift 硬门禁；`coverage` 仅打印报告（informational），**不设门禁**
+  - `all` 走 `scripts + product-shell-static + cli-smoke + smoke + python-static + unit + acceptance + llm-integration + coverage`（常约 1–2 min，**含 acceptance 24 fixture replay + Product Shell Jest 203 + LLM integration 85 + unit 154**）；`product-shell-static` 含 main.js bundle drift 硬门禁；`coverage` 仅打印报告（informational），**不设门禁**
 - 按改动路径建议 target：`bash scripts/verify_target_rules.sh`
 - 已移除：`cache_benchmark.py` / `compile_benchmark.py` / `dogfood_maturity_gate.py` / `agos9_*.sh` 等耗时辅助脚本、`verify.sh` 内的 `coverage run pytest` 段（释放 12 min）以及旧 bundle drift gating；`product-shell-static` 现为 `node --check` + Jest hard-gate（可用 `AIWIKI_SKIP_PRODUCT_SHELL_JS_TESTS=1` 紧急旁路）；脚本侧只保留 vault/runtime/install/uninstall 核心
 - 文档一致性：`bash scripts/docs_consistency_check.sh`
-- `tests/` = acceptance + llm-integration + 五个 library 级单测文件：`tests/test_acceptance_loop.py` + `tests/acceptance/` + `tests/fixtures/` + `tests/test_llm_integration.py` + `tests/test_security.py` + `tests/test_vault_plugin.py` + `tests/test_library_surfaces.py` + `tests/test_repair.py` + `tests/test_alchemy_revert.py`；`verify.sh all` 跑 **24** acceptance + **85** llm-integration（含 plan/execute / CJK / distill / GitHub raw / path 契约）+ **153** unit。coverage 仅 informational 报告，无门禁
+- `tests/` = acceptance + llm-integration + 五个 library 级单测文件：`tests/test_acceptance_loop.py` + `tests/acceptance/` + `tests/fixtures/` + `tests/test_llm_integration.py` + `tests/test_security.py` + `tests/test_vault_plugin.py` + `tests/test_library_surfaces.py` + `tests/test_repair.py` + `tests/test_alchemy_revert.py`；`verify.sh all` 跑 **24** acceptance + **85** llm-integration（含 plan/execute / CJK / distill / GitHub raw / path 契约）+ **154** unit。coverage 仅 informational 报告，无门禁
 
 ## 风格
 

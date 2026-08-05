@@ -5,7 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ..corpus.parse import normalize_concept_hardness
 from ..corpus.ranks import action_priority_rank
+from ..corpus.snapshots import placeholder_concept_slugs
 from ..protocol.runtime_config import CONCEPT_HARDNESS_LEVELS
 from ..utils.text import STOP_WORDS, tokenize
 from ..utils.time import parse_iso_datetime, utc_now
@@ -13,8 +15,6 @@ from .concepts import (
     concept_hardness_rank,
     detect_concept_conflict_signals,
     detect_concept_gap_signals,
-    normalize_concept_hardness,
-    placeholder_concept_slugs,
 )
 from .io import load_source_page_context
 

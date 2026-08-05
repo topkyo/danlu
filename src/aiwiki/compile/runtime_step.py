@@ -8,13 +8,12 @@ from pathlib import Path
 from typing import Any
 
 from ..content.concept_quality import build_concept_quality
-from ..content.io import (
+from ..content.io import entry_ids_from_paths, entry_lookup_maps
+from ..content.material import build_material_state_documents
+from ..content.output_artifacts import (
     collect_output_density_artifacts,
     collect_recent_output_artifacts,
-    entry_ids_from_paths,
-    entry_lookup_maps,
 )
-from ..content.material import build_material_state_documents
 from ..content.paths import archive_candidates_state_path, material_routing_state_path
 from ..execution.history import append_runtime_history
 from ..execution.policy import (

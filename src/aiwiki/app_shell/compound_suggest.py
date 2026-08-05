@@ -6,7 +6,7 @@ import shlex
 from pathlib import Path
 from typing import Any
 
-from ..content.io import find_promoted_curated_page
+from ..content.output_artifacts import find_promoted_curated_page
 from ..content.outputs import normalize_query_signature
 from ..execution.alchemy_helpers import ELIXIR_DIR, list_promoted_outputs_for_corpus
 from ..execution.candidates import load_output_candidates_state

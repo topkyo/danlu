@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..content.concepts import concept_label_to_slug, normalize_concept_hardness, parse_causal_links
-from ..content.io import source_summary_or_preview
+from ..corpus.parse import concept_label_to_slug, normalize_concept_hardness, parse_causal_links
+from ..corpus.snapshots import source_summary_or_preview
 from ..utils.markdown import parse_frontmatter
 from ..utils.text import tokenize
 

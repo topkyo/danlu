@@ -6,7 +6,7 @@ from typing import Any
 
 from ..compile.state import load_compile_state
 from ..config import LLMConfig
-from ..content.io import collect_recent_output_artifacts
+from ..content.output_artifacts import collect_recent_output_artifacts
 from ..execution.history import load_llm_receipt_history, load_runtime_history
 from ..execution.paths import llm_receipt_log_path
 from ..execution.policy import load_execution_receipt_history

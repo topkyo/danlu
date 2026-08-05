@@ -432,7 +432,7 @@ def test_file_back_rejects_non_judgment_kind(  # pragma: no cover - explicit pyt
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """W8: product file-back accepts judgment only."""
-    from aiwiki.execution.ask import file_back
+    from aiwiki.execution.file_back import file_back
 
     _, vault = _copy_case_and_fix_clock_from("M6.2", "case_universal_input", tmp_path, monkeypatch)
     report_ref = "output/reports/w8-derived-block.md"
@@ -448,7 +448,7 @@ def test_file_back_rejects_non_judgment_kind(  # pragma: no cover - explicit pyt
 
 def test_file_back_rejects_path_outside_vault(tmp_path: Path) -> None:
     """Vault path safety: file_back must reject artifacts outside the workspace root."""
-    from aiwiki.execution.ask import file_back
+    from aiwiki.execution.file_back import file_back
     from aiwiki.utils.security import PathOutsideWorkspaceError
 
     vault = tmp_path / "vault"
@@ -474,7 +474,7 @@ def test_review_page_rejects_path_outside_vault(tmp_path: Path) -> None:
 
 def test_file_back_accepts_path_inside_vault(tmp_path: Path) -> None:
     """Vault path safety: relative artifact paths inside the vault remain valid."""
-    from aiwiki.execution.ask import file_back
+    from aiwiki.execution.file_back import file_back
 
     vault = tmp_path / "vault"
     report_ref = "output/reports/inside.md"
@@ -488,7 +488,7 @@ def test_file_back_accepts_path_inside_vault(tmp_path: Path) -> None:
 
 def test_file_back_prefills_judgment_from_free_markdown(tmp_path: Path) -> None:
     """file-back repair should lift the first paragraph into Judgment when no ## 结论 exists."""
-    from aiwiki.execution.ask import file_back
+    from aiwiki.execution.file_back import file_back
     from aiwiki.lifecycle.templates import curated_section_is_placeholder
 
     vault = tmp_path / "vault"
@@ -509,7 +509,7 @@ def test_file_back_prefills_judgment_from_free_markdown(tmp_path: Path) -> None:
 
 def test_file_back_prefills_judgment_from_structured_conclusion(tmp_path: Path) -> None:
     """file-back repair should prefer ## 结论 when present."""
-    from aiwiki.execution.ask import file_back
+    from aiwiki.execution.file_back import file_back
     from aiwiki.lifecycle.templates import curated_section_is_placeholder
 
     vault = tmp_path / "vault"
@@ -529,7 +529,7 @@ def test_file_back_prefills_judgment_from_structured_conclusion(tmp_path: Path) 
 
 def test_file_back_writes_slim_frontmatter_and_linked_supporting_artifact(tmp_path: Path) -> None:
     """file-back should keep user-visible FM small and link the report instead of embedding it."""
-    from aiwiki.execution.ask import file_back
+    from aiwiki.execution.file_back import file_back
     from aiwiki.utils.markdown import parse_frontmatter, strip_frontmatter
 
     vault = tmp_path / "vault"
@@ -571,7 +571,7 @@ def test_review_page_confirm_lifts_judgment_from_linked_supporting_artifact(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """review confirm must resolve linked Supporting Artifact content for repair/lift."""
-    from aiwiki.execution.ask import file_back
+    from aiwiki.execution.file_back import file_back
     from aiwiki.execution.review import review_page
     from aiwiki.lifecycle.templates import curated_section_is_placeholder
 
@@ -600,7 +600,7 @@ def test_review_page_confirm_lifts_judgment_from_linked_supporting_artifact(
 
 def test_review_page_confirm_rejects_placeholder_judgment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """confirm must fail closed when Judgment cannot be repaired from supporting content."""
-    from aiwiki.execution.ask import file_back
+    from aiwiki.execution.file_back import file_back
     from aiwiki.execution.review import review_page
 
     vault = tmp_path / "vault"
@@ -618,7 +618,7 @@ def test_review_page_confirm_rejects_placeholder_judgment(tmp_path: Path, monkey
 
 def test_review_page_confirm_writes_review_history(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Successful confirm should record bounded Review History instead of the placeholder."""
-    from aiwiki.execution.ask import file_back
+    from aiwiki.execution.file_back import file_back
     from aiwiki.execution.review import review_page
 
     fixed_now = "2026-07-24T08:00:00Z"

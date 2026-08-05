@@ -151,6 +151,17 @@ def test_content_package_does_not_import_memory() -> None:
     assert offenders == []
 
 
+def test_memory_package_does_not_import_content() -> None:
+    root = Path("src/aiwiki/memory")
+    offenders: list[str] = []
+    for path, module, level in _package_import_from_targets(root):
+        if module.startswith("aiwiki.content"):
+            offenders.append(f"{path}:{module}")
+        if level >= 1 and (module == "content" or module.startswith("content.")):
+            offenders.append(f"{path}: relative {'.' * level}{module}")
+    assert offenders == []
+
+
 def test_app_shell_and_linting_init_have_no_compat_facade() -> None:
     for relative in ("src/aiwiki/app_shell/__init__.py", "src/aiwiki/app_linting/__init__.py"):
         text = Path(relative).read_text(encoding="utf-8")

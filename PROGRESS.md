@@ -15,6 +15,12 @@
 
 ## 当前动态
 
+- 2026-08-05 (**corpus S2 · memory↛content**)：parse/sections/snapshots/link_state 下沉 `aiwiki.corpus`；memory 零 content import；`validate_low_risk` 改 `load_manifest`；docs_consistency + AST 钉。计划：`docs/plans/2026-08-05-corpus-s2-memory-content.md`。unit **154**。
+
+- 2026-08-05 (**hub 单 seam · ask/io**)：`execution/ask.py` 894→**665**（`file_back` → `execution/file_back.py`）；`content/io.py` 881→**677**（output 扫描 → `content/output_artifacts.py`）。计划：`docs/plans/2026-08-05-ask-io-hub-seams.md`。verify 绿。
+
+- 2026-08-05 (**hub 单 seam · views ask_report**)：`render/views.py` 921→**668**；ask 报告簇 → `render/ask_report.py`（266）；调用方直引 owner。计划：`docs/plans/2026-08-05-views-ask-report-seam.md`。verify python-static/unit/acceptance/llm/scripts 绿。
+
 - 2026-08-05 (**多 agent 复评 R3**)：工程实测 **8.3**（+0.1 vs R2）；架构 8.5 / 安全 8.7 / 文档 8.3 抬升；Commercial ~7.8 横盘。报告：`docs/plans/2026-08-05-multi-agent-reevaluation-r3.md`。verify 24/85/153/203。
 
 - 2026-08-05 (**facade 清零**)：`app_shell` / `app_linting` 删 `_CompatModule` 与包级 re-export；调用方/acceptance mock 直引 owner；`docs_consistency` 钉。计划：`docs/plans/2026-08-05-facade-zero.md`。
@@ -154,11 +160,11 @@
 ```text
 说人话。先读 PROGRESS.md 头条 + docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md；评分勿混：Local Eng 9.05 ≠ 工程实测 8.3 ≠ 商业 ~7.8。
 
-已完成：优先债；corpus + facade（PR #27）；CI rg/mktemp；复评 R3 **8.3**。结构债余：hub 单 seam / memory→content。Commercial 三阻断未做。
+已完成：优先债；corpus S1+S2（content/memory 双向 ↛，经 corpus）；facade（PR #27）；hub 三刀；复评 R3 **8.3**。结构债余：memory scoring/paths 过渡 re-export；hub 若再刀须新自然 seam。Commercial 三阻断未做。
 
 下一刀优先（择一）：
-1) hub 单 seam（views / ask / io）— 禁止 broad rewrite
-2) Commercial：EULA 法律签收 / twine + tag / Demo 媒体
+1) Commercial：EULA 法律签收 / twine + tag / Demo 媒体
+2) 删 memory scoring/paths 过渡 re-export（可选）
 3) T-1 低覆盖活路径 — 可选
 4) 勿宣称 AgentOS 9 live / 诚实可售 / 用 9.05 冒充工程实测
 

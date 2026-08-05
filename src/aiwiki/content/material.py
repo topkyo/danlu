@@ -5,12 +5,19 @@ Extracted from the legacy app_state hub. Owned by the content layer.
 
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ..corpus.paths import manual_link_state_path
+from ..corpus.link_state import (
+    default_manual_link_state as default_manual_link_state,
+)
+from ..corpus.link_state import (
+    load_manual_link_state as load_manual_link_state,
+)
+from ..corpus.link_state import (
+    save_manual_link_state as save_manual_link_state,
+)
 from ..corpus.scoring import (
     protocol_hints_for_material,
     timestamp_is_newer,
@@ -25,7 +32,6 @@ from ..state.io import load_json_document, save_json_document
 from ..state.manifest import load_manifest
 from ..state.paths import material_state_path
 from ..utils.hash import question_signature
-from ..utils.io import atomic_write_text, runtime_write_operation
 from ..utils.markdown import read_text_preview
 from ..utils.text import slugify
 from ..utils.time import parse_iso_datetime
@@ -73,28 +79,6 @@ def load_active_corpora_state(root: Path) -> dict[str, Any]:
 
 def save_active_corpora_state(root: Path, document: dict[str, Any]) -> None:
     save_json_document(active_corpora_state_path(root), document)
-
-
-def default_manual_link_state() -> dict[str, Any]:
-    return {"version": 1, "source_to_concept": []}
-
-
-def load_manual_link_state(root: Path) -> dict[str, Any]:
-    document = load_json_document(manual_link_state_path(root))
-    if not isinstance(document, dict):
-        return default_manual_link_state()
-    source_to_concept = document.get("source_to_concept")
-    if not isinstance(source_to_concept, list):
-        return default_manual_link_state()
-    return {
-        "version": int(document.get("version", 1) or 1),
-        "source_to_concept": [item for item in source_to_concept if isinstance(item, dict)],
-    }
-
-
-@runtime_write_operation
-def save_manual_link_state(root: Path, document: dict[str, Any]) -> None:
-    atomic_write_text(manual_link_state_path(root), json.dumps(document, indent=2, sort_keys=True) + "\n")
 
 
 def reconcile_active_corpora_state(

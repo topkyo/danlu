@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..content.io import collect_output_artifacts
+from ..content.output_artifacts import collect_output_artifacts
 from ..content.outputs import classify_recurring_output_kind
 from ..protocol.runtime_config import AUTO_PROMOTION_MIN_OCCURRENCES
 from ..protocol.scaffold import ensure_layout

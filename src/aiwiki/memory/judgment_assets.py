@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..content.io import preserved_section
+from ..corpus.sections import preserved_section
 from ..state.constants import DEFAULT_PROTOCOL
 from ..state.manifest import load_manifest
 from ..utils.markdown import analyze_citation_snapshots, parse_frontmatter, strip_frontmatter
