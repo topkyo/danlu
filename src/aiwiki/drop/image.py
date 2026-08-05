@@ -10,11 +10,11 @@ from pathlib import Path
 from typing import Any
 
 from ..config import LLMConfig, _backend_supports_image_analysis
-from ..runner.prompts import _wrap_untrusted_source
 from ..drop_helpers import timestamped_stem
 from ..llm import LLMError, create_backend_client
 from ..protocol.scaffold import ensure_layout
 from ..render.paths import append_wiki_log
+from ..runner.prompts import _wrap_untrusted_source
 from ..utils.io import atomic_copy_file, runtime_write_lock
 from ..utils.path import relative_path
 from .common import (

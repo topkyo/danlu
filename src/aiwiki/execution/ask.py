@@ -50,7 +50,6 @@ from ..state.manifest import load_manifest
 from ..utils.hash import question_signature
 from ..utils.io import atomic_write_text, runtime_write_operation
 from ..utils.markdown import (
-    parse_frontmatter,
     strip_frontmatter,
     upsert_markdown_section,
     write_frontmatter_string_list,

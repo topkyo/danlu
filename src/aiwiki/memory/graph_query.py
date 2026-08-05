@@ -17,6 +17,7 @@ from ..cache.query import (
 )
 from ..cache.status import record_query_cache_event
 from ..cache.sync import query_cache_memory_hash
+from ..corpus.scoring import machine_memory_query_time_focus
 from ..memory.query_routes import (
     _machine_memory_query_payload_hash,
     build_machine_memory_adjacency,
@@ -29,7 +30,6 @@ from ..state.constants import DEFAULT_PROTOCOL
 from ..utils.hash import question_signature
 from ..utils.text import tokenize
 from .action_core import action_priority_rank
-from ..corpus.scoring import machine_memory_query_time_focus
 
 
 def _score_machine_memory_term_hits(

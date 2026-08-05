@@ -967,7 +967,6 @@ def test_duplicate_file_back_preserves_judgment_promoted_to(  # pragma: no cover
 def test_alchemy_revert_restores_candidate_via_cli(tmp_path: Path) -> None:
     """G-1b: promote → revert via advanced alchemy argv restores candidate + receipt."""
     from aiwiki.execution.alchemy_helpers import _candidate_path, _parse_elixir_frontmatter, _settled_path
-
     from tests.test_alchemy_revert import ELIXIR_ID, _latest_revert_receipt, _seed_promote_vault
 
     vault = tmp_path / "vault"
