@@ -138,7 +138,7 @@ verify_product_shell_static() {
   # The bundle is the only file Obsidian actually loads and the only file
   # sync_product_shell_plugin distributes, so it must never diverge from src/.
   local bundle_out=""
-  bundle_out="$(mktemp -t furnace-mainjs)"
+  bundle_out="$(mktemp "${TMPDIR:-/tmp}/furnace-mainjs.XXXXXX")"
   if ! OUT="$bundle_out" bash "$product_shell_dir/build.sh" >/dev/null; then
     rm -f "$bundle_out"
     echo "Product Shell build.sh failed; cannot verify bundle freshness" >&2
