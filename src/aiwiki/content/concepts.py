@@ -8,8 +8,23 @@ from pathlib import Path
 from typing import Any
 
 from ..compile.build import load_concept_build_state
+from ..corpus.parse import (
+    concept_label_to_slug,
+    concept_source_pages,
+    normalize_concept_hardness,
+    parse_causal_links,
+)
+from ..corpus.snapshots import (
+    concept_page_snapshot as concept_page_snapshot,
+)
+from ..corpus.snapshots import (
+    concept_summary_matches_legacy_placeholder,
+    normalize_summary_snippet,
+)
+from ..corpus.snapshots import (
+    placeholder_concept_slugs as placeholder_concept_slugs,
+)
 from ..protocol.runtime_config import (
-    CAUSAL_RELATION_TYPES,
     CONCEPT_HARDNESS_LEVELS,
     CONFLICT_SIGNAL_PAIRS,
     EVIDENCE_GAP_MARKERS,
@@ -19,9 +34,12 @@ from ..utils.markdown import (
     parse_frontmatter,
     render_frontmatter,
 )
-from ..utils.path import relative_path
-from ..utils.text import STOP_WORDS, slugify, tokenize
+from ..utils.text import STOP_WORDS, tokenize
 from .io import load_source_page_context, preserved_section, source_summary_or_preview
+
+# Local aliases kept for in-module call sites.
+_normalize_summary_snippet = normalize_summary_snippet
+_concept_summary_matches_legacy_placeholder = concept_summary_matches_legacy_placeholder
 
 CONCEPT_RENDER_SCHEMA_VERSION = 4
 
@@ -55,9 +73,6 @@ def concept_candidates(entries: list[dict[str, Any]]) -> list[str]:
     ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
     return [token for token, _count in ranked[:10]]
 
-
-def concept_label_to_slug(label: str) -> str:
-    return slugify(label)[:64]
 
 
 def concept_label_to_title(label: str) -> str:
@@ -345,9 +360,6 @@ def concept_source_signature(record: dict[str, Any]) -> str:
     return sha256_bytes(json.dumps(payload, sort_keys=True).encode("utf-8"))
 
 
-def concept_source_pages(record: dict[str, Any]) -> list[str]:
-    return [f"wiki/sources/{entry_id}.md" for entry_id in record["entry_ids"]]
-
 
 def concept_render_signature(root: Path, record: dict[str, Any]) -> str:
     source_contexts = [load_source_page_context(root, relative) for relative in concept_source_pages(record)]
@@ -369,28 +381,6 @@ def concept_render_signature(root: Path, record: dict[str, Any]) -> str:
     return sha256_bytes(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
 
 
-def _normalize_summary_snippet(text: Any, *, limit: int = 200) -> str:
-    if not isinstance(text, str):
-        return ""
-    snippet = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
-    snippet = snippet.replace("\r", "\n")
-    snippet = re.sub(r"^[#>\-\*\d\.\s]+", "", snippet, flags=re.MULTILINE)
-    snippet = re.sub(r"[`*_]", "", snippet)
-    snippet = re.sub(r"\s+", " ", snippet).strip()
-    if len(snippet) <= limit:
-        return snippet
-    return snippet[: limit - 1].rstrip() + "…"
-
-
-def _concept_summary_matches_legacy_placeholder(summary: Any) -> bool:
-    normalized = _normalize_summary_snippet(summary).lower()
-    if not normalized.startswith("this concept currently appears in"):
-        return False
-    return (
-        "use the linked source pages below to deepen or revise this synthesis" in normalized
-        or "source page" in normalized
-        or "wiki/sources/" in normalized
-    )
 
 
 def _concept_clue_from_context(context: dict[str, str]) -> str:
@@ -476,17 +466,6 @@ def render_concept_summary_fallback(record: dict[str, Any], source_contexts: lis
     return "\n".join(summary_lines)
 
 
-def normalize_concept_hardness(value: Any, *, default: str = "soft") -> str:
-    normalized_default = str(default).strip().lower()
-    if normalized_default not in CONCEPT_HARDNESS_LEVELS:
-        normalized_default = "soft"
-    if not isinstance(value, str):
-        return normalized_default
-    normalized = value.strip().lower()
-    if normalized in CONCEPT_HARDNESS_LEVELS:
-        return normalized
-    return normalized_default
-
 
 def concept_hardness_rank(value: Any) -> int:
     return {label: index for index, label in enumerate(CONCEPT_HARDNESS_LEVELS)}.get(
@@ -494,35 +473,6 @@ def concept_hardness_rank(value: Any) -> int:
         0,
     )
 
-
-def parse_causal_links(frontmatter: dict[str, Any]) -> list[dict[str, str]]:
-    """Parse causal_links from concept frontmatter.
-
-    Supports pipe-delimited flat format compatible with the line-based parser:
-      causal_links:
-        - "memory|enables|Agent relies on memory for cross-turn continuity"
-    Returns validated list of {target, relation, evidence} dicts.
-    """
-    raw = frontmatter.get("causal_links", [])
-    if not isinstance(raw, list):
-        return []
-    result: list[dict[str, str]] = []
-    for item in raw:
-        if isinstance(item, dict):
-            target = str(item.get("target") or "").strip()
-            relation = str(item.get("relation") or "").strip().lower()
-            evidence = str(item.get("evidence") or "").strip()
-        elif isinstance(item, str) and "|" in item:
-            parts = item.split("|", 2)
-            target = parts[0].strip()
-            relation = parts[1].strip().lower() if len(parts) > 1 else ""
-            evidence = parts[2].strip() if len(parts) > 2 else ""
-        else:
-            continue
-        if not target or relation not in CAUSAL_RELATION_TYPES:
-            continue
-        result.append({"target": target, "relation": relation, "evidence": evidence})
-    return result
 
 
 def render_concept_conflict_lines(source_contexts: list[dict[str, str]]) -> list[str]:
@@ -775,38 +725,4 @@ def _active_manual_source_concept_links(root: Path) -> dict[str, set[str]]:
     return active_manual_source_concept_links(root)
 
 
-def placeholder_concept_slugs(root: Path) -> list[str]:
-    """Return concept slugs whose Summary matches the legacy placeholder marker."""
-    slugs: list[str] = []
-    for page in sorted((root / "wiki" / "concepts").glob("*.md")):
-        content = page.read_text(encoding="utf-8", errors="replace")
-        summary = preserved_section(content, "Summary", "")
-        if _concept_summary_matches_legacy_placeholder(summary):
-            slugs.append(page.stem)
-    return slugs
 
-
-def concept_page_snapshot(root: Path, slug: str) -> dict[str, Any]:
-    path = root / "wiki" / "concepts" / f"{slug}.md"
-    if not path.exists():
-        return {
-            "path": relative_path(root, path),
-            "title": slug,
-            "source_signature": "",
-            "source_pages": [],
-            "summary": "",
-            "content": "",
-        }
-    content = path.read_text(encoding="utf-8", errors="replace")
-    frontmatter = parse_frontmatter(content)
-    source_pages = frontmatter.get("source_pages", [])
-    if not isinstance(source_pages, list):
-        source_pages = []
-    return {
-        "path": relative_path(root, path),
-        "title": str(frontmatter.get("title") or path.stem),
-        "source_signature": str(frontmatter.get("source_signature") or ""),
-        "source_pages": [str(item) for item in source_pages if isinstance(item, str)],
-        "summary": preserved_section(content, "Summary", ""),
-        "content": content,
-    }

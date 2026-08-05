@@ -12,16 +12,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ..content.concepts import (
-    concept_source_pages,
-    normalize_concept_hardness,
-    parse_causal_links,
-    placeholder_concept_slugs,  # noqa: F401  # re-export compat seam
-)
-from ..content.io import (
-    source_summary_or_preview,
-    sync_manifest_with_raw,
-)
+from ..corpus.parse import concept_source_pages, normalize_concept_hardness, parse_causal_links
+from ..corpus.snapshots import source_summary_or_preview
 from ..protocol.focus_scoring import action_focus_score
 from ..protocol.runtime_config import LOW_RISK_APPLYABLE_ACTION_KINDS, RESOLVABLE_MONITOR_ACTION_KINDS
 from ..protocol.state import load_protocol_state
@@ -29,6 +21,7 @@ from ..render.paths import (
     execution_bundles_dir,
     execution_proposals_dir,
 )
+from ..state.manifest import load_manifest
 from ..utils.hash import sha256_bytes
 from ..utils.markdown import build_citation_snapshots, parse_frontmatter
 from ..utils.path import relative_path
@@ -207,7 +200,7 @@ def validate_low_risk_action_targets(root: Path, action: dict[str, Any]) -> tupl
         raise RuntimeError("Low-risk link action is missing source_ids or concept_slugs.")
     source_id = source_ids[0]
     concept_slug = concept_slugs[0]
-    manifest = sync_manifest_with_raw(root)
+    manifest = load_manifest(root)
     known_source_ids = {str(entry.get("id") or "") for entry in manifest.get("entries", []) if isinstance(entry, dict)}
     if source_id not in known_source_ids:
         raise RuntimeError("Low-risk link action references a source that is no longer in the manifest.")

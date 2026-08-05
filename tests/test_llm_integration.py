@@ -782,7 +782,7 @@ def test_complete_run_ask_artifact_timeout_retry_success(tmp_path: Path) -> None
 def test_ask_scaffold_pending_skipped_by_recent_outputs(tmp_path: Path) -> None:
     """Pending ask scaffold must not appear as an openable Today report."""
 
-    from aiwiki.content.io import collect_recent_output_artifacts
+    from aiwiki.content.output_artifacts import collect_recent_output_artifacts
     from aiwiki.runner.workflows_ask_context import _strip_run_notes_prompt_fields
 
     vault = _copy_fixture_vault(tmp_path)

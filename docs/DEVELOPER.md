@@ -27,16 +27,16 @@ related_docs:
 | `drop/` + `input_planner.py` + `executor.py` | raw materialization；universal drop LLM plan → deterministic execute |
 | `compile/` | compile pipeline + ranking |
 | `content/` | source / concept / material / archive / rewrite（**不得** import `memory`） |
-| `corpus/` | 只读共享层：paths / scoring / ranks（供 content+memory；**不得** import content/memory/execution/runner） |
+| `corpus/` | 只读共享层：paths / scoring / ranks / parse / sections / snapshots / link_state（供 content+memory；**不得** import content/memory/execution/runner） |
 | `render/` | views / packs / pilots / protocols |
-| `memory/` | graph_* 子模块、query_routes、trace/recall（可窄只读依赖 content；共享符号走 corpus） |
+| `memory/` | graph_* 子模块、query_routes、trace/recall（**不得** import `content`；共享符号走 corpus） |
 | `execution/` | receipts、history、alchemy_*、review / gc_orphans / repair_plan 等治理执行面 |
 | `runner/` | workflows（compile/lint/nightly）、workflows_ask*、watch、alchemy 编排 |
 | `cache/`、`vault/` | cache 子系统、Obsidian bootstrap |
 | `app_shell/` | Product Shell summary / controls / status（直引子模块；`__init__` 无 facade） |
 | `app_linting/` | lint phases、repair backlog、nightly health（直引子模块；`__init__` 无 facade） |
 
-热点（deferred seam）：`content/concepts.py`、`render/views.py`、`app_linting/phases.py`（巨石单 seam 外提，节奏见 PROGRESS）。
+热点（deferred seam）：`content/concepts.py`、`drop/url.py`（巨石单 seam 外提，节奏见 PROGRESS）；views/ask/io 已外提 ask_report / file_back / output_artifacts。
 
 ### CLI taxonomy
 
@@ -64,7 +64,7 @@ bash scripts/docs_consistency_check.sh
 |---|---|
 | `acceptance` | **24** tests — `tests/test_acceptance_loop.py`（`case_*` fixture + path safety + provenance GC 等） |
 | `llm-integration` | **85** tests — `tests/test_llm_integration.py`（mock backends） |
-| `unit` | **153** tests — `tests/test_security.py` + `tests/test_vault_plugin.py` + `tests/test_library_surfaces.py`（含 content↛memory / facade 清零契约）+ `tests/test_repair.py` + `tests/test_alchemy_revert.py` |
+| `unit` | **154** tests — `tests/test_security.py` + `tests/test_vault_plugin.py` + `tests/test_library_surfaces.py`（含 content/memory 双向 ↛ / facade 清零契约）+ `tests/test_repair.py` + `tests/test_alchemy_revert.py` |
 | `product-shell-static` | `node --check` + **bundle drift 硬门禁**（main.js 必须等于 src/ 现构建）+ Jest **203** hard-gate |
 | `coverage` | informational 报告（**无门禁**；2026-08-05 实测全量 **69%**） |
 | 其余 | scripts、cli-smoke、smoke、python-static |

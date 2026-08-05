@@ -20,7 +20,7 @@ from aiwiki.llm import CompletionResult, LLMError
 from aiwiki.memory.state import load_machine_memory
 from aiwiki.notify import notify_report_generated
 from aiwiki.protocol.scaffold import ensure_layout
-from aiwiki.render.views import build_ask_used_refs
+from aiwiki.render.ask_report import build_ask_used_refs
 from aiwiki.runner.clients import (
     _append_fallback_stage,
     _client_backend_name,

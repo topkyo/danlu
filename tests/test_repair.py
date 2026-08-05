@@ -67,14 +67,41 @@ def _write_page(root: Path, relative: str, frontmatter: dict[str, object], body:
 def _low_risk_link_vault(root: Path) -> None:
     """Minimal vault where an accepted add-source-concept-link action validates.
 
-    ``sync_manifest_with_raw`` registers ``raw/inbox/alpha.md`` as source id
-    ``source-alpha``; the source/concept pages match the action targets.
+    Manifest already lists ``source-alpha`` (validate uses read-only
+    ``load_manifest``, not ``sync_manifest_with_raw``). Source/concept pages
+    match the action targets.
     """
 
     (root / "raw" / "inbox").mkdir(parents=True, exist_ok=True)
     (root / "raw" / "inbox" / "alpha.md").write_text("alpha body\n", encoding="utf-8")
     _write_page(root, "wiki/sources/source-alpha.md", {"kind": "source", "title": "Alpha Source"})
     _write_page(root, "wiki/concepts/beta.md", {"kind": "concept", "title": "Beta Concept"})
+    manifest_path = root / ".aiwiki" / "state" / "manifest.json"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "entries": [
+                    {
+                        "id": "source-alpha",
+                        "title": "Alpha Source",
+                        "source_type": "raw-drop",
+                        "note_kind": "",
+                        "original_path": "raw/inbox/alpha.md",
+                        "stored_path": "raw/inbox/alpha.md",
+                        "kind": "note",
+                        "sha256": "deadbeef",
+                        "imported_at": "2026-01-01T00:00:00+00:00",
+                        "updated_at": "2026-01-01T00:00:00+00:00",
+                    }
+                ],
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
 
 def _low_risk_link_action(**overrides: object) -> dict[str, object]:

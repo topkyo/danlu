@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..content.material import load_manual_link_state
+from ..corpus.link_state import load_manual_link_state
 from ..lifecycle.status import display_action_status
 from ..protocol.descriptors import protocol_title
 from ..protocol.runtime_config import LOW_RISK_APPLYABLE_ACTION_KINDS, PENDING_ACTION_STATUSES

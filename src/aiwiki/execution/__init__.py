@@ -3,7 +3,8 @@
 EP-018B migration is complete. Each execution-layer function now has a
 dedicated owner module in this subpackage:
 
-- :mod:`aiwiki.execution.ask`              — ``ask_question`` / ``file_back``
+- :mod:`aiwiki.execution.ask`              — ``ask_question``
+- :mod:`aiwiki.execution.file_back`        — ``file_back``
 - :mod:`aiwiki.execution.candidates`       — output candidate promote/demote
 - :mod:`aiwiki.execution.review`           — ``review-page`` primitive
 - :mod:`aiwiki.execution.alchemy`          — ``alchemy-start/distill/finalize/promote/revert/demote``

@@ -3,27 +3,16 @@
 Compile writes Chinese ``##`` headings for source/concept pages. Readers still
 accept legacy English headings so existing vaults/fixtures keep working until
 recompile upgrades them.
+
+Heading groups live in ``aiwiki.corpus.sections`` (single source with
+``preserved_section``).
 """
 
 from __future__ import annotations
 
 import re
 
-# (canonical_zh, *legacy_en)
-_SECTION_GROUPS: tuple[tuple[str, ...], ...] = (
-    ("摘要", "Summary"),
-    ("来源记录", "Source Record"),
-    ("概念链接", "Concept Links"),
-    ("充实待办", "Enrichment TODO"),
-    ("预览", "Preview"),
-    ("引用锚点", "Citation Anchor"),
-    ("相关来源", "Related Sources"),
-    ("相关概念", "Related Concepts"),
-    ("因果网络", "Causal Network"),
-    ("冲突信号", "Conflict Signals"),
-    ("证据缺口", "Evidence Gaps"),
-    ("维护说明", "Maintenance Notes"),
-)
+from ..corpus.sections import SECTION_GROUPS, section_candidates
 
 SUMMARY = "摘要"
 SOURCE_RECORD = "来源记录"
@@ -38,15 +27,8 @@ CONFLICT_SIGNALS = "冲突信号"
 EVIDENCE_GAPS = "证据缺口"
 MAINTENANCE_NOTES = "维护说明"
 
-
-def section_candidates(heading: str) -> tuple[str, ...]:
-    text = str(heading or "").strip()
-    if not text:
-        return ()
-    for group in _SECTION_GROUPS:
-        if text in group:
-            return group
-    return (text,)
+# Keep local name for any in-module references; groups owned by corpus.
+_SECTION_GROUPS = SECTION_GROUPS
 
 
 def canonical_section(heading: str) -> str:
@@ -84,3 +66,23 @@ def upsert_page_section(markdown: str, heading: str, content: str) -> str:
     if base:
         return base + "\n\n" + block
     return block
+
+
+__all__ = [
+    "SUMMARY",
+    "SOURCE_RECORD",
+    "CONCEPT_LINKS",
+    "ENRICHMENT_TODO",
+    "PREVIEW",
+    "CITATION_ANCHOR",
+    "RELATED_SOURCES",
+    "RELATED_CONCEPTS",
+    "CAUSAL_NETWORK",
+    "CONFLICT_SIGNALS",
+    "EVIDENCE_GAPS",
+    "MAINTENANCE_NOTES",
+    "section_candidates",
+    "canonical_section",
+    "page_has_section",
+    "upsert_page_section",
+]
