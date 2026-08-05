@@ -13,7 +13,9 @@ if ! command -v rg >/dev/null 2>&1; then
   exit 1
 fi
 
-HITS_FILE="$(mktemp -t docs-consistency-hits)"
+# GNU mktemp (Linux CI) requires ≥3 trailing X's in the template; macOS
+# `mktemp -t name` is different. Use an explicit XXXXXX path for both.
+HITS_FILE="$(mktemp "${TMPDIR:-/tmp}/docs-consistency-hits.XXXXXX")"
 trap 'rm -f "$HITS_FILE"' EXIT
 
 FAIL=0
