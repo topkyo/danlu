@@ -172,6 +172,11 @@ verify_product_shell_static() {
     else
       npm install --silent
     fi
+    if [[ ! -x node_modules/.bin/jest ]]; then
+      echo "Product Shell Jest missing after npm install (node_modules/.bin/jest)." >&2
+      echo "Re-run: (cd product-shell/obsidian-plugin && npm ci) or check package-lock.json." >&2
+      exit 1
+    fi
     npm test
   )
 }

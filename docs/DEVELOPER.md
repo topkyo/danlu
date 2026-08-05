@@ -64,9 +64,9 @@ bash scripts/docs_consistency_check.sh
 |---|---|
 | `acceptance` | **24** tests — `tests/test_acceptance_loop.py`（`case_*` fixture + path safety + provenance GC 等） |
 | `llm-integration` | **85** tests — `tests/test_llm_integration.py`（mock backends） |
-| `unit` | **160** tests — `tests/test_security.py` + `tests/test_vault_plugin.py` + `tests/test_library_surfaces.py`（含 content/memory 双向 ↛ / facade 清零契约）+ `tests/test_repair.py` + `tests/test_alchemy_revert.py` + `tests/test_cli_surfaces.py`（run-nightly / watch / review-queue / alchemy demote / drop pdf|image） |
+| `unit` | **166** tests — `tests/test_security.py` + `tests/test_vault_plugin.py` + `tests/test_library_surfaces.py`（含 content/memory 双向 ↛ / facade 清零契约）+ `tests/test_repair.py` + `tests/test_alchemy_revert.py` + `tests/test_cli_surfaces.py`（library + argv/dispatch：run-nightly / watch / review-queue / alchemy demote / drop pdf|image） |
 | `product-shell-static` | `node --check` + **bundle drift 硬门禁**（main.js 必须等于 src/ 现构建）+ Jest **203** hard-gate |
-| `coverage` | informational 报告（**无门禁**；2026-08-05 实测全量 **69%**） |
+| `coverage` | informational 报告（**无门禁**；2026-08-05 实测全量 **71%**） |
 | 其余 | scripts、cli-smoke、smoke、python-static |
 
 本地开发常用：

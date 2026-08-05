@@ -15,6 +15,8 @@
 
 ## 当前动态
 
+- 2026-08-05 (**R6 验证确认 + 发现修复**)：R6 维持工程实测 **8.6**（零否证）；收口 coverage **71%** 钉、CHANGELOG unit 机制钉、jest 显式校验、argv 六命令、ask/writeback 相位真拆分。报告：`docs/plans/2026-08-05-multi-agent-reevaluation-r6.md`；计划：`docs/plans/2026-08-05-r6-findings-fixes.md`。unit **166**。
+
 - 2026-08-05 (**多 agent 复评 R5**)：工程实测 **8.6**（+0.1 vs R4 / +0.3 vs R3）；架构 9.1 / 可维护 8.5 / 安全 8.8；Commercial ~7.8 横盘。报告：`docs/plans/2026-08-05-multi-agent-reevaluation-r5.md`（R4 P1 前 8.5 见同目录 r4）。verify 24/85/160/203。
 
 - 2026-08-05 (**P1 分修**)：frontmatter 四拷贝统一；metrics_io warning；promote `revert_supported`；`workflows_ask` 786→**334**（writeback seam）；六命令 CLI 烟测；CHANGELOG/AGENTS/Architecture corpus 叙事。计划：`docs/plans/2026-08-05-p1-split-fixes.md`。unit **160**。`ask_question` 巨函数仍记债。
@@ -164,13 +166,12 @@
 ```text
 说人话。先读 PROGRESS.md 头条 + docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md；评分勿混：Local Eng 9.05 ≠ 工程实测 8.6 ≠ 商业 ~7.8。
 
-已完成：优先债；corpus S1+S2；facade（#27）；hub 三刀+writeback（#28/#29）；P1 分修；复评 R5 **8.6**。余债：`ask_question` 单 seam；acceptance alchemy-revert fixture；Jest npm 可操作失败消息。Commercial 三阻断未做。
+已完成：优先债；corpus；facade；hub seams；P1；R5/R6 **8.6 验证确认**；R6 发现修复（coverage 71 钉 / argv / ask 相位拆 / jest 校验）。余：acceptance alchemy-revert fixture；Shell manifest author；`_finalize_ask_question` 仍偏长。Commercial 三阻断未做。
 
 下一刀优先（择一）：
 1) Commercial：EULA 法律签收 / twine + tag / Demo 媒体
-2) `ask_question` 单 seam（可选）
-3) acceptance alchemy-revert fixture / Jest npm 校验（可选）
-4) 勿宣称 AgentOS 9 live / 诚实可售 / 用 9.05 冒充工程实测
+2) acceptance alchemy-revert fixture / Shell manifest author（可选）
+3) 勿宣称 AgentOS 9 live / 诚实可售 / 用 9.05 冒充工程实测
 
 Vault：iCloud「炼丹炉」；state → ~/Library/Application Support/aiwiki/dogfood-state；CDP：9228；验证：bash scripts/verify.sh all
 ```

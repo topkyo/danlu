@@ -131,15 +131,18 @@ check_match "verify.sh usage line pins llm-integration 85 tests" 'Run LLM integr
 check_match "verify.sh all line pins llm-integration 85" 'llm-integration \(85\)' scripts/verify.sh
 check_match "AGENTS.md pins acceptance 24" 'acceptance 24 fixture replay' AGENTS.md
 check_match "AGENTS.md pins llm 85" 'LLM integration 85' AGENTS.md
-check_match "AGENTS.md pins unit 160" 'unit 160' AGENTS.md
+check_match "AGENTS.md pins unit 166" 'unit 166' AGENTS.md
 check_match "AGENTS.md pins Jest 203" 'Jest 203' AGENTS.md
 check_match "Scorecard pins llm 85" 'LLM integration \| \*\*85\*\* passed' docs/AGOS-9-Scorecard.md
-check_match "Scorecard pins unit 160" 'Unit（library 级） \| \*\*160\*\* passed' docs/AGOS-9-Scorecard.md
+check_match "Scorecard pins unit 166" 'Unit（library 级） \| \*\*166\*\* passed' docs/AGOS-9-Scorecard.md
 check_match "Scorecard pins Jest 203" 'Product Shell Jest \| \*\*203\*\* passed' docs/AGOS-9-Scorecard.md
 check_match "DEVELOPER.md pins llm 85" '\*\*85\*\* tests' docs/DEVELOPER.md
-check_match "DEVELOPER.md pins unit 160" '\*\*160\*\* tests' docs/DEVELOPER.md
+check_match "DEVELOPER.md pins unit 166" '\*\*166\*\* tests' docs/DEVELOPER.md
 check_match "DEVELOPER.md pins Jest 203" 'Jest \*\*203\*\*' docs/DEVELOPER.md
-check_match "Post-Cleanup §1 pins unit 160" 'unit \*\*160\*\*' "docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md"
+check_match "Post-Cleanup §1 pins unit 166" 'unit \*\*166\*\*' "docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md"
+check_match "CHANGELOG Unreleased pins unit 166" 'unit \*\*166\*\*' CHANGELOG.md
+check_match "Scorecard pins coverage 71%" 'Coverage \| \*\*71%\*\*' docs/AGOS-9-Scorecard.md
+check_match "DEVELOPER.md pins coverage 71%" '实测全量 \*\*71%\*\*' docs/DEVELOPER.md
 
 # Layering: content ↛ memory; memory ↛ content; corpus ↛ content/memory
 if rg -n 'from \.\.memory|from aiwiki\.memory' src/aiwiki/content --glob '*.py' >/dev/null 2>&1; then

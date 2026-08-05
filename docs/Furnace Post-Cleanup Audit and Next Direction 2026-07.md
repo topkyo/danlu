@@ -26,7 +26,7 @@ supersedes: []
 | 指标 | 当前值 | 来源 |
 |---|---|---|
 | Runtime | `src/aiwiki` **194** `.py` / **~43.8k LOC** | `find` + `wc`（2026-08-05 hub seams；含 views/ask/io 外提） |
-| Tests | acceptance **24** + llm-integration **85** + unit **160** + Jest **203**（2026-08-05 P1 分修后实测；历史快照曾含 24/85/154、24/85/143、24/85/81 等） | `bash scripts/verify.sh all` |
+| Tests | acceptance **24** + llm-integration **85** + unit **166** + Jest **203**（2026-08-05 R6 修复后实测；历史快照曾含 24/85/160、24/85/154、24/85/143 等） | `bash scripts/verify.sh all` |
 | Top hubs（单文件） | `content/concepts.py` 812 / `drop/url.py` 790 / `content/io.py` **677** / `render/views.py` **668** / `execution/ask.py` **665**；`workflows_ask` **334**（writeback **479**）；无 1000+ LOC；外提 `ask_report` / `file_back` / `output_artifacts` / `workflows_ask_writeback`；`execution/machine_memory_actions` 等 8 治理孤儿簇 **DELETED**（2026-08-04）；`auto_adopt` / 根级 `app_*.py` **DELETED** | `wc -l` 2026-08-05 hub seams |
 | `except Exception` | **~65**；裸 `except Exception: pass` **0** | ripgrep 2026-08-05 |
 | AgentOS Scorecard | **Local Engineering Gate 9.05**（自评门禁）；工程实测七维 **8.6**；Live Dogfood **not-yet** | Scorecard + `docs/plans/2026-08-05-multi-agent-reevaluation-r5.md` |
@@ -231,7 +231,7 @@ bash scripts/verify.sh cli-smoke
 # 紧急旁路：AIWIKI_SKIP_PRODUCT_SHELL_JS_TESTS=1
 # go-live 文档门禁：
 ! git grep -E 'commercial@example\.com|support@example\.com' -- LICENSE docs/commercial/
-bash scripts/verify.sh all   # 推送/发布前（含 unit 160 + coverage informational）
+bash scripts/verify.sh all   # 推送/发布前（含 unit 166 + coverage informational）
 ```
 
 > 备注：2026-07-15 scripts cleanup 曾删旧 `run_product_shell_tests.sh` 与旧 drift gate；2026-08-04 起 `product-shell-static` 恢复 **bundle drift 硬门禁** + Jest。Release evidence pipeline（`agos9_*.sh` / `dogfood_maturity_gate.py`）仍已删除。
@@ -262,6 +262,7 @@ Review gate：编码 PR 独立 read-only reviewer（correctness / scope / missin
 
 ## 11. 更新记录
 
+- 2026-08-05：R6 验证确认维持 **8.6** + 发现修复（coverage 71 / unit 166 / ask 相位拆 / jest+CHANGELOG 钉）；报告 `docs/plans/2026-08-05-multi-agent-reevaluation-r6.md`。
 - 2026-08-05：多 agent 复评 R5 — 工程实测 **8.5→8.6**（P1 合入后）；报告 `docs/plans/2026-08-05-multi-agent-reevaluation-r5.md`；R4（P1 前 8.5）同步归档后记。
 - 2026-08-05：P1 分修 — unit **154→160**（`test_cli_surfaces` 六命令烟测）；`workflows_ask` writeback seam；promote `revert_supported`；frontmatter / metrics_io / CHANGELOG+corpus 叙事。
 - 2026-08-05：归档裁定 — **暂不归档**；继续作 Commercial Go-Live 执行 SoT，直至可售门槛或被 supersedes。
