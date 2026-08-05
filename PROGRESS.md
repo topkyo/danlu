@@ -15,6 +15,8 @@
 
 ## 当前动态
 
+- 2026-08-05 (**多 agent 复评 R5**)：工程实测 **8.6**（+0.1 vs R4 / +0.3 vs R3）；架构 9.1 / 可维护 8.5 / 安全 8.8；Commercial ~7.8 横盘。报告：`docs/plans/2026-08-05-multi-agent-reevaluation-r5.md`（R4 P1 前 8.5 见同目录 r4）。verify 24/85/160/203。
+
 - 2026-08-05 (**P1 分修**)：frontmatter 四拷贝统一；metrics_io warning；promote `revert_supported`；`workflows_ask` 786→**334**（writeback seam）；六命令 CLI 烟测；CHANGELOG/AGENTS/Architecture corpus 叙事。计划：`docs/plans/2026-08-05-p1-split-fixes.md`。unit **160**。`ask_question` 巨函数仍记债。
 
 - 2026-08-05 (**corpus S2 · memory↛content**)：parse/sections/snapshots/link_state 下沉 `aiwiki.corpus`；memory 零 content import；`validate_low_risk` 改 `load_manifest`；docs_consistency + AST 钉。计划：`docs/plans/2026-08-05-corpus-s2-memory-content.md`。unit **154**。
@@ -160,14 +162,14 @@
 复制下面整段到新对话开头即可：
 
 ```text
-说人话。先读 PROGRESS.md 头条 + docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md；评分勿混：Local Eng 9.05 ≠ 工程实测 8.3 ≠ 商业 ~7.8。
+说人话。先读 PROGRESS.md 头条 + docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md；评分勿混：Local Eng 9.05 ≠ 工程实测 8.6 ≠ 商业 ~7.8。
 
-已完成：优先债；corpus S1+S2（content/memory 双向 ↛，经 corpus）；facade（PR #27）；hub 三刀；复评 R3 **8.3**。结构债余：memory scoring/paths 过渡 re-export；hub 若再刀须新自然 seam。Commercial 三阻断未做。
+已完成：优先债；corpus S1+S2；facade（#27）；hub 三刀+writeback（#28/#29）；P1 分修；复评 R5 **8.6**。余债：`ask_question` 单 seam；acceptance alchemy-revert fixture；Jest npm 可操作失败消息。Commercial 三阻断未做。
 
 下一刀优先（择一）：
 1) Commercial：EULA 法律签收 / twine + tag / Demo 媒体
-2) 删 memory scoring/paths 过渡 re-export（可选）
-3) T-1 低覆盖活路径 — 可选
+2) `ask_question` 单 seam（可选）
+3) acceptance alchemy-revert fixture / Jest npm 校验（可选）
 4) 勿宣称 AgentOS 9 live / 诚实可售 / 用 9.05 冒充工程实测
 
 Vault：iCloud「炼丹炉」；state → ~/Library/Application Support/aiwiki/dogfood-state；CDP：9228；验证：bash scripts/verify.sh all
