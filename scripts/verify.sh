@@ -29,7 +29,7 @@ Targets:
   cli-smoke             Check aiwiki CLI startup/help.
   product-shell-static  Run Product Shell JS syntax + bundle drift gate + Jest.
   coverage              Print coverage report over all tests (informational, no gate).
-  all                   Run scripts + product-shell-static + cli-smoke + smoke + python-static + unit + acceptance (24) + llm-integration (85) + coverage report. Default.
+  all                   Run scripts + product-shell-static + cli-smoke + smoke + python-static + unit + acceptance (25) + llm-integration (85) + coverage report. Default.
 USAGE
 }
 

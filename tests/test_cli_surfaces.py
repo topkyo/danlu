@@ -1,7 +1,7 @@
 """Library + argv/dispatch smoke for previously zero-coverage CLI surfaces.
 
 Covers entry functions and ``cli.dispatch.main`` argv paths for: run-nightly,
-watch, review-queue, alchemy demote, drop pdf, drop image.
+watch, review-queue, alchemy demote/revert, drop pdf, drop image.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from aiwiki.cli.dispatch_helpers import review_queue_command
 from aiwiki.drop.image import drop_image
 from aiwiki.drop.pdf import drop_pdf
 from aiwiki.execution.alchemy import promote_elixir
+from aiwiki.execution.alchemy_helpers import _candidate_path, _parse_elixir_frontmatter, _settled_path
 from aiwiki.protocol.scaffold import ensure_layout
 from aiwiki.runner.alchemy import run_alchemy_demote
 from aiwiki.runner.automation import watch_inbox
@@ -171,3 +172,48 @@ def test_argv_alchemy_demote_after_promote(tmp_path: Path) -> None:
     assert demote["elixir_id"] == ELIXIR_ID
     assert demote["path"].endswith(f"{ELIXIR_ID}.md")
     assert not (tmp_path / "wiki" / "elixirs" / f"{ELIXIR_ID}.md").exists()
+
+
+def test_argv_alchemy_revert_after_promote(tmp_path: Path) -> None:
+    _seed_promote_vault(tmp_path)
+    promote = _cli_json(
+        [
+            "--root",
+            str(tmp_path),
+            "advanced",
+            "alchemy",
+            "promote",
+            "--elixir-id",
+            ELIXIR_ID,
+            "--note",
+            "argv promote",
+        ]
+    )
+    assert "receipt_path" in promote or promote.get("elixir_id") == ELIXIR_ID or "path" in promote
+    settled_path = _settled_path(tmp_path, ELIXIR_ID)
+    assert settled_path.is_file()
+
+    revert = _cli_json(
+        [
+            "--root",
+            str(tmp_path),
+            "advanced",
+            "alchemy",
+            "revert",
+            "--elixir-id",
+            ELIXIR_ID,
+            "--note",
+            "argv revert",
+        ]
+    )
+    assert revert["elixir_id"] == ELIXIR_ID
+    assert revert["path"].endswith(f"{ELIXIR_ID}.md")
+
+    candidate_path = _candidate_path(tmp_path, ELIXIR_ID)
+    assert revert["path"] == str(candidate_path.relative_to(tmp_path))
+    assert not settled_path.exists()
+    assert candidate_path.is_file()
+    fm = _parse_elixir_frontmatter(candidate_path)
+    assert fm["elixir_state"] == "candidate"
+    assert "superseded_by" not in fm
+    assert "promoted_at" not in fm
