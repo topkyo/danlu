@@ -136,6 +136,7 @@ def write_nightly_health(
         generated_at=generated_at,
         entries=manifest["entries"],
         active_protocol=protocol_state["active_protocol"],
+        machine_memory=memory,
     )
     material_routing = load_material_routing_state(root)
     archive_candidates = load_archive_candidates_state(root)

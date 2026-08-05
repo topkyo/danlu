@@ -16,7 +16,6 @@ from ..corpus.scoring import (
     timestamp_is_newer,
     update_latest_timestamp,
 )
-from ..memory.state import load_machine_memory
 from ..protocol.runtime_config import ACTIVE_CORPUS_STATUSES, ACTIVE_CORPUS_TTL
 from ..protocol.scaffold import ensure_layout
 from ..protocol.state import load_protocol_state
@@ -135,12 +134,14 @@ def refresh_material_state(
     generated_at: str,
     entries: list[dict[str, Any]] | None = None,
     active_protocol: str | None = None,
+    machine_memory: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     documents = build_material_state_documents(
         root,
         generated_at=generated_at,
         entries=entries,
         active_protocol=active_protocol,
+        machine_memory=machine_memory,
     )
     save_material_state(root, documents["material_state"])
     save_material_routing_state(root, documents["material_routing"])
@@ -154,6 +155,7 @@ def build_material_state_documents(
     generated_at: str,
     entries: list[dict[str, Any]] | None = None,
     active_protocol: str | None = None,
+    machine_memory: dict[str, Any] | None = None,
 ) -> dict[str, dict[str, Any]]:
     # Function-level imports: content.io imports load_manual_link_state from
     # this module, and compile.ranking imports from content.concepts which
@@ -175,8 +177,8 @@ def build_material_state_documents(
     history = load_runtime_history(root)
     active_corpora = reconcile_active_corpora_state(root, changed_at=generated_at)["corpora"]
     reference_state = scan_material_reference_state(root, manifest_entries)
-    machine_memory = load_machine_memory(root)
-    graph_context = material_graph_context(machine_memory)
+    memory = machine_memory if isinstance(machine_memory, dict) else {}
+    graph_context = material_graph_context(memory)
     previous_archive_candidates = load_archive_candidates_state(root)
     material_archive_state = load_material_archive_state(root)
     archived_entries = active_material_archive_entries(material_archive_state)
