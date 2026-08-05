@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .hash import compiled_source_sha, sha256_file
+from .io import atomic_write_text
 from .path import normalize_workspace_path
 
 TEXT_EXTENSIONS = {
@@ -108,6 +109,74 @@ def frontmatter_string_list(frontmatter: dict[str, Any], key: str) -> list[str]:
     if not isinstance(value, list):
         return []
     return [str(item).strip() for item in value if isinstance(item, str) and str(item).strip()]
+
+
+def write_frontmatter_string_list(
+    path: Path,
+    key: str,
+    values: list[str],
+    *,
+    merge_existing: bool = False,
+    force: bool = False,
+    require_exists: bool = False,
+) -> None:
+    if require_exists and not path.exists():
+        raise FileNotFoundError(f"frontmatter target not found: {path}")
+
+    cleaned: list[str] = []
+    for ref in values:
+        normalized = str(ref).strip()
+        if normalized and normalized not in cleaned:
+            cleaned.append(normalized)
+    if not cleaned and not merge_existing and not force:
+        return
+
+    original = path.read_text(encoding="utf-8", errors="replace")
+    frontmatter = parse_frontmatter(original)
+    merged: list[str] = []
+    if merge_existing:
+        existing = frontmatter_string_list(frontmatter, key)
+        for ref in [*existing, *cleaned]:
+            if ref not in merged:
+                merged.append(ref)
+    else:
+        merged = cleaned
+    if not merged and not force:
+        return
+
+    block = [f"{key}:"]
+    if merged:
+        block.extend([f'  - "{ref}"' for ref in merged])
+
+    lines = original.splitlines()
+    has_frontmatter = bool(lines) and lines[0].strip() == "---"
+    close_idx: int | None = None
+    if has_frontmatter:
+        for idx in range(1, len(lines)):
+            if lines[idx].strip() == "---":
+                close_idx = idx
+                break
+    if not has_frontmatter or close_idx is None:
+        synthesized = ["---", *block, "---", *lines]
+        atomic_write_text(path, "\n".join(synthesized).rstrip() + "\n")
+        return
+
+    filtered: list[str] = lines[:1]
+    skip_list_items = False
+    for line in lines[1:close_idx]:
+        if line.startswith(f"{key}:"):
+            skip_list_items = True
+            continue
+        if skip_list_items and line.startswith("  - "):
+            continue
+        skip_list_items = False
+        filtered.append(line)
+    new_close_idx = len(filtered)
+    filtered.append(lines[close_idx])
+    filtered.extend(lines[close_idx + 1 :])
+    for offset, line in enumerate(block):
+        filtered.insert(new_close_idx + offset, line)
+    atomic_write_text(path, "\n".join(filtered).rstrip() + "\n")
 
 
 def strip_frontmatter(text: str) -> str:

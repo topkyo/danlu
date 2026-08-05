@@ -50,10 +50,10 @@ from ..state.manifest import load_manifest
 from ..utils.hash import question_signature
 from ..utils.io import atomic_write_text, runtime_write_operation
 from ..utils.markdown import (
-    frontmatter_string_list,
     parse_frontmatter,
     strip_frontmatter,
     upsert_markdown_section,
+    write_frontmatter_string_list,
 )
 from ..utils.path import next_available_stem, relative_path
 from ..utils.text import human_query_title
@@ -136,58 +136,7 @@ def _collect_curated_provenance_refs(
 
 
 def _merge_source_files_frontmatter(path: Path, refs: list[str]) -> None:
-    _merge_frontmatter_string_list(path, "source_files", refs, merge_existing=True)
-
-
-def _merge_frontmatter_string_list(path: Path, key: str, refs: list[str], *, merge_existing: bool = False) -> None:
-    cleaned: list[str] = []
-    for ref in refs:
-        normalized = str(ref).strip()
-        if normalized and normalized not in cleaned:
-            cleaned.append(normalized)
-    if not cleaned and not merge_existing:
-        return
-
-    original = path.read_text(encoding="utf-8", errors="replace")
-    frontmatter = parse_frontmatter(original)
-    merged: list[str] = []
-    existing = frontmatter_string_list(frontmatter, key) if merge_existing else []
-    for ref in [*existing, *cleaned]:
-        if ref not in merged:
-            merged.append(ref)
-    if not merged:
-        return
-
-    block = [f"{key}:", *[f'  - "{ref}"' for ref in merged]]
-    lines = original.splitlines()
-    has_frontmatter = bool(lines) and lines[0].strip() == "---"
-    close_idx: int | None = None
-    if has_frontmatter:
-        for idx in range(1, len(lines)):
-            if lines[idx].strip() == "---":
-                close_idx = idx
-                break
-    if not has_frontmatter or close_idx is None:
-        synthesized = ["---", *block, "---", *lines]
-        atomic_write_text(path, "\n".join(synthesized).rstrip() + "\n")
-        return
-
-    filtered: list[str] = lines[:1]
-    skip_list_items = False
-    for line in lines[1:close_idx]:
-        if line.startswith(f"{key}:"):
-            skip_list_items = True
-            continue
-        if skip_list_items and line.startswith("  - "):
-            continue
-        skip_list_items = False
-        filtered.append(line)
-    new_close_idx = len(filtered)
-    filtered.append(lines[close_idx])
-    filtered.extend(lines[close_idx + 1 :])
-    for offset, line in enumerate(block):
-        filtered.insert(new_close_idx + offset, line)
-    atomic_write_text(path, "\n".join(filtered).rstrip() + "\n")
+    write_frontmatter_string_list(path, "source_files", refs, merge_existing=True)
 
 
 def _build_graph_anchor_node_ids(
@@ -470,7 +419,7 @@ def _materialize_ask_report_artifact(
         ranked_concepts=ranked_concepts,
         compound_paths=compound_paths,
     )
-    _merge_frontmatter_string_list(destination, "used_refs", used_refs)
+    write_frontmatter_string_list(destination, "used_refs", used_refs)
     anchors = _build_graph_anchor_node_ids(
         machine_query,
         memory,

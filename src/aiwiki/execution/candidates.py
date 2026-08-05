@@ -12,6 +12,7 @@ from ..state.collections import normalize_versioned_record_list_state
 from ..state.io import load_json_document, save_json_document
 from ..state.paths import output_candidates_state_path
 from ..utils.io import atomic_write_text, runtime_write_operation
+from ..utils.markdown import write_frontmatter_string_list
 from ..utils.time import utc_now
 
 
@@ -150,61 +151,25 @@ def write_candidate_frontmatter(
     atomic_write_text(path, "\n".join(filtered).rstrip() + "\n")
 
 
-def _write_frontmatter_string_list(
-    path: Path,
-    key: str,
-    anchors: list[str],
-    *,
-    force: bool = False,
-) -> None:
-    if not path.exists():
-        raise FileNotFoundError(f"frontmatter target not found: {path}")
-    cleaned = [str(item).strip() for item in anchors if str(item).strip()]
-    if not cleaned and not force:
-        return
-    block = [f"{key}:"]
-    if cleaned:
-        block.extend([f'  - "{item}"' for item in cleaned])
-    original = path.read_text(encoding="utf-8", errors="replace")
-    lines = original.splitlines()
-    has_frontmatter = bool(lines) and lines[0].strip() == "---"
-    close_idx: int | None = None
-    if has_frontmatter:
-        for idx in range(1, len(lines)):
-            if lines[idx].strip() == "---":
-                close_idx = idx
-                break
-    if not has_frontmatter or close_idx is None:
-        header = ["---", *block, "---"]
-        synthesized = header + lines
-        atomic_write_text(path, "\n".join(synthesized).rstrip() + "\n")
-        return
-    filtered: list[str] = lines[:1]
-    skip_list_items = False
-    for item in lines[1:close_idx]:
-        if item.startswith(f"{key}:"):
-            skip_list_items = True
-            continue
-        if skip_list_items and item.startswith("  - "):
-            continue
-        skip_list_items = False
-        filtered.append(item)
-    new_close_idx = len(filtered)
-    filtered.append(lines[close_idx])
-    filtered.extend(lines[close_idx + 1 :])
-    for offset, line in enumerate(block):
-        filtered.insert(new_close_idx + offset, line)
-    atomic_write_text(path, "\n".join(filtered).rstrip() + "\n")
-
-
 def write_graph_anchor_frontmatter(path: Path, *, anchors: list[str], force: bool = False) -> None:
     """Write Obsidian-native ``graph_anchor_node_ids`` (sources/judgments only)."""
-    _write_frontmatter_string_list(path, "graph_anchor_node_ids", anchors, force=force)
+    write_frontmatter_string_list(
+        path,
+        "graph_anchor_node_ids",
+        anchors,
+        force=force,
+        require_exists=True,
+    )
 
 
 def write_machine_memory_anchor_frontmatter(path: Path, *, anchors: list[str]) -> None:
     """Write full machine-memory anchors (may include concepts) for HTML/subgraph."""
-    _write_frontmatter_string_list(path, "machine_memory_anchor_node_ids", anchors)
+    write_frontmatter_string_list(
+        path,
+        "machine_memory_anchor_node_ids",
+        anchors,
+        require_exists=True,
+    )
 
 
 def demote_candidate(root: Path, artifact_ref: str) -> dict[str, Any]:

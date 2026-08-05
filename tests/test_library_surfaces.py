@@ -19,6 +19,7 @@ from aiwiki import autonomy_policy
 from aiwiki.cli import dispatch as cli_dispatch
 from aiwiki.cli.llm_check_render import render_llm_check_human
 from aiwiki.runner.prompts import _wrap_untrusted_source
+from aiwiki.utils.markdown import parse_frontmatter, write_frontmatter_string_list
 
 
 def test_autonomy_policy_missing_file_allows_llm(tmp_path: Path) -> None:
@@ -226,6 +227,28 @@ def test_wrap_untrusted_source_neutralizes_closing_marker_spoof() -> None:
     assert "< /untrusted_source" in wrapped
     assert "</untrusted_source>" in wrapped
     assert wrapped.count("</untrusted_source>") == 1
+
+
+def test_write_frontmatter_string_list_overwrites_key(tmp_path: Path) -> None:
+    path = tmp_path / "note.md"
+    path.write_text(
+        "---\ntitle: \"Example\"\nused_refs:\n  - \"old/ref.md\"\n---\n# Body\n",
+        encoding="utf-8",
+    )
+    write_frontmatter_string_list(path, "used_refs", ["new/ref.md", "other/ref.md"])
+    frontmatter = parse_frontmatter(path.read_text(encoding="utf-8"))
+    assert frontmatter["used_refs"] == ["new/ref.md", "other/ref.md"]
+
+
+def test_write_frontmatter_string_list_merge_existing(tmp_path: Path) -> None:
+    path = tmp_path / "note.md"
+    path.write_text(
+        "---\nsource_files:\n  - \"existing.md\"\n---\n# Body\n",
+        encoding="utf-8",
+    )
+    write_frontmatter_string_list(path, "source_files", ["new.md", "existing.md"], merge_existing=True)
+    frontmatter = parse_frontmatter(path.read_text(encoding="utf-8"))
+    assert frontmatter["source_files"] == ["existing.md", "new.md"]
 
 
 def test_cli_main_module_exec_invokes_dispatch(
