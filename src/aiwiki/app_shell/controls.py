@@ -24,13 +24,13 @@ from ..memory.action_core import (
     action_supports_low_risk_apply,
 )
 from ..protocol.runtime_config import ACTION_STATUSES, REWRITE_PROPOSAL_STATUSES
+from ..render.judgment_assets import (
+    judgment_asset_attention_sort_key,
+    judgment_asset_shell_record,
+)
 from ..render.paths import (
     execution_bundle_path,
     execution_proposal_path,
-)
-from ..render.views import (
-    judgment_asset_attention_sort_key,
-    judgment_asset_shell_record,
 )
 from ..state.constants import DEFAULT_PROTOCOL
 from ..state.manifest import load_manifest

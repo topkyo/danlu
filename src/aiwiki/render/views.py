@@ -1,7 +1,7 @@
 """Dashboard view renderers extracted from app_render.
 
-20 symbols (curated/judgment/review/aging + agent + furnace + master index +
-pilots index).
+Curated/review/aging + agent + furnace + master index + pilots index.
+Judgment asset views live in judgment_assets.py.
 """
 
 from __future__ import annotations
@@ -12,7 +12,6 @@ from typing import Any
 from ..lifecycle.aging import collect_aging_signals
 from ..lifecycle.knowledge import (
     default_knowledge_lifecycle_state,
-    judgment_lifecycle_profile,
     knowledge_lifecycle_governance_summary,
     render_knowledge_lifecycle_entry_summary,
     select_knowledge_lifecycle_entries,
@@ -20,9 +19,8 @@ from ..lifecycle.knowledge import (
 )
 from ..lifecycle.status import display_curated_status, review_queue
 from ..protocol.descriptors import protocol_title
-from ..protocol.focus_scoring import page_focus_score
 from ..protocol.library import PROTOCOL_LIBRARY
-from ..state.constants import DEFAULT_PROTOCOL, JUDGMENT_LIFECYCLE_STATES
+from ..state.constants import DEFAULT_PROTOCOL
 from ..utils.markdown import render_frontmatter
 from ..utils.text import human_query_title, slugify
 from .markdown_links import workspace_link
@@ -58,221 +56,6 @@ def render_curated_page_summary(page: dict[str, str]) -> str:
     if page.get("escalation_candidate") == "true":
         suffix_parts.append("需要升级处理")
     return f"- [{page['title']}](../../{page['path']}) | " + " | ".join(suffix_parts)
-
-
-def judgment_asset_gap_codes(page: dict[str, str]) -> list[str]:
-    if str(page.get("kind") or "") not in {"decision", "judgment"}:
-        return []
-    reasons: list[str] = []
-    if page.get("has_counter_evidence") != "true":
-        reasons.append("missing-counter-evidence")
-    if page.get("has_invalidation") != "true":
-        reasons.append("missing-invalidation")
-    if page.get("has_next_signals") != "true":
-        reasons.append("missing-next-signals")
-    if page.get("has_review_history") != "true":
-        reasons.append("missing-review-history")
-    if page.get("citation_drift") == "true":
-        reasons.append("citation-drift")
-    if int(page.get("citation_snapshot_gap_count", "0") or "0") > 0:
-        reasons.append("citation-snapshot-gap")
-    if page.get("has_counter_evidence_metadata") != "true":
-        reasons.append("missing-counter-evidence-metadata")
-    if page.get("has_invalidation_rule_metadata") != "true":
-        reasons.append("missing-invalidation-rule-metadata")
-    if page.get("has_next_signals_metadata") != "true":
-        reasons.append("missing-next-signals-metadata")
-    if page.get("has_formed_at_metadata") != "true":
-        reasons.append("missing-formed-at-metadata")
-    if page.get("has_last_reviewed_metadata") != "true":
-        reasons.append("missing-last-reviewed-metadata")
-    return reasons
-
-
-def judgment_asset_shell_record(
-    page: dict[str, str],
-    *,
-    active_protocol: str = DEFAULT_PROTOCOL,
-) -> dict[str, Any]:
-    asset_gaps = judgment_asset_gap_codes(page)
-    judgment_lifecycle_state, judgment_lifecycle_reason_codes = judgment_lifecycle_profile(page)
-    attention_reasons: list[str] = []
-    if page.get("escalation_candidate") == "true":
-        attention_reasons.append("escalation-candidate")
-    if page.get("overdue_review") == "true":
-        attention_reasons.append("overdue-review")
-    if page.get("pending_review") == "true":
-        attention_reasons.append("pending-review")
-    if page.get("aging_state") == "scheduled":
-        attention_reasons.append("scheduled-review")
-    for reason_code in asset_gaps:
-        if reason_code not in attention_reasons:
-            attention_reasons.append(reason_code)
-    return {
-        "page_id": str(page.get("page_id") or ""),
-        "title": str(page.get("title") or page.get("path") or ""),
-        "path": str(page.get("path") or ""),
-        "kind": str(page.get("kind") or ""),
-        "status": str(page.get("status") or ""),
-        "current_status": str(page.get("status") or ""),
-        "protocol": str(page.get("protocol") or ""),
-        "confidence": str(page.get("confidence") or ""),
-        "formed_at": str(page.get("formed_at") or ""),
-        "last_reviewed": str(page.get("last_reviewed") or page.get("reviewed_at") or ""),
-        "reviewed_at": str(page.get("reviewed_at") or ""),
-        "updated_at": str(page.get("updated_at") or ""),
-        "revisit_after": str(page.get("revisit_after") or ""),
-        "escalate_after": str(page.get("escalate_after") or ""),
-        "aging_state": str(page.get("aging_state") or ""),
-        "pending_review": str(page.get("pending_review") or "") == "true",
-        "overdue_review": str(page.get("overdue_review") or "") == "true",
-        "escalation_candidate": str(page.get("escalation_candidate") or "") == "true",
-        "focus_score": page_focus_score(active_protocol, page),
-        "asset_score": int(page.get("asset_score", "0") or "0"),
-        "has_counter_evidence": str(page.get("has_counter_evidence") or "") == "true",
-        "has_invalidation": str(page.get("has_invalidation") or "") == "true",
-        "has_next_signals": str(page.get("has_next_signals") or "") == "true",
-        "has_review_history": str(page.get("has_review_history") or "") == "true",
-        "has_counter_evidence_metadata": str(page.get("has_counter_evidence_metadata") or "") == "true",
-        "has_invalidation_rule_metadata": str(page.get("has_invalidation_rule_metadata") or "") == "true",
-        "has_next_signals_metadata": str(page.get("has_next_signals_metadata") or "") == "true",
-        "has_formed_at_metadata": str(page.get("has_formed_at_metadata") or "") == "true",
-        "has_last_reviewed_metadata": str(page.get("has_last_reviewed_metadata") or "") == "true",
-        "has_structured_counter_evidence": str(page.get("has_structured_counter_evidence") or "") == "true",
-        "has_structured_invalidation_rule": str(page.get("has_structured_invalidation_rule") or "") == "true",
-        "has_structured_next_signals": str(page.get("has_structured_next_signals") or "") == "true",
-        "counter_evidence_count": int(page.get("counter_evidence_count", "0") or "0"),
-        "next_signal_count": int(page.get("next_signal_count", "0") or "0"),
-        "invalidation_rule": str(page.get("invalidation_rule") or ""),
-        "review_history_entries": int(page.get("review_history_entries", "0") or "0"),
-        "latest_review_history_entry": str(page.get("latest_review_history_entry") or ""),
-        "citation_drift": str(page.get("citation_drift") or "") == "true",
-        "citation_drift_count": int(page.get("citation_drift_count", "0") or "0"),
-        "citation_snapshot_gap_count": int(page.get("citation_snapshot_gap_count", "0") or "0"),
-        "judgment_lifecycle_state": judgment_lifecycle_state,
-        "judgment_lifecycle_reason_codes": judgment_lifecycle_reason_codes,
-        "asset_gaps": asset_gaps,
-        "attention_reasons": attention_reasons,
-    }
-
-
-def judgment_asset_attention_sort_key(record: dict[str, Any]) -> tuple[Any, ...]:
-    return (
-        0 if record.get("escalation_candidate") else 1,
-        0 if record.get("overdue_review") else 1,
-        0 if record.get("pending_review") else 1,
-        0 if record.get("citation_drift") else 1,
-        0 if int(record.get("citation_snapshot_gap_count", 0) or 0) > 0 else 1,
-        -len(record.get("asset_gaps", [])),
-        int(record.get("asset_score", 0) or 0),
-        -int(record.get("focus_score", 0) or 0),
-        str(record.get("revisit_after") or record.get("escalate_after") or "9999"),
-        str(record.get("title") or "").lower(),
-    )
-
-
-def judgment_asset_summary(
-    decisions: list[dict[str, str]],
-    judgments: list[dict[str, str]],
-    *,
-    active_protocol: str = DEFAULT_PROTOCOL,
-) -> dict[str, Any]:
-    pages = sorted(
-        decisions + judgments,
-        key=lambda page: (
-            0 if page.get("escalation_candidate") == "true" else 1,
-            0 if page.get("overdue_review") == "true" else 1,
-            -page_focus_score(active_protocol, page),
-            -(int(page.get("asset_score", "0") or "0")),
-            page.get("title", "").lower(),
-        ),
-    )
-    strong_assets = [page for page in pages if int(page.get("asset_score", "0") or "0") >= 3]
-    missing_counter = [page for page in pages if page.get("has_counter_evidence") != "true"]
-    missing_invalidation = [page for page in pages if page.get("has_invalidation") != "true"]
-    missing_next_signals = [page for page in pages if page.get("has_next_signals") != "true"]
-    missing_history = [page for page in pages if page.get("has_review_history") != "true"]
-    drifted = [page for page in pages if page.get("citation_drift") == "true"]
-    snapshot_gaps = [page for page in pages if int(page.get("citation_snapshot_gap_count", "0") or "0") > 0]
-    missing_counter_metadata = [page for page in pages if page.get("has_counter_evidence_metadata") != "true"]
-    missing_invalidation_metadata = [page for page in pages if page.get("has_invalidation_rule_metadata") != "true"]
-    missing_next_signal_metadata = [page for page in pages if page.get("has_next_signals_metadata") != "true"]
-    missing_formed_at_metadata = [page for page in pages if page.get("has_formed_at_metadata") != "true"]
-    missing_last_reviewed_metadata = [page for page in pages if page.get("has_last_reviewed_metadata") != "true"]
-    shell_records = {
-        str(page.get("path") or ""): judgment_asset_shell_record(page, active_protocol=active_protocol)
-        for page in pages
-        if str(page.get("path") or "")
-    }
-    attention_pages = [
-        page for page in pages if shell_records.get(str(page.get("path") or ""), {}).get("attention_reasons")
-    ]
-    attention_records = [
-        shell_records[str(page.get("path") or "")]
-        for page in attention_pages
-        if str(page.get("path") or "") in shell_records
-    ]
-    attention_records.sort(key=judgment_asset_attention_sort_key)
-    strong_records = [
-        shell_records[str(page.get("path") or "")]
-        for page in strong_assets
-        if str(page.get("path") or "") in shell_records
-    ]
-    lifecycle_counts = {state: 0 for state in JUDGMENT_LIFECYCLE_STATES}
-    for record in shell_records.values():
-        lifecycle_state = str(record.get("judgment_lifecycle_state") or "")
-        if lifecycle_state in lifecycle_counts:
-            lifecycle_counts[lifecycle_state] += 1
-    return {
-        "counts": {
-            "pages": len(pages),
-            "decisions": len(decisions),
-            "judgments": len(judgments),
-            "strong_assets": len(strong_assets),
-            "attention_pages": len(attention_pages),
-            "missing_counter_evidence": len(missing_counter),
-            "missing_invalidation": len(missing_invalidation),
-            "missing_next_signals": len(missing_next_signals),
-            "missing_review_history": len(missing_history),
-            "missing_counter_evidence_metadata": len(missing_counter_metadata),
-            "missing_invalidation_rule_metadata": len(missing_invalidation_metadata),
-            "missing_next_signals_metadata": len(missing_next_signal_metadata),
-            "missing_formed_at_metadata": len(missing_formed_at_metadata),
-            "missing_last_reviewed_metadata": len(missing_last_reviewed_metadata),
-            "citation_drift": len(drifted),
-            "citation_snapshot_gaps": len(snapshot_gaps),
-            "pending_review": sum(1 for page in pages if page.get("pending_review") == "true"),
-            "overdue_review": sum(1 for page in pages if page.get("overdue_review") == "true"),
-            "scheduled_review": sum(1 for page in pages if page.get("aging_state") == "scheduled"),
-            "escalation_candidates": sum(1 for page in pages if page.get("escalation_candidate") == "true"),
-            "formed_lifecycle": lifecycle_counts["formed"],
-            "active_lifecycle": lifecycle_counts["active"],
-            "under_review_lifecycle": lifecycle_counts["under-review"],
-            "revised_lifecycle": lifecycle_counts["revised"],
-            "retired_lifecycle": lifecycle_counts["retired"],
-        },
-        "lists": {
-            "pages": pages,
-            "attention_pages": attention_pages,
-            "strong_assets": strong_assets,
-            "missing_counter_evidence": missing_counter,
-            "missing_invalidation": missing_invalidation,
-            "missing_next_signals": missing_next_signals,
-            "missing_review_history": missing_history,
-            "missing_counter_evidence_metadata": missing_counter_metadata,
-            "missing_invalidation_rule_metadata": missing_invalidation_metadata,
-            "missing_next_signals_metadata": missing_next_signal_metadata,
-            "missing_formed_at_metadata": missing_formed_at_metadata,
-            "missing_last_reviewed_metadata": missing_last_reviewed_metadata,
-            "citation_drift": drifted,
-            "citation_snapshot_gaps": snapshot_gaps,
-            "escalation_candidates": [page for page in pages if page.get("escalation_candidate") == "true"],
-        },
-        "attention_pages": attention_records,
-        "decision_focus": [record for record in attention_records if record.get("kind") == "decision"],
-        "judgment_focus": [record for record in attention_records if record.get("kind") == "judgment"],
-        "strong_assets": strong_records,
-    }
 
 
 def render_curated_index(
@@ -332,25 +115,6 @@ def render_curated_index(
         for page in snapshot_gaps[:12]:
             lines.append(render_curated_page_summary(page))
     return "\n".join(lines) + "\n"
-
-
-def render_judgment_assets(
-    root: Path,
-    decisions: list[dict[str, str]],
-    judgments: list[dict[str, str]],
-    compiled_at: str,
-    *,
-    active_protocol: str = DEFAULT_PROTOCOL,
-) -> str:
-    from .judgment_assets import render_judgment_assets as _render_judgment_assets
-
-    return _render_judgment_assets(
-        root,
-        decisions,
-        judgments,
-        compiled_at,
-        active_protocol=active_protocol,
-    )
 
 
 def render_cognitive_history(

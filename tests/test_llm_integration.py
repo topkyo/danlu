@@ -385,6 +385,52 @@ def test_openai_compat_client_invalid_json(monkeypatch: pytest.MonkeyPatch, tmp_
     assert exc_info.value.raw_response_path.startswith(".aiwiki/llm-responses/")
 
 
+def test_write_raw_response_rotates_oldest_files(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Rotation keeps only the newest _LLM_RAW_RESPONSE_KEEP files (lexicographic = chronological)."""
+
+    from aiwiki import llm as llm_module
+
+    monkeypatch.setattr(llm_module, "_LLM_RAW_RESPONSE_KEEP", 3)
+    responses_dir = tmp_path / ".aiwiki" / "llm-responses"
+    responses_dir.mkdir(parents=True)
+    for index in range(5):
+        (responses_dir / f"2020-01-0{index}T000000+0000-stale{index}.txt").write_text(
+            f"old {index}", encoding="utf-8"
+        )
+
+    written = llm_module._write_raw_response(tmp_path, "fresh response")
+
+    remaining = sorted(path.name for path in responses_dir.iterdir())
+    assert len(remaining) == 3
+    assert written == f".aiwiki/llm-responses/{remaining[-1]}"
+    assert "2020-01-00T000000+0000-stale0.txt" not in remaining
+    assert "2020-01-01T000000+0000-stale1.txt" not in remaining
+    assert "2020-01-02T000000+0000-stale2.txt" not in remaining
+
+
+def test_write_raw_response_rotation_failure_does_not_break_write(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A pruning failure is logged and swallowed; the write still returns a path."""
+
+    from aiwiki import llm as llm_module
+
+    monkeypatch.setattr(llm_module, "_LLM_RAW_RESPONSE_KEEP", 1)
+    responses_dir = tmp_path / ".aiwiki" / "llm-responses"
+    responses_dir.mkdir(parents=True)
+    (responses_dir / "2020-01-01T000000+0000-old.txt").write_text("old", encoding="utf-8")
+
+    def _boom(self: Path) -> None:
+        raise OSError("unlink blocked")
+
+    monkeypatch.setattr(Path, "unlink", _boom)
+
+    written = llm_module._write_raw_response(tmp_path, "fresh response")
+
+    assert written.startswith(".aiwiki/llm-responses/")
+    assert (tmp_path / written).is_file()
+
+
 def test_openai_compat_client_empty_content(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Valid JSON with empty content surfaces as LLMError."""
 

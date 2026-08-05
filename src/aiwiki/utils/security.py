@@ -16,6 +16,15 @@ class FetchPolicyError(ValueError):
     """Raised when a fetch is rejected by safety policy (SSRF / size / scheme)."""
 
 
+class PrivateAddressError(FetchPolicyError):
+    """Raised when a host resolves to a private/link-local address.
+
+    Subclass of FetchPolicyError so existing ``except FetchPolicyError`` callers
+    keep working, while structural detection (``_is_private_address``) can key
+    off the type instead of matching message text.
+    """
+
+
 class PathOutsideWorkspaceError(ValueError):
     """Raised when a resolved path falls outside the allowed workspace root."""
 
@@ -148,7 +157,7 @@ def _resolve_and_check_host(host: str, port: int | None, *, allow_private: bool)
             ip = ip.ipv4_mapped
             family = socket.AF_INET
         if _ip_is_private_or_link_local(ip) and not allow_private:
-            raise FetchPolicyError(f"private/link-local host rejected: {host}")
+            raise PrivateAddressError(f"private/link-local host rejected: {host}")
         item = (family, str(ip))
         if item not in seen:
             seen.add(item)
@@ -162,10 +171,8 @@ def _is_private_address(host: str) -> bool:
     """Resolve `host` and return True if any A/AAAA record is private/link-local."""
     try:
         _resolve_and_check_host(host, None, allow_private=False)
-    except FetchPolicyError as exc:
-        if "private/link-local" in str(exc):
-            return True
-        raise
+    except PrivateAddressError:
+        return True
     return False
 
 
@@ -250,6 +257,17 @@ def safe_fetch(
                 current, pinned_list = _validate_safe_url(
                     urljoin(current, location), allow_private=allow_private, enforce_allowlist=True
                 )
+                if exc.code in (301, 302, 303) and method not in ("GET", "HEAD"):
+                    # Standard redirect semantics (matching urllib's own redirect
+                    # handler): 301/302/303 downgrade non-GET/HEAD to GET and drop
+                    # the body; 307/308 preserve method + body verbatim.
+                    method = "GET"
+                    data = None
+                    current_headers = {
+                        key: value
+                        for key, value in current_headers.items()
+                        if key.lower() not in ("content-type", "content-length")
+                    }
                 redirects += 1
                 continue
             raise

@@ -23,11 +23,9 @@ from ..llm import classify_backend_error
 from ..memory.state import load_machine_memory
 from ..planner.state import load_planner_state, load_query_route_telemetry
 from ..protocol.scaffold import ensure_layout
+from ..render.judgment_assets import judgment_asset_summary
 from ..render.paths import (
     shell_summary_path,
-)
-from ..render.views import (
-    judgment_asset_summary,
 )
 from ..state.io import load_json_document
 from ..utils.path import relative_path

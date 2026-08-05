@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import logging
 import mimetypes
 import os
 import socket
@@ -15,7 +16,7 @@ from pathlib import Path
 from typing import Any
 from urllib import error
 
-from aiwiki.utils.io import atomic_write_text
+from aiwiki.utils.io import atomic_write_text, is_atomic_write_tmp_path
 from aiwiki.utils.security import FetchPolicyError, safe_fetch
 
 from .config import (
@@ -27,6 +28,8 @@ from .config import (
     DEFAULT_OPENCODE_MODEL,
     LLMConfig,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class LLMError(RuntimeError):
@@ -69,6 +72,7 @@ title: probe
 ---
 ok"""
 _LLM_MAX_BYTES = 10 * 1024 * 1024
+_LLM_RAW_RESPONSE_KEEP = 500
 _RETRYABLE_HTTP_STATUS_CODES = {429, 500, 502, 503, 504}
 
 
@@ -596,6 +600,17 @@ def _write_raw_response(root: Path, raw_text: str) -> str:
         atomic_write_text(path, text)
     except OSError as exc:  # pragma: no cover - environment dependent best-effort path
         return f"write_failed:{exc}"
+    # Best-effort rotation: filenames start with a fixed-width UTC timestamp, so
+    # lexicographic order is chronological. Pruning must never break the write path.
+    try:
+        files = sorted(
+            item for item in path.parent.iterdir() if item.is_file() and not is_atomic_write_tmp_path(item)
+        )
+        overflow = len(files) - _LLM_RAW_RESPONSE_KEEP
+        for stale in files[: max(0, overflow)]:
+            stale.unlink()
+    except OSError as exc:
+        logger.warning("failed to prune LLM raw responses in %s: %s", path.parent, exc)
     return relative.as_posix()
 
 

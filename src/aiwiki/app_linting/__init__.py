@@ -25,10 +25,12 @@ from .nightly import (
     write_nightly_health,
 )
 from .phases import (
-    _lint_curated_phase,
-    _lint_governance_phase,
     _lint_layout_phase,
     _lint_runtime_phase,
+)
+from .phases_governance import (
+    _lint_curated_phase,
+    _lint_governance_phase,
 )
 from .repair import render_repair_backlog
 

@@ -241,4 +241,15 @@ OUT=/tmp/main.js.rebuilt bash build.sh && diff main.js /tmp/main.js.rebuilt
 1. Active 文档残留引用：`docs/DEVELOPER.md` 的 `execution/` 行与热点行（仍列已删的 `machine_memory_actions` / 不存在的 `l3_proposals`）、`docs/Furnace Evolution Mechanics.md` 的 `build_execution_receipt`（实为 `build_elixir_*_receipt` 三件套）——已改。
 2. `analyze_image` 重试 parity 此前只有间接覆盖——已在 `tests/test_llm_integration.py` 加直接测试（llm-integration 82→**83**）。
 3. `scripts/verify_target_rules.sh` 不认识新 target——已映射 `utils/security.py` / `vault/*` / 两个新测试文件 → `unit`；`docs_consistency_check.sh` 新增计数钉（acceptance 24 / llm 83 / unit 67 / Jest 203 四组数字跨 verify.sh + AGENTS + Scorecard + DEVELOPER 一致性）。
+
 4. F-2 删除造成的新孤儿 `src/aiwiki/autonomy_domains.py`（全仓零引用，apply 决策分类器）——已删；`autonomy_policy.py` 的 `disabled_reason` kill switch 仍存活（llm.py 在用），不动。
+
+## 第二波执行结果（2026-08-05：F-11 部分 + F-9 + 安全加固）
+
+| 项 | 状态 | 证据 |
+| --- | --- | --- |
+| F-9 llm-responses 无轮转 | **done** | `_write_raw_response` 内置 best-effort 轮转（`_LLM_RAW_RESPONSE_KEEP=500`；UTC 文件名前缀字典序=时序；prune 失败仅告警、不断写路径）；2 个直接测试锁定（保留最新 N / prune 失败不传播） |
+| F-11 巨函数/巨石模块 | **partial done** | concepts.py 1197→**812**（质量簇 7 函数 → `content/concept_quality.py` 402 行；`detect_concept_*_signals` 因 concepts→quality 环风险留在原处）；views.py 1178→**942**（判断资产簇 5 函数并入既有 `render/judgment_assets.py` →440）；`app_linting/phases.py` 829→**307**（governance+curated → `phases_governance.py` 537 行，core/`__init__` 直引 owner，无 re-export seam）。剩余：views.py 仍 942、execution/runner 侧巨函数 |
+| 复审低危安全项 | **done** | safe_fetch 301/302/303 对非 GET/HEAD 降级 GET 并丢 body/Content-*（307/308 保持方法+body）；`PrivateAddressError(FetchPolicyError)` 结构化检测替代消息子串匹配；3 个重定向测试 + 2 个结构化测试 |
+
+**验证终态**：`verify.sh all` 绿——acceptance **24** / llm-integration **85** / Jest **203** / unit **72** / coverage **64%**（informational）/ docs consistency exit 0。

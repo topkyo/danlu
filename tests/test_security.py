@@ -27,6 +27,7 @@ import pytest
 from aiwiki.utils.security import (
     FetchPolicyError,
     PathOutsideWorkspaceError,
+    PrivateAddressError,
     _is_private_address,
     _NoRedirectHandler,
     _PinnedAddress,
@@ -249,6 +250,16 @@ class TestIsPrivateAddress:
             with pytest.raises(FetchPolicyError, match="DNS resolution failed"):
                 _is_private_address("nope.example")
 
+    def test_private_rejection_raises_structured_subclass(self):
+        # _is_private_address keys off the PrivateAddressError type, not the
+        # message text; the message itself stays unchanged for existing callers.
+        with mock.patch(_GETADDRINFO, return_value=_gai_entries("10.0.0.1")):
+            with pytest.raises(PrivateAddressError, match="private/link-local host rejected: internal.example"):
+                _resolve_and_check_host("internal.example", None, allow_private=False)
+
+    def test_private_address_error_is_fetch_policy_error(self):
+        assert issubclass(PrivateAddressError, FetchPolicyError)
+
 
 class TestSafeFetch:
     def test_happy_path_returns_body_final_url_and_default_user_agent(self):
@@ -390,6 +401,81 @@ class TestSafeFetch:
         assert headers["content-type"] == "application/json"
         # A caller-supplied User-Agent must not be overwritten by the default.
         assert headers["user-agent"] == "custom/1.0"
+
+    def test_post_302_redirect_downgrades_to_get_and_drops_body(self):
+        opener = _FakeOpener([
+            _redirect("/b"),
+            _FakeResponse([b"ok"], "http://example.com/b"),
+        ])
+        body, final_url = _run_fetch(
+            opener,
+            {"example.com": [PUBLIC_V4]},
+            url="http://example.com/a",
+            method="POST",
+            data=b"payload",
+            headers={"Content-Type": "application/json", "Content-Length": "7"},
+            max_bytes=100,
+            timeout=5.0,
+        )
+        assert body == b"ok"
+        assert final_url == "http://example.com/b"
+        assert len(opener.requests) == 2
+        first = opener.requests[0]
+        assert first.method == "POST"
+        assert first.data == b"payload"
+        second = opener.requests[1]
+        assert second.method == "GET"
+        assert second.data is None
+        second_headers = _header_dict(second)
+        assert "content-type" not in second_headers
+        assert "content-length" not in second_headers
+
+    def test_post_307_redirect_preserves_method_and_body(self):
+        opener = _FakeOpener([
+            _redirect("/b", code=307),
+            _FakeResponse([b"ok"], "http://example.com/b"),
+        ])
+        body, _final_url = _run_fetch(
+            opener,
+            {"example.com": [PUBLIC_V4]},
+            url="http://example.com/a",
+            method="POST",
+            data=b"payload",
+            headers={"Content-Type": "application/json"},
+            max_bytes=100,
+            timeout=5.0,
+        )
+        assert body == b"ok"
+        assert len(opener.requests) == 2
+        second = opener.requests[1]
+        assert second.method == "POST"
+        assert second.data == b"payload"
+        assert _header_dict(second)["content-type"] == "application/json"
+
+    def test_cross_host_post_302_redirect_downgrades_and_strips_auth(self):
+        opener = _FakeOpener([
+            _redirect("http://b.example/landing"),
+            _FakeResponse([b"ok"], "http://b.example/landing"),
+        ])
+        body, _final_url = _run_fetch(
+            opener,
+            {"a.example": [PUBLIC_V4], "b.example": [PUBLIC_V4_B]},
+            url="http://a.example/start",
+            method="POST",
+            data=b"payload",
+            headers={"Authorization": "Bearer token", "Content-Type": "application/json"},
+            max_bytes=100,
+            timeout=5.0,
+        )
+        assert body == b"ok"
+        assert len(opener.requests) == 2
+        second = opener.requests[1]
+        assert second.method == "GET"
+        assert second.data is None
+        second_headers = _header_dict(second)
+        assert "authorization" not in second_headers
+        assert "content-type" not in second_headers
+        assert "content-length" not in second_headers
 
     def test_safe_fetch_enforces_allowlist_env(self, monkeypatch):
         monkeypatch.setenv("AIWIKI_SAFE_FETCH_HOST_ALLOWLIST", "allowed.example")

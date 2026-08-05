@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from ..content.concepts import build_concept_quality
+from ..content.concept_quality import build_concept_quality
 from ..content.io import (
     collect_output_density_artifacts,
     collect_recent_output_artifacts,

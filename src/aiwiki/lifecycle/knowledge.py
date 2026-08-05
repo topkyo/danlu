@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..content.concepts import build_concept_quality
+from ..content.concept_quality import build_concept_quality
 from ..content.io import entry_ids_from_paths, entry_lookup_maps
 from ..content.material import load_active_corpora_state
 from ..content.rewrite import load_concept_rewrite_state

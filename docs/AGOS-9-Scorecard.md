@@ -25,8 +25,8 @@ updated_at: "2026-07-26"
 | 组件 | 数量 | 命令 |
 |---|---:|---|
 | Acceptance | **24** passed | `bash scripts/verify.sh acceptance` |
-| LLM integration | **83** passed | `bash scripts/verify.sh llm-integration` |
-| Unit（library 级） | **67** passed | `bash scripts/verify.sh unit` |
+| LLM integration | **85** passed | `bash scripts/verify.sh llm-integration` |
+| Unit（library 级） | **72** passed | `bash scripts/verify.sh unit` |
 | Product Shell Jest | **203** passed | `bash scripts/verify.sh product-shell-static` |
 | Bundle drift | gate（正反向实测） | 含于 `product-shell-static` |
 | Coverage | **64%**（informational，无门禁） | `bash scripts/verify.sh coverage` |
@@ -90,7 +90,7 @@ updated_at: "2026-07-26"
 | Product Shell | 12% | 9.3 | yes | Jest **203** + bundle drift 硬门禁 + sync `run-ask` 单飞 + Today-first |
 | Runtime correctness | 15% | 9.4 | no | path harden + fail-closed LLM；无 background submit/resume |
 | Planner / signal | 10% | 8.7 | no | internal modules；CLI 已删；acceptance replay |
-| LLM reliability | 12% | 9.0 | no | llm-integration **83** + receipt 聚合 |
+| LLM reliability | 12% | 9.0 | no | llm-integration **85** + receipt 聚合 |
 | Governance | 13% | 9.1 | yes | review-page / alchemy-revert / gc-orphans / file-back receipts；无入口 mm_actions 治理簇 2026-08-04 已整簇删除 |
 | Maintainability | 8% | 9.0 | no | 顶层 `app_*.py` = 0；cli facade 归零；Ask 路径净删 background；治理孤儿簇 −4.6k 行 |
 | Docs SoT | 10% | 8.9 | yes | active docs 对齐；本轮刷新计数 |
@@ -103,9 +103,9 @@ updated_at: "2026-07-26"
 |---|------|----------|
 | 1 | Full verify | `bash scripts/verify.sh all` |
 | 2 | Acceptance | **24** — `bash scripts/verify.sh acceptance` |
-| 3 | LLM integration | **83** — `bash scripts/verify.sh llm-integration` |
+| 3 | LLM integration | **85** — `bash scripts/verify.sh llm-integration` |
 | 4 | Product Shell | Jest **203** + bundle drift gate — `bash scripts/verify.sh product-shell-static` |
-| 5 | Unit | **67** — `bash scripts/verify.sh unit` |
+| 5 | Unit | **72** — `bash scripts/verify.sh unit` |
 | 6 | Docs consistency | `bash scripts/docs_consistency_check.sh` |
 | 7 | CI | `.github/workflows/verify.yml` |
 
@@ -139,3 +139,4 @@ updated_at: "2026-07-26"
 - 2026-07-26：沉淀/金丹写端瘦身 + curated Properties leaf sync + WS2 wheel 后实测 acceptance **24** / Jest **200** / llm **79**；同日晚 SoT 卫生对齐 Jest **206**（实测）。
 - 2026-08-03：多 agent 全量审计（综合 **7.4/10**）+ 收口计划 `docs/plans/2026-08-03-multi-agent-audit-remediation.md` 全部 7 波执行完毕——W0 rewrite-proposal 清理归属守卫（P0 数据安全）；W1 ruff F401 启用（1594 处死 import 清除）+ 脚本加固；W2 死代码删除（`vault_queue.py` 等，Python + JS）；W3 bridge launcher 180s 超时 + 4MB 输出上限；W4 today-feed schema 对齐 Python SoT（修掉 JS 幻影 `proposal` kind）+ compile-state 键注册表收敛；W5 prompt 注入边界包装（`<untrusted_source>`）+ planner/distill/vision LLM receipts + fetch_raw 失败挪出正文 + config env 解析保护；W6 巨石四刀外提（graph_query 474→375 / workflows_ask 490→226 / repair 416→78 / mm_actions 361→328 行；JS 刀评估后保留，差异有测试锁定）。verify 实测 acceptance **24** / Jest **203** / llm **82**。
 - 2026-08-04：独立全量复评（综合 **6.8/10**，证据与收口清单见 `docs/plans/2026-08-04-full-scan-evaluation.md`）+ 4-agent 收口执行——F-1 main.js bundle 漂移修复（W4 修复此前未进产物）+ verify 新增 drift 硬门禁（正反向实测）+ `sync_product_shell_plugin` 前置 build；F-2 无入口治理簇 8 模块 ~4.6k 行整簇删除（用户裁定）；F-3 `utils/security.py` 覆盖 39%→**99%**（56 例）；F-4 vault plugin/bootstrap 11 例 + verify 新增 `unit` 硬门禁（**67**）与 `coverage` 无门禁报告（实测 **64%**）；F-5~F-8 facade 归零 / POSIX classifier / 计数修正 / `analyze_image` 重试 parity。复审收尾：`autonomy_domains` 死模块删除、`analyze_image` 重试测试锁定、`verify_target_rules` 映射 unit、一致性检查新增计数钉。verify 实测 acceptance **24** / llm **83** / Jest **203** / unit **67**。
+- 2026-08-05：收口第二波（F-11 部分 + F-9 + 安全加固）——concepts.py 1197→812（质量簇 → `content/concept_quality.py`）；views.py 1178→942（判断资产簇并入 `render/judgment_assets.py`）；`app_linting` phases.py 829→307（governance/curated → `phases_governance.py`）；F-9 llm-responses 轮转（keep 500，best-effort）；safe_fetch 301/302/303 方法降级 + `PrivateAddressError` 结构化检测。verify 实测 acceptance **24** / llm **85** / Jest **203** / unit **72**。

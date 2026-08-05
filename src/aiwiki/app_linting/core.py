@@ -134,8 +134,10 @@ def _write_lint_report(context: _LintContext) -> dict[str, Any]:
 
 
 from .phases import (  # noqa: E402
-    _lint_curated_phase,
-    _lint_governance_phase,
     _lint_layout_phase,
     _lint_runtime_phase,
+)
+from .phases_governance import (  # noqa: E402
+    _lint_curated_phase,
+    _lint_governance_phase,
 )
