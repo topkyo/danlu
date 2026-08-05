@@ -32,6 +32,7 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
 - `src/aiwiki/compile/ranking.py`：10 个 ranking 函数从 `app_compile.py` 迁入。
 
 ### Changed
+- 工程实测七维复评 **R5 = 8.6**（R4 8.5 / R3 8.3）；报告 `docs/plans/2026-08-05-multi-agent-reevaluation-r5.md`。
 - `utils/text.tokenize`：CJK Lucene-style bigram 切分（拉丁不变），修复中文检索/concept ranking 静默失效。
 - `drop/repo` / `drop/url` / `protocol/runtime_config.CONFLICT_SIGNAL_PAIRS`：扩后缀、正文选择器与中英冲突信号对。
 - Hub decomposition（用户显式覆盖原 AGENTS.md 「legacy hub 另一条搬迁线」定案）：`app_utils.py` / `app_state.py` / `app_compile.py` 删除，函数体原样下沉到 `utils/` + `state/` + owner 子包；`content/memory.py` 1350 行拆到 4 个 owner 模块，缩为仅含 2 个 A 域辅助函数；原 `app_compile` ranking 迁至 `compile/ranking.py`。约 165 文件 import 更新，测试 patch target 同步迁移。无 re-export compat 保留。

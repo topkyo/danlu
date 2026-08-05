@@ -47,7 +47,7 @@ updated_at: "2026-08-05"
 
 > **双分数横幅（勿混标）**
 > - **本表**：Local Engineering Gate 加权 **9.05** = fixture / verify / 文档门禁自评尺子（可宣称 engineering 就绪）。
-> - **工程实测七维**（覆盖、产物漂移、死代码、SoT 卫生等）：**8.3**（2026-08-05 R3，corpus+facade 后）／曾 **8.2**（R2）／**7.9**／**6.8**。报告：`docs/plans/2026-08-05-multi-agent-reevaluation-r3.md`。  
+> - **工程实测七维**（覆盖、产物漂移、死代码、SoT 卫生等）：**8.6**（2026-08-05 R5，P1 合入后）／曾 **8.5**（R4）／**8.3**（R3）／**8.2**／**7.9**／**6.8**。报告：`docs/plans/2026-08-05-multi-agent-reevaluation-r5.md`。  
 > - **非** live dogfood；**非** 商业可售分。
 
 | 维度 | 权重 | 分 | 加权 |
@@ -64,7 +64,7 @@ updated_at: "2026-08-05"
 
 **历史对照**：2026-07-18 ≈ **9.07**；2026-07-19 audit 漂移 ≈ **8.4**；2026-07-22 Ask sync 后回升至 **9.05**（架构净简化 + verify 全绿；Live 仍 not-yet）。本表八维**未**因 08-04/08-05 工程实测复评而重算。
 
-**并列尺子（非本表加权）**：工程实测七维 **8.3**（08-05 R3）；Commercial Go-Live ≈ **7.8**（未达诚实可售 ≥8.0）；Ask 架构子尺 A/B 各 **8.0**。
+**并列尺子（非本表加权）**：工程实测七维 **8.6**（08-05 R5）；Commercial Go-Live ≈ **7.8**（未达诚实可售 ≥8.0）；Ask 架构子尺 A/B 各 **8.0**。
 
 ### Live Dogfood — 状态摘要（2026-07-22）
 
@@ -156,3 +156,4 @@ updated_at: "2026-08-05"
 - 2026-08-05（review fix）：`machine_memory` 改为必传 keyword；补 TypeError 契约测；unit **151→153**。
 - 2026-08-05（corpus S2）：parse/sections/snapshots/link_state 下沉；memory ↛ content；unit **153→154**。
 - 2026-08-05（P1 分修）：六命令 CLI 烟测 + promote revert_supported + frontmatter/metrics_io；unit **154→160**。
+- 2026-08-05（复评 R5）：工程实测横幅 **8.3→8.6**；报告 `docs/plans/2026-08-05-multi-agent-reevaluation-r5.md`（R4 8.5 见 r4）。

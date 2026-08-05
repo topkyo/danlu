@@ -13,7 +13,7 @@ supersedes: []
 
 # 炼丹炉 Post-Cleanup 全量审计与下一步方向（2026-07-15）
 
-> **结论先行**：Commercial Grade Cleanup 已收口。**三套分数勿混用**——Scorecard **Local Engineering Gate 9.05**（fixture/verify 门禁加权，可诚实宣称 engineering 就绪）；工程实测七维 **8.2**（2026-08-05 傍晚 R2 全量扫描，见 `docs/plans/2026-08-05-multi-agent-full-scan-r2.md`；今早复评 7.9 / 08-04 曾 6.8）；**商业可售约 7.8**。**Live Dogfood Gate not-yet**。主缺口在 go-live 触点与分发，不在再开一轮 cleanup。下一独立计划应是 **Commercial Go-Live**，辅以小范围 SoT/可靠性修补。
+> **结论先行**：Commercial Grade Cleanup 已收口。**三套分数勿混用**——Scorecard **Local Engineering Gate 9.05**（fixture/verify 门禁加权，可诚实宣称 engineering 就绪）；工程实测七维 **8.6**（2026-08-05 R5，见 `docs/plans/2026-08-05-multi-agent-reevaluation-r5.md`；曾 R4 8.5 / R3 8.3 / R2 8.2 / 早 7.9 / 08-04 6.8）；**商业可售约 7.8**。**Live Dogfood Gate not-yet**。主缺口在 go-live 触点与分发，不在再开一轮 cleanup。下一独立计划应是 **Commercial Go-Live**，辅以小范围 SoT/可靠性修补。
 
 本文件同时是**审计报告**与**下一波执行计划 SoT**（Commercial Go-Live WS1–WS6）。
 
@@ -29,7 +29,7 @@ supersedes: []
 | Tests | acceptance **24** + llm-integration **85** + unit **160** + Jest **203**（2026-08-05 P1 分修后实测；历史快照曾含 24/85/154、24/85/143、24/85/81 等） | `bash scripts/verify.sh all` |
 | Top hubs（单文件） | `content/concepts.py` 812 / `drop/url.py` 790 / `content/io.py` **677** / `render/views.py` **668** / `execution/ask.py` **665**；`workflows_ask` **334**（writeback **479**）；无 1000+ LOC；外提 `ask_report` / `file_back` / `output_artifacts` / `workflows_ask_writeback`；`execution/machine_memory_actions` 等 8 治理孤儿簇 **DELETED**（2026-08-04）；`auto_adopt` / 根级 `app_*.py` **DELETED** | `wc -l` 2026-08-05 hub seams |
 | `except Exception` | **~65**；裸 `except Exception: pass` **0** | ripgrep 2026-08-05 |
-| AgentOS Scorecard | **Local Engineering Gate 9.05**（自评门禁）；工程实测七维 **8.2**；Live Dogfood **not-yet** | Scorecard + `docs/plans/2026-08-05-multi-agent-full-scan-r2.md` |
+| AgentOS Scorecard | **Local Engineering Gate 9.05**（自评门禁）；工程实测七维 **8.6**；Live Dogfood **not-yet** | Scorecard + `docs/plans/2026-08-05-multi-agent-reevaluation-r5.md` |
 | 商业审计综合 | **~7.8**（cleanup 后再评；未本轮重测） | archive Cleanup Plan §1.6 |
 | 当前执行计划 | 本文件（Commercial Go-Live WS1–WS6）+ PROGRESS 头条 | `PROGRESS.md` / `AGENTS.md` |
 | 现场 verify | `verify.sh all` EXIT=0（含 unit/coverage informational + bundle drift gate） | 2026-08-05 |
@@ -39,7 +39,7 @@ supersedes: []
 | 尺子 | 测什么 | 分 | 可否对外说「可售」 |
 |---|---|---:|---|
 | AGOS-9 Scorecard Local Eng | fixture / verify / governance / Shell 门禁加权 | **9.05** | **否** — 不含 live dogfood / 邮箱/EULA/价格/pip |
-| 工程实测七维 | 多 agent 扫描（覆盖/产物/死代码/SoT） | **7.9**（08-05；08-04 曾 6.8） | **否** — 对内工程可信度，非可售 |
+| 工程实测七维 | 多 agent 扫描（覆盖/产物/死代码/SoT） | **8.6**（08-05 R5；曾 8.5/8.3/8.2/7.9/6.8） | **否** — 对内工程可信度，非可售 |
 | 商业审计 | 包装、分发、运维门槛、购买路径 | ~7.8 | **否** — 过 cleanup gate，差 go-live |
 
 对外口径必须拆开：**门禁就绪** ≠ **工程实测满分** ≠ **商业可购**。
@@ -262,6 +262,7 @@ Review gate：编码 PR 独立 read-only reviewer（correctness / scope / missin
 
 ## 11. 更新记录
 
+- 2026-08-05：多 agent 复评 R5 — 工程实测 **8.5→8.6**（P1 合入后）；报告 `docs/plans/2026-08-05-multi-agent-reevaluation-r5.md`；R4（P1 前 8.5）同步归档后记。
 - 2026-08-05：P1 分修 — unit **154→160**（`test_cli_surfaces` 六命令烟测）；`workflows_ask` writeback seam；promote `revert_supported`；frontmatter / metrics_io / CHANGELOG+corpus 叙事。
 - 2026-08-05：归档裁定 — **暂不归档**；继续作 Commercial Go-Live 执行 SoT，直至可售门槛或被 supersedes。
 - 2026-08-05：文档卫生快刀 — §1 刷新为 194 py / ~44.7k LOC、verify **24/85/72/203**、现行 top hubs（去掉已删 `machine_memory_actions`）；结论与分数表并列 Local Eng **9.05** / 工程实测 **7.9** / 商业 **~7.8**；§8/§9 Jest 与 drift 门禁口径对齐。
