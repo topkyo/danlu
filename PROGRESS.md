@@ -15,6 +15,8 @@
 
 ## 当前动态
 
+- 2026-08-05 (**corpus 共享层 · 方案 A**)：新建 `aiwiki.corpus`（paths/scoring/ranks）；`content ↛ memory` 环断开（machine_memory 调用方注入）；`docs_consistency` + library 测钉分层。计划：`docs/plans/2026-08-05-corpus-shared-layer.md`。
+
 - 2026-08-05 (**优先债收口，不含 Commercial 三阻断**)：Post-Cleanup/Scorecard/DEVELOPER 对齐 unit **147** / coverage **69%** / 工程实测 **8.2**；`untrusted_source` + `alchemy-revert` library 测入 `verify unit`；`docs_consistency` 钉 Post-Cleanup。报告 R2 + 结构债分析见会话。
 
 - 2026-08-05 (**repair 路径补测**)：`app_linting/repair.py` 3%→**100%**、`execution/repair_plan.py` 27%→**100%**、`execution/patch_plan.py` 21%→**99%**（余 1 行 dead-by-config）；新增 `tests/test_repair.py` 62 例，unit **81→143**。verify 绿。
@@ -148,10 +150,10 @@
 ```text
 说人话。先读 PROGRESS.md 头条 + docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md；评分勿混：Local Eng 9.05 ≠ 工程实测 8.2 ≠ 商业 ~7.8。
 
-已完成：F-1~F-13；R-1~R-7；优先债 D-1/D-2/S-1/G-1（unit 147、coverage 69%、alchemy-revert + untrusted_source 测）；结构债仍开（content↔memory 环 / hub / facade）。Commercial 三阻断未做。
+已完成：F-1~F-13；R-1~R-7；优先债；**corpus 方案 A**（content↛memory，unit 149）。结构债余：facade / hub / memory→content 窄依赖。Commercial 三阻断未做。
 
 下一刀优先（择一）：
-1) 结构债：按「彻底解法」单 seam 拆 content↔memory（禁止 broad rewrite）
+1) facade 清零（app_shell/app_linting）或 hub 单 seam
 2) Commercial：EULA 法律签收 / twine + tag / Demo 媒体
 3) T-1 低覆盖活路径（memory/status、drop/*、trace）— 可选
 4) 勿宣称 AgentOS 9 live / 诚实可售 / 用 9.05 冒充工程实测

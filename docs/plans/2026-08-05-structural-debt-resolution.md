@@ -157,7 +157,7 @@ F-11 已外提 concept_quality / judgment_assets / phases_governance；views/ask
 
 ## 7. 与优先债的关系
 
-本轮已收：文档计数、untrusted_source 测、alchemy-revert 测。  
-**结构债未动**——故意：它是架构迁移，不是文档/补测快刀；需用户确认方案 A/B 后再 `writing-plans` → 执行。
+优先债已收：文档计数、untrusted_source 测、alchemy-revert 测。  
+**方案 A 首波已落地**（2026-08-05）：`aiwiki.corpus` + `content ↛ memory`（见 `docs/plans/2026-08-05-corpus-shared-layer.md`）。仍开：facade、hub、`memory→content` 窄依赖全迁。
 
 Commercial 三阻断与结构债正交，互不阻塞。

@@ -102,6 +102,45 @@ def test_cli_main_wires_dispatch_main() -> None:
     assert cli_main.main is cli_dispatch.main
 
 
+def _package_import_from_targets(package_dir: Path) -> list[tuple[Path, str, int]]:
+    """Return (path, module, level) for every ImportFrom in a package tree."""
+    import ast
+
+    hits: list[tuple[Path, str, int]] = []
+    for path in sorted(package_dir.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                hits.append((path, node.module, node.level))
+    return hits
+
+
+def test_content_package_does_not_import_memory() -> None:
+    root = Path("src/aiwiki/content")
+    offenders: list[str] = []
+    for path, module, level in _package_import_from_targets(root):
+        if module.startswith("aiwiki.memory"):
+            offenders.append(f"{path}:{module}")
+        if level >= 1 and (module == "memory" or module.startswith("memory.")):
+            offenders.append(f"{path}: relative {'.' * level}{module}")
+    assert offenders == []
+
+
+def test_corpus_package_does_not_import_content_or_memory() -> None:
+    root = Path("src/aiwiki/corpus")
+    offenders: list[str] = []
+    for path, module, level in _package_import_from_targets(root):
+        if module.startswith("aiwiki.content") or module.startswith("aiwiki.memory"):
+            offenders.append(f"{path}:{module}")
+        if level >= 1 and (
+            module in {"content", "memory"}
+            or module.startswith("content.")
+            or module.startswith("memory.")
+        ):
+            offenders.append(f"{path}: relative {'.' * level}{module}")
+    assert offenders == []
+
+
 def test_wrap_untrusted_source_includes_name_and_closing_tag() -> None:
     wrapped = _wrap_untrusted_source("wiki/derived/example.md", "hello world")
     assert wrapped.startswith('<untrusted_source name="wiki/derived/example.md">')
