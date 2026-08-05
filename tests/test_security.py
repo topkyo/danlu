@@ -611,3 +611,76 @@ class TestSafeResolveWithin:
         link.symlink_to(outside)
         with pytest.raises(PathOutsideWorkspaceError, match="not within"):
             safe_resolve_within(link / "file.txt", root)
+
+
+class TestPlaywrightRouteGuard:
+    def test_render_url_with_playwright_never_continues_route(self):
+        import inspect
+
+        from aiwiki.drop import url as drop_url_module
+
+        render_source = inspect.getsource(drop_url_module._render_url_with_playwright)
+        assert "route.continue_" not in render_source
+        helper_source = inspect.getsource(drop_url_module._playwright_route_via_safe_fetch)
+        assert "safe_fetch" in helper_source
+        assert "fulfill" in helper_source
+        assert "route.continue_" not in helper_source
+
+    def test_playwright_route_via_safe_fetch_fulfills_get(self, monkeypatch):
+        from unittest import mock
+
+        from aiwiki.drop import url as drop_url_module
+
+        route = mock.Mock()
+        request = mock.Mock(method="GET", url="https://example.com/page")
+        captured: dict[str, object] = {}
+
+        def _fake_safe_fetch(url: str, **kwargs: object) -> tuple[bytes, str]:
+            captured["url"] = url
+            captured["kwargs"] = kwargs
+            return b"<html></html>", url
+
+        monkeypatch.setattr(drop_url_module, "safe_fetch", _fake_safe_fetch)
+        drop_url_module._playwright_route_via_safe_fetch(route, request, allow_private=False)
+
+        route.fulfill.assert_called_once_with(
+            status=200,
+            body=b"<html></html>",
+            headers={"Content-Type": "application/octet-stream"},
+        )
+        route.abort.assert_not_called()
+        assert captured["url"] == "https://example.com/page"
+        assert captured["kwargs"] == {
+            "method": "GET",
+            "headers": {"User-Agent": drop_url_module.USER_AGENT},
+            "max_bytes": drop_url_module._HTML_MAX_BYTES,
+            "timeout": float(drop_url_module.BROWSER_RENDER_TIMEOUT_SECONDS),
+            "allow_private": False,
+        }
+
+    def test_playwright_route_via_safe_fetch_aborts_non_get_head(self):
+        from unittest import mock
+
+        from aiwiki.drop import url as drop_url_module
+
+        route = mock.Mock()
+        request = mock.Mock(method="POST", url="https://example.com/form")
+        drop_url_module._playwright_route_via_safe_fetch(route, request, allow_private=False)
+        route.abort.assert_called_once_with()
+        route.fulfill.assert_not_called()
+
+    def test_playwright_route_via_safe_fetch_aborts_on_fetch_policy_error(self, monkeypatch):
+        from unittest import mock
+
+        from aiwiki.drop import url as drop_url_module
+
+        route = mock.Mock()
+        request = mock.Mock(method="GET", url="https://evil.test/")
+
+        def _raise(_url: str, **_kwargs: object) -> tuple[bytes, str]:
+            raise FetchPolicyError("blocked")
+
+        monkeypatch.setattr(drop_url_module, "safe_fetch", _raise)
+        drop_url_module._playwright_route_via_safe_fetch(route, request, allow_private=False)
+        route.abort.assert_called_once_with()
+        route.fulfill.assert_not_called()
