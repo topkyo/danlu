@@ -2,7 +2,7 @@
 title: "AgentOS 9.0 Scorecard"
 kind: "scorecard"
 status: "active"
-updated_at: "2026-07-26"
+updated_at: "2026-08-05"
 ---
 
 # AgentOS 9.0 Scorecard
@@ -45,6 +45,11 @@ updated_at: "2026-07-26"
 
 ### Local Engineering — 加权（2026-07-22 复评）
 
+> **双分数横幅（勿混标）**  
+> - **本表**：Local Engineering Gate 加权 **9.05** = fixture / verify / 文档门禁自评尺子（可宣称 engineering 就绪）。  
+> - **工程实测七维**（覆盖、产物漂移、死代码、SoT 卫生等）：**7.9**（2026-08-05 六路复评）／曾 **6.8**（2026-08-04）。报告：`docs/plans/2026-08-05-multi-agent-reevaluation.md`、`docs/plans/2026-08-04-full-scan-evaluation.md`。  
+> - **非** live dogfood；**非** 商业可售分。
+
 | 维度 | 权重 | 分 | 加权 |
 |------|------|---:|-----:|
 | Dogfood / fixture & historical | 20% | 8.9 | 1.780 |
@@ -57,9 +62,9 @@ updated_at: "2026-07-26"
 | Docs SoT | 10% | 8.9 | 0.890 |
 | **合计** | 100% | — | **9.05** |
 
-**历史对照**：2026-07-18 ≈ **9.07**；2026-07-19 audit 漂移 ≈ **8.4**；2026-07-22 Ask sync 后回升至 **9.05**（架构净简化 + verify 全绿；Live 仍 not-yet）。
+**历史对照**：2026-07-18 ≈ **9.07**；2026-07-19 audit 漂移 ≈ **8.4**；2026-07-22 Ask sync 后回升至 **9.05**（架构净简化 + verify 全绿；Live 仍 not-yet）。本表八维**未**因 08-04/08-05 工程实测复评而重算。
 
-**并列尺子（非本表加权）**：Commercial Go-Live ≈ **7.8**（未达诚实可售 ≥8.0）；Ask 架构子尺 A/B 各 **8.0**。详见复评报告。
+**并列尺子（非本表加权）**：工程实测七维 **7.9**（08-05）；Commercial Go-Live ≈ **7.8**（未达诚实可售 ≥8.0）；Ask 架构子尺 A/B 各 **8.0**。
 
 ### Live Dogfood — 状态摘要（2026-07-22）
 
@@ -141,3 +146,4 @@ updated_at: "2026-07-26"
 - 2026-08-04：独立全量复评（综合 **6.8/10**，证据与收口清单见 `docs/plans/2026-08-04-full-scan-evaluation.md`）+ 4-agent 收口执行——F-1 main.js bundle 漂移修复（W4 修复此前未进产物）+ verify 新增 drift 硬门禁（正反向实测）+ `sync_product_shell_plugin` 前置 build；F-2 无入口治理簇 8 模块 ~4.6k 行整簇删除（用户裁定）；F-3 `utils/security.py` 覆盖 39%→**99%**（56 例）；F-4 vault plugin/bootstrap 11 例 + verify 新增 `unit` 硬门禁（**67**）与 `coverage` 无门禁报告（实测 **64%**）；F-5~F-8 facade 归零 / POSIX classifier / 计数修正 / `analyze_image` 重试 parity。复审收尾：`autonomy_domains` 死模块删除、`analyze_image` 重试测试锁定、`verify_target_rules` 映射 unit、一致性检查新增计数钉。verify 实测 acceptance **24** / llm **83** / Jest **203** / unit **67**。
 - 2026-08-05：收口第二波（F-11 部分 + F-9 + 安全加固）——concepts.py 1197→812（质量簇 → `content/concept_quality.py`）；views.py 1178→942（判断资产簇并入 `render/judgment_assets.py`）；`app_linting` phases.py 829→307（governance/curated → `phases_governance.py`）；F-9 llm-responses 轮转（keep 500，best-effort）；safe_fetch 301/302/303 方法降级 + `PrivateAddressError` 结构化检测。verify 实测 acceptance **24** / llm **85** / Jest **203** / unit **72**。
 - 2026-08-05（收尾）：F-10 `_NoRedirectHandler` 直接继承 `urllib.request.HTTPRedirectHandler`；F-12 PROGRESS 头条限长约定 + 三条胖头条压缩；F-13 today_feed 排序收敛为 `schema/today-feed.json` `kind_priority` SoT（双侧契约测试钉死，计数不变）。**F-1~F-13 全部关闭**。
+- 2026-08-05（文档卫生）：六路复评工程实测 **7.9**（`docs/plans/2026-08-05-multi-agent-reevaluation.md`）；本表 Local Eng 加权旁增加**双分数横幅**（9.05 自评门禁 vs 7.9 工程实测）；Post-Cleanup §1 / PROGRESS 交接 / `verify.sh` usage llm **85** 对齐。

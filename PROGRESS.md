@@ -15,6 +15,8 @@
 
 ## 当前动态
 
+- 2026-08-05 (**文档卫生快刀 R-1~R-4**)：Post-Cleanup §1 刷新 194/~44.7k + **24/85/72/203** + 现行 hubs；Scorecard 主表并列 Local Eng **9.05** vs 工程实测 **7.9**；PROGRESS 交接对齐；`verify.sh` usage llm 83→85。复评报告 `docs/plans/2026-08-05-multi-agent-reevaluation.md`。
+
 - 2026-08-05 (**收口第二波**)：F-11 三刀单 seam 外提（concepts 1197→812 / views 1178→942 / phases 829→307）+ F-9 llm-responses 轮转（keep 500）+ safe_fetch 重定向降级与 `PrivateAddressError` 结构化。verify 绿：acceptance 24 / llm 85 / Jest 203 / unit 72。细节见 `docs/plans/2026-08-04-full-scan-evaluation.md` 第二波节。
 - 2026-08-04 (**全量扫描评估 6.8 + 收口执行**)：报告 `docs/plans/2026-08-04-full-scan-evaluation.md`（综合 **6.8/10** vs 自评 9.05，实测覆盖率 58%）。F-1~F-8 全落地：main.js bundle 漂移修复 + drift 硬门禁、治理孤儿簇整簇删除（~4.6k 行）、security 覆盖 39%→99%、verify 新增 unit/coverage target、cli facade 归零、`analyze_image` 重试 parity。verify 绿：acceptance 24 / llm 83 / Jest 203 / unit 67。
 
@@ -121,7 +123,7 @@
 |---|---|---|
 | P0 | Commercial go-live：真实邮箱、询价决策、商业 EULA | **done（草案）**：`topkyoxp@gmail.com` + `EULA.md`；正式法律签收仍 open |
 | P1 | 分发闭环：`pip install` 或 INSTALL 明确预览边界；版本与 tag 对齐 | **partial**：`-e .` + 本地 wheel（`build_release_wheel.sh`）+ v0.4.0；**PyPI upload 待运营** |
-| P1 | Jest hard-gate + env-coupled 测试隔离 | **done / moot**：Jest **206** hard-gate；env unit 已退 |
+| P1 | Jest hard-gate + env-coupled 测试隔离 | **done / moot**：Jest **203** hard-gate + bundle drift gate；env unit 已退 |
 | P1 | Alchemy materialize 等裸 `write_text` → `atomic_write_text` | **done**（ask/alchemy helpers；execution+runner ask 热路径续扫） |
 | P2 | Scorecard hub 行数刷新；PROGRESS 活跃 round 切档卫生 | **done 2026-07-22**：Round 长尾切档 archive snapshot |
 | P2 | Demo Pack 截图/录屏资产（fixture + checklist 已交付） | checklist done；媒体可选待补 |
@@ -136,15 +138,15 @@
 复制下面整段到新对话开头即可：
 
 ```text
-说人话。先读 PROGRESS.md 头条 + docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md。
+说人话。先读 PROGRESS.md 头条 + docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md；评分勿混：Local Eng 9.05 ≠ 工程实测 7.9 ≠ 商业 ~7.8。
 
-已完成：沉淀/金丹 FM + Properties leaf sync（CDP PASS）；state 外置防 iCloud 分叉；WS2 本地 wheel；SoT 计数 24/79/206；结构债 Knife A/B + memory↛execution + audit 外提 + state↛protocol；stale SoT/CLI 三轮扫除；M6.1b prompt_hash 刷新。
+已完成：F-1~F-13 收口；文档卫生 R-1~R-4；SoT 计数 acceptance 24 / llm 85 / unit 72 / Jest 203；coverage 64% informational；结构债 Knife A/B + memory↛execution + F-11 三刀（views/ask 仍可续）；WS2 本地 wheel。
 
 下一刀优先（择一）：
-1) Commercial：EULA 法律签收 / twine upload + tag v0.4.0 / Demo 9 PNG
+1) Commercial：EULA 法律签收 / twine upload + tag v0.4.0 / Demo 媒体
 2) WS6 dogfood 自然观测（不伪造 Live PASS）
-3) 结构债续刀（非阻塞开售）：巨石 concepts/views/phases 单 seam 外提（模块级 SCC 已清零）— 禁止 broad hub rewrite
-4) 勿宣称 AgentOS 9 live / 诚实可售
+3) 覆盖归属：10 个 0% 模块删或补测；或 hub 单 seam 续刀（views/ask）— 禁止 broad rewrite
+4) 勿宣称 AgentOS 9 live / 诚实可售 / 用 9.05 冒充工程实测
 
 Vault：iCloud「炼丹炉」；state → ~/Library/Application Support/aiwiki/dogfood-state；CDP：9228；验证：bash scripts/verify.sh all
 ```
