@@ -19,7 +19,7 @@ created_at: "2026-08-05"
 | 已清（勿回退） | 仍开（结构债） |
 |---|---|
 | 根级 `app_*.py` = 0 | **content ↔ memory 双向 import**（环） |
-| `memory ↛ execution` | **`app_shell` / `app_linting` 重 facade**（`_CompatModule`） |
+| `memory ↛ execution` | ~~`app_shell` / `app_linting` 重 facade~~ **DONE 2026-08-05** |
 | `state ↛ protocol` | **Top hub 778–921 LOC**（views / ask / io / concepts…） |
 | CLI 仅 drop/today/advanced | **compile 静态 SCC 密度高**（运行时靠 lazy/TYPE_CHECKING 掩盖） |
 | LLM 主路径 fail-closed | **memory/action_core 等 re-export compat seam** |

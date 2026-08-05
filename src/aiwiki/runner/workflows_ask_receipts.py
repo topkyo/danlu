@@ -18,7 +18,8 @@ _logger = logging.getLogger(__name__)
 
 def _refresh_shell_summary_fail_soft(root: Path) -> None:
     try:
-        from aiwiki.app_shell import build_shell_summary, write_shell_summary
+        from aiwiki.app_shell.meta import write_shell_summary
+        from aiwiki.app_shell.summary import build_shell_summary
 
         write_shell_summary(root, build_shell_summary(root))
     except Exception as exc:

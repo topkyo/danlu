@@ -26,7 +26,7 @@ updated_at: "2026-08-05"
 |---|---:|---|
 | Acceptance | **24** passed | `bash scripts/verify.sh acceptance` |
 | LLM integration | **85** passed | `bash scripts/verify.sh llm-integration` |
-| Unit（library 级） | **149** passed | `bash scripts/verify.sh unit` |
+| Unit（library 级） | **151** passed | `bash scripts/verify.sh unit` |
 | Product Shell Jest | **203** passed | `bash scripts/verify.sh product-shell-static` |
 | Bundle drift | gate（正反向实测） | 含于 `product-shell-static` |
 | Coverage | **69%**（informational，无门禁） | `bash scripts/verify.sh coverage` |
@@ -110,7 +110,7 @@ updated_at: "2026-08-05"
 | 2 | Acceptance | **24** — `bash scripts/verify.sh acceptance` |
 | 3 | LLM integration | **85** — `bash scripts/verify.sh llm-integration` |
 | 4 | Product Shell | Jest **203** + bundle drift gate — `bash scripts/verify.sh product-shell-static` |
-| 5 | Unit | **149** — `bash scripts/verify.sh unit` |
+| 5 | Unit | **151** — `bash scripts/verify.sh unit` |
 | 6 | Docs consistency | `bash scripts/docs_consistency_check.sh` |
 | 7 | CI | `.github/workflows/verify.yml` |
 
@@ -152,3 +152,4 @@ updated_at: "2026-08-05"
 - 2026-08-05（verify 单行钉 + R-7）：`docs_consistency` 钉 `Run LLM integration tests (85 tests)`；Today 去 proposal feed 桶；USER_GUIDE/INSTALL 术语对齐 Today；Post-Cleanup **暂不归档**。
 - 2026-08-05（优先债收口，不含 Commercial 三阻断）：Post-Cleanup/Scorecard/DEVELOPER 计数对齐；coverage 快照 **64%→69%**；`untrusted_source` 包装单测 + `alchemy-revert` library 测；unit **143→147**；工程实测横幅 **7.9→8.2**（R2）。
 - 2026-08-05（corpus 方案 A）：`aiwiki.corpus` paths/scoring/ranks；`content ↛ memory`；分层契约测；unit **147→149**。
+- 2026-08-05（facade 清零）：`app_shell`/`app_linting` 删 `_CompatModule`；acceptance mock 直 patch owner；unit **149→151**。

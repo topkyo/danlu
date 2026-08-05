@@ -126,6 +126,34 @@ def test_content_package_does_not_import_memory() -> None:
     assert offenders == []
 
 
+def test_app_shell_and_linting_init_have_no_compat_facade() -> None:
+    for relative in ("src/aiwiki/app_shell/__init__.py", "src/aiwiki/app_linting/__init__.py"):
+        text = Path(relative).read_text(encoding="utf-8")
+        assert "_CompatModule" not in text
+        assert "sys.modules[__name__]" not in text
+        assert "__all__" not in text
+
+
+def test_no_package_level_app_shell_or_linting_imports() -> None:
+    """Production code must import owner modules, not package façades."""
+    import ast
+
+    offenders: list[str] = []
+    for path in Path("src/aiwiki").rglob("*.py"):
+        if path.name == "__init__.py" and path.parent.name in {"app_shell", "app_linting"}:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom) or not node.module:
+                continue
+            module = node.module
+            if module in {"aiwiki.app_shell", "aiwiki.app_linting"}:
+                offenders.append(f"{path}: from {module}")
+            if node.level >= 1 and module in {"app_shell", "app_linting"}:
+                offenders.append(f"{path}: relative {'.' * node.level}{module}")
+    assert offenders == []
+
+
 def test_corpus_package_does_not_import_content_or_memory() -> None:
     root = Path("src/aiwiki/corpus")
     offenders: list[str] = []

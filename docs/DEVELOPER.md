@@ -33,8 +33,8 @@ related_docs:
 | `execution/` | receipts、history、alchemy_*、review / gc_orphans / repair_plan 等治理执行面 |
 | `runner/` | workflows（compile/lint/nightly）、workflows_ask*、watch、alchemy 编排 |
 | `cache/`、`vault/` | cache 子系统、Obsidian bootstrap |
-| `app_shell/` | Product Shell summary / controls / status |
-| `app_linting/` | lint phases、repair backlog、nightly health |
+| `app_shell/` | Product Shell summary / controls / status（直引子模块；`__init__` 无 facade） |
+| `app_linting/` | lint phases、repair backlog、nightly health（直引子模块；`__init__` 无 facade） |
 
 热点（deferred seam）：`content/concepts.py`、`render/views.py`、`app_linting/phases.py`（巨石单 seam 外提，节奏见 PROGRESS）。
 
@@ -64,7 +64,7 @@ bash scripts/docs_consistency_check.sh
 |---|---|
 | `acceptance` | **24** tests — `tests/test_acceptance_loop.py`（`case_*` fixture + path safety + provenance GC 等） |
 | `llm-integration` | **85** tests — `tests/test_llm_integration.py`（mock backends） |
-| `unit` | **149** tests — `tests/test_security.py`（utils/security.py 99%）+ `tests/test_vault_plugin.py`（plugin sync / new-vault）+ `tests/test_library_surfaces.py`（autonomy_policy / llm-check / untrusted_source / **content↛memory 分层**）+ `tests/test_repair.py`（repair / repair_plan / patch_plan）+ `tests/test_alchemy_revert.py`（promote→revert） |
+| `unit` | **151** tests — `tests/test_security.py` + `tests/test_vault_plugin.py` + `tests/test_library_surfaces.py`（含 content↛memory / facade 清零契约）+ `tests/test_repair.py` + `tests/test_alchemy_revert.py` |
 | `product-shell-static` | `node --check` + **bundle drift 硬门禁**（main.js 必须等于 src/ 现构建）+ Jest **203** hard-gate |
 | `coverage` | informational 报告（**无门禁**；2026-08-05 实测全量 **69%**） |
 | 其余 | scripts、cli-smoke、smoke、python-static |

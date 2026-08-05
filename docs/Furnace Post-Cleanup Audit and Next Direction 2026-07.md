@@ -26,7 +26,7 @@ supersedes: []
 | 指标 | 当前值 | 来源 |
 |---|---|---|
 | Runtime | `src/aiwiki` **187** `.py` / **~43.8k LOC** | `find` + `wc`（2026-08-05 R2；历史曾 194/~44.7k、~202/~51.6k） |
-| Tests | acceptance **24** + llm-integration **85** + unit **149** + Jest **203**（2026-08-05 优先债收口后实测；历史快照曾含 24/85/143、24/85/81、24/85/72 等） | `bash scripts/verify.sh all` |
+| Tests | acceptance **24** + llm-integration **85** + unit **151** + Jest **203**（2026-08-05 优先债收口后实测；历史快照曾含 24/85/143、24/85/81、24/85/72 等） | `bash scripts/verify.sh all` |
 | Top hubs（单文件） | `render/views.py` 921 / `execution/ask.py` 888 / `content/io.py` 881 / `content/concepts.py` 812 / `drop/url.py` 790；无 1000+ LOC；`execution/machine_memory_actions` 等 8 治理孤儿簇 **DELETED**（2026-08-04）；`auto_adopt` / 根级 `app_*.py` **DELETED** | `wc -l` 2026-08-05 R2 |
 | `except Exception` | **~65**；裸 `except Exception: pass` **0** | ripgrep 2026-08-05 |
 | AgentOS Scorecard | **Local Engineering Gate 9.05**（自评门禁）；工程实测七维 **8.2**；Live Dogfood **not-yet** | Scorecard + `docs/plans/2026-08-05-multi-agent-full-scan-r2.md` |
@@ -231,7 +231,7 @@ bash scripts/verify.sh cli-smoke
 # 紧急旁路：AIWIKI_SKIP_PRODUCT_SHELL_JS_TESTS=1
 # go-live 文档门禁：
 ! git grep -E 'commercial@example\.com|support@example\.com' -- LICENSE docs/commercial/
-bash scripts/verify.sh all   # 推送/发布前（含 unit 149 + coverage informational）
+bash scripts/verify.sh all   # 推送/发布前（含 unit 151 + coverage informational）
 ```
 
 > 备注：2026-07-15 scripts cleanup 曾删旧 `run_product_shell_tests.sh` 与旧 drift gate；2026-08-04 起 `product-shell-static` 恢复 **bundle drift 硬门禁** + Jest。Release evidence pipeline（`agos9_*.sh` / `dogfood_maturity_gate.py`）仍已删除。
@@ -264,7 +264,7 @@ Review gate：编码 PR 独立 read-only reviewer（correctness / scope / missin
 
 - 2026-08-05：归档裁定 — **暂不归档**；继续作 Commercial Go-Live 执行 SoT，直至可售门槛或被 supersedes。
 - 2026-08-05：文档卫生快刀 — §1 刷新为 194 py / ~44.7k LOC、verify **24/85/72/203**、现行 top hubs（去掉已删 `machine_memory_actions`）；结论与分数表并列 Local Eng **9.05** / 工程实测 **7.9** / 商业 **~7.8**；§8/§9 Jest 与 drift 门禁口径对齐。
-- 2026-08-05：优先债收口（不含 Commercial 三阻断）— §1 对齐 **187** py / **~43.8k** / unit **149** / 工程实测 **8.2**；coverage 快照 **69%**；`docs_consistency` 钉 Post-Cleanup unit 149。
+- 2026-08-05：优先债收口（不含 Commercial 三阻断）— §1 对齐 **187** py / **~43.8k** / unit **151** / 工程实测 **8.2**；coverage 快照 **69%**；`docs_consistency` 钉 Post-Cleanup unit 151。
 - 2026-07-22：Ask sync-chat 收口 — `run-ask-submit` / `run-ask-resume` / `runner/background.py` 退役；Ask = 同步 `run-ask` + Shell 单飞。§1 测试快照曾刷新为 acceptance **17** / llm-integration **76** / Jest **179**；同日 eng-debt radar 再对齐为 **17** / **77** / **180**。§5/§6 明确下一焦点仍为 Commercial Go-Live 打磨，不扩 background job。
 - 2026-07-15：Commercial Go-Live 执行波 — WS1（邮箱/询价/EULA）、WS2（`pip install -e .` 预览 + v0.4.0 + launcher 优先 console script）、WS3（对外 checklist）、WS5（Jest hard-gate + alchemy atomic_write）、LLM-Wiki 叙事补丁；PyPI 正式发布与 EULA 法律签收仍 open。
 - 2026-07-15：初版。基于 Cleanup executed-reviewed-pass 后再审计；现场 scripts/python-static/smoke/docs PASS；立项 Commercial Go-Live WS1–WS6。

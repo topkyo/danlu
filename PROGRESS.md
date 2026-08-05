@@ -15,6 +15,8 @@
 
 ## 当前动态
 
+- 2026-08-05 (**facade 清零**)：`app_shell` / `app_linting` 删 `_CompatModule` 与包级 re-export；调用方/acceptance mock 直引 owner；`docs_consistency` 钉。计划：`docs/plans/2026-08-05-facade-zero.md`。
+
 - 2026-08-05 (**corpus 共享层 · 方案 A**)：新建 `aiwiki.corpus`（paths/scoring/ranks）；`content ↛ memory` 环断开（machine_memory 调用方注入）；`docs_consistency` + library 测钉分层。计划：`docs/plans/2026-08-05-corpus-shared-layer.md`。
 
 - 2026-08-05 (**优先债收口，不含 Commercial 三阻断**)：Post-Cleanup/Scorecard/DEVELOPER 对齐 unit **147** / coverage **69%** / 工程实测 **8.2**；`untrusted_source` + `alchemy-revert` library 测入 `verify unit`；`docs_consistency` 钉 Post-Cleanup。报告 R2 + 结构债分析见会话。
@@ -150,12 +152,12 @@
 ```text
 说人话。先读 PROGRESS.md 头条 + docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md；评分勿混：Local Eng 9.05 ≠ 工程实测 8.2 ≠ 商业 ~7.8。
 
-已完成：F-1~F-13；R-1~R-7；优先债；**corpus 方案 A**（content↛memory，unit 149）。结构债余：facade / hub / memory→content 窄依赖。Commercial 三阻断未做。
+已完成：F-1~F-13；优先债；**corpus 方案 A** + **facade 清零**（unit 将随分层测上涨）。结构债余：hub 单 seam / memory→content 窄依赖。Commercial 三阻断未做。
 
 下一刀优先（择一）：
-1) facade 清零（app_shell/app_linting）或 hub 单 seam
+1) hub 单 seam（views / ask / io）— 禁止 broad rewrite
 2) Commercial：EULA 法律签收 / twine + tag / Demo 媒体
-3) T-1 低覆盖活路径（memory/status、drop/*、trace）— 可选
+3) T-1 低覆盖活路径 — 可选
 4) 勿宣称 AgentOS 9 live / 诚实可售 / 用 9.05 冒充工程实测
 
 Vault：iCloud「炼丹炉」；state → ~/Library/Application Support/aiwiki/dogfood-state；CDP：9228；验证：bash scripts/verify.sh all

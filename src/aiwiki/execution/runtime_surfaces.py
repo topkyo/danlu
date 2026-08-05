@@ -15,7 +15,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..app_shell import build_shell_summary, write_shell_summary
+from ..app_shell.meta import write_shell_summary
+from ..app_shell.summary import build_shell_summary
 from ..protocol.scaffold import ensure_layout
 from ..utils.io import runtime_write_operation
 

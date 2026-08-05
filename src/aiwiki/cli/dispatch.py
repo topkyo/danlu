@@ -158,7 +158,7 @@ def _dispatch_fallback_route(
 
 
 def _handle_compile_family(args: argparse.Namespace, root: Path) -> tuple[object, str | None]:
-    from ..app_shell import rewrite_followup_payload_for_paths
+    from ..app_shell.controls import rewrite_followup_payload_for_paths
     from ..compile.pipeline import compile_wiki
     from ..execution.ask import file_back
 
