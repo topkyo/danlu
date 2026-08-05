@@ -159,6 +159,9 @@ class TestRevertElixir:
         promotion_receipt = find_latest_elixir_promotion_receipt(tmp_path, elixir_id=ELIXIR_ID)
         assert promotion_receipt is not None
         assert promotion_receipt.get("action_id")
+        assert promotion_receipt.get("revert_supported") is True
+        promo_on_disk = json.loads((tmp_path / str(promotion_receipt["receipt_path"])).read_text(encoding="utf-8"))
+        assert promo_on_disk.get("revert_supported") is True
 
         reverted_path = revert_elixir(tmp_path, elixir_id=ELIXIR_ID, note="unit revert")
 

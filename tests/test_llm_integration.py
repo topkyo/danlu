@@ -49,10 +49,8 @@ from aiwiki.llm import (
     classify_backend_error,
 )
 from aiwiki.runner.prompts import _retry_ask_prompt_profile
-from aiwiki.runner.workflows_ask import (
-    _complete_run_ask_artifact,
-    _mark_run_ask_artifact_degraded,
-)
+from aiwiki.runner.workflows_ask import _complete_run_ask_artifact
+from aiwiki.runner.workflows_ask_status import _mark_run_ask_artifact_degraded
 from aiwiki.utils.markdown import parse_frontmatter
 
 _LLM_ENV_VARS = (

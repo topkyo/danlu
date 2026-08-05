@@ -3,22 +3,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 from aiwiki.runner.report_refs import OUTPUT_OBSIDIAN_CSSCLASS, OUTPUT_REPORT_LEAF_CSSCLASS
 from aiwiki.utils.io import atomic_write_text
-from aiwiki.utils.markdown import parse_frontmatter, render_frontmatter
+from aiwiki.utils.markdown import frontmatter_string_list, parse_frontmatter, render_frontmatter
 
 _REPORT_SKELETON_REFERENCE_HEADINGS = {"## 参考"}
 
 
-def _frontmatter_string_list(frontmatter: dict[str, Any], key: str) -> list[str]:
-    value = frontmatter.get(key)
-    if isinstance(value, list):
-        return [str(item).strip() for item in value if str(item).strip()]
-    if isinstance(value, str) and value.strip():
-        return [value.strip()]
-    return []
 
 
 def _runtime_provenance_field_lines(fields: dict[str, list[str]]) -> list[str]:
@@ -103,7 +95,7 @@ def _restore_run_ask_provenance_frontmatter(
     restored: dict[str, list[str]] = {}
     for key in ("derived_from", "source_files"):
         merged: list[str] = []
-        for item in _frontmatter_string_list(deterministic_frontmatter, key):
+        for item in frontmatter_string_list(deterministic_frontmatter, key):
             if item not in merged:
                 merged.append(item)
         if merged:

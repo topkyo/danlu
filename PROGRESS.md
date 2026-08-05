@@ -15,6 +15,8 @@
 
 ## 当前动态
 
+- 2026-08-05 (**P1 分修**)：frontmatter 四拷贝统一；metrics_io warning；promote `revert_supported`；`workflows_ask` 786→**334**（writeback seam）；六命令 CLI 烟测；CHANGELOG/AGENTS/Architecture corpus 叙事。计划：`docs/plans/2026-08-05-p1-split-fixes.md`。unit **160**。`ask_question` 巨函数仍记债。
+
 - 2026-08-05 (**corpus S2 · memory↛content**)：parse/sections/snapshots/link_state 下沉 `aiwiki.corpus`；memory 零 content import；`validate_low_risk` 改 `load_manifest`；docs_consistency + AST 钉。计划：`docs/plans/2026-08-05-corpus-s2-memory-content.md`。unit **154**。
 
 - 2026-08-05 (**hub 单 seam · ask/io**)：`execution/ask.py` 894→**665**（`file_back` → `execution/file_back.py`）；`content/io.py` 881→**677**（output 扫描 → `content/output_artifacts.py`）。计划：`docs/plans/2026-08-05-ask-io-hub-seams.md`。verify 绿。

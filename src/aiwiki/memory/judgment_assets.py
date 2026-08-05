@@ -8,7 +8,12 @@ from typing import Any
 from ..corpus.sections import preserved_section
 from ..state.constants import DEFAULT_PROTOCOL
 from ..state.manifest import load_manifest
-from ..utils.markdown import analyze_citation_snapshots, parse_frontmatter, strip_frontmatter
+from ..utils.markdown import (
+    analyze_citation_snapshots,
+    frontmatter_string_list,
+    parse_frontmatter,
+    strip_frontmatter,
+)
 from ..utils.text import tokenize
 
 ELIXIR_DIR = "wiki/elixirs"
@@ -139,7 +144,7 @@ def _attach_settled_elixirs_to_memory(
         elixir_id = str(frontmatter.get("id") or page.stem).strip() or page.stem
         title = str(frontmatter.get("title") or elixir_id)
         page_path = f"{ELIXIR_DIR}/{page.name}"
-        derived_from = _frontmatter_string_list(frontmatter, "derived_from")
+        derived_from = frontmatter_string_list(frontmatter, "derived_from")
         elixir_nodes.append(
             {
                 "elixir_id": elixir_id,
@@ -214,14 +219,6 @@ def _index_compounding_assets_in_memory(root: Path, memory: dict[str, Any]) -> d
     return updated
 
 
-def _frontmatter_string_list(frontmatter: dict[str, Any], key: str) -> list[str]:
-    value = frontmatter.get(key, [])
-    if isinstance(value, str):
-        item = value.strip()
-        return [item] if item else []
-    if not isinstance(value, list):
-        return []
-    return [str(item).strip() for item in value if isinstance(item, str) and str(item).strip()]
 
 
 def _resolve_curated_relation_id(
@@ -277,7 +274,7 @@ def attach_judgment_assets_to_machine_memory(
         target = root / page_path
         content = target.read_text(encoding="utf-8", errors="replace") if target.exists() else ""
         frontmatter = parse_frontmatter(content)
-        citations = _frontmatter_string_list(frontmatter, "citations")
+        citations = frontmatter_string_list(frontmatter, "citations")
         body_fields = {}
         if target.exists():
             from ..lifecycle.templates import curated_body_structured_fields
@@ -303,10 +300,10 @@ def attach_judgment_assets_to_machine_memory(
             "confidence": str(page.get("confidence") or frontmatter.get("confidence") or ""),
             "citations": citations,
             "source_ids": source_ids,
-            "counter_evidence": _frontmatter_string_list(frontmatter, "counter_evidence")
+            "counter_evidence": frontmatter_string_list(frontmatter, "counter_evidence")
             or list(body_fields.get("counter_evidence") or []),
             "invalidation_rule": str(frontmatter.get("invalidation_rule") or body_fields.get("invalidation_rule") or "").strip(),
-            "next_signals": _frontmatter_string_list(frontmatter, "next_signals")
+            "next_signals": frontmatter_string_list(frontmatter, "next_signals")
             or list(body_fields.get("next_signals") or []),
             "reviewed_at": str(page.get("reviewed_at") or frontmatter.get("reviewed_at") or ""),
             "revisit_after": str(page.get("revisit_after") or frontmatter.get("revisit_after") or ""),
@@ -322,9 +319,9 @@ def attach_judgment_assets_to_machine_memory(
             "citation_drift_count": len(citation_snapshot_state["drifted"]),
             "citation_snapshot_gap_count": len(citation_snapshot_state["missing"])
             + len(citation_snapshot_state["stale"]),
-            "related_judgments_raw": _frontmatter_string_list(frontmatter, "related_judgments"),
-            "supports_raw": _frontmatter_string_list(frontmatter, "supports"),
-            "contradicts_raw": _frontmatter_string_list(frontmatter, "contradicts"),
+            "related_judgments_raw": frontmatter_string_list(frontmatter, "related_judgments"),
+            "supports_raw": frontmatter_string_list(frontmatter, "supports"),
+            "contradicts_raw": frontmatter_string_list(frontmatter, "contradicts"),
         }
         page_records.append(record)
         path_to_page_id[page_path] = page_id

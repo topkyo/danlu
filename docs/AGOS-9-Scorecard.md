@@ -26,7 +26,7 @@ updated_at: "2026-08-05"
 |---|---:|---|
 | Acceptance | **24** passed | `bash scripts/verify.sh acceptance` |
 | LLM integration | **85** passed | `bash scripts/verify.sh llm-integration` |
-| Unit（library 级） | **154** passed | `bash scripts/verify.sh unit` |
+| Unit（library 级） | **160** passed | `bash scripts/verify.sh unit` |
 | Product Shell Jest | **203** passed | `bash scripts/verify.sh product-shell-static` |
 | Bundle drift | gate（正反向实测） | 含于 `product-shell-static` |
 | Coverage | **69%**（informational，无门禁） | `bash scripts/verify.sh coverage` |
@@ -34,7 +34,7 @@ updated_at: "2026-08-05"
 | Docs consistency | exit 0 | `bash scripts/docs_consistency_check.sh` |
 | CI | exists | `.github/workflows/verify.yml` |
 
-**不含**：旧 AOS-C8 的 2439 unit tests + coverage 92%（2026-07-15 已退役）；`dogfood_maturity_gate.py`、`agos9_release_audit.sh` 已删。现行 unit 五个 library 级文件：`tests/test_security.py` + `tests/test_vault_plugin.py` + `tests/test_library_surfaces.py` + `tests/test_repair.py` + `tests/test_alchemy_revert.py`；coverage 只报告不卡线。
+**不含**：旧 AOS-C8 的 2439 unit tests + coverage 92%（2026-07-15 已退役）；`dogfood_maturity_gate.py`、`agos9_release_audit.sh` 已删。现行 unit library 级文件：`tests/test_security.py` + `tests/test_vault_plugin.py` + `tests/test_library_surfaces.py` + `tests/test_repair.py` + `tests/test_alchemy_revert.py` + `tests/test_cli_surfaces.py`；coverage 只报告不卡线。
 
 ## 两套 Release Gate
 
@@ -110,7 +110,7 @@ updated_at: "2026-08-05"
 | 2 | Acceptance | **24** — `bash scripts/verify.sh acceptance` |
 | 3 | LLM integration | **85** — `bash scripts/verify.sh llm-integration` |
 | 4 | Product Shell | Jest **203** + bundle drift gate — `bash scripts/verify.sh product-shell-static` |
-| 5 | Unit | **154** — `bash scripts/verify.sh unit` |
+| 5 | Unit | **160** — `bash scripts/verify.sh unit` |
 | 6 | Docs consistency | `bash scripts/docs_consistency_check.sh` |
 | 7 | CI | `.github/workflows/verify.yml` |
 
@@ -154,3 +154,5 @@ updated_at: "2026-08-05"
 - 2026-08-05（corpus 方案 A）：`aiwiki.corpus` paths/scoring/ranks；`content ↛ memory`；分层契约测；unit **147→149**。
 - 2026-08-05（facade 清零）：`app_shell`/`app_linting` 删 `_CompatModule`；acceptance mock 直 patch owner；unit **149→151**。
 - 2026-08-05（review fix）：`machine_memory` 改为必传 keyword；补 TypeError 契约测；unit **151→153**。
+- 2026-08-05（corpus S2）：parse/sections/snapshots/link_state 下沉；memory ↛ content；unit **153→154**。
+- 2026-08-05（P1 分修）：六命令 CLI 烟测 + promote revert_supported + frontmatter/metrics_io；unit **154→160**。

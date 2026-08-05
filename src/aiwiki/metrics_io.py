@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from importlib import import_module
 from pathlib import Path
 from typing import Any, Iterable
@@ -16,6 +17,8 @@ from aiwiki.render.paths import execution_receipts_dir, legacy_execution_receipt
 from aiwiki.state.paths import STAGING_PROPOSALS_DIR
 from aiwiki.utils.markdown import parse_frontmatter
 from aiwiki.utils.path import relative_path
+
+logger = logging.getLogger("aiwiki")
 
 _PAGE_REVIEW_CLOSE_STATUSES = {
     "approved": "approve",
@@ -94,7 +97,8 @@ def _read_review_counts(root: Path) -> Iterable[tuple[str, int]]:
         decisions = lifecycle.collect_curated_pages(root, "decisions", "decision")
         judgments = lifecycle.collect_curated_pages(root, "judgments", "judgment")
         queue = lifecycle.review_queue(decisions, judgments)
-    except Exception:  # pragma: no cover - best-effort, never break metrics
+    except Exception as exc:  # best-effort: metrics must not crash on partial vaults
+        logger.warning("metrics review-queue counts unavailable: %s", exc)
         return ()
     pending_decisions = queue.get("pending_decisions") if isinstance(queue, dict) else None
     pending_judgments = queue.get("pending_judgments") if isinstance(queue, dict) else None
