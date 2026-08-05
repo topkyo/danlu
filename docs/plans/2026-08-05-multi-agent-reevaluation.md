@@ -110,7 +110,7 @@ F-1~F-13 收口后，08-04 的两个硬扣分项（bundle 漂移 4.5、覆盖/�
 
 ### Product Shell 7.5
 - Today-first + sync run-ask 单飞 + settings 分区；today-feed schema 三方钉死。
-- **P1**：`render_today` 仍有 legacy `proposal` UI 桶；Ask 长等待 UX；「今日简报」vs「Today」术语分裂。
+- **P1（部分已收）**：`proposal` feed 桶与「今日简报」术语已于 2026-08-05 收敛；Ask 长等待 UX 仍开。
 
 ---
 
