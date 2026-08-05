@@ -29,6 +29,10 @@ jobs:
           cache: npm
           cache-dependency-path: .obsidian/plugins/furnace-product-shell/package-lock.json
 
+      - name: Install ripgrep
+        # docs_consistency_check.sh (via verify scripts) requires `rg`.
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+
       - name: Install Python dependencies
         run: pip install -e '.[dev]'
 
