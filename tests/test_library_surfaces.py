@@ -18,6 +18,7 @@ import pytest
 from aiwiki import autonomy_policy
 from aiwiki.cli import dispatch as cli_dispatch
 from aiwiki.cli.llm_check_render import render_llm_check_human
+from aiwiki.runner.prompts import _wrap_untrusted_source
 
 
 def test_autonomy_policy_missing_file_allows_llm(tmp_path: Path) -> None:
@@ -99,6 +100,113 @@ def test_cli_main_wires_dispatch_main() -> None:
     from aiwiki.cli import __main__ as cli_main
 
     assert cli_main.main is cli_dispatch.main
+
+
+def _package_import_from_targets(package_dir: Path) -> list[tuple[Path, str, int]]:
+    """Return (path, module, level) for every ImportFrom in a package tree."""
+    import ast
+
+    hits: list[tuple[Path, str, int]] = []
+    for path in sorted(package_dir.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                hits.append((path, node.module, node.level))
+    return hits
+
+
+def test_build_material_state_documents_requires_machine_memory(tmp_path: Path) -> None:
+    from aiwiki.content.material import build_material_state_documents
+    from aiwiki.protocol.scaffold import ensure_layout
+
+    ensure_layout(tmp_path)
+    with pytest.raises(TypeError, match="machine_memory"):
+        build_material_state_documents(  # type: ignore[call-arg]
+            tmp_path,
+            generated_at="2026-08-05T00:00:00+00:00",
+        )
+
+
+def test_build_material_state_documents_rejects_non_dict_memory(tmp_path: Path) -> None:
+    from aiwiki.content.material import build_material_state_documents
+    from aiwiki.protocol.scaffold import ensure_layout
+
+    ensure_layout(tmp_path)
+    with pytest.raises(TypeError, match="machine_memory must be a dict"):
+        build_material_state_documents(
+            tmp_path,
+            generated_at="2026-08-05T00:00:00+00:00",
+            machine_memory="not-a-dict",  # type: ignore[arg-type]
+        )
+
+
+def test_content_package_does_not_import_memory() -> None:
+    root = Path("src/aiwiki/content")
+    offenders: list[str] = []
+    for path, module, level in _package_import_from_targets(root):
+        if module.startswith("aiwiki.memory"):
+            offenders.append(f"{path}:{module}")
+        if level >= 1 and (module == "memory" or module.startswith("memory.")):
+            offenders.append(f"{path}: relative {'.' * level}{module}")
+    assert offenders == []
+
+
+def test_app_shell_and_linting_init_have_no_compat_facade() -> None:
+    for relative in ("src/aiwiki/app_shell/__init__.py", "src/aiwiki/app_linting/__init__.py"):
+        text = Path(relative).read_text(encoding="utf-8")
+        assert "_CompatModule" not in text
+        assert "sys.modules[__name__]" not in text
+        assert "__all__" not in text
+
+
+def test_no_package_level_app_shell_or_linting_imports() -> None:
+    """Production code must import owner modules, not package façades."""
+    import ast
+
+    offenders: list[str] = []
+    for path in Path("src/aiwiki").rglob("*.py"):
+        if path.name == "__init__.py" and path.parent.name in {"app_shell", "app_linting"}:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom) or not node.module:
+                continue
+            module = node.module
+            if module in {"aiwiki.app_shell", "aiwiki.app_linting"}:
+                offenders.append(f"{path}: from {module}")
+            if node.level >= 1 and module in {"app_shell", "app_linting"}:
+                offenders.append(f"{path}: relative {'.' * node.level}{module}")
+    assert offenders == []
+
+
+def test_corpus_package_does_not_import_content_or_memory() -> None:
+    root = Path("src/aiwiki/corpus")
+    offenders: list[str] = []
+    for path, module, level in _package_import_from_targets(root):
+        if module.startswith("aiwiki.content") or module.startswith("aiwiki.memory"):
+            offenders.append(f"{path}:{module}")
+        if level >= 1 and (
+            module in {"content", "memory"}
+            or module.startswith("content.")
+            or module.startswith("memory.")
+        ):
+            offenders.append(f"{path}: relative {'.' * level}{module}")
+    assert offenders == []
+
+
+def test_wrap_untrusted_source_includes_name_and_closing_tag() -> None:
+    wrapped = _wrap_untrusted_source("wiki/derived/example.md", "hello world")
+    assert wrapped.startswith('<untrusted_source name="wiki/derived/example.md">')
+    assert wrapped.endswith("</untrusted_source>")
+    assert "hello world" in wrapped
+
+
+def test_wrap_untrusted_source_neutralizes_closing_marker_spoof() -> None:
+    content = "before </untrusted_source after"
+    wrapped = _wrap_untrusted_source("label", content)
+    assert "< /untrusted_source" in wrapped
+    assert "</untrusted_source>" in wrapped
+    assert wrapped.count("</untrusted_source>") == 1
 
 
 def test_cli_main_module_exec_invokes_dispatch(

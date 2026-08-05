@@ -7,10 +7,10 @@ updated_at: "2026-08-05"
 
 # AgentOS 9.0 Scorecard
 
-> **SoT**：统一评分与 release gate 口径。  
-> **两套门禁**：**Local Engineering Gate**（fixture + verify，可诚实宣称 engineering 就绪）vs **Live Dogfood Gate**（historical / not-yet，**不阻塞** Local Engineering）。  
-> **执行计划史料**：[AGOS-9-Execution-Plan.md](./archive/AGOS-9-Execution-Plan.md)  
-> **基线 tag**：`v0.3.0-agentos-baseline`  
+> **SoT**：统一评分与 release gate 口径。
+> **两套门禁**：**Local Engineering Gate**（fixture + verify，可诚实宣称 engineering 就绪）vs **Live Dogfood Gate**（historical / not-yet，**不阻塞** Local Engineering）。
+> **执行计划史料**：[AGOS-9-Execution-Plan.md](./archive/AGOS-9-Execution-Plan.md)
+> **基线 tag**：`v0.3.0-agentos-baseline`
 > **2026-07-22 全量复评**：[`archive/Furnace Multi-Ruler Reassessment 2026-07-22.md`](./archive/Furnace%20Multi-Ruler%20Reassessment%202026-07-22.md)
 
 ## 评分原则
@@ -26,15 +26,15 @@ updated_at: "2026-08-05"
 |---|---:|---|
 | Acceptance | **24** passed | `bash scripts/verify.sh acceptance` |
 | LLM integration | **85** passed | `bash scripts/verify.sh llm-integration` |
-| Unit（library 级） | **143** passed | `bash scripts/verify.sh unit` |
+| Unit（library 级） | **153** passed | `bash scripts/verify.sh unit` |
 | Product Shell Jest | **203** passed | `bash scripts/verify.sh product-shell-static` |
 | Bundle drift | gate（正反向实测） | 含于 `product-shell-static` |
-| Coverage | **64%**（informational，无门禁） | `bash scripts/verify.sh coverage` |
+| Coverage | **69%**（informational，无门禁） | `bash scripts/verify.sh coverage` |
 | 全量 | 9 步 | `bash scripts/verify.sh all` |
 | Docs consistency | exit 0 | `bash scripts/docs_consistency_check.sh` |
 | CI | exists | `.github/workflows/verify.yml` |
 
-**不含**：旧 AOS-C8 的 2439 unit tests + coverage 92%（2026-07-15 已退役）；`dogfood_maturity_gate.py`、`agos9_release_audit.sh` 已删。现行 unit 仅 `tests/test_security.py` + `tests/test_vault_plugin.py` 两个 library 级文件；coverage 只报告不卡线。
+**不含**：旧 AOS-C8 的 2439 unit tests + coverage 92%（2026-07-15 已退役）；`dogfood_maturity_gate.py`、`agos9_release_audit.sh` 已删。现行 unit 五个 library 级文件：`tests/test_security.py` + `tests/test_vault_plugin.py` + `tests/test_library_surfaces.py` + `tests/test_repair.py` + `tests/test_alchemy_revert.py`；coverage 只报告不卡线。
 
 ## 两套 Release Gate
 
@@ -45,9 +45,9 @@ updated_at: "2026-08-05"
 
 ### Local Engineering — 加权（2026-07-22 复评）
 
-> **双分数横幅（勿混标）**  
-> - **本表**：Local Engineering Gate 加权 **9.05** = fixture / verify / 文档门禁自评尺子（可宣称 engineering 就绪）。  
-> - **工程实测七维**（覆盖、产物漂移、死代码、SoT 卫生等）：**7.9**（2026-08-05 六路复评）／曾 **6.8**（2026-08-04）。报告：`docs/plans/2026-08-05-multi-agent-reevaluation.md`、`docs/plans/2026-08-04-full-scan-evaluation.md`。  
+> **双分数横幅（勿混标）**
+> - **本表**：Local Engineering Gate 加权 **9.05** = fixture / verify / 文档门禁自评尺子（可宣称 engineering 就绪）。
+> - **工程实测七维**（覆盖、产物漂移、死代码、SoT 卫生等）：**8.2**（2026-08-05 傍晚 R2）／曾 **7.9**（同日早）／**6.8**（2026-08-04）。报告：`docs/plans/2026-08-05-multi-agent-full-scan-r2.md`、`docs/plans/2026-08-05-multi-agent-reevaluation.md`。
 > - **非** live dogfood；**非** 商业可售分。
 
 | 维度 | 权重 | 分 | 加权 |
@@ -64,7 +64,7 @@ updated_at: "2026-08-05"
 
 **历史对照**：2026-07-18 ≈ **9.07**；2026-07-19 audit 漂移 ≈ **8.4**；2026-07-22 Ask sync 后回升至 **9.05**（架构净简化 + verify 全绿；Live 仍 not-yet）。本表八维**未**因 08-04/08-05 工程实测复评而重算。
 
-**并列尺子（非本表加权）**：工程实测七维 **7.9**（08-05）；Commercial Go-Live ≈ **7.8**（未达诚实可售 ≥8.0）；Ask 架构子尺 A/B 各 **8.0**。
+**并列尺子（非本表加权）**：工程实测七维 **8.2**（08-05 R2）；Commercial Go-Live ≈ **7.8**（未达诚实可售 ≥8.0）；Ask 架构子尺 A/B 各 **8.0**。
 
 ### Live Dogfood — 状态摘要（2026-07-22）
 
@@ -110,7 +110,7 @@ updated_at: "2026-08-05"
 | 2 | Acceptance | **24** — `bash scripts/verify.sh acceptance` |
 | 3 | LLM integration | **85** — `bash scripts/verify.sh llm-integration` |
 | 4 | Product Shell | Jest **203** + bundle drift gate — `bash scripts/verify.sh product-shell-static` |
-| 5 | Unit | **143** — `bash scripts/verify.sh unit` |
+| 5 | Unit | **153** — `bash scripts/verify.sh unit` |
 | 6 | Docs consistency | `bash scripts/docs_consistency_check.sh` |
 | 7 | CI | `.github/workflows/verify.yml` |
 
@@ -150,3 +150,7 @@ updated_at: "2026-08-05"
 - 2026-08-05（覆盖归属 R-5）：删 7 个零入口 0% 模块（含 orphaned `cognitive_history` / `topology`）；补 `tests/test_library_surfaces.py` 9 例；unit **72→81**。
 - 2026-08-05（repair 路径补测）：`app_linting/repair.py` 3%→**100%**、`execution/repair_plan.py` 27%→**100%**、`execution/patch_plan.py` 21%→**99%**（余 1 行 dead-by-config：general-only 协议下 protocol_hints 分支不可达）；新增 `tests/test_repair.py` 62 例；unit **81→143**。
 - 2026-08-05（verify 单行钉 + R-7）：`docs_consistency` 钉 `Run LLM integration tests (85 tests)`；Today 去 proposal feed 桶；USER_GUIDE/INSTALL 术语对齐 Today；Post-Cleanup **暂不归档**。
+- 2026-08-05（优先债收口，不含 Commercial 三阻断）：Post-Cleanup/Scorecard/DEVELOPER 计数对齐；coverage 快照 **64%→69%**；`untrusted_source` 包装单测 + `alchemy-revert` library 测；unit **143→147**；工程实测横幅 **7.9→8.2**（R2）。
+- 2026-08-05（corpus 方案 A）：`aiwiki.corpus` paths/scoring/ranks；`content ↛ memory`；分层契约测；unit **147→149**。
+- 2026-08-05（facade 清零）：`app_shell`/`app_linting` 删 `_CompatModule`；acceptance mock 直 patch owner；unit **149→151**。
+- 2026-08-05（review fix）：`machine_memory` 改为必传 keyword；补 TypeError 契约测；unit **151→153**。

@@ -240,7 +240,7 @@ sudo apt update && sudo apt install python3 python3-pip
 
 ### 没有 API key 能跑吗？
 
-可以。投料、编译、本地 lint、today 简报、`run-nightly` 等确定性链路完全离线可用。只有 `run-ask` 等显式 LLM 命令需要后端配置。
+可以。投料、编译、本地 lint、Today、`run-nightly` 等确定性链路完全离线可用。只有 `run-ask` 等显式 LLM 命令需要后端配置。
 
 ### Obsidian 打不开 vault？
 

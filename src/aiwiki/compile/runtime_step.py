@@ -556,6 +556,7 @@ def compile_runtime_phase(context: CompileContext) -> None:
         generated_at=context.compiled_at,
         entries=context.entries,
         active_protocol=context.protocol_state["active_protocol"],
+        machine_memory=context.memory,
     )
     context.active_corpora_state = material_state_documents["active_corpora_state"]
     context.material_state = material_state_documents["material_state"]

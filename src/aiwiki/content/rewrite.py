@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from ..memory.paths import concept_rewrite_state_path
+from ..corpus.paths import concept_rewrite_state_path
 from ..state.io import load_json_document
 from ..utils.io import atomic_write_text, runtime_write_operation
 

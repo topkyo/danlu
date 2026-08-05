@@ -67,7 +67,7 @@ emit_targets_for_path() {
       echo cli-smoke
       return 0
       ;;
-    src/aiwiki/utils/security.py|src/aiwiki/vault/*|src/aiwiki/vault/**/*|src/aiwiki/autonomy_policy.py|src/aiwiki/cli/llm_check_render.py|src/aiwiki/cli/__main__.py)
+    src/aiwiki/utils/security.py|src/aiwiki/vault/*|src/aiwiki/vault/**/*|src/aiwiki/autonomy_policy.py|src/aiwiki/cli/llm_check_render.py|src/aiwiki/cli/__main__.py|src/aiwiki/runner/prompts.py)
       # Guarded by tests/test_security.py / test_vault_plugin.py / test_library_surfaces.py.
       echo python-static
       echo unit
@@ -85,6 +85,13 @@ emit_targets_for_path() {
       echo unit
       echo acceptance
       echo llm-integration
+      return 0
+      ;;
+    src/aiwiki/execution/alchemy.py|src/aiwiki/execution/alchemy_helpers.py)
+      # Guarded by tests/test_alchemy_revert.py (+ acceptance promote fixtures).
+      echo python-static
+      echo unit
+      echo acceptance
       return 0
       ;;
     src/aiwiki/execution/*|src/aiwiki/execution/**/*|src/aiwiki/memory/*|src/aiwiki/memory/**/*|src/aiwiki/runner/*|src/aiwiki/runner/**/*|src/aiwiki/compile/*|src/aiwiki/compile/**/*)
@@ -106,7 +113,7 @@ emit_targets_for_path() {
       echo llm-integration
       return 0
       ;;
-    tests/test_security.py|tests/test_vault_plugin.py|tests/test_library_surfaces.py|tests/test_repair.py)
+    tests/test_security.py|tests/test_vault_plugin.py|tests/test_library_surfaces.py|tests/test_repair.py|tests/test_alchemy_revert.py)
       echo unit
       return 0
       ;;

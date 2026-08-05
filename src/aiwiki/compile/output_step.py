@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from ..app_shell import build_shell_summary, write_shell_summary
+from ..app_shell.meta import write_shell_summary
+from ..app_shell.summary import build_shell_summary
 from ..content.io import (
     collect_output_density_artifacts,
     collect_recent_output_artifacts,

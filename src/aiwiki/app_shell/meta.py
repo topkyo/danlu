@@ -29,9 +29,6 @@ from ..utils.path import relative_path
 from .surfaces import shell_search_results
 from .types import ShellSummary
 
-build_shell_summary: Any = None
-render_product_shell_html: Any = None
-
 
 def shell_links(root: Path) -> dict[str, str]:
     return {
@@ -139,6 +136,8 @@ def shell_protocol_state(root: Path) -> ProtocolState:
 
 
 def shell_status_dashboard(root: Path) -> dict[str, Any]:
+    from .summary import build_shell_summary
+
     ensure_layout(root)
     summary = write_shell_summary(root, build_shell_summary(root))
     return {
@@ -151,6 +150,8 @@ def shell_status_dashboard(root: Path) -> dict[str, Any]:
 
 
 def shell_search(root: Path, query: str, *, limit: int = 12) -> dict[str, Any]:
+    from .summary import build_shell_summary
+
     ensure_layout(root)
     summary = build_shell_summary(root)
     summary["search_results"] = shell_search_results(root, query, limit=limit)
@@ -160,7 +161,8 @@ def shell_search(root: Path, query: str, *, limit: int = 12) -> dict[str, Any]:
 
 @runtime_write_operation
 def write_shell_summary(root: Path, summary: ShellSummary | None = None) -> ShellSummary:
-    from .summary import thin_shell_summary_for_persist
+    from .rendering import render_product_shell_html
+    from .summary import build_shell_summary, thin_shell_summary_for_persist
 
     summary = summary or build_shell_summary(root)
     persisted = thin_shell_summary_for_persist(summary)

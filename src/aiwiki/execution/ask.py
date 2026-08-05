@@ -28,7 +28,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..app_shell import build_shell_summary, write_shell_summary
+from ..app_shell.meta import write_shell_summary
+from ..app_shell.summary import build_shell_summary
 from ..compile import compile_wiki
 from ..compile.content_step import wiki_requires_compile
 from ..compile.ranking import compound_rank_boosts, rank_sources, ranked_compound_page_paths
@@ -577,7 +578,12 @@ def ask_question(
         }
     else:
         machine_query["route_telemetry"] = dict(machine_query.get("route_telemetry") or {})
-    refresh_material_state(root, generated_at=created_at, active_protocol=active_protocol)
+    refresh_material_state(
+        root,
+        generated_at=created_at,
+        active_protocol=active_protocol,
+        machine_memory=load_machine_memory(root),
+    )
     refresh_knowledge_lifecycle_state(
         root,
         generated_at=created_at,

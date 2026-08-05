@@ -17,8 +17,8 @@ from ..content.archive import active_archived_material_ids, load_material_routin
 from ..content.concepts import concept_source_pages, entry_concept_terms
 from ..content.io import active_manual_source_concept_links, routing_snapshot_for_protocol, source_summary_or_preview
 from ..content.material import load_material_state
+from ..corpus.scoring import recency_score_for_timestamp
 from ..lifecycle.knowledge import load_knowledge_lifecycle_state
-from ..memory.scoring import recency_score_for_timestamp
 from ..protocol.focus_scoring import concept_focus_score, entry_focus_score, protocol_focus_score
 from ..protocol.library import PROTOCOL_LIBRARY
 from ..state.constants import DEFAULT_PROTOCOL

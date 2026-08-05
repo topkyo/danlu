@@ -10,13 +10,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ..memory.paths import manual_link_state_path
-from ..memory.scoring import (
+from ..corpus.paths import manual_link_state_path
+from ..corpus.scoring import (
     protocol_hints_for_material,
     timestamp_is_newer,
     update_latest_timestamp,
 )
-from ..memory.state import load_machine_memory
 from ..protocol.runtime_config import ACTIVE_CORPUS_STATUSES, ACTIVE_CORPUS_TTL
 from ..protocol.scaffold import ensure_layout
 from ..protocol.state import load_protocol_state
@@ -133,12 +132,14 @@ def refresh_material_state(
     root: Path,
     *,
     generated_at: str,
+    machine_memory: dict[str, Any],
     entries: list[dict[str, Any]] | None = None,
     active_protocol: str | None = None,
 ) -> dict[str, Any]:
     documents = build_material_state_documents(
         root,
         generated_at=generated_at,
+        machine_memory=machine_memory,
         entries=entries,
         active_protocol=active_protocol,
     )
@@ -152,6 +153,7 @@ def build_material_state_documents(
     root: Path,
     *,
     generated_at: str,
+    machine_memory: dict[str, Any],
     entries: list[dict[str, Any]] | None = None,
     active_protocol: str | None = None,
 ) -> dict[str, dict[str, Any]]:
@@ -166,6 +168,9 @@ def build_material_state_documents(
     )
     from .io import scan_material_reference_state
 
+    if not isinstance(machine_memory, dict):
+        raise TypeError("machine_memory must be a dict (caller injects machine memory)")
+
     ensure_layout(root)
     manifest_entries = entries if entries is not None else load_manifest(root).get("entries", [])
     resolved_protocol = active_protocol or load_protocol_state(root)["active_protocol"]
@@ -175,7 +180,6 @@ def build_material_state_documents(
     history = load_runtime_history(root)
     active_corpora = reconcile_active_corpora_state(root, changed_at=generated_at)["corpora"]
     reference_state = scan_material_reference_state(root, manifest_entries)
-    machine_memory = load_machine_memory(root)
     graph_context = material_graph_context(machine_memory)
     previous_archive_candidates = load_archive_candidates_state(root)
     material_archive_state = load_material_archive_state(root)
