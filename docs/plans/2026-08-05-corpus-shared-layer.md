@@ -2,10 +2,10 @@
 
 > **For agentic workers:** Load `executing-plans` (2+ tasks). Use `subteam` after substantive tasks. Then `finishing`. Checkboxes track progress.
 
-**Goal:** 用 `aiwiki.corpus` 只读共享层断开 `content ↔ memory` 环，使 `content` **零** import `memory`。  
-**Spec / 分析:** `docs/plans/2026-08-05-structural-debt-resolution.md` §4 方案 A  
-**Architecture:** `corpus` 只依赖 `utils` / `state` / `protocol`；禁止 import `content` / `memory` / `execution` / `runner`。首波只迁「环上交叉的纯函数 + path 常量」，并把 `content` 对 `load_machine_memory` 的依赖改为调用方注入。`memory → content` 窄只读依赖本波允许保留（环已单向）。  
-**Tech stack:** Python 3.10+ stdlib；验证 `bash scripts/verify.sh`。  
+**Goal:** 用 `aiwiki.corpus` 只读共享层断开 `content ↔ memory` 环，使 `content` **零** import `memory`。
+**Spec / 分析:** `docs/plans/2026-08-05-structural-debt-resolution.md` §4 方案 A
+**Architecture:** `corpus` 只依赖 `utils` / `state` / `protocol`；禁止 import `content` / `memory` / `execution` / `runner`。首波只迁「环上交叉的纯函数 + path 常量」，并把 `content` 对 `load_machine_memory` 的依赖改为调用方注入。`memory → content` 窄只读依赖本波允许保留（环已单向）。
+**Tech stack:** Python 3.10+ stdlib；验证 `bash scripts/verify.sh`。
 **Out of scope（另开计划）:** facade 删除、hub 拆分、`memory→content` 全迁入 corpus、Commercial 三阻断。
 
 ---
@@ -209,10 +209,10 @@ rg 'from \.\.(content|memory)|from aiwiki\.(content|memory)' src/aiwiki/corpus  
 ```
 
 **Done 判据（本计划）：**
-1. `content` 包 AST/`rg` 零 `memory` import  
-2. `corpus` 零 `content`/`memory` import  
-3. `verify.sh all` EXIT 0  
-4. DEVELOPER 有 `corpus/` owner 行  
+1. `content` 包 AST/`rg` 零 `memory` import
+2. `corpus` 零 `content`/`memory` import
+3. `verify.sh all` EXIT 0
+4. DEVELOPER 有 `corpus/` owner 行
 
 **非本计划 Done：** facade 清零、hub &lt;800、memory↛content。
 

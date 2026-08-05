@@ -115,6 +115,31 @@ def _package_import_from_targets(package_dir: Path) -> list[tuple[Path, str, int
     return hits
 
 
+def test_build_material_state_documents_requires_machine_memory(tmp_path: Path) -> None:
+    from aiwiki.content.material import build_material_state_documents
+    from aiwiki.protocol.scaffold import ensure_layout
+
+    ensure_layout(tmp_path)
+    with pytest.raises(TypeError, match="machine_memory"):
+        build_material_state_documents(  # type: ignore[call-arg]
+            tmp_path,
+            generated_at="2026-08-05T00:00:00+00:00",
+        )
+
+
+def test_build_material_state_documents_rejects_non_dict_memory(tmp_path: Path) -> None:
+    from aiwiki.content.material import build_material_state_documents
+    from aiwiki.protocol.scaffold import ensure_layout
+
+    ensure_layout(tmp_path)
+    with pytest.raises(TypeError, match="machine_memory must be a dict"):
+        build_material_state_documents(
+            tmp_path,
+            generated_at="2026-08-05T00:00:00+00:00",
+            machine_memory="not-a-dict",  # type: ignore[arg-type]
+        )
+
+
 def test_content_package_does_not_import_memory() -> None:
     root = Path("src/aiwiki/content")
     offenders: list[str] = []

@@ -2,8 +2,8 @@
 
 > **For agentic workers:** Load `executing-plans` or inline（本计划 ≤3 task，可 inline）。
 
-**Goal:** 删除 `_CompatModule` 重 facade；调用方与 acceptance mock 直引 owner；`__init__.py` 仅文档。  
-**Spec:** `docs/plans/2026-08-05-structural-debt-resolution.md` §5.1；AGENTS「纯 facade 一轮做干净」。  
+**Goal:** 删除 `_CompatModule` 重 facade；调用方与 acceptance mock 直引 owner；`__init__.py` 仅文档。
+**Spec:** `docs/plans/2026-08-05-structural-debt-resolution.md` §5.1；AGENTS「纯 facade 一轮做干净」。
 **Out:** hub 拆分、corpus 再扩、Commercial。
 
 ---
