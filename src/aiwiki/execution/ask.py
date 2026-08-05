@@ -319,23 +319,16 @@ def apply_graph_anchors_to_artifact(destination: Path, *, anchors: list[str], me
     apply_native_graph_anchor_section(destination, anchors=native, memory=memory)
 
 
-@runtime_write_operation
-def ask_question(
+def _prepare_ask_query_context(
     root: Path,
     question: str,
-    output_format: str,
-    protocol: str | None = None,
+    protocol: str | None,
     *,
-    no_cache: bool = False,
-    corpus_id_override: str | None = None,
-    write_graph_anchors: bool = True,
-    notify: bool = True,
+    no_cache: bool,
+    output_format: str,
 ) -> dict[str, Any]:
     from ..compile.ranking import rank_concepts
     from ..utils.time import utc_now
-
-    if is_obsidian_open_link(question):
-        raise ValueError("obsidian open links are navigation targets, not questions")
 
     ensure_layout(root)
     manifest = sync_manifest_with_raw(root)
@@ -381,6 +374,42 @@ def ask_question(
     ranked = rank_sources(root, entries, question, boost_source_ids=boosted_ids, protocol=active_protocol)
     created_at = utc_now()
     artifact_seed = _output_artifact_seed(question, output_format)
+    return {
+        "manifest": manifest,
+        "entries": entries,
+        "active_protocol": active_protocol,
+        "protocol_state": protocol_state,
+        "blocked_source_ids": blocked_source_ids,
+        "material_state": material_state,
+        "routing_state": routing_state,
+        "memory": memory,
+        "machine_query": machine_query,
+        "ranked_concepts": ranked_concepts,
+        "ranked": ranked,
+        "created_at": created_at,
+        "artifact_seed": artifact_seed,
+    }
+
+
+def _materialize_ask_report_artifact(
+    root: Path,
+    ctx: dict[str, Any],
+    question: str,
+    output_format: str,
+    *,
+    corpus_id_override: str | None,
+    write_graph_anchors: bool,
+) -> dict[str, Any]:
+    active_protocol = ctx["active_protocol"]
+    protocol_state = ctx["protocol_state"]
+    blocked_source_ids = ctx["blocked_source_ids"]
+    routing_state = ctx["routing_state"]
+    memory = ctx["memory"]
+    machine_query = ctx["machine_query"]
+    ranked_concepts = ctx["ranked_concepts"]
+    ranked = ctx["ranked"]
+    created_at = ctx["created_at"]
+    artifact_seed = ctx["artifact_seed"]
 
     if output_format != "report":
         raise ValueError(f"Unsupported format: {output_format}")
@@ -455,6 +484,41 @@ def ask_question(
     # via ``apply_graph_anchors_to_artifact`` after the LLM step.
     if write_graph_anchors and anchors:
         apply_graph_anchors_to_artifact(destination, anchors=anchors, memory=memory)
+    return {
+        "destination": destination,
+        "artifact_id": artifact_id,
+        "artifact_ref": artifact_ref,
+        "active_corpus": active_corpus,
+        "bridge_evidence_ids": bridge_evidence_ids,
+        "used_refs": used_refs,
+        "anchors": anchors,
+    }
+
+
+def _finalize_ask_question(
+    root: Path,
+    ctx: dict[str, Any],
+    artifact: dict[str, Any],
+    question: str,
+    output_format: str,
+    *,
+    no_cache: bool,
+    notify: bool,
+) -> dict[str, Any]:
+    manifest = ctx["manifest"]
+    active_protocol = ctx["active_protocol"]
+    memory = ctx["memory"]
+    machine_query = ctx["machine_query"]
+    ranked_concepts = ctx["ranked_concepts"]
+    ranked = ctx["ranked"]
+    created_at = ctx["created_at"]
+    destination = artifact["destination"]
+    artifact_ref = artifact["artifact_ref"]
+    active_corpus = artifact["active_corpus"]
+    bridge_evidence_ids = artifact["bridge_evidence_ids"]
+    used_refs = artifact["used_refs"]
+    anchors = artifact["anchors"]
+
     run_id = run_id_for_artifact(artifact_ref)
     run_notes = write_run_notes(
         root,
@@ -614,6 +678,47 @@ def ask_question(
         ],
         "protocol_pages": protocol_paths(root, active_protocol),
     }
+
+
+@runtime_write_operation
+def ask_question(
+    root: Path,
+    question: str,
+    output_format: str,
+    protocol: str | None = None,
+    *,
+    no_cache: bool = False,
+    corpus_id_override: str | None = None,
+    write_graph_anchors: bool = True,
+    notify: bool = True,
+) -> dict[str, Any]:
+    if is_obsidian_open_link(question):
+        raise ValueError("obsidian open links are navigation targets, not questions")
+
+    ctx = _prepare_ask_query_context(
+        root,
+        question,
+        protocol,
+        no_cache=no_cache,
+        output_format=output_format,
+    )
+    artifact = _materialize_ask_report_artifact(
+        root,
+        ctx,
+        question,
+        output_format,
+        corpus_id_override=corpus_id_override,
+        write_graph_anchors=write_graph_anchors,
+    )
+    return _finalize_ask_question(
+        root,
+        ctx,
+        artifact,
+        question,
+        output_format,
+        no_cache=no_cache,
+        notify=notify,
+    )
 
 
 def load_previous_output_summary(root: Path, corpus_id: str, *, exclude_artifact_ref: str | None = None) -> str | None:

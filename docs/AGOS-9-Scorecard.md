@@ -26,10 +26,10 @@ updated_at: "2026-08-05"
 |---|---:|---|
 | Acceptance | **24** passed | `bash scripts/verify.sh acceptance` |
 | LLM integration | **85** passed | `bash scripts/verify.sh llm-integration` |
-| Unit（library 级） | **160** passed | `bash scripts/verify.sh unit` |
+| Unit（library 级） | **166** passed | `bash scripts/verify.sh unit` |
 | Product Shell Jest | **203** passed | `bash scripts/verify.sh product-shell-static` |
 | Bundle drift | gate（正反向实测） | 含于 `product-shell-static` |
-| Coverage | **69%**（informational，无门禁） | `bash scripts/verify.sh coverage` |
+| Coverage | **71%**（informational，无门禁） | `bash scripts/verify.sh coverage` |
 | 全量 | 9 步 | `bash scripts/verify.sh all` |
 | Docs consistency | exit 0 | `bash scripts/docs_consistency_check.sh` |
 | CI | exists | `.github/workflows/verify.yml` |
@@ -110,7 +110,7 @@ updated_at: "2026-08-05"
 | 2 | Acceptance | **24** — `bash scripts/verify.sh acceptance` |
 | 3 | LLM integration | **85** — `bash scripts/verify.sh llm-integration` |
 | 4 | Product Shell | Jest **203** + bundle drift gate — `bash scripts/verify.sh product-shell-static` |
-| 5 | Unit | **160** — `bash scripts/verify.sh unit` |
+| 5 | Unit | **166** — `bash scripts/verify.sh unit` |
 | 6 | Docs consistency | `bash scripts/docs_consistency_check.sh` |
 | 7 | CI | `.github/workflows/verify.yml` |
 
@@ -157,3 +157,4 @@ updated_at: "2026-08-05"
 - 2026-08-05（corpus S2）：parse/sections/snapshots/link_state 下沉；memory ↛ content；unit **153→154**。
 - 2026-08-05（P1 分修）：六命令 CLI 烟测 + promote revert_supported + frontmatter/metrics_io；unit **154→160**。
 - 2026-08-05（复评 R5）：工程实测横幅 **8.3→8.6**；报告 `docs/plans/2026-08-05-multi-agent-reevaluation-r5.md`（R4 8.5 见 r4）。
+- 2026-08-05（复评 R6 + 发现修复）：独立验证维持 **8.6**；coverage **69→71**；unit **160→166**（argv）；ask/writeback 相位真拆分；CHANGELOG/jest 机制钉。报告 `docs/plans/2026-08-05-multi-agent-reevaluation-r6.md`。

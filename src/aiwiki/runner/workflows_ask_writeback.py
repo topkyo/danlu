@@ -203,6 +203,7 @@ def _write_run_ask_material_unreadable(
             )
             _refresh_shell_summary_fail_soft(root)
         except Exception:
+            # restore-then-raise (not silent swallow): undo partial artifact write
             _restore_file_bytes(target, target_snapshot)
             raise
         return {
@@ -321,6 +322,147 @@ def _record_run_ask_failure(
         _refresh_shell_summary_fail_soft(root)
 
 
+def _run_ask_success_llm_audit(
+    *,
+    effective_client: SupportsComplete,
+    backend_requested: str,
+    model_selected: str,
+    fallback_stages: list[str],
+    fallback_reason: str,
+) -> dict[str, Any]:
+    return {
+        "backend_requested": backend_requested,
+        "backend_effective": _client_backend_name(effective_client),
+        "model_selected": model_selected,
+        "model_final": _client_model_name(effective_client),
+        "fallback_stage": _fallback_stage_label(fallback_stages),
+        "fallback_reason": fallback_reason,
+        "contract_validated": True,
+    }
+
+
+def _commit_run_ask_success_mutations(
+    root: Path,
+    *,
+    target: Path,
+    artifact: dict[str, Any],
+    question: str,
+    output_format: str,
+    protocol: str | None,
+    no_cache: bool,
+    result: CompletionResult,
+    started: float,
+    retry_profile: str,
+    used_prompt_profile: str,
+    provenance_event_fields: dict[str, Any],
+    current_artifact: str,
+    material_refs: list[str],
+    material_context_refs: list[str],
+    used_refs: list[str],
+    source_ids: list[str],
+    backend_compat: dict[str, Any],
+    artifact_ref: str,
+    run_id: str,
+    planned_receipt_path: str,
+    llm_audit: dict[str, Any],
+) -> dict[str, Any]:
+    """Frontmatter / receipts / run-notes / notify for a validated LLM success write."""
+
+    backend_effective = str(llm_audit["backend_effective"])
+    model_final = str(llm_audit["model_final"])
+    fallback_stage = str(llm_audit["fallback_stage"])
+    _restore_run_ask_provenance_frontmatter(
+        target,
+        current_artifact,
+        material_refs=material_refs,
+        used_context_refs=material_context_refs,
+        used_refs=used_refs,
+    )
+    reinject_candidate_frontmatter(target, corpus_id=str(artifact.get("active_corpus_id") or ""))
+    _apply_graph_anchors_to_target(root, target, artifact)
+    _stamped_record(
+        root,
+        backend_compat,
+        {
+            "event": "run-ask",
+            "target": artifact_ref,
+            "question": question,
+            "format": output_format,
+            "protocol": artifact.get("protocol", ""),
+            "duration_ms": int((time.monotonic() - started) * 1000),
+            "prompt_profile": retry_profile or used_prompt_profile,
+            "retry_prompt_profile": retry_profile,
+            "no_cache": no_cache,
+            **provenance_event_fields,
+        },
+        llm_audit,
+        status="success",
+        response_id=result.response_id,
+        usage=result.usage,
+        raw_response_path=_raw_response_path(root, result),
+    )
+    run_notes = write_run_notes(
+        root,
+        run_id=run_id,
+        status="llm-complete",
+        question=question,
+        output_format=output_format,
+        protocol=str(artifact.get("protocol") or ""),
+        output_path=artifact_ref,
+        source_count=len(source_ids),
+        concept_count=len(artifact.get("ranked_concepts", [])),
+        receipt_path=planned_receipt_path,
+        backend=backend_effective,
+        model=model_final,
+        fallback_stage=fallback_stage,
+        stages=[
+            "Prepared deterministic context for the request.",
+            "Requested an LLM draft using the selected backend and prompt profile.",
+            "Validated the returned markdown contract and updated the output artifact.",
+            "Recorded authoritative execution receipt and LLM attempt metadata for audit and recovery.",
+        ],
+        context_refs=material_context_refs,
+    )
+    write_run_notes_frontmatter(target, run_id=run_notes["run_id"], run_notes_ref=run_notes["run_notes_path"])
+    _stamp_run_ask_artifact_complete(
+        target,
+        backend=backend_effective,
+        model=model_final,
+    )
+    _ensure_output_cssclass(target)
+    _write_run_ask_output_receipt(
+        root,
+        generated_by="aiwiki-run-ask",
+        artifact_ref=artifact_ref,
+        run_id=run_id,
+        question=question,
+        output_format=output_format,
+        protocol=str(artifact.get("protocol") or ""),
+        delivery_mode="llm-complete",
+        run_ask_path="report",
+        extra={
+            "backend_effective": backend_effective,
+            "model_final": model_final,
+            "fallback_stage": fallback_stage,
+            "response_id": result.response_id,
+            "usage": result.usage,
+            **provenance_event_fields,
+        },
+    )
+    notify_report_generated(
+        root,
+        {
+            "path": artifact_ref,
+            "title": question,
+            "protocol": str(artifact.get("protocol") or protocol or ""),
+            "format": output_format,
+            "created_at": str(artifact.get("created_at") or ""),
+        },
+    )
+    _refresh_shell_summary_fail_soft(root)
+    return run_notes
+
+
 def _write_run_ask_success(
     root: Path,
     *,
@@ -349,7 +491,7 @@ def _write_run_ask_success(
     source_ids: list[str],
     backend_compat: dict[str, Any],
 ) -> dict[str, Any]:
-    """Persist the validated LLM output plus receipts / run notes, then return the payload."""
+    """Lock, write LLM markdown, commit mutations (or restore), return payload."""
 
     with runtime_write_lock(root):
         target_snapshot = _snapshot_file_bytes(target)
@@ -359,113 +501,44 @@ def _write_run_ask_success(
         planned_receipt_path = _planned_run_ask_output_receipt_ref(root, artifact_ref=artifact_ref, run_id=run_id)
         notes_path = run_notes_file_path(root, run_id)
         notes_snapshot = _snapshot_file_bytes(notes_path)
-        backend_effective = _client_backend_name(effective_client)
-        model_final = _client_model_name(effective_client)
-        fallback_stage = _fallback_stage_label(fallback_stages)
-        llm_audit = {
-            "backend_requested": backend_requested,
-            "backend_effective": backend_effective,
-            "model_selected": model_selected,
-            "model_final": model_final,
-            "fallback_stage": fallback_stage,
-            "fallback_reason": fallback_reason,
-            "contract_validated": True,
-        }
+        llm_audit = _run_ask_success_llm_audit(
+            effective_client=effective_client,
+            backend_requested=backend_requested,
+            model_selected=model_selected,
+            fallback_stages=fallback_stages,
+            fallback_reason=fallback_reason,
+        )
         try:
-            _restore_run_ask_provenance_frontmatter(
-                target,
-                current_artifact,
-                material_refs=material_refs,
-                used_context_refs=material_context_refs,
-                used_refs=used_refs,
-            )
-            reinject_candidate_frontmatter(target, corpus_id=str(artifact.get("active_corpus_id") or ""))
-            _apply_graph_anchors_to_target(root, target, artifact)
-            _stamped_record(
+            run_notes = _commit_run_ask_success_mutations(
                 root,
-                backend_compat,
-                {
-                    "event": "run-ask",
-                    "target": artifact_ref,
-                    "question": question,
-                    "format": output_format,
-                    "protocol": artifact.get("protocol", ""),
-                    "duration_ms": int((time.monotonic() - started) * 1000),
-                    "prompt_profile": retry_profile or used_prompt_profile,
-                    "retry_prompt_profile": retry_profile,
-                    "no_cache": no_cache,
-                    **provenance_event_fields,
-                },
-                llm_audit,
-                status="success",
-                response_id=result.response_id,
-                usage=result.usage,
-                raw_response_path=_raw_response_path(root, result),
-            )
-            run_notes = write_run_notes(
-                root,
-                run_id=run_id,
-                status="llm-complete",
+                target=target,
+                artifact=artifact,
                 question=question,
                 output_format=output_format,
-                protocol=str(artifact.get("protocol") or ""),
-                output_path=artifact_ref,
-                source_count=len(source_ids),
-                concept_count=len(artifact.get("ranked_concepts", [])),
-                receipt_path=planned_receipt_path,
-                backend=backend_effective,
-                model=model_final,
-                fallback_stage=fallback_stage,
-                stages=[
-                    "Prepared deterministic context for the request.",
-                    "Requested an LLM draft using the selected backend and prompt profile.",
-                    "Validated the returned markdown contract and updated the output artifact.",
-                    "Recorded authoritative execution receipt and LLM attempt metadata for audit and recovery.",
-                ],
-                context_refs=material_context_refs,
-            )
-            write_run_notes_frontmatter(target, run_id=run_notes["run_id"], run_notes_ref=run_notes["run_notes_path"])
-            _stamp_run_ask_artifact_complete(
-                target,
-                backend=backend_effective,
-                model=model_final,
-            )
-            _ensure_output_cssclass(target)
-            _write_run_ask_output_receipt(
-                root,
-                generated_by="aiwiki-run-ask",
+                protocol=protocol,
+                no_cache=no_cache,
+                result=result,
+                started=started,
+                retry_profile=retry_profile,
+                used_prompt_profile=used_prompt_profile,
+                provenance_event_fields=provenance_event_fields,
+                current_artifact=current_artifact,
+                material_refs=material_refs,
+                material_context_refs=material_context_refs,
+                used_refs=used_refs,
+                source_ids=source_ids,
+                backend_compat=backend_compat,
                 artifact_ref=artifact_ref,
                 run_id=run_id,
-                question=question,
-                output_format=output_format,
-                protocol=str(artifact.get("protocol") or ""),
-                delivery_mode="llm-complete",
-                run_ask_path="report",
-                extra={
-                    "backend_effective": backend_effective,
-                    "model_final": model_final,
-                    "fallback_stage": fallback_stage,
-                    "response_id": result.response_id,
-                    "usage": result.usage,
-                    **provenance_event_fields,
-                },
+                planned_receipt_path=planned_receipt_path,
+                llm_audit=llm_audit,
             )
-            notify_report_generated(
-                root,
-                {
-                    "path": artifact_ref,
-                    "title": question,
-                    "protocol": str(artifact.get("protocol") or protocol or ""),
-                    "format": output_format,
-                    "created_at": str(artifact.get("created_at") or ""),
-                },
-            )
-            _refresh_shell_summary_fail_soft(root)
         except Exception:
+            # restore-then-raise (not silent swallow): undo target + run-notes partial writes
             _restore_file_bytes(target, target_snapshot)
             _restore_file_bytes(notes_path, notes_snapshot)
             raise
-        payload = {
+        return {
             **artifact,
             **run_notes,
             **llm_audit,
@@ -474,6 +547,5 @@ def _write_run_ask_success(
             "timeout_seconds": effective_timeout_seconds,
             "no_cache": no_cache,
         }
-        return payload
 
 
