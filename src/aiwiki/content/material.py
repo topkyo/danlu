@@ -10,8 +10,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ..memory.paths import manual_link_state_path
-from ..memory.scoring import (
+from ..corpus.paths import manual_link_state_path
+from ..corpus.scoring import (
     protocol_hints_for_material,
     timestamp_is_newer,
     update_latest_timestamp,

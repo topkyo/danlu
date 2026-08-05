@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..memory.action_rank import action_priority_rank
+from ..corpus.ranks import action_priority_rank
 from ..protocol.runtime_config import CONCEPT_HARDNESS_LEVELS
 from ..utils.text import STOP_WORDS, tokenize
 from ..utils.time import parse_iso_datetime, utc_now

@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ..memory.scoring import recency_score_for_timestamp, timestamp_is_newer
+from ..corpus.scoring import recency_score_for_timestamp, timestamp_is_newer
 from ..protocol.runtime_config import ARCHIVE_CANDIDATE_STATUSES, ARCHIVE_QUERY_STALE_AFTER
 from ..state.collections import active_records_by_key, normalize_versioned_record_list_state
 from ..state.constants import DEFAULT_PROTOCOL
