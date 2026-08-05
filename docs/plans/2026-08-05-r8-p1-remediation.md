@@ -61,9 +61,9 @@
 - Modify: `.obsidian/plugins/furnace-product-shell/manifest.json`
 - （若 `package.json` 有 author 字段一并改；当前无私有 author 则不动）
 
-- [ ] **Step 1:** 将 `"author": "OpenAI Codex"` 改为 `"author": "炼丹炉"`（与 LICENSE「炼丹炉 authors」对齐）。
-- [ ] **Step 2:** `python3 -c "import json; print(json.load(open('.obsidian/plugins/furnace-product-shell/manifest.json'))['author'])"` — expect `炼丹炉`
-- [ ] **Verify:** `rg -n 'OpenAI Codex' .obsidian/plugins/furnace-product-shell/` — 0 hits
+- [x] **Step 1:** 将 `"author": "OpenAI Codex"` 改为 `"author": "炼丹炉"`（与 LICENSE「炼丹炉 authors」对齐）。
+- [x] **Step 2:** `python3 -c "import json; print(json.load(open('.obsidian/plugins/furnace-product-shell/manifest.json'))['author'])"` — expect `炼丹炉`
+- [x] **Verify:** `rg -n 'OpenAI Codex' .obsidian/plugins/furnace-product-shell/` — 0 hits
 
 ---
 
@@ -76,10 +76,10 @@
 - Modify: `.github/workflows/verify.yml`（job env）
 - Fix jest 失败提示路径为 `.obsidian/plugins/furnace-product-shell`（同文件顺手，属同一根因文案）
 
-- [ ] **Step 1:** 在跑 `npm test` 前：`export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=4096"`（勿覆盖调用方已有 NODE_OPTIONS 中的其他 flag；若已含 max-old-space-size 则不重复追加）。更简单且够用：`export NODE_OPTIONS="--max-old-space-size=4096${NODE_OPTIONS:+ $NODE_OPTIONS}"`。
-- [ ] **Step 2:** 修正 L177 附近路径文案 → `.obsidian/plugins/furnace-product-shell`。
-- [ ] **Step 3:** `.github/workflows/verify.yml` 的 verify job 增加 `env: NODE_OPTIONS: --max-old-space-size=4096`（或等价）。
-- [ ] **Verify:** `bash -n scripts/verify.sh`；`rg -n 'max-old-space-size|furnace-product-shell' scripts/verify.sh .github/workflows/verify.yml`
+- [x] **Step 1:** 在跑 `npm test` 前：`export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=4096"`（勿覆盖调用方已有 NODE_OPTIONS 中的其他 flag；若已含 max-old-space-size 则不重复追加）。更简单且够用：`export NODE_OPTIONS="--max-old-space-size=4096${NODE_OPTIONS:+ $NODE_OPTIONS}"`。
+- [x] **Step 2:** 修正 L177 附近路径文案 → `.obsidian/plugins/furnace-product-shell`。
+- [x] **Step 3:** `.github/workflows/verify.yml` 的 verify job 增加 `env: NODE_OPTIONS: --max-old-space-size=4096`（或等价）。
+- [x] **Verify:** `bash -n scripts/verify.sh`；`rg -n 'max-old-space-size|furnace-product-shell' scripts/verify.sh .github/workflows/verify.yml`
 
 ---
 
@@ -94,10 +94,10 @@
 - Delete: `src/aiwiki/memory/scoring.py`, `src/aiwiki/memory/action_rank.py`
 - Modify: `tests/test_library_surfaces.py` — 若有 facade 存在性断言则改为「文件不存在」；补 `rg`/import 契约
 
-- [ ] **Step 1:** 改三处调用方直引 corpus；确认 `action_core` 仍 re-export ranks **仅当** 外部依赖 `from aiwiki.memory.action_core import action_priority_rank`——保留 action_core 上的 re-export OK，**禁止**保留独立 facade 文件。
-- [ ] **Step 2:** 删除两个 facade 文件。
-- [ ] **Step 3:** `rg -n 'memory\.(scoring|action_rank)|memory/scoring|memory/action_rank' src tests` — 仅允许史料/计划文档；`src/` 与 `tests/` 零命中。
-- [ ] **Verify:** `bash scripts/verify.sh unit` — expect PASS（现行计数；本任务不增用例则仍 166，若补契约测则更新钉在 Final）
+- [x] **Step 1:** 改三处调用方直引 corpus；确认 `action_core` 仍 re-export ranks **仅当** 外部依赖 `from aiwiki.memory.action_core import action_priority_rank`——保留 action_core 上的 re-export OK，**禁止**保留独立 facade 文件。
+- [x] **Step 2:** 删除两个 facade 文件。
+- [x] **Step 3:** `rg -n 'memory\.(scoring|action_rank)|memory/scoring|memory/action_rank' src tests` — 仅允许史料/计划文档；`src/` 与 `tests/` 零命中。
+- [x] **Verify:** `bash scripts/verify.sh unit` — expect PASS（现行计数；本任务不增用例则仍 166，若补契约测则更新钉在 Final）
 
 ---
 
@@ -109,11 +109,11 @@
 - Modify: `scripts/docs_consistency_check.sh`
 - Modify: `docs/DEVELOPER.md`（短节「已知包级环」——列 R8 环表一行摘要 +「不在本轮强拆」）
 
-- [ ] **Step 1:** 在现有 content/memory/corpus 检查后追加：
+- [x] **Step 1:** 在现有 content/memory/corpus 检查后追加：
   - `memory` 不得 `from ..execution|from aiwiki.execution`
   - `src/aiwiki/memory/scoring.py` 与 `action_rank.py` **不得存在**（防 facade 复活）
-- [ ] **Step 2:** DEVELOPER 增加 ≤15 行：已知 `compile↔{content,render,memory,execution}` 等环存在、靠 lazy/导入顺序避免 ImportError、后续单独治理；本检查只锁声明红线。
-- [ ] **Verify:** `bash scripts/docs_consistency_check.sh` — exit 0；故意 `touch src/aiwiki/memory/scoring.py` 后应 FAIL（测完删回）
+- [x] **Step 2:** DEVELOPER 增加 ≤15 行：已知 `compile↔{content,render,memory,execution}` 等环存在、靠 lazy/导入顺序避免 ImportError、后续单独治理；本检查只锁声明红线。
+- [x] **Verify:** `bash scripts/docs_consistency_check.sh` — exit 0；故意 `touch src/aiwiki/memory/scoring.py` 后应 FAIL（测完删回）
 
 ---
 
@@ -127,9 +127,9 @@
 - Modify: `src/aiwiki/execution/candidates.py` — 删 `_write_frontmatter_string_list`，改调 utils（`force`/`merge` 映射到同一 API；若 `force` 语义不同则用参数名对齐现行为）
 - Test: 在 `tests/test_library_surfaces.py` 或现有 markdown 测中加 2 例（overwrite + merge）
 
-- [ ] **Step 1:** 实现共享写入；行为与现 ask merge / candidates write **字节级语义一致**（先读两侧测试/调用点再合并）。
-- [ ] **Step 2:** 替换调用方并删除私有函数。
-- [ ] **Verify:** `bash scripts/verify.sh unit` + `bash scripts/verify.sh llm-integration`（ask 副作用路径）
+- [x] **Step 1:** 实现共享写入；行为与现 ask merge / candidates write **字节级语义一致**（先读两侧测试/调用点再合并）。
+- [x] **Step 2:** 替换调用方并删除私有函数。
+- [x] **Verify:** `bash scripts/verify.sh unit` + `bash scripts/verify.sh llm-integration`（ask 副作用路径）
 
 ---
 
@@ -143,9 +143,9 @@
 
 **最优解：** 单一 `@dataclass(frozen=True)` / NamedTuple `RepairBacklogContext`，在 `render_repair_backlog` 内组装；`_render_backlog_markdown(ctx: RepairBacklogContext) -> str`。**不要**拆成 3 个 context（YAGNI）。函数体章节顺序不变。
 
-- [ ] **Step 1:** 定义 context；迁移字段访问为 `ctx.xxx`。
-- [ ] **Step 2:** 确认无 10+ 位置参数残留于该函数签名。
-- [ ] **Verify:** `bash scripts/verify.sh unit`（含 `test_repair.py`）
+- [x] **Step 1:** 定义 context；迁移字段访问为 `ctx.xxx`。
+- [x] **Step 2:** 确认无 10+ 位置参数残留于该函数签名。
+- [x] **Verify:** `bash scripts/verify.sh unit`（含 `test_repair.py`）
 
 ---
 
@@ -158,9 +158,9 @@
 - Modify: `src/aiwiki/drop/image.py` — OCR 段用 wrap；system 提示对齐 distill/ask 口径
 - Modify: `tests/test_library_surfaces.py` 或专用测 — 断言 prompt 含 `<untrusted_source` 且 marker spoof 被中和（可 mock complete/analyze_image 捕获 prompt）
 
-- [ ] **Step 1:** planner：`PLANNER_USER_TEMPLATE` 改为包 wrap 后的块，或 format 前 wrap。
-- [ ] **Step 2:** vision：OCR 不再裸拼。
-- [ ] **Verify:** `bash scripts/verify.sh unit` + `bash scripts/verify.sh llm-integration`（planner 路径若有集成测）
+- [x] **Step 1:** planner：`PLANNER_USER_TEMPLATE` 改为包 wrap 后的块，或 format 前 wrap。
+- [x] **Step 2:** vision：OCR 不再裸拼。
+- [x] **Verify:** `bash scripts/verify.sh unit` + `bash scripts/verify.sh llm-integration`（planner 路径若有集成测）
 
 ---
 
@@ -194,9 +194,9 @@ def _guard(route, request):
 - POST/非 GET：无 body 策略时 abort（drop-url 渲染只需 GET）。
 - 保持 unguarded CLI renderer 的显式 env 开关不变。
 
-- [ ] **Step 1:** 实现 fulfill 路径；删 `route.continue_()`。
-- [ ] **Step 2:** 单测锁定「guard 使用 safe_fetch / 无 continue_」。
-- [ ] **Verify:** `bash scripts/verify.sh unit`（security + 相关）
+- [x] **Step 1:** 实现 fulfill 路径；删 `route.continue_()`。
+- [x] **Step 2:** 单测锁定「guard 使用 safe_fetch / 无 continue_」。
+- [x] **Verify:** `bash scripts/verify.sh unit`（security + 相关）
 
 ---
 
@@ -210,19 +210,19 @@ def _guard(route, request):
 - Modify: 计数钉：AGENTS / Scorecard / DEVELOPER / Post-Cleanup / CHANGELOG / `docs_consistency_check.sh` / `verify.sh` usage — **24→25**（若只加 1 条 acceptance）
 - unit 若 +1 argv：160 钉同步（现行 166→167）
 
-- [ ] **Step 1:** argv 测绿。
-- [ ] **Step 2:** inline acceptance 绿。
-- [ ] **Step 3:** 更新全部数字钉 + consistency 脚本。
-- [ ] **Verify:** `bash scripts/verify.sh acceptance` + `bash scripts/verify.sh unit` + `bash scripts/docs_consistency_check.sh`
+- [x] **Step 1:** argv 测绿。
+- [x] **Step 2:** inline acceptance 绿。
+- [x] **Step 3:** 更新全部数字钉 + consistency 脚本。
+- [x] **Verify:** `bash scripts/verify.sh acceptance` + `bash scripts/verify.sh unit` + `bash scripts/docs_consistency_check.sh`
 
 ---
 
 ## Final verify
 
-- [ ] `bash scripts/verify.sh all` — exit 0（必要时 `NODE_OPTIONS` 已由 Task 2 内置）
-- [ ] `bash scripts/docs_consistency_check.sh` — exit 0
-- [ ] PROGRESS 头条记 R8 P1 收口 + 链接本计划
-- [ ] CHANGELOG Unreleased 记要点（不宣称抬工程分，除非复评）
+- [x] `bash scripts/verify.sh all` — exit 0（必要时 `NODE_OPTIONS` 已由 Task 2 内置）
+- [x] `bash scripts/docs_consistency_check.sh` — exit 0
+- [x] PROGRESS 头条记 R8 P1 收口 + 链接本计划
+- [x] CHANGELOG Unreleased 记要点（不宣称抬工程分，除非复评）
 
 ---
 
