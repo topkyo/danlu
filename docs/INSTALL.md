@@ -212,7 +212,7 @@ cd /path/to/your-vault
 # 2. 编译：把原料炼化成 wiki
 ./scripts/aiwiki-launcher.sh advanced compile
 
-# 3. 看今日简报
+# 3. 看 Today（CLI：today）
 ./scripts/aiwiki-launcher.sh today
 
 # 4. 提问（需要 LLM 配置）

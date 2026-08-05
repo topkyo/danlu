@@ -15,7 +15,9 @@ supersedes: []
 
 > **结论先行**：Commercial Grade Cleanup 已收口。**三套分数勿混用**——Scorecard **Local Engineering Gate 9.05**（fixture/verify 门禁加权，可诚实宣称 engineering 就绪）；工程实测七维 **7.9**（2026-08-05 六路复评，见 `docs/plans/2026-08-05-multi-agent-reevaluation.md`；08-04 曾为 6.8）；**商业可售约 7.8**。**Live Dogfood Gate not-yet**。主缺口在 go-live 触点与分发，不在再开一轮 cleanup。下一独立计划应是 **Commercial Go-Live**，辅以小范围 SoT/可靠性修补。
 
-本文件同时是**审计报告**与**下一波执行计划 SoT**。完成后归档到 `docs/archive/`。
+本文件同时是**审计报告**与**下一波执行计划 SoT**（Commercial Go-Live WS1–WS6）。
+
+> **2026-08-05 归档裁定：暂不归档。** Cleanup 已收口，但本文件仍是 Active Plans 中的 Go-Live 执行 SoT；待商业可售门槛（≥8.0）诚实达标或被更新计划 `supersedes` 后，再移入 `docs/archive/`。勿在 Go-Live 未闭环前拆成「无执行计划」真空。
 
 ---
 
@@ -260,6 +262,7 @@ Review gate：编码 PR 独立 read-only reviewer（correctness / scope / missin
 
 ## 11. 更新记录
 
+- 2026-08-05：归档裁定 — **暂不归档**；继续作 Commercial Go-Live 执行 SoT，直至可售门槛或被 supersedes。
 - 2026-08-05：文档卫生快刀 — §1 刷新为 194 py / ~44.7k LOC、verify **24/85/72/203**、现行 top hubs（去掉已删 `machine_memory_actions`）；结论与分数表并列 Local Eng **9.05** / 工程实测 **7.9** / 商业 **~7.8**；§8/§9 Jest 与 drift 门禁口径对齐。
 - 2026-07-22：Ask sync-chat 收口 — `run-ask-submit` / `run-ask-resume` / `runner/background.py` 退役；Ask = 同步 `run-ask` + Shell 单飞。§1 测试快照曾刷新为 acceptance **17** / llm-integration **76** / Jest **179**；同日 eng-debt radar 再对齐为 **17** / **77** / **180**。§5/§6 明确下一焦点仍为 Commercial Go-Live 打磨，不扩 background job。
 - 2026-07-15：Commercial Go-Live 执行波 — WS1（邮箱/询价/EULA）、WS2（`pip install -e .` 预览 + v0.4.0 + launcher 优先 console script）、WS3（对外 checklist）、WS5（Jest hard-gate + alchemy atomic_write）、LLM-Wiki 叙事补丁；PyPI 正式发布与 EULA 法律签收仍 open。

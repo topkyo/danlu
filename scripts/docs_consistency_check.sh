@@ -123,7 +123,10 @@ check_match() {
 }
 
 check_match "verify.sh usage pins acceptance 24" 'acceptance \(24\)' scripts/verify.sh
-check_match "verify.sh usage pins llm-integration 85" 'llm-integration \(85' scripts/verify.sh
+# Pin the per-target usage line (not only the `all` summary) so a stale
+# "83 tests" description cannot hide behind `llm-integration (85)` on `all`.
+check_match "verify.sh usage line pins llm-integration 85 tests" 'Run LLM integration tests \(85 tests' scripts/verify.sh
+check_match "verify.sh all line pins llm-integration 85" 'llm-integration \(85\)' scripts/verify.sh
 check_match "AGENTS.md pins acceptance 24" 'acceptance 24 fixture replay' AGENTS.md
 check_match "AGENTS.md pins llm 85" 'LLM integration 85' AGENTS.md
 check_match "AGENTS.md pins unit 81" 'unit 81' AGENTS.md

@@ -756,7 +756,7 @@ const ZH_TEXT = {
   "Open the newest outputs without diving into control surfaces.": "直接打开最新产出，不必先进入复杂控制面板。",
   "View all": "查看全部",
   "No recent outputs yet. Drop material or run a compile.": "还没有最新产出；先投料或运行一次编译。",
-  "Daily Digest": "今日简报",
+  "Daily Digest": "今天",
   "A compact pulse for knowledge, review, and nightly health.": "用一张卡片看知识库、审阅和例行检查状态。",
   "Last sync": "最后同步",
   "Summary unavailable. The panel will sync automatically when possible.": "当前还没有 summary；面板会在可用时自动同步。",
@@ -4029,13 +4029,11 @@ function renderTodayFeed(plugin, container) {
     return;
   }
   
-  const groups = { report: [], automation: [], decision: [], proposal: [], elixir: [], action: [] };
-  for (const entry of feed) groups[entry.kind].push(entry);
-
-  // Keep Today flat: only deliverable reports, no extra section chrome.
-  if (groups.report.length) {
+  // Keep Today flat: only deliverable reports (schema has no proposal kind).
+  const reports = feed.filter((entry) => entry && entry.kind === "report");
+  if (reports.length) {
     const listEl = section.createEl("ul", { cls: "furnace-today-feed-list furnace-today-feed-reports" });
-    for (const entry of groups.report) {
+    for (const entry of reports) {
       renderTodayFeedItem(plugin, listEl, entry);
     }
   }
@@ -4203,8 +4201,7 @@ function furnaceActivityKindLabel(plugin, kind) {
     case "review-backlog": return plugin.t("Review backlog");
     case "report": return plugin.t("新报告");
     case "automation": return plugin.t("系统动态");
-    case "decision":
-    case "proposal": return plugin.t("需要你确认");
+    case "decision": return plugin.t("需要你确认");
     case "elixir": return plugin.t("已完成");
     case "action": return plugin.t("下一步建议");
     default: return plugin.t(kind || "unknown");
@@ -4791,7 +4788,7 @@ function renderTodayFeedItem(plugin, listEl, entry) {
     attachReportCardAskActions(plugin, card, entry);
   } else if (entry.kind === "action" && (entry.compound_suggest || entry.compoundSuggest)) {
     renderCompoundSuggestActionCard(plugin, card, entry);
-  } else if (entry.kind === "decision" || entry.kind === "proposal") {
+  } else if (entry.kind === "decision") {
     renderConfirmationCard(plugin, card, entry);
   } else if (entry.kind === "automation") {
     renderAutomationCard(plugin, card, entry);
@@ -4802,7 +4799,6 @@ function renderTodayFeedItem(plugin, listEl, entry) {
     entry.kind !== "report"
     && entry.kind !== "action"
     && entry.kind !== "decision"
-    && entry.kind !== "proposal"
     && entry.kind !== "automation"
   ) {
     const targetLabel = todayFeedTargetLabel(plugin, entry);
@@ -4858,7 +4854,11 @@ function reviewBucketDisplayLabel(plugin, target) {
 
 function workspaceTargetActionLabel(target, entry) {
   const text = String(target || "").trim();
-  if (entry && entry.kind === "proposal") {
+  if (
+    text.startsWith("wiki/rewrite-proposals/")
+    || text.startsWith(".aiwiki/staging/proposals/")
+    || text.startsWith("output/_proposals/")
+  ) {
     return "Open proposal";
   }
   if (text.startsWith("output/reports/")) {
@@ -4875,9 +4875,6 @@ function workspaceTargetActionLabel(target, entry) {
 
 function workspaceTargetDisplayLabel(plugin, target, entry) {
   const text = String(target || "").trim();
-  if (entry && entry.kind === "proposal") {
-    return plugin.t("Proposal page");
-  }
   if (text.startsWith("output/reports/")) {
     return plugin.t("Report");
   }

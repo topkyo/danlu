@@ -28,7 +28,7 @@ raw → compile → wiki → ask → output → file-back → review
 
 - **投料**：Drop URL / Drop File / Drop Image / Drop Text
 - **Ask**：输入问题，走 `run-ask`
-- **今日简报**：today，看最新产出
+- **Today**：与 Product Shell 首屏同名；CLI 对应 `today`，看最新产出
 - **更多工具**：折叠在面板底部，包含 compile、lint、review queue、执行审计等
 
 Product Shell 适合日常快速投料和查看状态。复杂治理操作建议用 launcher / CLI。
@@ -49,7 +49,7 @@ Product Shell 适合日常快速投料和查看状态。复杂治理操作建议
 ./scripts/aiwiki-launcher.sh drop plan https://github.com/org/repo   # 只看计划，不写 raw
 # 关闭 planner、退回确定性分类：AIWIKI_LLM_PLANNER=0
 
-# 看今日简报
+# 看 Today（CLI：today）
 ./scripts/aiwiki-launcher.sh today
 
 # 进入高级操作面

@@ -148,3 +148,4 @@ updated_at: "2026-08-05"
 - 2026-08-05（收尾）：F-10 `_NoRedirectHandler` 直接继承 `urllib.request.HTTPRedirectHandler`；F-12 PROGRESS 头条限长约定 + 三条胖头条压缩；F-13 today_feed 排序收敛为 `schema/today-feed.json` `kind_priority` SoT（双侧契约测试钉死，计数不变）。**F-1~F-13 全部关闭**。
 - 2026-08-05（文档卫生）：六路复评工程实测 **7.9**（`docs/plans/2026-08-05-multi-agent-reevaluation.md`）；本表 Local Eng 加权旁增加**双分数横幅**（9.05 自评门禁 vs 7.9 工程实测）；Post-Cleanup §1 / PROGRESS 交接 / `verify.sh` usage llm **85** 对齐。
 - 2026-08-05（覆盖归属 R-5）：删 7 个零入口 0% 模块（含 orphaned `cognitive_history` / `topology`）；补 `tests/test_library_surfaces.py` 9 例；unit **72→81**。
+- 2026-08-05（verify 单行钉 + R-7）：`docs_consistency` 钉 `Run LLM integration tests (85 tests)`；Today 去 proposal feed 桶；USER_GUIDE/INSTALL 术语对齐 Today；Post-Cleanup **暂不归档**。

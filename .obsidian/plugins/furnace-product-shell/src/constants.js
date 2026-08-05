@@ -564,7 +564,7 @@ const ZH_TEXT = {
   "Open the newest outputs without diving into control surfaces.": "直接打开最新产出，不必先进入复杂控制面板。",
   "View all": "查看全部",
   "No recent outputs yet. Drop material or run a compile.": "还没有最新产出；先投料或运行一次编译。",
-  "Daily Digest": "今日简报",
+  "Daily Digest": "今天",
   "A compact pulse for knowledge, review, and nightly health.": "用一张卡片看知识库、审阅和例行检查状态。",
   "Last sync": "最后同步",
   "Summary unavailable. The panel will sync automatically when possible.": "当前还没有 summary；面板会在可用时自动同步。",

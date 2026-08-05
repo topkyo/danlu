@@ -33,7 +33,7 @@ updated_at: 2026-07-22
 
 | 文档 | 角色 |
 |---|---|
-| [Furnace Post-Cleanup Audit and Next Direction 2026-07](<./Furnace Post-Cleanup Audit and Next Direction 2026-07.md>) | **当前执行计划**：Commercial Go-Live WS1–WS6 |
+| [Furnace Post-Cleanup Audit and Next Direction 2026-07](<./Furnace Post-Cleanup Audit and Next Direction 2026-07.md>) | **当前执行计划**：Commercial Go-Live WS1–WS6（2026-08-05 裁定：暂不归档） |
 
 > Commercial Grade Cleanup Plan 2026-07 已归档（`executed-reviewed-pass`），见下方 Archived。
 > W1–W9 / ingest-dedup / audit remediation / report-provenance / ask-sync / less-is-more 等已完成 plan → 下方 Delivered 或 [docs/archive/plans/](<./archive/plans/>)。

@@ -124,7 +124,7 @@ F-1~F-13 收口后，08-04 的两个硬扣分项（bundle 漂移 4.5、覆盖/�
 | R-4 | P1 | `verify.sh` usage 行 llm 83→85 | **done 2026-08-05** |
 | R-5 | P1 | 0% / 极低覆盖活模块归属（删或补测） | **done 2026-08-05**：删 7 孤儿；补 9 library surfaces 测；unit 81 |
 | R-6 | P1 | Commercial：PyPI upload + plugin 打包策略 | INSTALL 可写真实 `pip install` 或明确永久 preview |
-| R-7 | P1 | Shell：收敛 proposal UI 桶；术语统一 | schema/UI 一致；USER_GUIDE 与 Shell 同名 |
+| R-7 | P1 | Shell：收敛 proposal UI 桶；术语统一 | **done 2026-08-05**：render_today 去 proposal 桶；USER_GUIDE/INSTALL→Today；Post-Cleanup 裁定暂不归档 |
 | R-8 | P2 | content↔memory 环 / hub 续刀 | 单 seam；禁止 broad rewrite |
 
 **本轮无新 runtime P0**（08-04 F-1 机制洞已关）。

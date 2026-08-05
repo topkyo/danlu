@@ -15,6 +15,8 @@
 
 ## 当前动态
 
+- 2026-08-05 (**verify 单行钉 + R-7 + 归档裁定**)：`docs_consistency` 钉死 `Run LLM integration tests (85 tests`（防 all 行掩盖）；Today 去掉 legacy `proposal` feed 桶；USER_GUIDE/INSTALL 术语对齐 Today；Post-Cleanup **暂不归档**（仍为 Go-Live SoT）。
+
 - 2026-08-05 (**覆盖归属 R-5**)：删 7 个零入口 0% 模块（`lifecycle/protocol`、`memory/{topology,types}`、`planner/types`、`state/types`、`utils/json_utils`、`render/cognitive_history`+views 包装）；补 `tests/test_library_surfaces.py` 9 例（autonomy_policy / llm-check render / cli `__main__`）；unit **72→81**。
 
 - 2026-08-05 (**文档卫生快刀 R-1~R-4**)：Post-Cleanup §1 刷新 194/~44.7k + **24/85/72/203** + 现行 hubs；Scorecard 主表并列 Local Eng **9.05** vs 工程实测 **7.9**；PROGRESS 交接对齐；`verify.sh` usage llm 83→85。复评报告 `docs/plans/2026-08-05-multi-agent-reevaluation.md`。
