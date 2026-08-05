@@ -63,7 +63,7 @@ bash scripts/docs_consistency_check.sh
 |---|---|
 | `acceptance` | **24** tests — `tests/test_acceptance_loop.py`（`case_*` fixture + path safety + provenance GC 等） |
 | `llm-integration` | **85** tests — `tests/test_llm_integration.py`（mock backends） |
-| `unit` | **72** tests — `tests/test_security.py`（utils/security.py 99%）+ `tests/test_vault_plugin.py`（plugin sync / new-vault） |
+| `unit` | **81** tests — `tests/test_security.py`（utils/security.py 99%）+ `tests/test_vault_plugin.py`（plugin sync / new-vault）+ `tests/test_library_surfaces.py`（autonomy_policy / llm-check render / cli `__main__`） |
 | `product-shell-static` | `node --check` + **bundle drift 硬门禁**（main.js 必须等于 src/ 现构建）+ Jest **203** hard-gate |
 | `coverage` | informational 报告（**无门禁**；2026-08-04 实测全量 **64%**） |
 | 其余 | scripts、cli-smoke、smoke、python-static |
@@ -77,7 +77,7 @@ bash scripts/verify.sh llm-integration
 PYTHONPATH=src python3 -m aiwiki.cli --root . advanced shell-status
 ```
 
-coverage 只报告不卡线（`bash scripts/verify.sh coverage`，informational）；无 `tests/unit/` 目录，library 级单测仅 `tests/test_security.py` 与 `tests/test_vault_plugin.py` 两个文件，经 `unit` target 硬门禁。
+coverage 只报告不卡线（`bash scripts/verify.sh coverage`，informational）；无 `tests/unit/` 目录，library 级单测为 `tests/test_security.py` / `tests/test_vault_plugin.py` / `tests/test_library_surfaces.py`，经 `unit` target 硬门禁。
 
 ## 自动化
 

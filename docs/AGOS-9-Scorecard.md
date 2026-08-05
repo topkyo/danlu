@@ -26,7 +26,7 @@ updated_at: "2026-08-05"
 |---|---:|---|
 | Acceptance | **24** passed | `bash scripts/verify.sh acceptance` |
 | LLM integration | **85** passed | `bash scripts/verify.sh llm-integration` |
-| Unit（library 级） | **72** passed | `bash scripts/verify.sh unit` |
+| Unit（library 级） | **81** passed | `bash scripts/verify.sh unit` |
 | Product Shell Jest | **203** passed | `bash scripts/verify.sh product-shell-static` |
 | Bundle drift | gate（正反向实测） | 含于 `product-shell-static` |
 | Coverage | **64%**（informational，无门禁） | `bash scripts/verify.sh coverage` |
@@ -110,7 +110,7 @@ updated_at: "2026-08-05"
 | 2 | Acceptance | **24** — `bash scripts/verify.sh acceptance` |
 | 3 | LLM integration | **85** — `bash scripts/verify.sh llm-integration` |
 | 4 | Product Shell | Jest **203** + bundle drift gate — `bash scripts/verify.sh product-shell-static` |
-| 5 | Unit | **72** — `bash scripts/verify.sh unit` |
+| 5 | Unit | **81** — `bash scripts/verify.sh unit` |
 | 6 | Docs consistency | `bash scripts/docs_consistency_check.sh` |
 | 7 | CI | `.github/workflows/verify.yml` |
 
@@ -147,3 +147,4 @@ updated_at: "2026-08-05"
 - 2026-08-05：收口第二波（F-11 部分 + F-9 + 安全加固）——concepts.py 1197→812（质量簇 → `content/concept_quality.py`）；views.py 1178→942（判断资产簇并入 `render/judgment_assets.py`）；`app_linting` phases.py 829→307（governance/curated → `phases_governance.py`）；F-9 llm-responses 轮转（keep 500，best-effort）；safe_fetch 301/302/303 方法降级 + `PrivateAddressError` 结构化检测。verify 实测 acceptance **24** / llm **85** / Jest **203** / unit **72**。
 - 2026-08-05（收尾）：F-10 `_NoRedirectHandler` 直接继承 `urllib.request.HTTPRedirectHandler`；F-12 PROGRESS 头条限长约定 + 三条胖头条压缩；F-13 today_feed 排序收敛为 `schema/today-feed.json` `kind_priority` SoT（双侧契约测试钉死，计数不变）。**F-1~F-13 全部关闭**。
 - 2026-08-05（文档卫生）：六路复评工程实测 **7.9**（`docs/plans/2026-08-05-multi-agent-reevaluation.md`）；本表 Local Eng 加权旁增加**双分数横幅**（9.05 自评门禁 vs 7.9 工程实测）；Post-Cleanup §1 / PROGRESS 交接 / `verify.sh` usage llm **85** 对齐。
+- 2026-08-05（覆盖归属 R-5）：删 7 个零入口 0% 模块（含 orphaned `cognitive_history` / `topology`）；补 `tests/test_library_surfaces.py` 9 例；unit **72→81**。

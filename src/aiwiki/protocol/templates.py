@@ -240,11 +240,11 @@ DEFAULT_DASHBOARD_FILES = {
         [
             "# 认知历史",
             "",
-            "这里会汇总 reviewed `decision / judgment` 的复审轨迹、证据漂移和长历史页面。",
+            "占位索引：reviewed `decision / judgment` 的复审轨迹入口。",
             "",
-            "- compile 后会自动刷新。",
+            "- 动态汇总渲染已退役；以 Today / review-queue / 单页 review history 为准。",
             "- 这里优先看“哪些旧判断被新证据挑战”。",
-            "- 这里不自动改状态，只做检测、索引和提醒。",
+            "- 这里不自动改状态。",
         ]
     )
     + "\n",

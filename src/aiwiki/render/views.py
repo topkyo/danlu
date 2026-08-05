@@ -117,27 +117,6 @@ def render_curated_index(
     return "\n".join(lines) + "\n"
 
 
-def render_cognitive_history(
-    root: Path,
-    decisions: list[dict[str, str]],
-    judgments: list[dict[str, str]],
-    compiled_at: str,
-    *,
-    active_protocol: str = DEFAULT_PROTOCOL,
-    knowledge_lifecycle: dict[str, Any] | None = None,
-) -> str:
-    from .cognitive_history import render_cognitive_history as _render_cognitive_history
-
-    return _render_cognitive_history(
-        root,
-        decisions,
-        judgments,
-        compiled_at,
-        active_protocol=active_protocol,
-        knowledge_lifecycle=knowledge_lifecycle,
-    )
-
-
 def render_domain_pilots_index(domain_pilots: dict[str, Any], compiled_at: str, active_protocol: str) -> str:
     lines = [
         "# 领域 Pilot 总览",

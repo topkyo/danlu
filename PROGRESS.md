@@ -15,6 +15,8 @@
 
 ## 当前动态
 
+- 2026-08-05 (**覆盖归属 R-5**)：删 7 个零入口 0% 模块（`lifecycle/protocol`、`memory/{topology,types}`、`planner/types`、`state/types`、`utils/json_utils`、`render/cognitive_history`+views 包装）；补 `tests/test_library_surfaces.py` 9 例（autonomy_policy / llm-check render / cli `__main__`）；unit **72→81**。
+
 - 2026-08-05 (**文档卫生快刀 R-1~R-4**)：Post-Cleanup §1 刷新 194/~44.7k + **24/85/72/203** + 现行 hubs；Scorecard 主表并列 Local Eng **9.05** vs 工程实测 **7.9**；PROGRESS 交接对齐；`verify.sh` usage llm 83→85。复评报告 `docs/plans/2026-08-05-multi-agent-reevaluation.md`。
 
 - 2026-08-05 (**收口第二波**)：F-11 三刀单 seam 外提（concepts 1197→812 / views 1178→942 / phases 829→307）+ F-9 llm-responses 轮转（keep 500）+ safe_fetch 重定向降级与 `PrivateAddressError` 结构化。verify 绿：acceptance 24 / llm 85 / Jest 203 / unit 72。细节见 `docs/plans/2026-08-04-full-scan-evaluation.md` 第二波节。
@@ -140,12 +142,12 @@
 ```text
 说人话。先读 PROGRESS.md 头条 + docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md；评分勿混：Local Eng 9.05 ≠ 工程实测 7.9 ≠ 商业 ~7.8。
 
-已完成：F-1~F-13 收口；文档卫生 R-1~R-4；SoT 计数 acceptance 24 / llm 85 / unit 72 / Jest 203；coverage 64% informational；结构债 Knife A/B + memory↛execution + F-11 三刀（views/ask 仍可续）；WS2 本地 wheel。
+已完成：F-1~F-13 收口；文档卫生 R-1~R-4；覆盖归属 R-5（0% 孤儿删 + library surfaces 9 测）；SoT 计数 acceptance 24 / llm 85 / unit 81 / Jest 203；结构债 Knife A/B + memory↛execution + F-11 三刀（views/ask 仍可续）；WS2 本地 wheel。
 
 下一刀优先（择一）：
 1) Commercial：EULA 法律签收 / twine upload + tag v0.4.0 / Demo 媒体
 2) WS6 dogfood 自然观测（不伪造 Live PASS）
-3) 覆盖归属：10 个 0% 模块删或补测；或 hub 单 seam 续刀（views/ask）— 禁止 broad rewrite
+3) hub 单 seam 续刀（views/ask）或剩余低覆盖活模块— 禁止 broad rewrite
 4) 勿宣称 AgentOS 9 live / 诚实可售 / 用 9.05 冒充工程实测
 
 Vault：iCloud「炼丹炉」；state → ~/Library/Application Support/aiwiki/dogfood-state；CDP：9228；验证：bash scripts/verify.sh all

@@ -126,13 +126,13 @@ check_match "verify.sh usage pins acceptance 24" 'acceptance \(24\)' scripts/ver
 check_match "verify.sh usage pins llm-integration 85" 'llm-integration \(85' scripts/verify.sh
 check_match "AGENTS.md pins acceptance 24" 'acceptance 24 fixture replay' AGENTS.md
 check_match "AGENTS.md pins llm 85" 'LLM integration 85' AGENTS.md
-check_match "AGENTS.md pins unit 72" 'unit 72' AGENTS.md
+check_match "AGENTS.md pins unit 81" 'unit 81' AGENTS.md
 check_match "AGENTS.md pins Jest 203" 'Jest 203' AGENTS.md
 check_match "Scorecard pins llm 85" 'LLM integration \| \*\*85\*\* passed' docs/AGOS-9-Scorecard.md
-check_match "Scorecard pins unit 72" 'Unit（library 级） \| \*\*72\*\* passed' docs/AGOS-9-Scorecard.md
+check_match "Scorecard pins unit 81" 'Unit（library 级） \| \*\*81\*\* passed' docs/AGOS-9-Scorecard.md
 check_match "Scorecard pins Jest 203" 'Product Shell Jest \| \*\*203\*\* passed' docs/AGOS-9-Scorecard.md
 check_match "DEVELOPER.md pins llm 85" '\*\*85\*\* tests' docs/DEVELOPER.md
-check_match "DEVELOPER.md pins unit 72" '\*\*72\*\* tests' docs/DEVELOPER.md
+check_match "DEVELOPER.md pins unit 81" '\*\*81\*\* tests' docs/DEVELOPER.md
 check_match "DEVELOPER.md pins Jest 203" 'Jest \*\*203\*\*' docs/DEVELOPER.md
 
 exit "$FAIL"
