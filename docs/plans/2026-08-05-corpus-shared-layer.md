@@ -43,7 +43,7 @@
 - Create: `src/aiwiki/corpus/ranks.py`
 - Modify: `src/aiwiki/memory/paths.py`, `scoring.py`, `action_rank.py`（改为 re-export，行为不变）
 
-- [ ] **Step 1:** 创建包文档，写明禁止依赖：
+- [x] **Step 1:** 创建包文档，写明禁止依赖：
 
 ```python
 """Read-only shared corpus helpers (paths, scoring, ranks).
@@ -53,21 +53,21 @@ MUST NOT import ``content``, ``memory``, ``execution``, or ``runner``.
 """
 ```
 
-- [ ] **Step 2:** 将下列 path 函数迁入 `corpus/paths.py`（实现原样剪切）：
+- [x] **Step 2:** 将下列 path 函数迁入 `corpus/paths.py`（实现原样剪切）：
   - `manual_link_state_path`
   - `concept_rewrite_state_path`
   - `concept_rewrite_proposal_page_path`
   - （可选同迁）`machine_memory_action_state_path` / `machine_memory_history_path` / `execution_*` — **仅当本波有 content 调用方**；否则留 `memory.paths`，避免 scope 膨胀。本波最低集：前三个。
-- [ ] **Step 3:** 将 `memory/scoring.py` 全文迁入 `corpus/scoring.py`；`memory/scoring.py` 变为：
+- [x] **Step 3:** 将 `memory/scoring.py` 全文迁入 `corpus/scoring.py`；`memory/scoring.py` 变为：
 
 ```python
 """Compat re-export — prefer ``aiwiki.corpus.scoring``."""
 from aiwiki.corpus.scoring import *  # noqa: F403
 ```
 
-- [ ] **Step 4:** 将 `action_priority_rank` / `action_status_rank` 迁入 `corpus/ranks.py`；`memory/action_rank.py` 同样 re-export。
-- [ ] **Step 5:** `memory/paths.py` 对已迁符号 re-export；未迁符号保留本地实现。
-- [ ] **Verify:** `bash scripts/verify.sh python-static` — expect PASS；`PYTHONPATH=src python3 -c "from aiwiki.corpus import scoring, paths, ranks; from aiwiki.memory import scoring as ms"` — expect no ImportError。
+- [x] **Step 4:** 将 `action_priority_rank` / `action_status_rank` 迁入 `corpus/ranks.py`；`memory/action_rank.py` 同样 re-export。
+- [x] **Step 5:** `memory/paths.py` 对已迁符号 re-export；未迁符号保留本地实现。
+- [x] **Verify:** `bash scripts/verify.sh python-static` — expect PASS；`PYTHONPATH=src python3 -c "from aiwiki.corpus import scoring, paths, ranks; from aiwiki.memory import scoring as ms"` — expect no ImportError。
 
 ---
 
@@ -82,15 +82,15 @@ from aiwiki.corpus.scoring import *  # noqa: F403
 - Modify: `src/aiwiki/content/concept_quality.py` — `from ..corpus.ranks import action_priority_rank`
 - Modify: `src/aiwiki/compile/ranking.py` — `from ..corpus.scoring import recency_score_for_timestamp`
 
-- [ ] **Step 1:** 按上表改 import；不改函数体。
-- [ ] **Step 2:** 确认 content 内不再出现 `from ..memory.scoring` / `from ..memory.paths` / `from ..memory.action_rank`：
+- [x] **Step 1:** 按上表改 import；不改函数体。
+- [x] **Step 2:** 确认 content 内不再出现 `from ..memory.scoring` / `from ..memory.paths` / `from ..memory.action_rank`：
 
 ```bash
 rg 'from \.\.memory\.(paths|scoring|action_rank)' src/aiwiki/content
 # expect: no matches
 ```
 
-- [ ] **Verify:** `bash scripts/verify.sh python-static` + `bash scripts/verify.sh unit` — expect PASS。
+- [x] **Verify:** `bash scripts/verify.sh python-static` + `bash scripts/verify.sh unit` — expect PASS。
 
 ---
 
@@ -104,7 +104,7 @@ rg 'from \.\.memory\.(paths|scoring|action_rank)' src/aiwiki/content
 - Modify: `src/aiwiki/execution/ask.py` — `refresh_material_state(..., machine_memory=load_machine_memory(root))`（ask 已 import memory，合法）
 - Modify: `src/aiwiki/app_linting/nightly.py` — 同上（nightly 已有 memory）
 
-- [ ] **Step 1:** 改签名与默认行为：
+- [x] **Step 1:** 改签名与默认行为：
 
 ```python
 def build_material_state_documents(
@@ -120,16 +120,16 @@ def build_material_state_documents(
     graph_context = material_graph_context(memory)
 ```
 
-- [ ] **Step 2:** 删除 `material.py` 顶层 `from ..memory.state import load_machine_memory`。
-- [ ] **Step 3:** 调用方传入真实 memory（compile 用 `context.memory`；ask/nightly 本地 load 后传入）。
-- [ ] **Step 4:** 硬门禁：
+- [x] **Step 2:** 删除 `material.py` 顶层 `from ..memory.state import load_machine_memory`。
+- [x] **Step 3:** 调用方传入真实 memory（compile 用 `context.memory`；ask/nightly 本地 load 后传入）。
+- [x] **Step 4:** 硬门禁：
 
 ```bash
 rg 'from \.\.memory|from aiwiki\.memory' src/aiwiki/content
 # expect: no matches
 ```
 
-- [ ] **Verify:** `bash scripts/verify.sh unit` + `bash scripts/verify.sh acceptance` — expect PASS（acceptance 24）。
+- [x] **Verify:** `bash scripts/verify.sh unit` + `bash scripts/verify.sh acceptance` — expect PASS（acceptance 24）。
 
 ---
 
@@ -144,7 +144,7 @@ rg 'from \.\.memory|from aiwiki\.memory' src/aiwiki/content
 - Modify: `PROGRESS.md` — 头条 1–2 行
 - Modify: `docs/plans/2026-08-05-structural-debt-resolution.md` — 标注环断开状态（可选一行）
 
-- [ ] **Step 1:** 测试（示意）：
+- [x] **Step 1:** 测试（示意）：
 
 ```python
 def test_content_package_does_not_import_memory() -> None:
@@ -162,7 +162,7 @@ def test_content_package_does_not_import_memory() -> None:
 
 （实现时用 AST 覆盖 relative `from ..memory...`；也可用子进程 `rg` 断言。）
 
-- [ ] **Step 2:** `docs_consistency_check.sh` 增加：
+- [x] **Step 2:** `docs_consistency_check.sh` 增加：
 
 ```bash
 if rg -n 'from \.\.memory|from aiwiki\.memory' src/aiwiki/content --glob '*.py' >/dev/null; then
@@ -179,8 +179,8 @@ else
 fi
 ```
 
-- [ ] **Step 3:** DEVELOPER owner map 增加：`corpus/` = 只读共享 paths/scoring/ranks。
-- [ ] **Verify:** `bash scripts/docs_consistency_check.sh` + `bash scripts/verify.sh unit` — expect PASS。
+- [x] **Step 3:** DEVELOPER owner map 增加：`corpus/` = 只读共享 paths/scoring/ranks。
+- [x] **Verify:** `bash scripts/docs_consistency_check.sh` + `bash scripts/verify.sh unit` — expect PASS。
 
 ---
 
@@ -192,10 +192,10 @@ fi
 - Modify: `PROGRESS.md`（若 Task 4 未写全）
 - Modify: Scorecard / Post-Cleanup 仅当计数变化时（本波预期 unit +1 分层测）
 
-- [ ] **Step 1:** 跑全量：`bash scripts/verify.sh all` — expect EXIT 0；记录 acceptance/llm/unit/Jest 计数。
-- [ ] **Step 2:** 更新计数钉（若 unit 因新测增加）；`docs_consistency` 绿。
-- [ ] **Step 3:** PROGRESS 头条：`content↛memory` 经 corpus 落地；链到本计划。
-- [ ] **Verify:** `bash scripts/verify.sh all` + `bash scripts/docs_consistency_check.sh`。
+- [x] **Step 1:** 跑全量：`bash scripts/verify.sh all` — expect EXIT 0；记录 acceptance/llm/unit/Jest 计数。
+- [x] **Step 2:** 更新计数钉（若 unit 因新测增加）；`docs_consistency` 绿。
+- [x] **Step 3:** PROGRESS 头条：`content↛memory` 经 corpus 落地；链到本计划。
+- [x] **Verify:** `bash scripts/verify.sh all` + `bash scripts/docs_consistency_check.sh`。
 
 ---
 
