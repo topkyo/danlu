@@ -253,3 +253,15 @@ OUT=/tmp/main.js.rebuilt bash build.sh && diff main.js /tmp/main.js.rebuilt
 | 复审低危安全项 | **done** | safe_fetch 301/302/303 对非 GET/HEAD 降级 GET 并丢 body/Content-*（307/308 保持方法+body）；`PrivateAddressError(FetchPolicyError)` 结构化检测替代消息子串匹配；3 个重定向测试 + 2 个结构化测试 |
 
 **验证终态**：`verify.sh all` 绿——acceptance **24** / llm-integration **85** / Jest **203** / unit **72** / coverage **64%**（informational）/ docs consistency exit 0。
+
+## 第三波执行结果（2026-08-05 同日：F-10 + F-12 + F-13 收尾）
+
+| 项 | 状态 | 证据 |
+| --- | --- | --- |
+| F-10 `_NoRedirectHandler` 奇技 | **done** | 直接继承 `urllib.request.HTTPRedirectHandler`（顶部已有 import），删掉 `__import__` 运行时 hack |
+| F-12 文档归档/头条限长 | **done** | `PROGRESS.md` 头部新增头条限长约定（1–2 行，细节进 plans/Scorecard）；2026-08-03/04/05 三条胖头条压缩为一行结论 + 链接（细节本就在两份 plan 报告与 Scorecard 更新记录中）；docs 归档策略 `docs/README.md` 已有（Active 唯一枚举 + 完成即归档），不重复立法 |
+| F-13 today_feed mirror 契约 | **done（收敛为 schema SoT）** | `schema/today-feed.json` 新增顶层 `kind_priority` 映射；Python 侧在既有 `test_today_feed_schema_contract` 内加排序钉，JS 侧在既有 schema describe 块内加 `expect(PRIORITY).toEqual(TODAY_FEED_SCHEMA.kind_priority)`——双侧测试对 schema 钉死，改一侧忘改另一侧即测试失败；无新增测试函数（计数不变） |
+
+**验证终态**：python-static / unit **72** / llm-integration **85** / product-shell-static（Jest **203** + drift 门禁）/ smoke / docs consistency 全绿。`main.js` 因 `today_feed.js` 注释改动按 drift 门禁要求重建（门禁按设计工作）。
+
+**至此 F-1~F-13 全部关闭**（F-11 为 partial：三刀已切，views.py 余 942 行与 execution/runner 侧巨函数留作碰到对应模块时的顺手刀）。

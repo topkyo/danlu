@@ -29,7 +29,7 @@ function makeSummary(overrides = {}) {
 // ── PRIORITY ──────────────────────────────────────────────────────────
 
 test("PRIORITY defines correct ordering", () => {
-  // Mirrors src/aiwiki/today_feed.py _PRIORITY exactly (schema/today-feed.json contract).
+  // Behavior pin; values are cross-checked against schema kind_priority in the schema contract block below.
   expect(PRIORITY.report).toBe(1);
   expect(PRIORITY.automation).toBe(2);
   expect(PRIORITY.decision).toBe(3);
@@ -352,6 +352,8 @@ const TODAY_FEED_SCHEMA = JSON.parse(
 describe("today-feed schema contract (schema/today-feed.json)", () => {
   test("PRIORITY keys match schema kind enum exactly", () => {
     expect([...TODAY_FEED_SCHEMA.properties.kind.enum].sort()).toEqual(Object.keys(PRIORITY).sort());
+    // kind_priority values are the shared ordering SoT (Python side pinned in tests/test_llm_integration.py).
+    expect(PRIORITY).toEqual(TODAY_FEED_SCHEMA.kind_priority);
   });
 
   test("buildTodayFeed entries conform to schema", () => {

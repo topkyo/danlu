@@ -1539,6 +1539,9 @@ def test_today_feed_schema_contract() -> None:
     # Mirror pin: schema enum must equal the Python FeedKind literal set.
     assert set(schema["properties"]["kind"]["enum"]) == set(get_args(FeedKind))
 
+    # Ordering pin: schema kind_priority is the SoT for the shared kind ordering.
+    assert {kind: priority_for_kind(kind) for kind in get_args(FeedKind)} == schema["kind_priority"]
+
     def assert_entry_conforms(entry: dict[str, Any]) -> None:
         for key in schema["required"]:
             assert key in entry, f"missing required key: {key}"

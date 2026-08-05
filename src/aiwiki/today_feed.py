@@ -15,6 +15,7 @@ FeedKind = Literal["decision", "report", "elixir", "automation", "action"]
 FeedAudience = Literal["primary", "operator"]
 
 # 固定优先级：数字越小越靠前。同 priority 内按 timestamp asc（旧上新下，贴提问框）。
+# SoT：schema/today-feed.json 的 kind_priority；Python/JS 双侧契约测试钉死漂移。
 # Primary Today 只保留报告、待拍板异常和必要行动；operator feed 仍可显示自动化/指标状态。
 _PRIORITY: dict[str, int] = {
     "report": 1,

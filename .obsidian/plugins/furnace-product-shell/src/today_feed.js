@@ -6,7 +6,7 @@
  */
 "use strict";
 
-// MIRROR of src/aiwiki/today_feed.py _PRIORITY (schema/today-feed.json pins the contract).
+// MIRROR of src/aiwiki/today_feed.py _PRIORITY; SoT is schema/today-feed.json kind_priority (both sides' tests pin against it).
 const PRIORITY = {
   report: 1,
   automation: 2,
