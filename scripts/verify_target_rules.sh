@@ -73,6 +73,20 @@ emit_targets_for_path() {
       echo unit
       return 0
       ;;
+    src/aiwiki/app_linting/repair.py)
+      # Guarded by tests/test_repair.py.
+      echo python-static
+      echo unit
+      return 0
+      ;;
+    src/aiwiki/execution/repair_plan.py|src/aiwiki/execution/patch_plan.py)
+      # Guarded by tests/test_repair.py; keeps the execution/* pipeline targets below.
+      echo python-static
+      echo unit
+      echo acceptance
+      echo llm-integration
+      return 0
+      ;;
     src/aiwiki/execution/*|src/aiwiki/execution/**/*|src/aiwiki/memory/*|src/aiwiki/memory/**/*|src/aiwiki/runner/*|src/aiwiki/runner/**/*|src/aiwiki/compile/*|src/aiwiki/compile/**/*)
       # Core pipeline modules: static checks alone miss contract regressions.
       echo python-static
@@ -92,7 +106,7 @@ emit_targets_for_path() {
       echo llm-integration
       return 0
       ;;
-    tests/test_security.py|tests/test_vault_plugin.py|tests/test_library_surfaces.py)
+    tests/test_security.py|tests/test_vault_plugin.py|tests/test_library_surfaces.py|tests/test_repair.py)
       echo unit
       return 0
       ;;

@@ -15,6 +15,8 @@
 
 ## 当前动态
 
+- 2026-08-05 (**repair 路径补测**)：`app_linting/repair.py` 3%→**100%**、`execution/repair_plan.py` 27%→**100%**、`execution/patch_plan.py` 21%→**99%**（余 1 行 dead-by-config）；新增 `tests/test_repair.py` 62 例，unit **81→143**。verify 绿。
+
 - 2026-08-05 (**verify 单行钉 + R-7 + 归档裁定**)：`docs_consistency` 钉死 `Run LLM integration tests (85 tests`（防 all 行掩盖）；Today 去掉 legacy `proposal` feed 桶；USER_GUIDE/INSTALL 术语对齐 Today；Post-Cleanup **暂不归档**（仍为 Go-Live SoT）。
 
 - 2026-08-05 (**覆盖归属 R-5**)：删 7 个零入口 0% 模块（`lifecycle/protocol`、`memory/{topology,types}`、`planner/types`、`state/types`、`utils/json_utils`、`render/cognitive_history`+views 包装）；补 `tests/test_library_surfaces.py` 9 例（autonomy_policy / llm-check render / cli `__main__`）；unit **72→81**。
@@ -144,7 +146,7 @@
 ```text
 说人话。先读 PROGRESS.md 头条 + docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md；评分勿混：Local Eng 9.05 ≠ 工程实测 7.9 ≠ 商业 ~7.8。
 
-已完成：F-1~F-13 收口；文档卫生 R-1~R-4；覆盖归属 R-5（0% 孤儿删 + library surfaces 9 测）；SoT 计数 acceptance 24 / llm 85 / unit 81 / Jest 203；结构债 Knife A/B + memory↛execution + F-11 三刀（views/ask 仍可续）；WS2 本地 wheel。
+已完成：F-1~F-13 收口；文档卫生 R-1~R-4；覆盖归属 R-5（0% 孤儿删 + library surfaces 9 测）；SoT 计数 acceptance 24 / llm 85 / unit 143 / Jest 203；结构债 Knife A/B + memory↛execution + F-11 三刀（views/ask 仍可续）；WS2 本地 wheel。
 
 下一刀优先（择一）：
 1) Commercial：EULA 法律签收 / twine upload + tag v0.4.0 / Demo 媒体
