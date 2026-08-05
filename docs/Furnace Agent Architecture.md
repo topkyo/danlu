@@ -50,6 +50,17 @@ Product Shell 投影见 `docs/Furnace Product Shell.md`（归档史料见 `docs/
 | 规则 | `schema/`、`prompts/` | 显式契约 |
 | 产物/候选 | `.aiwiki/staging/`、`output/reports/`、`.aiwiki/derived/packs/` | 报告、金丹候选、导出 |
 
+### 3.1 包分层（runtime）
+
+| 包 | 角色 |
+|---|---|
+| `content/` | raw/wiki 写读与 material/archive（**不得** import `memory`） |
+| `memory/` | machine memory 图/查询/动作（**不得** import `content`） |
+| `corpus/` | 双方共享的只读 helpers：paths / scoring / ranks / parse / sections / snapshots / link_state（**不得** import content/memory/execution/runner） |
+| `execution/` / `runner/` / `compile/` | 编排与写回；可依赖 content 或 memory，但共享纯函数优先走 corpus |
+
+门禁：`scripts/docs_consistency_check.sh` + `tests/test_library_surfaces.py` AST。
+
 ## 4. 不变量
 
 - **Single writer, many readers**：同一时刻一个 writer 写 `wiki/`、`.aiwiki/state/`、`output/control/`。

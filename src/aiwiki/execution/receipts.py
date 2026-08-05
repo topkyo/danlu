@@ -175,6 +175,8 @@ def build_elixir_promotion_receipt(
         "primary_path": relative_path(root, settled_path),
         "secondary_path": relative_path(root, candidate_path),
         "receipt_path": relative_path(root, receipt_path),
+        # Promote is reversible via ``revert_elixir`` (anchored on this receipt).
+        "revert_supported": True,
         "bundle": {
             "primary_path_sha256": primary_path_sha256,
             "secondary_path_sha256": secondary_path_sha256,

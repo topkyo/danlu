@@ -11,7 +11,7 @@ from ..content.outputs import normalize_query_signature
 from ..execution.alchemy_helpers import ELIXIR_DIR, list_promoted_outputs_for_corpus
 from ..execution.candidates import load_output_candidates_state
 from ..utils.hash import question_signature
-from ..utils.markdown import parse_frontmatter
+from ..utils.markdown import frontmatter_string_list, parse_frontmatter
 
 _COMPOUND_SUGGEST_MAX = 3
 _REPORT_SCAN_LIMIT = 8
@@ -79,11 +79,6 @@ def _settled_elixir_paths(root: Path, memory: dict[str, Any]) -> dict[str, dict[
     return paths
 
 
-def _frontmatter_string_list(frontmatter: dict[str, Any], key: str) -> list[str]:
-    values = frontmatter.get(key, [])
-    if not isinstance(values, list):
-        return []
-    return [str(item).strip() for item in values if isinstance(item, str) and str(item).strip()]
 
 
 def _query_signature_counts(route_telemetry: dict[str, Any]) -> dict[str, int]:
@@ -119,9 +114,9 @@ def _load_report_context(root: Path, report_path: str) -> dict[str, Any] | None:
     except OSError:
         return None
     query = str(frontmatter.get("query") or "").strip()
-    used_refs = _frontmatter_string_list(frontmatter, "used_refs")
+    used_refs = frontmatter_string_list(frontmatter, "used_refs")
     if not used_refs:
-        used_refs = _frontmatter_string_list(frontmatter, "used_context_refs")
+        used_refs = frontmatter_string_list(frontmatter, "used_context_refs")
     corpus_id = str(frontmatter.get("active_corpus_id") or frontmatter.get("corpus_id") or "").strip()
     return {
         "path": report_path,

@@ -78,6 +78,7 @@ verify_unit() {
     tests/test_library_surfaces.py \
     tests/test_repair.py \
     tests/test_alchemy_revert.py \
+    tests/test_cli_surfaces.py \
     -q
 }
 
@@ -91,7 +92,7 @@ verify_coverage() {
   "$PYTHON" -m coverage run --source=src/aiwiki -m pytest \
     tests/test_acceptance_loop.py tests/test_llm_integration.py \
     tests/test_security.py tests/test_vault_plugin.py tests/test_library_surfaces.py \
-    tests/test_repair.py tests/test_alchemy_revert.py -q
+    tests/test_repair.py tests/test_alchemy_revert.py tests/test_cli_surfaces.py -q
   "$PYTHON" -m coverage report | tail -n 5
 }
 

@@ -50,6 +50,7 @@ from ..state.manifest import load_manifest
 from ..utils.hash import question_signature
 from ..utils.io import atomic_write_text, runtime_write_operation
 from ..utils.markdown import (
+    frontmatter_string_list,
     parse_frontmatter,
     strip_frontmatter,
     upsert_markdown_section,
@@ -94,13 +95,6 @@ _GRAPH_ANCHOR_LIMIT = 8
 _CURATED_PROVENANCE_LIMIT = 4
 
 
-def _frontmatter_string_list(frontmatter: dict[str, Any], key: str) -> list[str]:
-    value = frontmatter.get(key)
-    if isinstance(value, list):
-        return [str(item).strip() for item in value if str(item).strip()]
-    if isinstance(value, str) and value.strip():
-        return [value.strip()]
-    return []
 
 
 def _collect_curated_provenance_refs(
@@ -157,7 +151,7 @@ def _merge_frontmatter_string_list(path: Path, key: str, refs: list[str], *, mer
     original = path.read_text(encoding="utf-8", errors="replace")
     frontmatter = parse_frontmatter(original)
     merged: list[str] = []
-    existing = _frontmatter_string_list(frontmatter, key) if merge_existing else []
+    existing = frontmatter_string_list(frontmatter, key) if merge_existing else []
     for ref in [*existing, *cleaned]:
         if ref not in merged:
             merged.append(ref)
