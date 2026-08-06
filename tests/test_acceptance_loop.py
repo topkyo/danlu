@@ -964,6 +964,43 @@ def test_duplicate_file_back_preserves_judgment_promoted_to(  # pragma: no cover
     judgment_dir = vault / "wiki" / "judgments"
     assert len(list(judgment_dir.glob("*.md"))) == 1
 
+def test_alchemy_revert_restores_candidate_via_cli(tmp_path: Path) -> None:
+    """G-1b: promote → revert via advanced alchemy argv restores candidate + receipt."""
+    from aiwiki.execution.alchemy_helpers import _candidate_path, _parse_elixir_frontmatter, _settled_path
+    from tests.test_alchemy_revert import ELIXIR_ID, _latest_revert_receipt, _seed_promote_vault
+
+    vault = tmp_path / "vault"
+    _seed_promote_vault(vault)
+
+    _run_cli(
+        vault,
+        ["advanced", "alchemy", "promote", "--elixir-id", ELIXIR_ID, "--note", "acc promote"],
+    )
+    settled_path = _settled_path(vault, ELIXIR_ID)
+    assert settled_path.is_file()
+
+    out = _run_cli(
+        vault,
+        ["advanced", "alchemy", "revert", "--elixir-id", ELIXIR_ID, "--note", "acc revert"],
+    )
+    payload = json.loads(out)
+    candidate_path = _candidate_path(vault, ELIXIR_ID)
+    assert payload["elixir_id"] == ELIXIR_ID
+    assert payload["path"] == str(candidate_path.relative_to(vault))
+    assert not settled_path.exists()
+    assert candidate_path.is_file()
+    fm = _parse_elixir_frontmatter(candidate_path)
+    assert fm["elixir_state"] == "candidate"
+    assert "superseded_by" not in fm
+    assert "promoted_at" not in fm
+
+    revert_receipt = _latest_revert_receipt(vault)
+    assert revert_receipt.get("operation") == "revert"
+    assert revert_receipt.get("subject_kind") == "elixir_revert"
+    assert revert_receipt.get("subject_id") == ELIXIR_ID
+    assert (vault / str(revert_receipt["receipt_path"])).is_file()
+
+
 # M9-P1.2: corrupt-state acceptance — strict-loader contract only (no fixture chain).
 
 

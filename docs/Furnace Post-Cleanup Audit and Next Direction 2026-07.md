@@ -26,7 +26,7 @@ supersedes: []
 | 指标 | 当前值 | 来源 |
 |---|---|---|
 | Runtime | `src/aiwiki` **194** `.py` / **~43.8k LOC** | `find` + `wc`（2026-08-05 hub seams；含 views/ask/io 外提） |
-| Tests | acceptance **24** + llm-integration **85** + unit **166** + Jest **203**（2026-08-05 R6 修复后实测；历史快照曾含 24/85/160、24/85/154、24/85/143 等） | `bash scripts/verify.sh all` |
+| Tests | acceptance **25** + llm-integration **85** + unit **176** + Jest **203**（2026-08-06 G-1b revert 覆盖后实测；历史快照曾含 24/85/166、24/85/160、24/85/154、24/85/143 等） | `bash scripts/verify.sh all` |
 | Top hubs（单文件） | `content/concepts.py` 812 / `drop/url.py` 790 / `content/io.py` **677** / `render/views.py` **668** / `execution/ask.py` **665**；`workflows_ask` **334**（writeback **479**）；无 1000+ LOC；外提 `ask_report` / `file_back` / `output_artifacts` / `workflows_ask_writeback`；`execution/machine_memory_actions` 等 8 治理孤儿簇 **DELETED**（2026-08-04）；`auto_adopt` / 根级 `app_*.py` **DELETED** | `wc -l` 2026-08-05 hub seams |
 | `except Exception` | **~65**；裸 `except Exception: pass` **0** | ripgrep 2026-08-05 |
 | AgentOS Scorecard | **Local Engineering Gate 9.05**（自评门禁）；工程实测七维 **8.6**；Live Dogfood **not-yet** | Scorecard + `docs/plans/2026-08-05-multi-agent-reevaluation-r5.md` |
@@ -231,7 +231,7 @@ bash scripts/verify.sh cli-smoke
 # 紧急旁路：AIWIKI_SKIP_PRODUCT_SHELL_JS_TESTS=1
 # go-live 文档门禁：
 ! git grep -E 'commercial@example\.com|support@example\.com' -- LICENSE docs/commercial/
-bash scripts/verify.sh all   # 推送/发布前（含 unit 166 + coverage informational）
+bash scripts/verify.sh all   # 推送/发布前（含 unit 176 + coverage informational）
 ```
 
 > 备注：2026-07-15 scripts cleanup 曾删旧 `run_product_shell_tests.sh` 与旧 drift gate；2026-08-04 起 `product-shell-static` 恢复 **bundle drift 硬门禁** + Jest。Release evidence pipeline（`agos9_*.sh` / `dogfood_maturity_gate.py`）仍已删除。

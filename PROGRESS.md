@@ -15,6 +15,10 @@
 
 ## 当前动态
 
+- 2026-08-05 (**R8 P1 收口**)：agent 可做 P1 全关（S-1/T-1/A-1/A-2/Q-1/Q-2/G-1/G-2/G-1b）；Commercial 三阻断仍开。verify **25/85/176/203**。计划：`docs/plans/2026-08-05-r8-p1-remediation.md`。
+
+- 2026-08-05 (**多 agent 全量复评 R8**)：工程实测 **8.6**（与 R5/R6 持平；不采信 R7 草稿 8.7）；七路扫描 + 主裁决。报告：`docs/plans/2026-08-05-multi-agent-reevaluation-r8.md`。Commercial ~7.8。
+
 - 2026-08-05 (**R6 验证确认 + 发现修复**)：R6 维持工程实测 **8.6**（零否证）；收口 coverage **71%** 钉、CHANGELOG unit 机制钉、jest 显式校验、argv 六命令、ask/writeback 相位真拆分。报告：`docs/plans/2026-08-05-multi-agent-reevaluation-r6.md`；计划：`docs/plans/2026-08-05-r6-findings-fixes.md`。unit **166**。
 
 - 2026-08-05 (**多 agent 复评 R5**)：工程实测 **8.6**（+0.1 vs R4 / +0.3 vs R3）；架构 9.1 / 可维护 8.5 / 安全 8.8；Commercial ~7.8 横盘。报告：`docs/plans/2026-08-05-multi-agent-reevaluation-r5.md`（R4 P1 前 8.5 见同目录 r4）。verify 24/85/160/203。

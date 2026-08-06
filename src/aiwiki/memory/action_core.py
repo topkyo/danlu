@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from ..corpus.parse import concept_source_pages, normalize_concept_hardness, parse_causal_links
+from ..corpus.ranks import action_priority_rank, action_status_rank  # noqa: F401  # re-export compat seam
 from ..corpus.snapshots import source_summary_or_preview
 from ..protocol.focus_scoring import action_focus_score
 from ..protocol.runtime_config import LOW_RISK_APPLYABLE_ACTION_KINDS, RESOLVABLE_MONITOR_ACTION_KINDS
@@ -27,7 +28,6 @@ from ..utils.markdown import build_citation_snapshots, parse_frontmatter
 from ..utils.path import relative_path
 from ..utils.text import slugify
 from .action_policy import execution_policy_profile
-from .action_rank import action_priority_rank, action_status_rank  # noqa: F401  # re-export compat seam
 from .action_state import load_machine_memory_action_state
 from .paths import manual_link_state_path
 

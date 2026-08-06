@@ -24,9 +24,9 @@ updated_at: "2026-08-05"
 
 | 组件 | 数量 | 命令 |
 |---|---:|---|
-| Acceptance | **24** passed | `bash scripts/verify.sh acceptance` |
+| Acceptance | **25** passed | `bash scripts/verify.sh acceptance` |
 | LLM integration | **85** passed | `bash scripts/verify.sh llm-integration` |
-| Unit（library 级） | **166** passed | `bash scripts/verify.sh unit` |
+| Unit（library 级） | **176** passed | `bash scripts/verify.sh unit` |
 | Product Shell Jest | **203** passed | `bash scripts/verify.sh product-shell-static` |
 | Bundle drift | gate（正反向实测） | 含于 `product-shell-static` |
 | Coverage | **71%**（informational，无门禁） | `bash scripts/verify.sh coverage` |
@@ -47,7 +47,7 @@ updated_at: "2026-08-05"
 
 > **双分数横幅（勿混标）**
 > - **本表**：Local Engineering Gate 加权 **9.05** = fixture / verify / 文档门禁自评尺子（可宣称 engineering 就绪）。
-> - **工程实测七维**（覆盖、产物漂移、死代码、SoT 卫生等）：**8.6**（2026-08-05 R5，P1 合入后）／曾 **8.5**（R4）／**8.3**（R3）／**8.2**／**7.9**／**6.8**。报告：`docs/plans/2026-08-05-multi-agent-reevaluation-r5.md`。  
+> - **工程实测七维**（覆盖、产物漂移、死代码、SoT 卫生等）：**8.6**（2026-08-05 R8 全量扫描维持；同 R5/R6）／R7 草稿曾报 8.7（未采信）／曾 **8.5**（R4）／**8.3**／**8.2**／**7.9**／**6.8**。报告：`docs/plans/2026-08-05-multi-agent-reevaluation-r8.md`。  
 > - **非** live dogfood；**非** 商业可售分。
 
 | 维度 | 权重 | 分 | 加权 |
@@ -64,7 +64,7 @@ updated_at: "2026-08-05"
 
 **历史对照**：2026-07-18 ≈ **9.07**；2026-07-19 audit 漂移 ≈ **8.4**；2026-07-22 Ask sync 后回升至 **9.05**（架构净简化 + verify 全绿；Live 仍 not-yet）。本表八维**未**因 08-04/08-05 工程实测复评而重算。
 
-**并列尺子（非本表加权）**：工程实测七维 **8.6**（08-05 R5）；Commercial Go-Live ≈ **7.8**（未达诚实可售 ≥8.0）；Ask 架构子尺 A/B 各 **8.0**。
+**并列尺子（非本表加权）**：工程实测七维 **8.6**（08-05 R8）；Commercial Go-Live ≈ **7.8**（未达诚实可售 ≥8.0）；Ask 架构子尺 A/B 各 **8.0**。
 
 ### Live Dogfood — 状态摘要（2026-07-22）
 
@@ -91,7 +91,7 @@ updated_at: "2026-08-05"
 
 | 维度 | 权重 | 分 | Blocking? | 现行证据 |
 |------|------|---:|---|---|
-| Dogfood / fixture | 20% | 8.9 | no（live 维 blocking 在 Live gate） | acceptance **24** replay + AOS-C8 **historical** |
+| Dogfood / fixture | 20% | 8.9 | no（live 维 blocking 在 Live gate） | acceptance **25** replay + AOS-C8 **historical** |
 | Product Shell | 12% | 9.3 | yes | Jest **203** + bundle drift 硬门禁 + sync `run-ask` 单飞 + Today-first |
 | Runtime correctness | 15% | 9.4 | no | path harden + fail-closed LLM；无 background submit/resume |
 | Planner / signal | 10% | 8.7 | no | internal modules；CLI 已删；acceptance replay |
@@ -107,10 +107,10 @@ updated_at: "2026-08-05"
 | # | Gate | 现行命令 |
 |---|------|----------|
 | 1 | Full verify | `bash scripts/verify.sh all` |
-| 2 | Acceptance | **24** — `bash scripts/verify.sh acceptance` |
+| 2 | Acceptance | **25** — `bash scripts/verify.sh acceptance` |
 | 3 | LLM integration | **85** — `bash scripts/verify.sh llm-integration` |
 | 4 | Product Shell | Jest **203** + bundle drift gate — `bash scripts/verify.sh product-shell-static` |
-| 5 | Unit | **166** — `bash scripts/verify.sh unit` |
+| 5 | Unit | **176** — `bash scripts/verify.sh unit` |
 | 6 | Docs consistency | `bash scripts/docs_consistency_check.sh` |
 | 7 | CI | `.github/workflows/verify.yml` |
 
@@ -158,3 +158,4 @@ updated_at: "2026-08-05"
 - 2026-08-05（P1 分修）：六命令 CLI 烟测 + promote revert_supported + frontmatter/metrics_io；unit **154→160**。
 - 2026-08-05（复评 R5）：工程实测横幅 **8.3→8.6**；报告 `docs/plans/2026-08-05-multi-agent-reevaluation-r5.md`（R4 8.5 见 r4）。
 - 2026-08-05（复评 R6 + 发现修复）：独立验证维持 **8.6**；coverage **69→71**；unit **160→166**（argv）；ask/writeback 相位真拆分；CHANGELOG/jest 机制钉。报告 `docs/plans/2026-08-05-multi-agent-reevaluation-r6.md`。
+- 2026-08-05（复评 R8 全量扫描）：七路独立扫描维持工程实测 **8.6**；不采信 R7 草稿 8.7；新定价包级环 / memory facade / Playwright DNS rebinding / planner·vision 信任边界。报告 `docs/plans/2026-08-05-multi-agent-reevaluation-r8.md`。

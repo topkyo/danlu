@@ -124,23 +124,27 @@ check_match() {
   fi
 }
 
-check_match "verify.sh usage pins acceptance 24" 'acceptance \(24\)' scripts/verify.sh
+check_match "verify.sh usage pins acceptance 25" 'acceptance \(25\)' scripts/verify.sh
 # Pin the per-target usage line (not only the `all` summary) so a stale
 # "83 tests" description cannot hide behind `llm-integration (85)` on `all`.
 check_match "verify.sh usage line pins llm-integration 85 tests" 'Run LLM integration tests \(85 tests' scripts/verify.sh
 check_match "verify.sh all line pins llm-integration 85" 'llm-integration \(85\)' scripts/verify.sh
-check_match "AGENTS.md pins acceptance 24" 'acceptance 24 fixture replay' AGENTS.md
+check_match "AGENTS.md pins acceptance 25" 'acceptance 25 fixture replay' AGENTS.md
 check_match "AGENTS.md pins llm 85" 'LLM integration 85' AGENTS.md
-check_match "AGENTS.md pins unit 166" 'unit 166' AGENTS.md
+check_match "AGENTS.md pins unit 176" 'unit 176' AGENTS.md
 check_match "AGENTS.md pins Jest 203" 'Jest 203' AGENTS.md
 check_match "Scorecard pins llm 85" 'LLM integration \| \*\*85\*\* passed' docs/AGOS-9-Scorecard.md
-check_match "Scorecard pins unit 166" 'Unit（library 级） \| \*\*166\*\* passed' docs/AGOS-9-Scorecard.md
+check_match "Scorecard pins acceptance 25" 'Acceptance \| \*\*25\*\* passed' docs/AGOS-9-Scorecard.md
+check_match "Scorecard pins unit 176" 'Unit（library 级） \| \*\*176\*\* passed' docs/AGOS-9-Scorecard.md
 check_match "Scorecard pins Jest 203" 'Product Shell Jest \| \*\*203\*\* passed' docs/AGOS-9-Scorecard.md
+check_match "DEVELOPER.md pins acceptance 25" '\*\*25\*\* tests — `tests/test_acceptance_loop.py`' docs/DEVELOPER.md
 check_match "DEVELOPER.md pins llm 85" '\*\*85\*\* tests' docs/DEVELOPER.md
-check_match "DEVELOPER.md pins unit 166" '\*\*166\*\* tests' docs/DEVELOPER.md
+check_match "DEVELOPER.md pins unit 176" '\*\*176\*\* tests' docs/DEVELOPER.md
 check_match "DEVELOPER.md pins Jest 203" 'Jest \*\*203\*\*' docs/DEVELOPER.md
-check_match "Post-Cleanup §1 pins unit 166" 'unit \*\*166\*\*' "docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md"
-check_match "CHANGELOG Unreleased pins unit 166" 'unit \*\*166\*\*' CHANGELOG.md
+check_match "Post-Cleanup §1 pins acceptance 25" 'acceptance \*\*25\*\*' "docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md"
+check_match "Post-Cleanup §1 pins unit 176" 'unit \*\*176\*\*' "docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md"
+check_match "CHANGELOG Unreleased pins acceptance 25" 'acceptance \*\*25\*\*' CHANGELOG.md
+check_match "CHANGELOG Unreleased pins unit 176" 'unit \*\*176\*\*' CHANGELOG.md
 check_match "Scorecard pins coverage 71%" 'Coverage \| \*\*71%\*\*' docs/AGOS-9-Scorecard.md
 check_match "DEVELOPER.md pins coverage 71%" '实测全量 \*\*71%\*\*' docs/DEVELOPER.md
 
@@ -163,6 +167,20 @@ if rg -n 'from \.\.content|from \.\.memory|from aiwiki\.(content|memory)' src/ai
 else
   echo "[OK] corpus ↛ content/memory"
 fi
+if rg -n 'from \.\.execution|from aiwiki\.execution' src/aiwiki/memory --glob '*.py' >/dev/null 2>&1; then
+  echo "[FAIL] memory must not import execution" >&2
+  FAIL=1
+else
+  echo "[OK] memory ↛ execution"
+fi
+for facade_path in src/aiwiki/memory/scoring.py src/aiwiki/memory/action_rank.py; do
+  if [[ -e "$facade_path" ]]; then
+    echo "[FAIL] memory facade resurrection: $facade_path must not exist" >&2
+    FAIL=1
+  else
+    echo "[OK] memory facade absent: $facade_path"
+  fi
+done
 if rg -n '_CompatModule' src/aiwiki/app_shell/__init__.py src/aiwiki/app_linting/__init__.py >/dev/null 2>&1; then
   echo "[FAIL] app_shell/app_linting __init__ must not contain _CompatModule" >&2
   FAIL=1

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..corpus.parse import routing_snapshot_for_protocol
-from .scoring import recency_score_for_timestamp
+from ..corpus.scoring import recency_score_for_timestamp
 
 
 def machine_memory_source_runtime_record(

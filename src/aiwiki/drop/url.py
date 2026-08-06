@@ -439,6 +439,28 @@ def _render_url_in_browser(url: str) -> dict[str, str]:
     return {"html": "", "backend": ""}
 
 
+def _playwright_route_via_safe_fetch(route, request, *, allow_private: bool) -> None:  # type: ignore[no-untyped-def]
+    """Fulfill Playwright subresource requests via safe_fetch; never let Chromium dial DNS."""
+    method = (request.method or "GET").upper()
+    if method not in {"GET", "HEAD"}:
+        route.abort()
+        return
+    try:
+        body, _final = safe_fetch(
+            request.url,
+            method=method,
+            headers={"User-Agent": USER_AGENT},
+            max_bytes=_HTML_MAX_BYTES,
+            timeout=float(BROWSER_RENDER_TIMEOUT_SECONDS),
+            allow_private=allow_private,
+        )
+        route.fulfill(status=200, body=body, headers={"Content-Type": "application/octet-stream"})
+    except FetchPolicyError:
+        route.abort()
+    except Exception:
+        route.abort()
+
+
 def _render_url_with_playwright(url: str) -> str:
     if sync_playwright is None:
         return ""
@@ -450,12 +472,7 @@ def _render_url_with_playwright(url: str) -> str:
                 page = browser.new_page(user_agent=USER_AGENT)
 
                 def _guard(route, request):  # type: ignore[no-untyped-def]
-                    try:
-                        _validate_safe_url(request.url, allow_private=allow_private)
-                    except FetchPolicyError:
-                        route.abort()
-                        return
-                    route.continue_()
+                    _playwright_route_via_safe_fetch(route, request, allow_private=allow_private)
 
                 page.route("**/*", _guard)
                 page.goto(url, wait_until="networkidle", timeout=BROWSER_RENDER_TIMEOUT_SECONDS * 1000)
