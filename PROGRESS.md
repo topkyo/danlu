@@ -15,7 +15,9 @@
 
 ## 当前动态
 
-- 2026-08-05 (**R8 P1 收口**)：agent 可做 P1 全关（S-1/T-1/A-1/A-2/Q-1/Q-2/G-1/G-2/G-1b）；Commercial 三阻断仍开。verify **25/85/176/203**。计划：`docs/plans/2026-08-05-r8-p1-remediation.md`。
+- 2026-08-06 (**R8 P1 合入 main**)：PR #32 merged；verify **25/85/176/203**。P2 D-1（Scorecard Docs 双尺 †）落地；A-3 hub 盲拆 **暂缓**（R8 判多数为健康文件级 hub）。Commercial 三阻断仍开。
+
+- 2026-08-05 (**R8 P1 收口**)：agent 可做 P1 全关（S-1/T-1/A-1/A-2/Q-1/Q-2/G-1/G-2/G-1b）。计划：`docs/plans/2026-08-05-r8-p1-remediation.md`。
 
 - 2026-08-05 (**多 agent 全量复评 R8**)：工程实测 **8.6**（与 R5/R6 持平；不采信 R7 草稿 8.7）；七路扫描 + 主裁决。报告：`docs/plans/2026-08-05-multi-agent-reevaluation-r8.md`。Commercial ~7.8。
 

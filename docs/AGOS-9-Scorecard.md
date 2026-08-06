@@ -59,12 +59,14 @@ updated_at: "2026-08-05"
 | LLM reliability | 12% | 9.0 | 1.080 |
 | Governance | 13% | 9.1 | 1.183 |
 | Maintainability | 8% | 9.0 | 0.720 |
-| Docs SoT | 10% | 8.9 | 0.890 |
+| Docs SoT | 10% | 8.9† | 0.890 |
 | **合计** | 100% | — | **9.05** |
+
+† **Docs SoT 勿混标**：本表 **8.9** = 2026-07-22 Local Engineering 八维 frozen（fixture/verify 自评尺，参与 9.05 加权）。工程实测七维「文档 SoT」子分 = **8.6**（08-05 R8；R6 机制钉后）。两尺并列，**不**用 8.9 冒充工程实测文档卫生分。
 
 **历史对照**：2026-07-18 ≈ **9.07**；2026-07-19 audit 漂移 ≈ **8.4**；2026-07-22 Ask sync 后回升至 **9.05**（架构净简化 + verify 全绿；Live 仍 not-yet）。本表八维**未**因 08-04/08-05 工程实测复评而重算。
 
-**并列尺子（非本表加权）**：工程实测七维 **8.6**（08-05 R8）；Commercial Go-Live ≈ **7.8**（未达诚实可售 ≥8.0）；Ask 架构子尺 A/B 各 **8.0**。
+**并列尺子（非本表加权）**：工程实测七维 **8.6**（08-05 R8；P1 收口已合入 #32，未重评抬分）；Commercial Go-Live ≈ **7.8**（未达诚实可售 ≥8.0）；Ask 架构子尺 A/B 各 **8.0**。
 
 ### Live Dogfood — 状态摘要（2026-07-22）
 
@@ -98,7 +100,7 @@ updated_at: "2026-08-05"
 | LLM reliability | 12% | 9.0 | no | llm-integration **85** + receipt 聚合 |
 | Governance | 13% | 9.1 | yes | review-page / alchemy-revert / gc-orphans / file-back receipts；无入口 mm_actions 治理簇 2026-08-04 已整簇删除 |
 | Maintainability | 8% | 9.0 | no | 顶层 `app_*.py` = 0；cli facade 归零；Ask 路径净删 background；治理孤儿簇 −4.6k 行 |
-| Docs SoT | 10% | 8.9 | yes | active docs 对齐；本轮刷新计数 |
+| Docs SoT | 10% | 8.9† | yes | Local Eng frozen 8.9；工程实测文档尺 **8.6**（R8）；主链计数与 consistency 钉对齐 |
 
 > **AOS-C8 frozen**：2026-05 三天 live PASS 仍作 **historical** 证据；Local Engineering 用 fixture + historical 计 Dogfood 维 8.9，**不伪造** live。
 
@@ -159,3 +161,4 @@ updated_at: "2026-08-05"
 - 2026-08-05（复评 R5）：工程实测横幅 **8.3→8.6**；报告 `docs/plans/2026-08-05-multi-agent-reevaluation-r5.md`（R4 8.5 见 r4）。
 - 2026-08-05（复评 R6 + 发现修复）：独立验证维持 **8.6**；coverage **69→71**；unit **160→166**（argv）；ask/writeback 相位真拆分；CHANGELOG/jest 机制钉。报告 `docs/plans/2026-08-05-multi-agent-reevaluation-r6.md`。
 - 2026-08-05（复评 R8 全量扫描）：七路独立扫描维持工程实测 **8.6**；不采信 R7 草稿 8.7；新定价包级环 / memory facade / Playwright DNS rebinding / planner·vision 信任边界。报告 `docs/plans/2026-08-05-multi-agent-reevaluation-r8.md`。
+- 2026-08-06（R8 P1 合入 + P2 D-1）：PR #32 关闭 agent 可做 P1；本表 Docs SoT 行加 † 并列标注（自评 8.9 frozen / 工程尺 8.6）。A-3 文件级 hub **暂不盲拆**（R8：多数 >500 行文件为健康 hub）。
