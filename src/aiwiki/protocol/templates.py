@@ -31,9 +31,6 @@ LAYOUT_DIRS = (
     ".aiwiki/staging/proposals/policy",
     ".aiwiki/staging/proposals/judge",
     ".aiwiki/derived/agents",
-    ".aiwiki/derived/packs/review",
-    ".aiwiki/derived/packs/decision-memos",
-    ".aiwiki/derived/packs/sop-drafts",
     ".aiwiki/cache",
     ".aiwiki/logs",
 )
