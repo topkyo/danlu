@@ -15,7 +15,7 @@
 
 ## 当前动态
 
-- 2026-08-07 (**入口面残留清理**)：workspace 死页、Elixir/商业文档 CLI、Shell `curated_page_roots` thin 落盘、`append_wiki_log` no-op 调用链、path 死 helper、`runner`/`content.rewrite` façade。计划：`docs/plans/2026-08-07-entry-surfaces-residue-cleanup.md`。扫描：`docs/plans/2026-08-07-entry-surfaces-residue-scan.md`。verify **25/84/177/204**。
+- 2026-08-07 (**入口面残留清理**)：workspace 死页、Elixir/商业文档 CLI、Shell `curated_page_roots` thin 落盘、`append_wiki_log` no-op 调用链、path 死 helper、`runner`/`content.rewrite` façade；并删 compile 空壳 `output_packs`/`domain_pilots` telemetry（build state / phase / compile-status）。计划：`docs/plans/2026-08-07-entry-surfaces-residue-cleanup.md`。扫描：`docs/plans/2026-08-07-entry-surfaces-residue-scan.md`。verify **25/84/177/204**。
 
 - 2026-08-07 (**入口面清理收口**)：炉心面板瘦身三节首屏；`wiki/indexes` 14 个无 writer 页面连代码一起退役；README/HOME/Product Shell 文档叙事对齐；vault 删退役页+iCloud 冲突副本并重启旧代码 watcher。计划：`docs/plans/2026-08-06-entry-surfaces-cleanup.md`。verify **25/84/176/204** 全绿。
 

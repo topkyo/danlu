@@ -62,7 +62,7 @@ created_at: "2026-08-07"
 | C-6 | `schema/review.md` 仍提 `aging-report.md` | 与 protocol template 对齐 |
 | C-7 | Post-Cleanup §8 / D5/D14 Jest 203；CHANGELOG Removed「现行见 24/85/203」 | 改 204 / 标 historical |
 | C-8 | commercial BOUNDARIES/PRICING、INSTALL 多处裸 operator 名 | 统一 `advanced …` |
-| C-9 | compile 侧 output-pack / domain-pilot **空状态** telemetry 簇 | 另开数据契约审计，勿与死页混删 |
+| C-9 | compile 侧 output-pack / domain-pilot **空状态** telemetry 簇 | **已清**（2026-08-07 Task 6）：build-state / context / phase / result / compile-status / lint expected_* |
 
 ### P2 — 卫生
 

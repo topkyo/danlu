@@ -15,11 +15,3 @@ def machine_memory_build_state_path(root: Path) -> Path:
 
 def ranking_build_state_path(root: Path) -> Path:
     return root / ".aiwiki" / "state" / "ranking-build-state.json"
-
-
-def output_pack_build_state_path(root: Path) -> Path:
-    return root / ".aiwiki" / "state" / "output-pack-build-state.json"
-
-
-def domain_pilot_build_state_path(root: Path) -> Path:
-    return root / ".aiwiki" / "state" / "domain-pilot-build-state.json"

@@ -60,8 +60,6 @@ class _LintContext:
     decision_pages: list[dict[str, Any]] = field(default_factory=list)
     judgment_pages: list[dict[str, Any]] = field(default_factory=list)
     pack_memory: dict[str, Any] = field(default_factory=dict)
-    expected_output_packs: dict[str, Any] = field(default_factory=dict)
-    expected_domain_pilots: dict[str, Any] = field(default_factory=dict)
 
     def add(self, severity: str, path: str | Path, message: str) -> None:
         finding_path = relative_path(self.root, path) if isinstance(path, Path) else str(path)

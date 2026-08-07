@@ -35,8 +35,6 @@ class CompileContext:
     concept_changed_pages: int = 0
     index_changed_pages: int = 0
     maintenance_changed_pages: int = 0
-    output_pack_changed_pages: int = 0
-    domain_pilot_changed_pages: int = 0
     removed_pages: int = 0
     dirty_index_artifacts: list[str] = field(default_factory=list)
     clean_index_artifacts: list[str] = field(default_factory=list)
@@ -71,12 +69,6 @@ class CompileContext:
     material_routing: dict[str, Any] = field(default_factory=dict)
     archive_candidates: dict[str, Any] = field(default_factory=dict)
     knowledge_lifecycle: dict[str, Any] = field(default_factory=dict)
-    output_packs: dict[str, Any] = field(default_factory=dict)
-    dirty_output_pack_groups: list[str] = field(default_factory=list)
-    clean_output_pack_groups: list[str] = field(default_factory=list)
-    domain_pilots: dict[str, Any] = field(default_factory=dict)
-    dirty_domain_pilot_protocols: list[str] = field(default_factory=list)
-    clean_domain_pilot_protocols: list[str] = field(default_factory=list)
     cache_status: dict[str, Any] = field(default_factory=dict)
     provenance_degraded: int = 0
     provenance_broken: int = 0
@@ -102,18 +94,6 @@ class CompileContext:
             self.clean_maintenance_artifacts.append(relative)
         self.changed_pages += int(wrote)
         self.maintenance_changed_pages += int(wrote)
-        return int(wrote)
-
-    def write_output_pack_artifact(self, destination: Path, content: str) -> int:
-        wrote, _dirty = write_if_changed_ignoring_timestamps(destination, content)
-        self.changed_pages += int(wrote)
-        self.output_pack_changed_pages += int(wrote)
-        return int(wrote)
-
-    def write_domain_pilot_artifact(self, destination: Path, content: str) -> int:
-        wrote, _dirty = write_if_changed_ignoring_timestamps(destination, content)
-        self.changed_pages += int(wrote)
-        self.domain_pilot_changed_pages += int(wrote)
         return int(wrote)
 
 

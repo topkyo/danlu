@@ -24,9 +24,7 @@ from ..vault_obsidian_graph import sync_evidence_graph_workspace
 from .context import CompileContext
 from .paths import (
     concept_build_state_path,
-    domain_pilot_build_state_path,
     machine_memory_build_state_path,
-    output_pack_build_state_path,
     ranking_build_state_path,
 )
 from .state import save_compile_state
@@ -137,35 +135,6 @@ def _build_compile_phase_summary(context: CompileContext) -> list[dict[str, Any]
                 "archive_candidates": len(context.archive_candidates.get("entries", [])),
                 "active_corpora": len(context.active_corpora_state.get("corpora", [])),
                 "knowledge_lifecycle_entries": len(context.knowledge_lifecycle.get("entries", [])),
-            },
-        },
-        {
-            "name": "output_pack_refresh",
-            "label": "output pack refresh",
-            "mode": "incremental",
-            "status": "completed",
-            "details": {
-                "pack_groups": 4,
-                "dirty_pack_groups": len(context.dirty_output_pack_groups),
-                "clean_pack_groups": len(context.clean_output_pack_groups),
-                "review_packs": int(context.output_packs.get("counts", {}).get("review_packs", 0) or 0),
-                "decision_memos": int(context.output_packs.get("counts", {}).get("decision_memos", 0) or 0),
-                "sop_drafts": int(context.output_packs.get("counts", {}).get("sop_drafts", 0) or 0),
-                "updated_artifacts": context.output_pack_changed_pages,
-                "skipped_artifacts": len(context.clean_output_pack_groups),
-            },
-        },
-        {
-            "name": "domain_pilot_refresh",
-            "label": "domain pilot refresh",
-            "mode": "incremental",
-            "status": "completed",
-            "details": {
-                "pilot_protocols": len(context.domain_pilots.get("scorecards", [])),
-                "dirty_protocols": len(context.dirty_domain_pilot_protocols),
-                "clean_protocols": len(context.clean_domain_pilot_protocols),
-                "updated_artifacts": context.domain_pilot_changed_pages,
-                "skipped_artifacts": len(context.clean_domain_pilot_protocols),
             },
         },
     ]
@@ -280,55 +249,6 @@ def _build_compile_drift_warnings(context: CompileContext) -> list[dict[str, Any
     return warnings[:8]
 
 
-def _compile_log_details(context: CompileContext) -> list[str]:
-    # Derived log view with its own label namespace; the authoritative key set
-    # lives in compile.types (COMPILE_STATE_STR_LIST_KEYS).
-    return [
-        f"compiled_at: `{context.compiled_at}`",
-        f"compile_state: `{relative_path(context.root, compile_state_path(context.root))}`",
-        f"compile_dirty_sources: `{len(context.dirty_source_ids)}`",
-        f"compile_clean_sources: `{len(context.clean_source_ids)}`",
-        f"compile_dirty_concept_sources: `{len(context.dirty_concept_source_ids)}`",
-        f"compile_clean_concept_sources: `{len(context.clean_concept_source_ids)}`",
-        f"compile_dirty_concepts: `{len(context.dirty_concept_slugs)}`",
-        f"compile_clean_concepts: `{len(context.clean_concept_slugs)}`",
-        f"compile_dirty_machine_memory_sources: `{len(context.dirty_machine_memory_source_ids)}`",
-        f"compile_clean_machine_memory_sources: `{len(context.clean_machine_memory_source_ids)}`",
-        f"compile_dirty_machine_memory_concepts: `{len(context.dirty_machine_memory_concept_slugs)}`",
-        f"compile_clean_machine_memory_concepts: `{len(context.clean_machine_memory_concept_slugs)}`",
-        f"machine_memory_core_reused: `{context.machine_memory_core_reused}`",
-        f"compile_dirty_ranking_sources: `{len(context.dirty_ranking_source_ids)}`",
-        f"compile_clean_ranking_sources: `{len(context.clean_ranking_source_ids)}`",
-        f"compile_dirty_ranking_concepts: `{len(context.dirty_ranking_concept_slugs)}`",
-        f"compile_clean_ranking_concepts: `{len(context.clean_ranking_concept_slugs)}`",
-        f"compile_dirty_output_pack_groups: `{len(context.dirty_output_pack_groups)}`",
-        f"compile_clean_output_pack_groups: `{len(context.clean_output_pack_groups)}`",
-        f"compile_dirty_domain_pilot_protocols: `{len(context.dirty_domain_pilot_protocols)}`",
-        f"compile_clean_domain_pilot_protocols: `{len(context.clean_domain_pilot_protocols)}`",
-        f"compile_dirty_index_artifacts: `{len(context.dirty_index_artifacts)}`",
-        f"compile_clean_index_artifacts: `{len(context.clean_index_artifacts)}`",
-        f"compile_dirty_maintenance_artifacts: `{len(context.dirty_maintenance_artifacts)}`",
-        f"compile_clean_maintenance_artifacts: `{len(context.clean_maintenance_artifacts)}`",
-        f"compile_drift_warnings: `{len(_build_compile_drift_warnings(context))}`",
-        f"source_pages_updated: `{context.source_changed_pages}`",
-        f"source_pages: `{len(context.entries)}`",
-        f"concept_pages: `{len(context.concepts)}`",
-        f"active_protocol: `{context.protocol_state['active_protocol']}`",
-        f"machine_memory_terms: `{len(context.memory['term_index'])}`",
-        f"graph_components: `{context.memory['health']['component_count']}`",
-        f"output_packs: `{context.output_packs['counts']['review_packs']}/{context.output_packs['counts']['decision_memos']}/{context.output_packs['counts']['sop_drafts']}`",
-        f"domain_pilots: `{len(context.domain_pilots['scorecards'])}`",
-        f"material_state_entries: `{len(context.material_state['entries'])}`",
-        f"material_routing_entries: `{len(context.material_routing.get('entries', []))}`",
-        f"archive_candidates: `{len(context.archive_candidates.get('entries', []))}`",
-        f"active_corpora: `{len(context.active_corpora_state.get('corpora', []))}`",
-        f"knowledge_lifecycle_entries: `{len(context.knowledge_lifecycle.get('entries', []))}`",
-        f"machine_memory_changed: `{context.transition['changed']}`",
-        f"changed_pages: `{context.changed_pages}`",
-        f"removed_concept_pages: `{context.removed_pages}`",
-    ]
-
-
 def _build_compile_result_payload(
     context: CompileContext,
     phase_summary: list[dict[str, Any]],
@@ -374,10 +294,6 @@ def _build_compile_result_payload(
         "clean_ranking_concepts": len(context.clean_ranking_concept_slugs),
         "dirty_ranking_concept_slugs": list(context.dirty_ranking_concept_slugs),
         "clean_ranking_concept_slugs": list(context.clean_ranking_concept_slugs),
-        "dirty_output_pack_groups": list(context.dirty_output_pack_groups),
-        "clean_output_pack_groups": list(context.clean_output_pack_groups),
-        "dirty_domain_pilot_protocols": list(context.dirty_domain_pilot_protocols),
-        "clean_domain_pilot_protocols": list(context.clean_domain_pilot_protocols),
         "index_changed_pages": context.index_changed_pages,
         "dirty_index_artifacts": list(context.dirty_index_artifacts),
         "clean_index_artifacts": list(context.clean_index_artifacts),
@@ -385,15 +301,11 @@ def _build_compile_result_payload(
         "clean_maintenance_artifacts": list(context.clean_maintenance_artifacts),
         "drift_warnings": drift_warnings,
         "phase_summary": phase_summary,
-        "output_packs": dict(context.output_packs["counts"]),
-        "domain_pilots": len(context.domain_pilots["scorecards"]),
         "compile_state_path": relative_path(context.root, compile_state_path(context.root)),
         "cache_status_path": relative_path(context.root, cache_status_path(context.root)),
         "concept_build_state_path": relative_path(context.root, concept_build_state_path(context.root)),
         "machine_memory_build_state_path": relative_path(context.root, machine_memory_build_state_path(context.root)),
         "ranking_build_state_path": relative_path(context.root, ranking_build_state_path(context.root)),
-        "output_pack_build_state_path": relative_path(context.root, output_pack_build_state_path(context.root)),
-        "domain_pilot_build_state_path": relative_path(context.root, domain_pilot_build_state_path(context.root)),
         "material_state_path": relative_path(context.root, material_state_path(context.root)),
         "active_corpora_path": relative_path(context.root, active_corpora_state_path(context.root)),
         "material_routing_path": relative_path(context.root, material_routing_state_path(context.root)),

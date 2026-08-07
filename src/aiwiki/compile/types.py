@@ -30,10 +30,6 @@ COMPILE_STATE_STR_LIST_KEYS: tuple[str, ...] = (
     "clean_ranking_source_ids",
     "dirty_ranking_concept_slugs",
     "clean_ranking_concept_slugs",
-    "dirty_output_pack_groups",
-    "clean_output_pack_groups",
-    "dirty_domain_pilot_protocols",
-    "clean_domain_pilot_protocols",
     "dirty_index_artifacts",
     "clean_index_artifacts",
     "dirty_maintenance_artifacts",
@@ -67,10 +63,6 @@ class CompileState(TypedDict, total=False):
     clean_ranking_source_ids: list[str]
     dirty_ranking_concept_slugs: list[str]
     clean_ranking_concept_slugs: list[str]
-    dirty_output_pack_groups: list[str]
-    clean_output_pack_groups: list[str]
-    dirty_domain_pilot_protocols: list[str]
-    clean_domain_pilot_protocols: list[str]
     dirty_index_artifacts: list[str]
     clean_index_artifacts: list[str]
     dirty_maintenance_artifacts: list[str]

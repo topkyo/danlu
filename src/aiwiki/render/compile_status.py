@@ -184,8 +184,6 @@ def render_compile_status(
         "- Concept build state：`.aiwiki/state/concept-build-state.json`",
         "- Machine memory build state：`.aiwiki/state/machine-memory-build-state.json`",
         "- Ranking build state：`.aiwiki/state/ranking-build-state.json`",
-        "- Output pack build state：`.aiwiki/state/output-pack-build-state.json`",
-        "- Domain pilot build state：`.aiwiki/state/domain-pilot-build-state.json`",
         f"- Dirty source：`{len(lists['dirty_source_ids'])}`",
         f"- Clean source：`{len(lists['clean_source_ids'])}`",
         f"- Dirty concept source：`{len(lists['dirty_concept_source_ids'])}`",
@@ -201,10 +199,6 @@ def render_compile_status(
         f"- Clean ranking source：`{len(lists['clean_ranking_source_ids'])}`",
         f"- Dirty ranking concept：`{len(lists['dirty_ranking_concept_slugs'])}`",
         f"- Clean ranking concept：`{len(lists['clean_ranking_concept_slugs'])}`",
-        f"- Dirty output pack group：`{len(lists['dirty_output_pack_groups'])}`",
-        f"- Clean output pack group：`{len(lists['clean_output_pack_groups'])}`",
-        f"- Dirty domain pilot protocol：`{len(lists['dirty_domain_pilot_protocols'])}`",
-        f"- Clean domain pilot protocol：`{len(lists['clean_domain_pilot_protocols'])}`",
         f"- Dirty index artifact：`{len(lists['dirty_index_artifacts'])}`",
         f"- Clean index artifact：`{len(lists['clean_index_artifacts'])}`",
         f"- Dirty maintenance artifact：`{len(lists['dirty_maintenance_artifacts'])}`",
@@ -310,42 +304,6 @@ def render_compile_status(
                 concept_by_slug,
                 empty_message="- 当前没有 clean ranking concept record。",
                 overflow_label="clean ranking concept",
-            ),
-        ),
-        (
-            "Dirty Output Pack Groups",
-            artifact_lines(
-                lists["dirty_output_pack_groups"],
-                empty_message="- 当前没有 dirty output pack group。",
-                overflow_label="dirty output pack group",
-                limit=10**9,
-            ),
-        ),
-        (
-            "Clean Output Pack Groups",
-            artifact_lines(
-                lists["clean_output_pack_groups"],
-                empty_message="- 当前没有 clean output pack group。",
-                overflow_label="clean output pack group",
-                limit=10**9,
-            ),
-        ),
-        (
-            "Dirty Domain Pilot Protocols",
-            artifact_lines(
-                lists["dirty_domain_pilot_protocols"],
-                empty_message="- 当前没有 dirty domain pilot protocol。",
-                overflow_label="dirty domain pilot protocol",
-                limit=10**9,
-            ),
-        ),
-        (
-            "Clean Domain Pilot Protocols",
-            artifact_lines(
-                lists["clean_domain_pilot_protocols"],
-                empty_message="- 当前没有 clean domain pilot protocol。",
-                overflow_label="clean domain pilot protocol",
-                limit=10**9,
             ),
         ),
         (

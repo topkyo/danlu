@@ -57,3 +57,13 @@
 
 - [x] 更新 residue scan / PROGRESS 头条记本轮清理
 - [x] 汇总 verify 证据
+
+### Task 6: C-9 compile 空状态 telemetry（续）
+
+**Depends on:** Task 3–5
+
+- [x] 删 `compile/build.py` output-pack / domain-pilot load/save/default
+- [x] 删 `compile/paths` 两 path；`CompileContext` 字段与 `write_*_artifact`
+- [x] `output_step` 不再填空壳；`persist_step` 去掉两 phase 与 result 键；删死 `_compile_log_details`
+- [x] `compile_status` / `COMPILE_STATE_*` / lint `expected_*` 同步
+- [x] Verify: `python-static` + `unit` + `acceptance` + `llm-integration` + `smoke`

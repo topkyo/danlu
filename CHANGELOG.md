@@ -10,7 +10,7 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
 ## [Unreleased]
 
 ### Fixed
-- 入口面残留：repo/dogfood `workspace.json` 退役页；Elixir/商业文档 CLI；Shell thin summary 补落盘 `curated_page_roots` + `furnace_center_markdown`；删 `append_wiki_log` no-op 调用链与 pack path 死 helper；清空 `runner/__init__` re-export、删 `content/rewrite` façade。计划：`docs/plans/2026-08-07-entry-surfaces-residue-cleanup.md`。
+- 入口面残留：repo/dogfood `workspace.json` 退役页；Elixir/商业文档 CLI；Shell thin summary 补落盘 `curated_page_roots` + `furnace_center_markdown`；删 `append_wiki_log` no-op 调用链与 pack path 死 helper；清空 `runner/__init__` re-export、删 `content/rewrite` façade；删 compile 空壳 `output_packs`/`domain_pilots` telemetry（含 build-state load/save、phase_summary、compile-status 段落）。计划：`docs/plans/2026-08-07-entry-surfaces-residue-cleanup.md`。
 - R6 收口：coverage 文档钉 **69→71**；CHANGELOG unit 入 `docs_consistency`；`npm ci` 后显式校验 `node_modules/.bin/jest`；六命令补 `cli.dispatch.main` argv 测；`ask_question` / `_write_run_ask_success` 相位真拆分（非搬家）；writeback `except` 标注 restore-then-raise。
 - Product Shell 纯投料成功显示「已收料」，不再误用「排队生成报告 / 生成被阻断」；reconcile 对纯投料只匹配 raw/receipts。
 - Obsidian GUI PATH 命中 Apple Python 3.9 时，`zip(..., strict=)` 导致 drop 后 auto-compile 崩、Shell 显示「生成被阻断」：去掉 `strict=`；`aiwiki-launcher.sh` 显式挑选 ≥3.10；vault launcher 改为转发 runtime launcher。
