@@ -15,9 +15,11 @@
 
 ## 当前动态
 
-- 2026-08-07 (**入口面清理收口**)：炉心面板瘦身三节首屏；`wiki/indexes` 14 个无 writer 页面连代码一起退役；README/HOME/Product Shell 文档叙事对齐；vault 删退役页+iCloud 冲突副本并重启旧代码 watcher。计划：`docs/plans/2026-08-06-entry-surfaces-cleanup.md`。verify **25/84/176/203** 全绿。
+- 2026-08-07 (**入口面残留清理**)：workspace 死页、Elixir/商业文档 CLI、Shell `curated_page_roots` thin 落盘、`append_wiki_log` no-op 调用链、path 死 helper、`runner`/`content.rewrite` façade。计划：`docs/plans/2026-08-07-entry-surfaces-residue-cleanup.md`。扫描：`docs/plans/2026-08-07-entry-surfaces-residue-scan.md`。verify **25/84/177/204**。
 
-- 2026-08-06 (**R8 P1 合入 main**)：PR #32 merged；verify **25/85/176/203**。P2 D-1（Scorecard Docs 双尺 †）落地；A-3 hub 盲拆 **暂缓**（R8 判多数为健康文件级 hub）。Commercial 三阻断仍开。
+- 2026-08-07 (**入口面清理收口**)：炉心面板瘦身三节首屏；`wiki/indexes` 14 个无 writer 页面连代码一起退役；README/HOME/Product Shell 文档叙事对齐；vault 删退役页+iCloud 冲突副本并重启旧代码 watcher。计划：`docs/plans/2026-08-06-entry-surfaces-cleanup.md`。verify **25/84/176/204** 全绿。
+
+- 2026-08-06 (**R8 P1 合入 main**)：PR #32 merged；verify **25/84/176/204**。P2 D-1（Scorecard Docs 双尺 †）落地；A-3 hub 盲拆 **暂缓**（R8 判多数为健康文件级 hub）。Commercial 三阻断仍开。
 
 - 2026-08-05 (**R8 P1 收口**)：agent 可做 P1 全关（S-1/T-1/A-1/A-2/Q-1/Q-2/G-1/G-2/G-1b）。计划：`docs/plans/2026-08-05-r8-p1-remediation.md`。
 
@@ -157,7 +159,7 @@
 |---|---|---|
 | P0 | Commercial go-live：真实邮箱、询价决策、商业 EULA | **done（草案）**：`topkyoxp@gmail.com` + `EULA.md`；正式法律签收仍 open |
 | P1 | 分发闭环：`pip install` 或 INSTALL 明确预览边界；版本与 tag 对齐 | **partial**：`-e .` + 本地 wheel（`build_release_wheel.sh`）+ v0.4.0；**PyPI upload 待运营** |
-| P1 | Jest hard-gate + env-coupled 测试隔离 | **done / moot**：Jest **203** hard-gate + bundle drift gate；env unit 已退 |
+| P1 | Jest hard-gate + env-coupled 测试隔离 | **done / moot**：Jest **204** hard-gate + bundle drift gate；env unit 已退 |
 | P1 | Alchemy materialize 等裸 `write_text` → `atomic_write_text` | **done**（ask/alchemy helpers；execution+runner ask 热路径续扫） |
 | P2 | Scorecard hub 行数刷新；PROGRESS 活跃 round 切档卫生 | **done 2026-07-22**：Round 长尾切档 archive snapshot |
 | P2 | Demo Pack 截图/录屏资产（fixture + checklist 已交付） | checklist done；媒体可选待补 |

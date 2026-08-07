@@ -7,7 +7,6 @@ from ..protocol.scaffold import ensure_layout
 from ..protocol.state import load_protocol_state
 from ..protocol.types import ProtocolState
 from ..render.paths import (
-    machine_memory_graph_path,
     product_shell_html_path,
     shell_summary_path,
 )
@@ -23,15 +22,10 @@ from .types import ShellSummary
 
 
 def shell_links(root: Path) -> dict[str, str]:
+    """Paths the Shell actually reads (persisted thin summary + openOutputsHub)."""
     return {
         "summary_path": relative_path(root, shell_summary_path(root)),
-        "product_shell_html": relative_path(root, product_shell_html_path(root)),
         "furnace_center_markdown": "wiki/indexes/furnace-center.md",
-        "review_center_markdown": "wiki/indexes/review-center.md",
-        "judgment_assets_markdown": "wiki/indexes/judgment-assets.md",
-        "graph_view_markdown": "wiki/indexes/graph-view.md",
-        "machine_memory_graph_json": relative_path(root, machine_memory_graph_path(root)),
-        "protocols_markdown": "wiki/indexes/protocols.md",
     }
 
 
@@ -51,49 +45,6 @@ def shell_curated_page_roots(root: Path) -> dict[str, str]:
     return {
         "decisions": "wiki/decisions/",
         "judgments": "wiki/judgments/",
-    }
-
-
-def shell_capabilities(root: Path) -> dict[str, Any]:
-    return {
-        "launcher_mode": "repo-local",
-        "supports_hidden_state_read": False,
-        "commands": {
-            "p0": [
-                "today",
-                "drop",
-                "shell-status",
-                "compile",
-                "run-ask",
-                "llm-check",
-            ],
-            "p1": [
-                "run-nightly",
-                "lint",
-                "file-back",
-                "review-page",
-                "review-queue",
-                "watch",
-                "gc-orphans",
-            ],
-            "p2": [
-                "trace",
-                "metrics",
-                "alchemy-start",
-                "alchemy-distill",
-                "alchemy-finalize",
-                "alchemy-promote",
-                "alchemy-revert",
-                "alchemy-demote",
-                "new-vault",
-                "sync-product-shell",
-            ],
-        },
-        "views": {
-            "furnace_center_markdown": (root / "wiki" / "indexes" / "furnace-center.md").exists(),
-            "review_center_markdown": (root / "wiki" / "indexes" / "review-center.md").exists(),
-            "product_shell_html": product_shell_html_path(root).exists(),
-        },
     }
 
 

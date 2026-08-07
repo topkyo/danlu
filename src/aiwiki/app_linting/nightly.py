@@ -43,7 +43,6 @@ from ..protocol.library import PROTOCOL_LIBRARY
 from ..protocol.scaffold import ensure_layout
 from ..protocol.state import load_protocol_state
 from ..render.paths import (
-    append_wiki_log,
     repair_backlog_path,
 )
 from ..state.manifest import load_manifest
@@ -383,33 +382,6 @@ def write_nightly_health(
     atomic_write_text(
         nightly_health_state_path(root),
         json.dumps(state, indent=2, sort_keys=True) + "\n",
-    )
-    append_wiki_log(
-        root,
-        "nightly",
-        "health and repair pass",
-        [
-            f"llm_used: `{llm_used}`",
-            f"lint_errors: `{lint_result['counts']['errors']}`",
-            f"lint_warnings: `{lint_result['counts']['warnings']}`",
-            f"pending_source_summaries: `{len(pending_sources)}`",
-            f"placeholder_concepts: `{len(placeholder_concepts)}`",
-            f"pending_decision_reviews: `{len(queue['pending_decisions'])}`",
-            f"pending_judgment_reviews: `{len(queue['pending_judgments'])}`",
-            f"overdue_reviews: `{len(aging['overdue'])}`",
-            f"escalation_candidates: `{len(aging['escalated'])}`",
-            f"counter_evidence_candidates: `{len(memory.get('health', {}).get('counter_evidence_scan', {}).get('pages', []))}`",
-            f"judgment_review_actions: `{len(memory.get('health', {}).get('judgment_review_actions', []))}`",
-            f"cooled_active_corpora: `{len(cooled_corpus_ids)}`",
-            f"expired_active_corpora: `{len(expired_corpus_ids)}`",
-            f"archive_candidates: `{len(archive_candidates.get('entries', []))}`",
-            f"knowledge_lifecycle_entries: `{len(knowledge_lifecycle.get('entries', []))}`",
-            f"auto_promotions: `{promotion_result.get('count', 0)}`",
-            f"weak_concepts: `{memory.get('health', {}).get('concept_quality', {}).get('counts', {}).get('weak', 0)}`",
-            f"machine_memory_actions: `{memory.get('health', {}).get('action_counts', {}).get('total', 0)}`",
-            f"ready_machine_memory_actions: `{memory.get('health', {}).get('repair_plan', {}).get('counts', {}).get('ready', 0)}`",
-            f"repair_backlog: `{relative_path(root, repair_backlog_path(root))}`",
-        ],
     )
     return state
 

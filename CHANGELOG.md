@@ -10,6 +10,7 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
 ## [Unreleased]
 
 ### Fixed
+- 入口面残留：repo/dogfood `workspace.json` 退役页；Elixir/商业文档 CLI；Shell thin summary 补落盘 `curated_page_roots` + `furnace_center_markdown`；删 `append_wiki_log` no-op 调用链与 pack path 死 helper；清空 `runner/__init__` re-export、删 `content/rewrite` façade。计划：`docs/plans/2026-08-07-entry-surfaces-residue-cleanup.md`。
 - R6 收口：coverage 文档钉 **69→71**；CHANGELOG unit 入 `docs_consistency`；`npm ci` 后显式校验 `node_modules/.bin/jest`；六命令补 `cli.dispatch.main` argv 测；`ask_question` / `_write_run_ask_success` 相位真拆分（非搬家）；writeback `except` 标注 restore-then-raise。
 - Product Shell 纯投料成功显示「已收料」，不再误用「排队生成报告 / 生成被阻断」；reconcile 对纯投料只匹配 raw/receipts。
 - Obsidian GUI PATH 命中 Apple Python 3.9 时，`zip(..., strict=)` 导致 drop 后 auto-compile 崩、Shell 显示「生成被阻断」：去掉 `strict=`；`aiwiki-launcher.sh` 显式挑选 ≥3.10；vault launcher 改为转发 runtime launcher。
@@ -41,7 +42,7 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
 - `AGENTS.md` L115 CLI 入口描述修复：顶层仅 `drop/today/advanced`；`metrics` / `file-back` / `review-page` / `compile` 等 operator 命令仅经 `advanced` 子命令（非顶层）。
 - `src/aiwiki/trace.py` docstring 资产种类数 `6 类` → `9 类`。
 - `execution/{archive,lifecycle,ask,runtime_surfaces,concept_rewrite}.py` stale docstring 修复：删除对已移除 `_LAZY_OWNERS` / `app_compile.utc_now` 的引用。
-- verify 现行口径：acceptance **25** + llm-integration **84** + unit **176** + Jest **204**（coverage informational **71%**；历史 16/17/18/24、42/65/76/78/79、69%、72/81/143、153、154、160、166、174/189/206 等为沿革快照）。
+- verify 现行口径：acceptance **25** + llm-integration **84** + unit **177** + Jest **204**（coverage informational **71%**；历史 16/17/18/24、42/65/76/78/79、69%、72/81/143、153、154、160、166、174/189/206 等为沿革快照）。
 - `app_shell` / `app_linting` 包级 `_CompatModule` facade 清零；调用方直引 owner。
 - 覆盖归属 R-5：删除零入口 0% 模块（`lifecycle/protocol`、`memory/topology`、`memory/types`、`planner/types`、`state/types`、`utils/json_utils`、`render/cognitive_history`）；新增 `tests/test_library_surfaces.py`（autonomy_policy / llm-check human render / `python -m aiwiki.cli`）。
 - Capability follow-up：CJK concept/slug/stopwords；`fetch_raw` fail-loud；local-path fail-loud + containment；distill LLM outside write lock + `llm_invoked` receipt；GitHub blob/tree planner few-shot。
@@ -80,9 +81,9 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
 - `tests/`：删除 `test_compile_benchmark_smoke.py` / `test_long_window_proof_probe.py` / `test_local_worktree.py` / `test_product_shell_smoke.py` / `test_dogfood_maturity_gate.py` / `test_cache_benchmark_script_outputs_status_and_timings`；`test_app_runtime.py` / `test_app_misc.py` / `test_deploy_defaults.py` 同步剪除 dogfood maturity / product shell smoke 相关断言。
 - `tests/fixtures/acceptance/M6.1b/README.md`：refresh 工具条目从「脚本调用」改为「手动 hash 重命名」，因为 refresh 脚本已删除。
 - `scripts/verify.sh` 整个 `unit` target（含 `verify_unit()` 函数 + dispatch case + usage help 一行）删除；与 `all` 唯一差别是 coverage overhead，`unit` 是 `all` 的"裸测版本"，被证实为冗余单独入口。
-- `scripts/verify.sh` 中 `all|full)` 后串行落点里 `coverage erase + coverage run pytest + coverage report` 三段（约 12 min）一并删除；`.coveragerc` 同步删，`pyproject.toml` 中 `coverage>=7.6,<8` dev 依赖同步移除。`verify.sh all` 退化为 `scripts + product-shell-static + cli-smoke + smoke + python-static + acceptance + llm-integration`（无 coverage gate；**acceptance 17** 为 2026-07-15 historical 口径；现行见 Unreleased：**24** / llm-integration **85** / unit **166** / Jest **203**）。
+- `scripts/verify.sh` 中 `all|full)` 后串行落点里 `coverage erase + coverage run pytest + coverage report` 三段（约 12 min）一并删除；`.coveragerc` 同步删，`pyproject.toml` 中 `coverage>=7.6,<8` dev 依赖同步移除。`verify.sh all` 退化为 `scripts + product-shell-static + cli-smoke + smoke + python-static + acceptance + llm-integration`（无 coverage gate；**acceptance 17** 为 2026-07-15 historical 口径；现行见 Unreleased：**25** / llm-integration **84** / unit **177** / Jest **204**）。
 - `scripts/verify_target_rules.sh`：`.coveragerc` 路径 case 一并删除（文件已无）。
-- `tests/` 收缩到 acceptance-only + llm-integration：删除 118 个顶层 `tests/test_*.py`（除 `tests/test_acceptance_loop.py` / `tests/test_llm_integration.py`） + 26 个 `tests/unit/test_*.py`，合计 144 个 pytest 单元测试文件 / 约 56k LOC 退役。`tests/` 现含 `tests/test_acceptance_loop.py` + `tests/test_llm_integration.py` + `tests/acceptance/` + `tests/fixtures/`，由 `bash scripts/verify.sh all` 默认跑 acceptance replay + llm-integration（**17** 为 2026-07-15 historical；**18**/llm-integration **78**/Jest **189** 等为中间快照；现行见 Unreleased：**24** + llm-integration **85** + unit **166** + Jest **203**）。`tests/unit/` 整目录也从 git 跟踪中清空。
+- `tests/` 收缩到 acceptance-only + llm-integration：删除 118 个顶层 `tests/test_*.py`（除 `tests/test_acceptance_loop.py` / `tests/test_llm_integration.py`） + 26 个 `tests/unit/test_*.py`，合计 144 个 pytest 单元测试文件 / 约 56k LOC 退役。`tests/` 现含 `tests/test_acceptance_loop.py` + `tests/test_llm_integration.py` + `tests/acceptance/` + `tests/fixtures/`，由 `bash scripts/verify.sh all` 默认跑 acceptance replay + llm-integration（**17** 为 2026-07-15 historical；**18**/llm-integration **78**/Jest **189** 等为中间快照；现行见 Unreleased：**25** + llm-integration **84** + unit **177** + Jest **204**）。`tests/unit/` 整目录也从 git 跟踪中清空。
 - `scripts/archive/` 整目录删除（5 文件：`dogfood-watch.sh` / `p0_operational_setup.sh` / `p1_p2_gate_review.sh` / `extract_rounds.py` + `README.md`）：它们没有 live 调用者，只在 `docs/archive/` 与 `archive/rounds/` 历史文档中作为 runbook evidence 出现，README 自白为 "new automation should not depend on archived scripts"。
 - **[Round 7 cross-review]**: `tests/fixtures/{planner_log, signals, signals_collector}/` 三个孤立目录共 42 文件（307 LOC）：acceptance/case_runner.py 与 `tests/test_acceptance_loop.py` 全部 case 均不引用此 fixtures，pure 孤立 cleanup，零风险（**17** case 为 historical 口径；现行 **24** acceptance）。
 

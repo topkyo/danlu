@@ -16,7 +16,6 @@ import aiwiki.drop as _drop_pkg
 
 from ..drop_helpers import strip_leading_title_echo, timestamped_stem
 from ..protocol.scaffold import ensure_layout
-from ..render.paths import append_wiki_log
 from ..state.manifest import load_manifest
 from ..utils.io import _restore_file_bytes, _snapshot_file_bytes, runtime_write_lock
 from ..utils.path import relative_path
@@ -236,17 +235,6 @@ def _materialize_url(
             source_type="url-drop",
             title=display_title,
             ingest_metadata=ingest_metadata,
-        )
-        append_wiki_log(
-            root,
-            "ingest",
-            display_title,
-            [
-                "source_type: `url-drop`",
-                f"original_url: `{url}`",
-                f"stored_note: `{relative_path(root, note_path)}`",
-                f"asset_files: `{len(asset_paths)}`",
-            ],
         )
         _append_raw_added_history(
             root,

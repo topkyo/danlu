@@ -2,8 +2,7 @@
 
 The execution-proposal / concept-quality / rewrite-index index renderers were
 retired in 2026-08: those ``wiki/indexes/`` pages have no compile writer.
-Execution audit consistency signals live in ``execution_audit_surfaces`` and
-are re-exported here for existing callers.
+Execution audit consistency signals live in ``execution_audit_surfaces``.
 """
 
 from __future__ import annotations
@@ -22,9 +21,6 @@ from ..protocol.runtime_config import REWRITE_PROPOSAL_STATUSES
 from ..utils.markdown import parse_frontmatter, render_frontmatter
 from ..utils.path import relative_path
 from .action_core import action_priority_rank
-from .execution_audit_surfaces import (
-    collect_execution_consistency_signals,  # noqa: F401  # re-export for existing callers
-)
 from .paths import concept_rewrite_proposal_page_path, concept_rewrite_state_path
 from .rewrite_readiness import concept_rewrite_proposal_digest, rewrite_proposal_is_apply_ready
 

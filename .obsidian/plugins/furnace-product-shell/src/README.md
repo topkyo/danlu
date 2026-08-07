@@ -12,8 +12,9 @@ The AgentOS shell surface is intentionally narrow:
 Universal Input owns URL/file/question routing. Legacy DropZone and start-guide surfaces are not part of the default shell.
 
 Advanced is gated by `showAdvancedCommands` and is limited to diagnostics/history
-and refresh. Runtime write operations such as compile/nightly/protocol/apply/revert
-are not registered as Product Shell command-palette entries.
+and refresh. Runtime write operations such as `advanced compile` / `run-nightly` are
+not registered as Product Shell command-palette entries. Product CLI `apply` /
+`revert` (L3) were removed; do not reintroduce them as palette actions.
 
 Optional Feishu / WeCom webhook notifications are configured under **Integrations (advanced)**
 in plugin settings (collapsed by default). URLs and channel toggles are stored locally and

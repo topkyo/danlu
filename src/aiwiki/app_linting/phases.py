@@ -17,7 +17,7 @@ from ..execution.repair_plan import (
 from ..lifecycle.status import (
     collect_curated_pages,
 )
-from ..memory.execution_surfaces import (
+from ..memory.execution_audit_surfaces import (
     collect_execution_consistency_signals,
 )
 from ..memory.paths import (

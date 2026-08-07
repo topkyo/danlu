@@ -206,18 +206,6 @@ def ingest_source(root: Path, source: str, title: str | None = None) -> dict[str
             "title": display_title,
         },
     )
-    from ..render.paths import append_wiki_log as _append_wiki_log
-
-    _append_wiki_log(
-        root,
-        "ingest",
-        display_title,
-        [
-            f"source_type: `{source_type}`",
-            f"stored_path: `{entry['stored_path']}`",
-            f"original_path: `{original_path}`",
-        ],
-    )
     return entry
 
 

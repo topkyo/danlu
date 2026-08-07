@@ -45,7 +45,6 @@ from ..protocol.descriptors import protocol_paths
 from ..protocol.scaffold import ensure_layout
 from ..protocol.state import load_protocol_state, resolve_protocol
 from ..render.ask_report import build_ask_used_refs, render_report
-from ..render.paths import append_wiki_log
 from ..state.manifest import load_manifest
 from ..utils.hash import question_signature
 from ..utils.io import atomic_write_text, runtime_write_operation
@@ -573,28 +572,6 @@ def _finalize_ask_question(
                     "protocol": active_protocol,
                 },
             )
-    append_wiki_log(
-        root,
-        "query",
-        question,
-        [
-            f"format: `{output_format}`",
-            f"artifact: `{artifact_ref}`",
-            f"ranked_sources: `{len(ranked)}`",
-            f"ranked_concepts: `{len(ranked_concepts)}`",
-            f"protocol: `{active_protocol}`",
-            f"active_corpus: `{active_corpus['corpus_id']}`",
-            f"machine_terms: `{len(machine_query['matched_terms'])}`",
-            f"machine_hits: `{len(machine_query['ranked_source_ids'])}/{len(machine_query['ranked_concept_slugs'])}`",
-            f"time_focus: `{str(machine_query.get('time_focus') or 'none')}`",
-            f"protocol_shard_sources: `{len(machine_query.get('protocol_shard_source_ids', []))}`",
-            f"time_shard_sources: `{len(machine_query.get('time_shard_source_ids', []))}`",
-            f"archive_recall_hints: `{len(machine_query.get('archive_recall_hints', []))}`",
-            f"bridge_concepts: `{len(machine_query['bridge_concept_slugs'])}`",
-            f"query_routes: `{len(machine_query['query_routes'])}`",
-            f"route_strategy: `{machine_query.get('selected_strategy', 'concept-first')}`",
-        ],
-    )
     return {
         "path": artifact_ref,
         **run_notes,

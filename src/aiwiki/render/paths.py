@@ -1,19 +1,13 @@
-"""Filesystem destinations + wiki log helpers.
+"""Filesystem destinations for render / shell / execution artifacts.
 
-Extracted from aiwiki.app_render (EP-017A). Pure path/log primitives
-shared by output-pack builders, pilot builders, dashboard renderers,
-and execution owner modules under aiwiki.execution.
-
-External callers should import from aiwiki.render.paths directly
-to preserve B2/B5/B6/B7 true-origin convention; direct imports from
-aiwiki.render.paths are also valid for new code.
+Extracted from aiwiki.app_render (EP-017A). Pure path primitives
+shared by dashboard renderers and execution owner modules.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from ..protocol.scaffold import ensure_layout
 from ..utils.markdown import parse_frontmatter
 from ..utils.text import slugify
 from ..utils.time import utc_now
@@ -22,42 +16,10 @@ from ..utils.time import utc_now
 _ = utc_now
 
 
-def ensure_wiki_log(root: Path) -> Path:
-    """Return the legacy wiki log path without creating it.
-
-    Obsidian-visible ``wiki/indexes/log.md`` is retired: unbounded append
-    crashed Obsidian indexing. Canonical history lives in
-    ``.aiwiki/state/runtime-history.jsonl`` (plus receipts / audit).
-    Call sites may still call this for compatibility; it only ensures layout.
-    """
-
-    ensure_layout(root)
-    return root / "wiki" / "indexes" / "log.md"
-
-
-def append_wiki_log(root: Path, category: str, title: str, details: list[str]) -> None:
-    """No-op: do not write Obsidian-visible ``wiki/indexes/log.md``.
-
-    Operation history belongs in runtime-history.jsonl / receipts / audit.
-    ``category``, ``title``, and ``details`` are retained for call-site
-    compatibility and are intentionally unused.
-    """
-
-    _ = (root, category, title, details)
-    return
-
-
-def remove_stale_generated_concept_pages(root: Path, active_slugs: set[str]) -> int:
-    removed_count, _ = remove_stale_generated_concept_pages_detailed(root, active_slugs)
-    return removed_count
-
-
 def remove_stale_generated_concept_pages_detailed(root: Path, active_slugs: set[str]) -> tuple[int, list[str]]:
-    """Same as `remove_stale_generated_concept_pages` but also returns the removed slugs.
+    """Remove compile-generated concept pages whose slugs left the active set.
 
-    Used by the compile pipeline to emit a `concept-noise-pruned` wiki log entry when
-    retroactive noise-floor changes invalidate previously generated concept pages
-    (F-new-13, Round 6).
+    Returns ``(removed_count, removed_slugs)`` for compile telemetry.
     """
     removed_slugs: list[str] = []
     for path in sorted((root / "wiki" / "concepts").glob("*.md")):
@@ -75,35 +37,6 @@ def remove_stale_generated_concept_pages_detailed(root: Path, active_slugs: set[
         path.unlink()
         removed_slugs.append(slug)
     return len(removed_slugs), removed_slugs
-
-
-def review_packs_dir(root: Path) -> Path:
-    return root / ".aiwiki" / "derived" / "packs" / "review"
-
-
-def decision_memos_dir(root: Path) -> Path:
-    return root / ".aiwiki" / "derived" / "packs" / "decision-memos"
-
-
-def sop_drafts_dir(root: Path) -> Path:
-    return root / ".aiwiki" / "derived" / "packs" / "sop-drafts"
-
-
-def pack_stem(seed: str) -> str:
-    cleaned = seed.replace("/", "-").replace("\\", "-").replace(".md", "")
-    return slugify(cleaned)[:96] or "pack"
-
-
-def review_pack_path(root: Path, target_path: str) -> Path:
-    return review_packs_dir(root) / f"{pack_stem(target_path)}.md"
-
-
-def decision_memo_path(root: Path, target_path: str) -> Path:
-    return decision_memos_dir(root) / f"{pack_stem(target_path)}.md"
-
-
-def sop_draft_path(root: Path, action_id: str) -> Path:
-    return sop_drafts_dir(root) / f"{pack_stem(action_id)}.md"
 
 
 def execution_proposals_dir(root: Path) -> Path:
@@ -145,18 +78,6 @@ def legacy_execution_receipt_path(root: Path, action_id: str) -> Path:
     """Pre-2026-07 Obsidian-visible receipt path (read fallback only)."""
 
     return root / "output" / "control" / "execution-receipts" / f"{slugify(action_id)}.json"
-
-
-def resolve_execution_receipt_path(root: Path, action_id: str) -> Path:
-    """Prefer ``.aiwiki`` receipts; fall back to legacy vault copies for reads."""
-
-    primary = execution_receipt_path(root, action_id)
-    if primary.exists():
-        return primary
-    legacy = legacy_execution_receipt_path(root, action_id)
-    if legacy.exists():
-        return legacy
-    return primary
 
 
 # --- Render output paths (extracted from aiwiki.app_state_paths) ---

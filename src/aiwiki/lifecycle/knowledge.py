@@ -12,7 +12,7 @@ from typing import Any
 from ..content.concept_quality import build_concept_quality
 from ..content.io import entry_ids_from_paths, entry_lookup_maps
 from ..content.material import load_active_corpora_state
-from ..content.rewrite import load_concept_rewrite_state
+from ..corpus.link_state import load_concept_rewrite_state
 from ..memory.state import load_machine_memory
 from ..protocol.scaffold import ensure_layout
 from ..state.collections import active_records_by_key, normalize_versioned_record_list_state

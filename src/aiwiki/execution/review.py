@@ -9,7 +9,6 @@ Migration invariants (same as B1..B6):
 
 - Dependencies imported from their **true origin** module, not via a
   re-export chain. In particular:
-  * ``append_wiki_log`` comes from ``..render.paths``.
   * ``compile_wiki`` comes from ``..compile.pipeline``, not from the
     ``..compile`` package ``__init__`` re-export (B4 oracle rule).
   * ``extract_provenance_paths`` / ``build_citation_snapshots`` /
@@ -45,7 +44,6 @@ from ..lifecycle.templates import (
 )
 from ..protocol.review_windows import schedule_review_windows
 from ..protocol.scaffold import ensure_layout
-from ..render.paths import append_wiki_log
 from ..state.constants import DEFAULT_PROTOCOL
 from ..state.manifest import load_manifest
 from ..utils.hash import sha256_bytes
@@ -218,17 +216,6 @@ def review_page(
                 "judgment_lifecycle_reason_codes": judgment_lifecycle_reason_codes,
                 "source_ids": source_ids,
             },
-        )
-        append_wiki_log(
-            root,
-            "review",
-            str(frontmatter.get("title") or target.stem),
-            [
-                f"kind: `{kind}`",
-                f"status: `{status}`",
-                f"path: `{relative_path(root, target)}`",
-                f"confidence: `{frontmatter.get('confidence', '') or 'n/a'}`",
-            ],
         )
         review_subject_kind = "judgment_review" if kind == "judgment" else "decision_review"
         before_bytes = snapshots.get(target)

@@ -329,3 +329,26 @@ def test_cli_main_module_exec_invokes_dispatch(
         runpy.run_module("aiwiki.cli", run_name="__main__")
     assert excinfo.value.code == 7
     assert called == [1]
+
+
+def test_thin_shell_summary_persists_curated_page_roots_and_furnace_center(
+    tmp_path: Path,
+) -> None:
+    from aiwiki.app_shell.meta import write_shell_summary
+    from aiwiki.protocol.scaffold import ensure_layout
+    from aiwiki.render.paths import shell_summary_path
+
+    ensure_layout(tmp_path)
+    persisted = write_shell_summary(tmp_path)
+    assert persisted.get("curated_page_roots") == {
+        "decisions": "wiki/decisions/",
+        "judgments": "wiki/judgments/",
+    }
+    links = persisted.get("links") or {}
+    assert links.get("furnace_center_markdown") == "wiki/indexes/furnace-center.md"
+    assert "capabilities" not in persisted
+    on_disk = json.loads(shell_summary_path(tmp_path).read_text(encoding="utf-8"))
+    assert on_disk.get("curated_page_roots") == persisted["curated_page_roots"]
+    assert on_disk.get("links", {}).get("furnace_center_markdown") == (
+        "wiki/indexes/furnace-center.md"
+    )

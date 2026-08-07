@@ -8,7 +8,6 @@ from typing import Any
 
 from ..drop_helpers import timestamped_stem
 from ..protocol.scaffold import ensure_layout
-from ..render.paths import append_wiki_log
 from ..utils.io import atomic_copy_file, runtime_write_lock
 from ..utils.path import relative_path
 from .common import (
@@ -73,15 +72,6 @@ def _materialize_pdf(root: Path, source: str, title: str | None, collection: dic
             original_path=original_path,
             source_type="pdf-drop",
             title=display_title,
-        )
-        append_wiki_log(
-            root,
-            "ingest",
-            display_title,
-            [
-                "source_type: `pdf-drop`",
-                f"asset_path: `{relative_path(root, asset_path)}`",
-            ],
         )
         _append_raw_added_history(
             root,

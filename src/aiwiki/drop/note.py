@@ -8,7 +8,6 @@ from typing import Any
 
 from ..drop_helpers import timestamped_stem
 from ..protocol.scaffold import ensure_layout
-from ..render.paths import append_wiki_log
 from ..utils.io import atomic_copy_file, atomic_write_text, runtime_write_lock
 from ..utils.path import relative_path
 from .common import SensitiveContentError, _append_manifest_entry, _append_raw_added_history, _note_title, _unique_path
@@ -110,16 +109,6 @@ def _drop_note_unlocked(
         source_type="note-drop",
         title=display_title,
         note_kind=note_kind,
-    )
-    append_wiki_log(
-        root,
-        "ingest",
-        display_title,
-        [
-            "source_type: `note-drop`",
-            f"note_kind: `{note_kind}`",
-            f"stored_note: `{relative_path(root, note_path)}`",
-        ],
     )
     _append_raw_added_history(
         root,

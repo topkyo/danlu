@@ -11,9 +11,6 @@ from ..content.io import (
     sync_manifest_with_raw,
 )
 from ..protocol.scaffold import ensure_layout
-from ..render.paths import (
-    append_wiki_log,
-)
 from ..state.paths import (
     lint_reports_dir,
 )
@@ -113,16 +110,6 @@ def _write_lint_report(context: _LintContext) -> dict[str, Any]:
             lines.append(f"- `{finding.severity}` {finding.path}: {finding.message}")
     atomic_write_text(report_path, "\n".join(lines) + "\n")
     _rotate_lint_reports(lint_dir)
-    append_wiki_log(
-        context.root,
-        "lint",
-        "wiki health check",
-        [
-            f"errors: `{error_count}`",
-            f"warnings: `{warn_count}`",
-            f"report: `{relative_path(context.root, report_path)}`",
-        ],
-    )
     return {
         "path": relative_path(context.root, report_path),
         "counts": {"errors": error_count, "warnings": warn_count},

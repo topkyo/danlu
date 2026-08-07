@@ -34,7 +34,6 @@ from .compound_suggest import build_compound_suggest
 from .controls import shell_execution_controls, shell_review_controls
 from .helpers import _build_llm_rerun_command, _first_non_empty
 from .meta import (
-    shell_capabilities,
     shell_curated_page_roots,
     shell_links,
     shell_protocol_state,
@@ -352,7 +351,6 @@ def build_shell_summary(root: Path, *, generated_at: str | None = None) -> Shell
         "knowledge_stats": _build_knowledge_stats(memory, compile_state, decisions, judgments),
         "metrics": _build_metrics_summary(root),
         "links": shell_links(root),
-        "capabilities": shell_capabilities(root),
     }
     return summary
 
@@ -518,10 +516,17 @@ def thin_shell_summary_for_persist(summary: ShellSummary) -> ShellSummary:
     links = summary.get("links")
     thin_links: dict[str, str] = {}
     if isinstance(links, dict):
-        for key in ("summary_path",):
+        for key in ("summary_path", "furnace_center_markdown"):
             value = links.get(key)
             if value:
                 thin_links[key] = str(value)
+
+    curated_page_roots = summary.get("curated_page_roots")
+    thin_curated_page_roots: dict[str, str] = {}
+    if isinstance(curated_page_roots, dict):
+        for key, value in curated_page_roots.items():
+            if isinstance(key, str) and isinstance(value, str) and key and value:
+                thin_curated_page_roots[key] = value
 
     persisted: ShellSummary = {
         "kind": str(summary.get("kind") or "product-shell-summary"),
@@ -530,6 +535,7 @@ def thin_shell_summary_for_persist(summary: ShellSummary) -> ShellSummary:
         "generated_by": str(summary.get("generated_by") or ""),
         "summary_path": str(summary.get("summary_path") or ""),
         "active_protocol": str(summary.get("active_protocol") or ""),
+        "curated_page_roots": thin_curated_page_roots,
         "llm_status": thin_llm_status,
         "latest_llm_run": thin_latest_llm_run,
         "latest_shell_sync_run": thin_latest_shell_sync_run,

@@ -13,7 +13,6 @@ from ..config import LLMConfig, _backend_supports_image_analysis
 from ..drop_helpers import timestamped_stem
 from ..llm import LLMError, create_backend_client
 from ..protocol.scaffold import ensure_layout
-from ..render.paths import append_wiki_log
 from ..runner.prompts import _wrap_untrusted_source
 from ..utils.io import atomic_copy_file, runtime_write_lock
 from ..utils.path import relative_path
@@ -130,16 +129,6 @@ def _materialize_image(root: Path, source: str, title: str | None, collection: d
             original_path=original_path,
             source_type="image-drop",
             title=display_title,
-        )
-        append_wiki_log(
-            root,
-            "ingest",
-            display_title,
-            [
-                "source_type: `image-drop`",
-                f"asset_path: `{relative_path(root, asset_path)}`",
-                f"vision_status: `{vision_status}`",
-            ],
         )
         _append_raw_added_history(
             root,

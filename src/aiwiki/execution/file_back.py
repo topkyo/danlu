@@ -14,7 +14,6 @@ from ..lifecycle.templates import curated_page_template, repair_curated_page_bod
 from ..protocol.review_windows import schedule_review_windows
 from ..protocol.scaffold import ensure_layout
 from ..protocol.state import resolve_protocol
-from ..render.paths import append_wiki_log
 from ..state.paths import output_candidates_state_path
 from ..utils.io import _restore_file_bytes, _snapshot_file_bytes, atomic_write_text, runtime_write_operation
 from ..utils.markdown import parse_frontmatter, render_frontmatter, strip_frontmatter
@@ -202,17 +201,6 @@ def file_back(
                     promotion_origin=str(candidate.get("promotion_origin") or "manual"),
                 )
                 break
-        append_wiki_log(
-            root,
-            "file-back",
-            title or artifact_path.stem,
-            [
-                f"kind: `{kind}`",
-                f"protocol: `{resolved_protocol}`",
-                f"from: `{artifact_ref}`",
-                f"destination: `{relative_path(root, destination)}`",
-            ],
-        )
         compile_wiki(root)
         destination_ref = relative_path(root, destination)
         write_execution_receipt(

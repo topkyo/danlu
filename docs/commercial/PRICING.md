@@ -62,7 +62,7 @@ related_docs:
 - 内容：
   - 新 vault 搭建与 Obsidian 基础配置
   - LLM provider（deepseek-api / opencode-api / openai-api / anthropic-api）配置指导
-  - 第一次 `drop` / `compile` / `run-ask` / `run-nightly` 陪跑
+  - 第一次 `drop` / `advanced compile` / `advanced run-ask` / `advanced run-nightly` 陪跑
   - 常见问题排查
 - 交付：一次线上 60–90 分钟会话 + 书面配置摘要
 - 适用：非技术用户或团队首次落地
@@ -75,8 +75,8 @@ related_docs:
 | Product Shell Obsidian 插件 | ✓ | ✓ | ✓ | — |
 | 五层主线（raw / wiki / machine memory / schema / outputs） | ✓ | ✓ | ✓ | — |
 | 单 runtime 协议（`general`；领域通过 schema / 概念扩展） | ✓ | ✓ | ✓ | — |
-| 治理链（review-page / file-back / run-nightly / aging / escalation / repair） | ✓ | ✓ | ✓ | — |
-| 金丹机制（alchemy / elixir / promote / revert） | ✓ | ✓ | ✓ | — |
+| 治理链（`advanced review-page` / `file-back` / `run-nightly` / aging / escalation / repair） | ✓ | ✓ | ✓ | — |
+| 金丹机制（`advanced alchemy` / elixir / promote / revert） | ✓ | ✓ | ✓ | — |
 | 商业 license（免 copyleft） | × | ✓ | ✓ | — |
 | Investing Demo Pack 模板 | × | × | ✓ | ✓（可选购） |
 | 邮件支持 48h | × | ✓ | — | — |

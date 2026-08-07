@@ -24,7 +24,7 @@ related_docs:
 - **五层主线**：`raw / wiki / machine memory / schema / outputs` 完整编译与治理链路。
 - **单 runtime 协议**：`general` only；旧 vault 非 `general` state 一次性迁移，不再提供多 protocol 切换 CLI。
 - **治理链**：`review-page` / `file-back` / `run-nightly` 与 aging / escalation / repair；L3 `apply` / `revert` 等产品 CLI 已删，审计走 library receipt。
-- **金丹机制**：`alchemy-start / alchemy-distill / alchemy-finalize / alchemy-promote` 及 elixir 生命周期管理。
+- **金丹机制**：`advanced alchemy start|distill|finalize|promote`（compat：`alchemy-*`）及 elixir 生命周期管理。
 - **Deterministic baseline**：不依赖 LLM 也能运行的 `compile`、`lint`、本地统计等路径。
 - **Receipt / revert / hash gate**：所有事实层 mutation 必须写 receipt、可审计、可回滚。
 

@@ -26,7 +26,7 @@ updated_at: "2026-08-05"
 |---|---:|---|
 | Acceptance | **25** passed | `bash scripts/verify.sh acceptance` |
 | LLM integration | **84** passed | `bash scripts/verify.sh llm-integration` |
-| Unit（library 级） | **176** passed | `bash scripts/verify.sh unit` |
+| Unit（library 级） | **177** passed | `bash scripts/verify.sh unit` |
 | Product Shell Jest | **204** passed | `bash scripts/verify.sh product-shell-static` |
 | Bundle drift | gate（正反向实测） | 含于 `product-shell-static` |
 | Coverage | **71%**（informational，无门禁） | `bash scripts/verify.sh coverage` |
@@ -112,7 +112,7 @@ updated_at: "2026-08-05"
 | 2 | Acceptance | **25** — `bash scripts/verify.sh acceptance` |
 | 3 | LLM integration | **84** — `bash scripts/verify.sh llm-integration` |
 | 4 | Product Shell | Jest **204** + bundle drift gate — `bash scripts/verify.sh product-shell-static` |
-| 5 | Unit | **176** — `bash scripts/verify.sh unit` |
+| 5 | Unit | **177** — `bash scripts/verify.sh unit` |
 | 6 | Docs consistency | `bash scripts/docs_consistency_check.sh` |
 | 7 | CI | `.github/workflows/verify.yml` |
 

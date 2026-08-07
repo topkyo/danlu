@@ -13,7 +13,6 @@ import aiwiki.drop as _drop_pkg
 
 from ..drop_helpers import strip_leading_title_echo, timestamped_stem
 from ..protocol.scaffold import ensure_layout
-from ..render.paths import append_wiki_log
 from ..utils.io import runtime_write_lock
 from ..utils.path import relative_path
 from ..utils.security import safe_resolve_within
@@ -151,16 +150,6 @@ def _materialize_repo(root: Path, source: str, title: str | None, collection: di
             source_type="repo-drop",
             title=display_title,
             ingest_metadata=ingest_metadata,
-        )
-        append_wiki_log(
-            root,
-            "ingest",
-            display_title,
-            [
-                "source_type: `repo-drop`",
-                f"stored_note: `{relative_path(root, note_path)}`",
-                f"source: `{original_path}`",
-            ],
         )
         _append_raw_added_history(
             root,

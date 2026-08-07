@@ -138,10 +138,9 @@
     "HOME.md",
     "wiki/indexes/furnace-center.md",
     "README.md",
-    "wiki/indexes/Outputs.md",
     "wiki/indexes/judgment-assets.md",
     "wiki/indexes/review-center.md",
-    "wiki/indexes/execution-center.md",
+    "wiki/indexes/review-queue.md",
     "output/control/shell-summary.json"
   ]
 }

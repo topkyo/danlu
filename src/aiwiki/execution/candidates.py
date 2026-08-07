@@ -7,7 +7,6 @@ from ..content.output_artifacts import collect_output_artifacts
 from ..content.outputs import classify_recurring_output_kind
 from ..protocol.runtime_config import AUTO_PROMOTION_MIN_OCCURRENCES
 from ..protocol.scaffold import ensure_layout
-from ..render.paths import append_wiki_log
 from ..state.collections import normalize_versioned_record_list_state
 from ..state.io import load_json_document, save_json_document
 from ..state.paths import output_candidates_state_path
@@ -230,19 +229,6 @@ def promote_recurring_outputs(root: Path) -> dict[str, Any]:
                 "occurrences": str(len(artifacts)),
                 "latest_artifact": artifacts[-1]["path"],
             }
-        )
-        append_wiki_log(
-            root,
-            "enqueue",
-            query,
-            [
-                f"kind: `{kind}`",
-                f"protocol: `{protocol}`",
-                "action: `enqueued`",
-                f"occurrences: `{len(artifacts)}`",
-                f"candidate_ref: `{candidate['artifact_ref']}`",
-                f"latest_artifact: `{artifacts[-1]['path']}`",
-            ],
         )
 
     return {

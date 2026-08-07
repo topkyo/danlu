@@ -17,7 +17,6 @@ from ..lifecycle.paths import (
     knowledge_lifecycle_state_path,
 )
 from ..render.compile_status import render_compile_status
-from ..render.paths import append_wiki_log
 from ..state.paths import compile_state_path, material_state_path
 from ..utils.io import write_if_changed_ignoring_timestamps
 from ..utils.path import relative_path
@@ -446,16 +445,6 @@ def finalize_compile_phase(context: CompileContext, *, force_cache_rebuild: bool
     )
     compile_status_changed = int(wrote_compile_status)
     context.changed_pages += compile_status_changed
-    should_log_compile = (
-        context.changed_pages > 0 or context.removed_pages > 0 or bool(context.transition.get("changed", False))
-    )
-    if should_log_compile:
-        append_wiki_log(
-            context.root,
-            "compile",
-            "wiki refresh",
-            _compile_log_details(context),
-        )
     sync_evidence_graph_workspace(context.root, context.memory)
     return _build_compile_result_payload(context, phase_summary)
 

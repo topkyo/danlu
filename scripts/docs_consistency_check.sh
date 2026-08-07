@@ -58,7 +58,7 @@ fi
 
 # Post-A5: README/HOME must not link to untracked generated wiki/indexes pages.
 check_no_match "README does not hard-link generated wiki/indexes pages" \
-  "wiki/indexes/(furnace-center|execution-center|review-center|graph-view|protocols|review-queue)" \
+  "wiki/indexes/(furnace-center|execution-center|review-center|graph-view|protocols|review-queue|Outputs)" \
   README.md HOME.md
 
 # D4 structural gate: developer content lives in docs/DEVELOPER.md.
@@ -131,20 +131,20 @@ check_match "verify.sh usage line pins llm-integration 84 tests" 'Run LLM integr
 check_match "verify.sh all line pins llm-integration 84" 'llm-integration \(84\)' scripts/verify.sh
 check_match "AGENTS.md pins acceptance 25" 'acceptance 25 fixture replay' AGENTS.md
 check_match "AGENTS.md pins llm 84" 'LLM integration 84' AGENTS.md
-check_match "AGENTS.md pins unit 176" 'unit 176' AGENTS.md
+check_match "AGENTS.md pins unit 177" 'unit 177' AGENTS.md
 check_match "AGENTS.md pins Jest 204" 'Jest 204' AGENTS.md
 check_match "Scorecard pins llm 84" 'LLM integration \| \*\*84\*\* passed' docs/AGOS-9-Scorecard.md
 check_match "Scorecard pins acceptance 25" 'Acceptance \| \*\*25\*\* passed' docs/AGOS-9-Scorecard.md
-check_match "Scorecard pins unit 176" 'Unit（library 级） \| \*\*176\*\* passed' docs/AGOS-9-Scorecard.md
+check_match "Scorecard pins unit 177" 'Unit（library 级） \| \*\*177\*\* passed' docs/AGOS-9-Scorecard.md
 check_match "Scorecard pins Jest 204" 'Product Shell Jest \| \*\*204\*\* passed' docs/AGOS-9-Scorecard.md
 check_match "DEVELOPER.md pins acceptance 25" '\*\*25\*\* tests — `tests/test_acceptance_loop.py`' docs/DEVELOPER.md
 check_match "DEVELOPER.md pins llm 84" '\*\*84\*\* tests' docs/DEVELOPER.md
-check_match "DEVELOPER.md pins unit 176" '\*\*176\*\* tests' docs/DEVELOPER.md
+check_match "DEVELOPER.md pins unit 177" '\*\*177\*\* tests' docs/DEVELOPER.md
 check_match "DEVELOPER.md pins Jest 204" 'Jest \*\*204\*\*' docs/DEVELOPER.md
 check_match "Post-Cleanup §1 pins acceptance 25" 'acceptance \*\*25\*\*' "docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md"
-check_match "Post-Cleanup §1 pins unit 176" 'unit \*\*176\*\*' "docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md"
+check_match "Post-Cleanup §1 pins unit 177" 'unit \*\*177\*\*' "docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md"
 check_match "CHANGELOG Unreleased pins acceptance 25" 'acceptance \*\*25\*\*' CHANGELOG.md
-check_match "CHANGELOG Unreleased pins unit 176" 'unit \*\*176\*\*' CHANGELOG.md
+check_match "CHANGELOG Unreleased pins unit 177" 'unit \*\*177\*\*' CHANGELOG.md
 check_match "Scorecard pins coverage 71%" 'Coverage \| \*\*71%\*\*' docs/AGOS-9-Scorecard.md
 check_match "DEVELOPER.md pins coverage 71%" '实测全量 \*\*71%\*\*' docs/DEVELOPER.md
 

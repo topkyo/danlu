@@ -70,6 +70,13 @@ def _normalize_jsonl_dynamic_fields(  # pragma: no cover - exercised by explicit
                 obj[field] = 0
         if "raw_response_path" in obj:
             obj["raw_response_path"] = "<raw-response-path>"
+        # Preflight hint text depends on which LLM backends are configured
+        # on the host; pin a stable placeholder so golden JSONL is portable.
+        backend_compat = obj.get("backend_compat")
+        if isinstance(backend_compat, dict) and "compatibility_hint" in backend_compat:
+            backend_compat = dict(backend_compat)
+            backend_compat["compatibility_hint"] = "<compatibility-hint>"
+            obj["backend_compat"] = backend_compat
         out_lines.append(json.dumps(obj, sort_keys=True, ensure_ascii=False))
     body = "\n".join(out_lines)
     if has_trailing_newline:

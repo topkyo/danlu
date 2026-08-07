@@ -37,7 +37,6 @@ from .drop.common import (
 from .drop_helpers import timestamped_stem
 from .input_planner import Plan
 from .protocol.scaffold import ensure_layout
-from .render.paths import append_wiki_log
 from .utils.io import _restore_file_bytes, _snapshot_file_bytes, runtime_write_lock
 from .utils.path import relative_path
 from .utils.security import FetchPolicyError, PathOutsideWorkspaceError, safe_fetch, safe_resolve_within
@@ -173,17 +172,6 @@ def _execute_fetch_raw(root: Path, plan: Plan, original_payload: str, *, refresh
                 source_type="planner-fetch-raw",
                 title=display_title,
                 ingest_metadata=ingest_metadata,
-            )
-            append_wiki_log(
-                root,
-                "ingest",
-                display_title,
-                [
-                    "source_type: `planner-fetch-raw`",
-                    f"stored_note: `{relative_path(root, note_path)}`",
-                    f"targets: `{len(fetched)}`",
-                    f"original_payload: `{original_payload}`",
-                ],
             )
             _append_raw_added_history(
                 root,

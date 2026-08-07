@@ -6,12 +6,12 @@ doc_role: thesis-not-runtime-spec
 related_docs:
   - docs/Furnace Agent Architecture.md
   - docs/Furnace Evolution Mechanics.md
-  - docs/Outputs.md
+  - wiki/indexes/README.md
 ---
 
 # Furnace Elixir (金丹机制)
 
-> **文档状态（2026-05-20）**：本文件保留金丹终局 thesis 与历史设计动机；**当前 runtime 行为以** [Furnace Agent Architecture.md](./Furnace%20Agent%20Architecture.md) **与** [Furnace Evolution Mechanics.md](./Furnace%20Evolution%20Mechanics.md) **为准**。CLI 已实现 `alchemy-start/distill/finalize/promote` 最小链路，不等同于本文全部愿景已落地。
+> **文档状态（2026-05-20）**：本文件保留金丹终局 thesis 与历史设计动机；**当前 runtime 行为以** [Furnace Agent Architecture.md](./Furnace%20Agent%20Architecture.md) **与** [Furnace Evolution Mechanics.md](./Furnace%20Evolution%20Mechanics.md) **为准**。CLI 推荐 `advanced alchemy start|distill|finalize|promote`（compat：`alchemy-*`），不等同于本文全部愿景已落地。
 
 > **当前实现校准（2026-07-18）**：金丹最小主链路已实现并有 acceptance 覆盖：`.aiwiki/staging/elixirs/` 候选平面、`wiki/elixirs/` settled 平面、DAG/provenance gate、promote/revert/demote receipt；底层锚点为 `wiki/judgments/`（产品 `file-back`）或 legacy `wiki/derived/`。本文剩余愿景主要指 LLM-backed semantic distillation、更高自治的金丹演化和长期自然运行 proof，不应再把基础金丹机制理解为纯计划态。
 
@@ -60,8 +60,8 @@ Elixir 的头部需要包含最小化的生命周期与血缘标记：
 标准的 CLI 命令序列如下（单 runtime `general`；`protocol-learn-*` 与多协议切换已在 W1 删除）：
 
 ```bash
-# 1. 开启炼化主题，初始化 active_corpus
-aiwiki advanced alchemy-start <corpus-id> --topic "主题"
+# 1. 开启炼化主题，初始化 active_corpus（compat：alchemy-start）
+aiwiki advanced alchemy start <corpus-id> --topic "主题"
 
 # 2. 多轮迭代（自动串联前轮 output）
 aiwiki advanced run-ask "首问" --corpus <id>
@@ -74,14 +74,14 @@ aiwiki drop pdf <file>
 aiwiki advanced run-ask "补料后重炼" --corpus <id>
 
 # 4. 显式凝丹（生成 elixir candidate）
-aiwiki advanced alchemy-distill <elixir-id> --question "..."
+aiwiki advanced alchemy distill <elixir-id> --question "..."
 
 # 5. 定稿与晋升（入库 wiki/elixirs/）
-aiwiki advanced alchemy-finalize <elixir-id>
-aiwiki advanced alchemy-promote --elixir-id <elixir-id>
+aiwiki advanced alchemy finalize <elixir-id>
+aiwiki advanced alchemy promote --elixir-id <elixir-id>
 
 # 6. 跨周期复利（新丹引用旧丹）
-aiwiki advanced alchemy-start <corpus-id> --topic "新主题" --include-elixir <old-elixir-id>
+aiwiki advanced alchemy start <corpus-id> --topic "新主题" --include-elixir <old-elixir-id>
 ```
 
 ## 进化与反哺机制 (Evolution & Feedback)
@@ -90,8 +90,8 @@ aiwiki advanced alchemy-start <corpus-id> --topic "新主题" --include-elixir <
 
 1. **半自动反哺 (Q1)**
    - 所有的产出（无论是多轮问答的 output 还是提纯后的 elixir candidate）默认只进入 `.aiwiki/staging/` 候选区。
-   - **绝不自动写入 wiki**。持久化必须经人工：产品路径为 `file-back` → `wiki/judgments/`（薄审阅），金丹路径为 `alchemy-promote` → `wiki/elixirs/`。旧 `aiwiki promote`（candidate→`wiki/derived/`）已移除。
-   - nightly 的角色从“自动晋升者”降级为“候选区管理员”（负责老化、降级、淘汰 candidate，将值得关注的候选推给人工）。
+   - **绝不自动写入 wiki**。持久化必须经人工：产品路径为 `advanced file-back` → `wiki/judgments/`（薄审阅），金丹路径为 `advanced alchemy promote` → `wiki/elixirs/`。旧 `aiwiki promote`（candidate→`wiki/derived/`）已移除。
+   - nightly 默认只做确定性 `compile` + `lint` + health；candidate aging / overdue 由 compile 与 `review-queue` / `repair-backlog` 展示给人工，不自动晋升。
 
 2. **自我进化边界 (Q2)**
    - **L1 知识自维护**：复用现有的 wiki 内部链接维护、摘要更新与冲突检测。
@@ -135,7 +135,7 @@ aiwiki advanced alchemy-start <corpus-id> --topic "新主题" --include-elixir <
 
 5. **候选区堆积失控**
    - *风险*：由于半自动机制，`.aiwiki/staging/` 中积累大量无人过问的废弃物。
-   - *缓解*：赋权 nightly process 进行 aging 处理，定期降级、淘汰或归档过期 candidate。
+   - *缓解*：candidate aging / overdue 由 compile 与 `review-queue` / `repair-backlog` 面展示；nightly 默认只做确定性 `compile` + `lint` + health，不跑 agent-loop 自动淘汰。
 
 ## 非目标 (Non-Goals)
 

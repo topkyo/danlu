@@ -8,7 +8,7 @@ from ..content.archive import (
     load_archive_candidates_state,
     load_material_archive_state,
 )
-from ..content.rewrite import load_concept_rewrite_state
+from ..corpus.link_state import load_concept_rewrite_state
 from ..lifecycle.status import (
     action_transition_profile,
     archive_transition_profile,
