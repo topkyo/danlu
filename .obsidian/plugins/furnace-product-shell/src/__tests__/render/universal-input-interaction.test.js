@@ -1518,6 +1518,21 @@ test("openWorkspacePath blocks placeholder ask scaffold reports", async () => {
   expect(context.__notices).toEqual(["报告仍在生成中，请稍候再打开"]);
 });
 
+test("openOutputsHub opens furnace-center link with fallback to default path", async () => {
+  const context = loadRenderContext();
+  const plugin = new context.FurnaceProductShellPlugin();
+  plugin.openWorkspacePath = jest.fn().mockResolvedValue(true);
+
+  plugin.shellSummary = { links: { furnace_center_markdown: "custom/center.md" } };
+  await plugin.openOutputsHub();
+  expect(plugin.openWorkspacePath).toHaveBeenCalledWith("custom/center.md");
+
+  plugin.openWorkspacePath.mockClear();
+  plugin.shellSummary = null;
+  await plugin.openOutputsHub();
+  expect(plugin.openWorkspacePath).toHaveBeenCalledWith("wiki/indexes/furnace-center.md");
+});
+
 test("openPendingDoneTarget blocks placeholder ask scaffold reports", async () => {
   const context = loadRenderContext();
   const plugin = new context.FurnaceProductShellPlugin();

@@ -132,15 +132,15 @@ check_match "verify.sh all line pins llm-integration 84" 'llm-integration \(84\)
 check_match "AGENTS.md pins acceptance 25" 'acceptance 25 fixture replay' AGENTS.md
 check_match "AGENTS.md pins llm 84" 'LLM integration 84' AGENTS.md
 check_match "AGENTS.md pins unit 176" 'unit 176' AGENTS.md
-check_match "AGENTS.md pins Jest 203" 'Jest 203' AGENTS.md
+check_match "AGENTS.md pins Jest 204" 'Jest 204' AGENTS.md
 check_match "Scorecard pins llm 84" 'LLM integration \| \*\*84\*\* passed' docs/AGOS-9-Scorecard.md
 check_match "Scorecard pins acceptance 25" 'Acceptance \| \*\*25\*\* passed' docs/AGOS-9-Scorecard.md
 check_match "Scorecard pins unit 176" 'Unit（library 级） \| \*\*176\*\* passed' docs/AGOS-9-Scorecard.md
-check_match "Scorecard pins Jest 203" 'Product Shell Jest \| \*\*203\*\* passed' docs/AGOS-9-Scorecard.md
+check_match "Scorecard pins Jest 204" 'Product Shell Jest \| \*\*204\*\* passed' docs/AGOS-9-Scorecard.md
 check_match "DEVELOPER.md pins acceptance 25" '\*\*25\*\* tests — `tests/test_acceptance_loop.py`' docs/DEVELOPER.md
 check_match "DEVELOPER.md pins llm 84" '\*\*84\*\* tests' docs/DEVELOPER.md
 check_match "DEVELOPER.md pins unit 176" '\*\*176\*\* tests' docs/DEVELOPER.md
-check_match "DEVELOPER.md pins Jest 203" 'Jest \*\*203\*\*' docs/DEVELOPER.md
+check_match "DEVELOPER.md pins Jest 204" 'Jest \*\*204\*\*' docs/DEVELOPER.md
 check_match "Post-Cleanup §1 pins acceptance 25" 'acceptance \*\*25\*\*' "docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md"
 check_match "Post-Cleanup §1 pins unit 176" 'unit \*\*176\*\*' "docs/Furnace Post-Cleanup Audit and Next Direction 2026-07.md"
 check_match "CHANGELOG Unreleased pins acceptance 25" 'acceptance \*\*25\*\*' CHANGELOG.md

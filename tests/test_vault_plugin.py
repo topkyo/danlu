@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -168,6 +169,11 @@ def test_bootstrap_new_vault_creates_promised_layout(runtime_root: Path, tmp_pat
     launcher = target / "scripts" / "aiwiki-launcher.sh"
     assert os.access(launcher, os.X_OK)
     assert (target / f"{PLUGIN_REL}/main.js").read_text(encoding="utf-8") == MAIN_JS
+
+    workspace = json.loads((target / ".obsidian" / "workspace.json").read_text(encoding="utf-8"))
+    last_open = workspace.get("lastOpenFiles", [])
+    assert "wiki/indexes/review-queue.md" in last_open
+    assert not any("Outputs.md" in entry for entry in last_open)
 
 
 def test_bootstrap_refuses_non_empty_target_without_force(runtime_root: Path, tmp_path: Path) -> None:

@@ -218,52 +218,6 @@ def render_review_queue(
     return "\n".join(lines) + "\n"
 
 
-def render_furnace_center(
-    decisions: list[dict[str, str]],
-    judgments: list[dict[str, str]],
-    memory: dict[str, Any],
-    compiled_at: str,
-    protocol_state: dict[str, Any],
-    recent_outputs: list[dict[str, str]],
-    *,
-    knowledge_lifecycle: dict[str, Any] | None = None,
-) -> str:
-    from .furnace_center import render_furnace_center as _render_furnace_center
-
-    return _render_furnace_center(
-        decisions,
-        judgments,
-        memory,
-        compiled_at,
-        protocol_state,
-        recent_outputs,
-        knowledge_lifecycle=knowledge_lifecycle,
-    )
-
-
-def render_compile_status(
-    entries: list[dict[str, Any]],
-    concepts: list[dict[str, Any]],
-    decisions: list[dict[str, str]],
-    judgments: list[dict[str, str]],
-    protocol_state: dict[str, Any],
-    compiled_at: str,
-    *,
-    compile_state: dict[str, Any] | None = None,
-) -> str:
-    from .compile_status import render_compile_status as _render_compile_status
-
-    return _render_compile_status(
-        entries,
-        concepts,
-        decisions,
-        judgments,
-        protocol_state,
-        compiled_at,
-        compile_state=compile_state,
-    )
-
-
 def render_master_index(
     entries: list[dict[str, Any]],
     concepts: list[dict[str, Any]],

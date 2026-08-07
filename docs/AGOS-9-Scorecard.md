@@ -27,7 +27,7 @@ updated_at: "2026-08-05"
 | Acceptance | **25** passed | `bash scripts/verify.sh acceptance` |
 | LLM integration | **84** passed | `bash scripts/verify.sh llm-integration` |
 | Unit（library 级） | **176** passed | `bash scripts/verify.sh unit` |
-| Product Shell Jest | **203** passed | `bash scripts/verify.sh product-shell-static` |
+| Product Shell Jest | **204** passed | `bash scripts/verify.sh product-shell-static` |
 | Bundle drift | gate（正反向实测） | 含于 `product-shell-static` |
 | Coverage | **71%**（informational，无门禁） | `bash scripts/verify.sh coverage` |
 | 全量 | 9 步 | `bash scripts/verify.sh all` |
@@ -94,7 +94,7 @@ updated_at: "2026-08-05"
 | 维度 | 权重 | 分 | Blocking? | 现行证据 |
 |------|------|---:|---|---|
 | Dogfood / fixture | 20% | 8.9 | no（live 维 blocking 在 Live gate） | acceptance **25** replay + AOS-C8 **historical** |
-| Product Shell | 12% | 9.3 | yes | Jest **203** + bundle drift 硬门禁 + sync `run-ask` 单飞 + Today-first |
+| Product Shell | 12% | 9.3 | yes | Jest **204** + bundle drift 硬门禁 + sync `run-ask` 单飞 + Today-first |
 | Runtime correctness | 15% | 9.4 | no | path harden + fail-closed LLM；无 background submit/resume |
 | Planner / signal | 10% | 8.7 | no | internal modules；CLI 已删；acceptance replay |
 | LLM reliability | 12% | 9.0 | no | llm-integration **84** + receipt 聚合 |
@@ -111,7 +111,7 @@ updated_at: "2026-08-05"
 | 1 | Full verify | `bash scripts/verify.sh all` |
 | 2 | Acceptance | **25** — `bash scripts/verify.sh acceptance` |
 | 3 | LLM integration | **84** — `bash scripts/verify.sh llm-integration` |
-| 4 | Product Shell | Jest **203** + bundle drift gate — `bash scripts/verify.sh product-shell-static` |
+| 4 | Product Shell | Jest **204** + bundle drift gate — `bash scripts/verify.sh product-shell-static` |
 | 5 | Unit | **176** — `bash scripts/verify.sh unit` |
 | 6 | Docs consistency | `bash scripts/docs_consistency_check.sh` |
 | 7 | CI | `.github/workflows/verify.yml` |

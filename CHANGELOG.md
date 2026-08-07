@@ -41,7 +41,7 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
 - `AGENTS.md` L115 CLI 入口描述修复：顶层仅 `drop/today/advanced`；`metrics` / `file-back` / `review-page` / `compile` 等 operator 命令仅经 `advanced` 子命令（非顶层）。
 - `src/aiwiki/trace.py` docstring 资产种类数 `6 类` → `9 类`。
 - `execution/{archive,lifecycle,ask,runtime_surfaces,concept_rewrite}.py` stale docstring 修复：删除对已移除 `_LAZY_OWNERS` / `app_compile.utc_now` 的引用。
-- verify 现行口径：acceptance **25** + llm-integration **84** + unit **176** + Jest **203**（coverage informational **71%**；历史 16/17/18/24、42/65/76/78/79、69%、72/81/143、153、154、160、166、174/189/206 等为沿革快照）。
+- verify 现行口径：acceptance **25** + llm-integration **84** + unit **176** + Jest **204**（coverage informational **71%**；历史 16/17/18/24、42/65/76/78/79、69%、72/81/143、153、154、160、166、174/189/206 等为沿革快照）。
 - `app_shell` / `app_linting` 包级 `_CompatModule` facade 清零；调用方直引 owner。
 - 覆盖归属 R-5：删除零入口 0% 模块（`lifecycle/protocol`、`memory/topology`、`memory/types`、`planner/types`、`state/types`、`utils/json_utils`、`render/cognitive_history`）；新增 `tests/test_library_surfaces.py`（autonomy_policy / llm-check human render / `python -m aiwiki.cli`）。
 - Capability follow-up：CJK concept/slug/stopwords；`fetch_raw` fail-loud；local-path fail-loud + containment；distill LLM outside write lock + `llm_invoked` receipt；GitHub blob/tree planner few-shot。

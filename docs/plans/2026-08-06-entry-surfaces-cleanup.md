@@ -77,4 +77,8 @@ aging-report、agent-workbench、domain-pilots、output-packs、concept-quality�
 
 审查后顺手修复：`app_shell/summary.py` thin links 删掉永不命中的 `furnace_center_html` 死条目；W2 acceptance case 增加炉心三节形态断言（含退休页链接零出现）。
 
-留作后续（不阻塞）：`render/views.py` 两个零调用 delegate wrapper（`render_furnace_center` / `render_compile_status`）可在下轮清理删除；`openProductShellOutputsHub` fallback 无 Jest 用例、vault `lastOpenFiles` 无内容断言（均为既有覆盖缺口）。
+~~留作后续（不阻塞）~~ → 已全部落地（2026-08-07，紧随 `088f822` 的 follow-up commit）：
+
+- `render/views.py` 两个零调用 delegate wrapper（`render_furnace_center` / `render_compile_status`）已删。
+- 新增 Jest 用例：`openOutputsHub` 优先读 `links.furnace_center_markdown`、无 links 时 fallback `wiki/indexes/furnace-center.md`（Jest 203→**204**，verify.sh 之外全部计数钉同步）。
+- `tests/test_vault_plugin.py` 补 vault `workspace.json` lastOpenFiles 内容断言（含 review-queue.md、无 Outputs.md）。
