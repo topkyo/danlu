@@ -75,7 +75,9 @@ async function openProductShellHomeNote(plugin) {
 
 async function openProductShellOutputsHub(plugin) {
   const links = plugin.shellSummary && typeof plugin.shellSummary === "object" ? plugin.shellSummary.links || {} : {};
-  const preferredPath = String(links.output_packs_markdown || "docs/Outputs.md").trim();
+  // The furnace-center panel's 最近输出 section is the outputs hub; the old
+  // output-packs index page was retired (no compile writer).
+  const preferredPath = String(links.furnace_center_markdown || "wiki/indexes/furnace-center.md").trim();
   await plugin.openWorkspacePath(preferredPath);
 }
 

@@ -18,14 +18,13 @@ kind: "dashboard"
 
 ## 首屏模型
 
-- 输入端：Ask / Drop / Capture Note
-- 输出端：Today / Today's Reports / Previous Reports
-- 更多工具：审阅、执行、运行记录、指标、LLM 状态
+- Product Shell（读 `output/control/shell-summary.json`）：输入端 Ask / Drop / Capture Note；输出端 Today / Today's Reports / Previous Reports；审阅、运行记录、指标、LLM 状态收在更多工具。
+- 炉心面板是 compile 生成的 Markdown 首屏（今天做什么 / 最近输出 / 快速跳转）；治理细节去审阅中心、修复待办等专页，不再堆在炉心里。
 
 ## 关键入口
 
 - [[README|使用说明]]
-- [[wiki/indexes/README|索引策略（compile 后生成面板页）]]
+- [[wiki/indexes/README|索引策略（含炉心面板等页面清单；先跑 compile 再打开）]]
 
 `wiki/indexes/` 下的炉心 / 审阅 / 判断资产等面板页由 `compile` 生成，不入库；先跑 compile 再打开。
 

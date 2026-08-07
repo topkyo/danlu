@@ -158,23 +158,20 @@ DEFAULT_DASHBOARD_FILES = {
         [
             "# 审阅中心",
             "",
-            "这里是炼丹炉的人用审阅入口，负责把 pending review、aging、repair 和 concept rewrite 收拢到一个地方。",
+            "这里是炼丹炉的人用审阅入口，负责把 pending review、aging 和 repair 收拢到一个地方。",
             "",
             "## 先看哪里",
             "",
             "- [审阅队列](./review-queue.md)：处理 `decision / judgment` 的状态推进",
-            "- [概念质量](./concept-quality.md)：看弱概念、冲突信号、证据缺口、重写优先级",
-            "- [认知历史](./cognitive-history.md)：看 reviewed judgment 是否因证据变化需要拉回复审",
-            "- [机器记忆动作队列](./machine-memory-actions.md)：看 machine-memory action lifecycle",
-            "- [机器记忆修复计划](./machine-memory-repair-plan.md)：看 execution batch 和 execution proposal",
-            "- [修复待办](./repair-backlog.md)：看 nightly 汇总出来的优先级队列",
+            "- [修复待办](./repair-backlog.md)：看 nightly 汇总出来的优先级队列（含弱概念、rewrite 候选、机器记忆动作）",
+            "- [判断资产](./judgment-assets.md)：看判断资产盘点与复审焦点",
+            "- [机器记忆摘要](./machine-memory.md)：看机器记忆健康与漂移摘要",
             "",
             "## 推荐顺序",
             "",
             "1. 先处理升级项和已到期复审。",
-            "2. 再处理 accepted 的 machine-memory 修复动作。",
-            "3. 然后处理高优先级弱概念页和显式冲突信号。",
-            "4. 最后处理 deferred / watch 类项目。",
+            "2. 再处理 nightly 修复待办里的高优先级项。",
+            "3. 最后处理 deferred / watch 类项目。",
             "",
             "## 边界",
             "",
@@ -187,64 +184,18 @@ DEFAULT_DASHBOARD_FILES = {
         [
             "# 炉心面板",
             "",
-            "这里是炼丹炉的人用统一入口，负责把今天最该处理的 review、repair、graph 和 output 收到一个地方。",
+            "用户首屏占位页：跑一次 `advanced compile` 后，这里会生成「今天先做什么 / 最近输出 / 快速跳转」。",
             "",
             "## 先看哪里",
             "",
-            "- [审阅中心](./review-center.md)：看 pending review、aging、rewrite 和 ready action",
-            "- [认知历史](./cognitive-history.md)：看旧判断是否被新证据挑战",
+            "- [审阅中心](./review-center.md)：看 pending review、aging 和修复待办",
             "- [图谱视图](./graph-view.md)：看证据链与机器记忆邻接说明",
-            "- [修复待办](./repair-backlog.md)：看 nightly 汇总出的优先级队列",
             "- [协议总览](./protocols.md)：看当前 active protocol",
-            "",
-            "## 怎么用",
-            "",
-            "1. 先看今天的 ready actions、apply-ready rewrites 和 overdue review。",
-            "2. 再看最新 output 是否值得回流成 derived / decision / judgment。",
-            "3. 需要深入时，再跳到 review-center、graph-view 或具体页面。",
             "",
             "## 边界",
             "",
             "- 这是统一入口，不替代各自的专业页面。",
             "- 高风险修复仍然停留在 proposal / review 层，不会从这里直接自动 apply。",
-        ]
-    )
-    + "\n",
-    "wiki/indexes/execution-audit.md": "\n".join(
-        [
-            "# 执行审计",
-            "",
-            "这里是炼丹炉的人用执行审计入口，负责把 execution receipt、revert 历史、policy 分级和协议分布收拢到一个地方。",
-            "",
-            "## 先看哪里",
-            "",
-            "- [机器记忆动作队列](./machine-memory-actions.md)：看 action lifecycle 和 ready actions",
-            "- [审阅队列](./review-queue.md)：看 pending review 和 aging",
-            "- [认知历史](./cognitive-history.md)：对照 judgment drift 和 review history 决定是否升级修复",
-            "- [机器记忆修复计划](./machine-memory-repair-plan.md)：看 execution batch 和页级 patch plan",
-            "",
-            "## 怎么用",
-            "",
-            "1. 先看最近 apply / revert 是否符合预期。",
-            "2. 再看 policy bands 是否和当前动作状态一致。",
-            "3. 最后看协议分布和 receipt history，确认执行层没有漂移。",
-            "",
-            "## 边界",
-            "",
-            "- 这里负责审计，不直接替代 review-queue 或 machine-memory 动作页。",
-            "- receipt history 仍然是 file-based，本页展示的是当前快照。",
-        ]
-    )
-    + "\n",
-    "wiki/indexes/cognitive-history.md": "\n".join(
-        [
-            "# 认知历史",
-            "",
-            "占位索引：reviewed `decision / judgment` 的复审轨迹入口。",
-            "",
-            "- 动态汇总渲染已退役；以 Today / review-queue / 单页 review history 为准。",
-            "- 这里优先看“哪些旧判断被新证据挑战”。",
-            "- 这里不自动改状态。",
         ]
     )
     + "\n",
@@ -270,7 +221,7 @@ DEFAULT_DASHBOARD_FILES = {
             "- **节点**：来源、概念、判断、金丹等机器记忆资产。",
             "- **关系**：材料提到概念、概念相关、因果关系等机器记忆关系。",
             "- **说明**：HTML 图谱页已停写；人读证据链优先 Obsidian Graph 与 Today，JSON 供维护、对账或外部工具读取。",
-            "- **维护**：[概念质量](./concept-quality.md)、[机器记忆索引](./machine-memory.md)",
+            "- **维护**：[机器记忆摘要](./machine-memory.md)、[修复待办](./repair-backlog.md)",
             "",
             "1. 先看报告和 Today。",
             "2. 查证据链 → Obsidian Graph 或 `wiki/evidence-graph.md`。",
@@ -286,10 +237,9 @@ DEFAULT_DASHBOARD_FILES = {
 }
 
 # Dashboard files that are static templates at runtime and should be refreshed
-# by compile. Dynamic owner pages (protocols, furnace/execution centers,
-# cognitive history, packs, pilots, etc.) are intentionally excluded so compile
-# accounting does not count transient template rewrites before owner renderers
-# restore the same final content.
+# by compile. Dynamic owner pages (protocols, furnace-center, etc.) are
+# intentionally excluded so compile accounting does not count transient
+# template rewrites before owner renderers restore the same final content.
 MANAGED_DASHBOARD_TEMPLATE_FILES = (
     "wiki/indexes/review-center.md",
     "wiki/indexes/graph-view.md",

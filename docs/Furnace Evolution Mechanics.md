@@ -97,7 +97,7 @@ related_docs:
 
 `protocol-learn-*` CLI、ask `--load-learnings`、nightly aging hook 已删。历史 `wiki/protocol-learnings/` 只读。经验沉淀改走显式 wiki 写回或 staging 候选，不恢复隐式注入。
 
-## 7. L3 prompt/policy proposal（library 保留，CLI 已删）
+## 7. L3 prompt/policy proposal（library 与 CLI 均已删）
 
 L3 产品 CLI 与 library 已移除。prompt/policy 写回须 operator 显式路径（现行：`review-page` + 手工编辑 + receipt discipline），不得假装 nightly 自动 adopt。
 

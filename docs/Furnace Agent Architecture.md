@@ -91,8 +91,8 @@ signal → planner → phase → feedback → learning → (re-enter as signal)
 金丹是与 judgment/decision 并列的复合知识资产：
 
 - 候选：`.aiwiki/staging/elixirs/`（draft → distilling → candidate）
-- 持久：`wiki/elixirs/`（`alchemy-promote` 产生 settled）
-- 最小链：`alchemy-start` → `alchemy-distill` → `alchemy-finalize` → `alchemy-promote`（+ `revert` / `demote`）
+- 持久：`wiki/elixirs/`（`advanced alchemy promote` 产生 settled）
+- 最小链：`advanced alchemy start` → `advanced alchemy distill` → `advanced alchemy finalize` → `advanced alchemy promote`（+ `revert` / `demote`；`advanced alchemy-*` 兼容别名仍在）
 - 必须 DAG 校验、provenance 锚定（`wiki/judgments/` 或 legacy `wiki/derived/`）
 
 详见 [[docs/Furnace Evolution Mechanics|进化机制]] §7 与 [[docs/Furnace Elixir|金丹 thesis]]。

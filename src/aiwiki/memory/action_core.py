@@ -185,7 +185,7 @@ def safe_apply_preview(root: Path, action: dict[str, Any]) -> dict[str, Any] | N
             "active": True,
         },
         "affected_paths": [
-            path for path in (primary_path, secondary_path, "wiki/indexes/machine-memory-repair-plan.md") if path
+            path for path in (primary_path, secondary_path, "wiki/indexes/repair-backlog.md") if path
         ],
         "follow_up": "执行后会重跑 compile，让 source/concept/index 层按 manual link state 收敛。",
     }

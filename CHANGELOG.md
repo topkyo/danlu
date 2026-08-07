@@ -25,7 +25,7 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
 - URL 投料幂等：`normalize_ingest_url` + manifest 短路；同规范化 URL 默认 `reused` 不新建 `-N`；`drop url|plan --refresh` 覆盖同 path。
 - Universal drop **plan/execute**：`src/aiwiki/input_planner.py`（LLM 分类 Plan，不写 `raw/`）+ `src/aiwiki/executor.py`（deterministic 原样落盘 + SSRF `safe_fetch` + 事务回滚）；CLI `drop plan <payload>`；默认 `drop <payload>` 走 planner（`AIWIKI_LLM_PLANNER=0` 关闭）。
 - Alchemy distill 可选 LLM body synthesizer（`runner/alchemy.py` 编排层注入；mutation 层仍 deterministic；`AIWIKI_LLM_DISTILL=0` 关闭）。
-- `tests/test_llm_integration.py`：现行 **85** 条（含 ingest 幂等 / refresh、plan/execute、CJK、path containment、distill synthesizer、safe_fetch 重定向）；历史起点为 42 条。
+- `tests/test_llm_integration.py`：现行 **84** 条（含 ingest 幂等 / refresh、plan/execute、CJK、path containment、distill synthesizer、safe_fetch 重定向）；历史起点为 42 条。
 - `.pre-commit-config.yaml`：pre-commit hook（ruff check + ruff-format check + check-merge-conflict / check-yaml / check-added-large-files 500KB），轻量 gate；完整验证仍靠 `bash scripts/verify.sh`。
 - `src/aiwiki/utils/` 子包：`io` / `security` / `markdown` / `text` / `hash` / `time` / `path` / `json_utils` / `audit`（原 `app_utils.py` 下沉）。
 - `src/aiwiki/state/` + owner 子包：`io` / `constants` / `manifest` / `cache` / `compile/state` / `compile/build` / `content/material` / `content/archive` / `content/rewrite` / `execution/history` / `memory/action_state` / `memory/state` / `planner/state`（原 `app_state.py` 下沉）。
@@ -41,13 +41,15 @@ while patch-level increments reflect商业化清理、文档补充与安全加�
 - `AGENTS.md` L115 CLI 入口描述修复：顶层仅 `drop/today/advanced`；`metrics` / `file-back` / `review-page` / `compile` 等 operator 命令仅经 `advanced` 子命令（非顶层）。
 - `src/aiwiki/trace.py` docstring 资产种类数 `6 类` → `9 类`。
 - `execution/{archive,lifecycle,ask,runtime_surfaces,concept_rewrite}.py` stale docstring 修复：删除对已移除 `_LAZY_OWNERS` / `app_compile.utc_now` 的引用。
-- verify 现行口径：acceptance **25** + llm-integration **85** + unit **176** + Jest **203**（coverage informational **71%**；历史 16/17/18/24、42/65/76/78/79、69%、72/81/143、153、154、160、166、174/189/206 等为沿革快照）。
+- verify 现行口径：acceptance **25** + llm-integration **84** + unit **176** + Jest **203**（coverage informational **71%**；历史 16/17/18/24、42/65/76/78/79、69%、72/81/143、153、154、160、166、174/189/206 等为沿革快照）。
 - `app_shell` / `app_linting` 包级 `_CompatModule` facade 清零；调用方直引 owner。
 - 覆盖归属 R-5：删除零入口 0% 模块（`lifecycle/protocol`、`memory/topology`、`memory/types`、`planner/types`、`state/types`、`utils/json_utils`、`render/cognitive_history`）；新增 `tests/test_library_surfaces.py`（autonomy_policy / llm-check human render / `python -m aiwiki.cli`）。
 - Capability follow-up：CJK concept/slug/stopwords；`fetch_raw` fail-loud；local-path fail-loud + containment；distill LLM outside write lock + `llm_invoked` receipt；GitHub blob/tree planner few-shot。
-- Rescan follow-up：见 Fixed；verify llm-integration 沿革曾为 **79**，现行 **85**。
+- Rescan follow-up：见 Fixed；verify llm-integration 沿革曾为 **79**，现行 **84**。
+- 入口面清理（2026-08-06/07）：炉心面板 `furnace-center.md` 瘦身为用户首屏三节（今天先做什么 / 最近输出 / 快速跳转）；README「控制台与索引页」、HOME（仓库 + vault 模板）、`docs/Furnace Product Shell.md` §6.1 叙事对齐；`wiki/indexes/README.md` 重写为在生/退役分层策略页。计划：`docs/plans/2026-08-06-entry-surfaces-cleanup.md`。
 
 ### Removed
+- `wiki/indexes/` 14 个无 writer 页面连代码一起退役：`aging-report` / `agent-workbench` / `domain-pilots` / `output-packs` / `concept-quality` / `rewrite-proposals`（索引页；单提案页保留）/ `machine-memory-topology` / `machine-memory-actions` / `machine-memory-repair-plan` / `drift-report` / `graph-health` / `execution-audit` / `execution-center` / `cognitive-history`，外加旧 hub `Outputs.md` 引用。同步删死渲染器（views/status/execution_surfaces/execution_audit_surfaces）、零调用模块（`render/markdown_links.py`、`render/pilots.py`、`memory/execution_surface_helpers.py`）、`CompileContext.execution_audit` 死字段与 14 个 path helper；Product Shell「Outputs Hub」改开炉心面板。dogfood vault 侧同名页面与 iCloud 冲突副本（含旧凭据 `data 2.json`）已删；3 个 run-ask acceptance case 的 5 个 prompt_hash 帧因模板内容变化重算。计划：`docs/plans/2026-08-06-entry-surfaces-cleanup.md`。
 - `src/aiwiki/app_utils.py`：已下沉到 `utils/` 子包（1200 行/52 符号/89 文件引用）。
 - `src/aiwiki/app_state.py`：已下沉到 `state/` + owner 子包（1200 行/70 函数/60 文件引用）。
 - `src/aiwiki/dogfood_maturity.py`：死代码（全仓库零 import 引用，40 行）。

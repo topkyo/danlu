@@ -79,10 +79,13 @@ cd ../demo-furnace-vault
 
 ## 控制台与索引页
 
-`wiki/indexes/*.md`（除手写策略页 [wiki/indexes/README.md](./wiki/indexes/README.md)）是 **compile 生成的派生索引**，不入库。在 vault 内先 `compile`，再打开：
+`wiki/indexes/*.md`（除手写策略页 [wiki/indexes/README.md](./wiki/indexes/README.md)）是 **compile 生成的派生索引**，不入库。在 vault 内先 `compile`，再打开。页面分三层：
 
-- Obsidian：炉心 / 审阅 / 图谱等索引页（`wiki/indexes/`，由 compile 写入）
-- 机器记忆邻接：`.aiwiki/cache/machine-memory-graph.json`（compile 写入；**HTML 控制面已停写**）
+- **首屏**：`furnace-center.md`（炉心面板）——今天做什么 / 最近输出 / 快速跳转，Obsidian 里唯一的日常入口。
+- **治理细节**：`review-center.md`（审阅中心）、`repair-backlog.md`（修复待办）、`review-queue.md`、`compile-status.md`、`machine-memory.md`、`protocols.md`——炉心面板只做摘要与跳转，细节看这些页。
+- **全量索引**：`index.md` 主索引 + `sources/concepts/decisions/judgments/judgment-assets` 分类索引；`graph-view.md` 看证据链邻接。
+
+机器记忆邻接 JSON：`.aiwiki/cache/machine-memory-graph.json`（compile 写入；**HTML 控制面已停写**）。在生/退役页面的完整清单与 writer 对照见 [wiki/indexes/README.md](./wiki/indexes/README.md)。
 
 ## 协议与边界
 

@@ -42,9 +42,6 @@ def compile_output_phase(context: CompileContext) -> None:
             context.compiled_at,
             context.protocol_state,
             context.recent_outputs,
-            context.output_packs,
-            context.domain_pilots,
-            context.execution_audit,
             knowledge_lifecycle=context.knowledge_lifecycle,
         ),
     )

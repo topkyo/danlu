@@ -433,8 +433,7 @@ def render_judgment_assets(
             "- [判断索引](./judgments.md)",
             "- [审阅队列](./review-queue.md)",
             "- [审阅中心](./review-center.md)",
-            "- [认知历史](./cognitive-history.md)",
-            "- [Aging 报告](./aging-report.md)",
+            "- [修复待办](./repair-backlog.md)",
         ]
     )
     return "\n".join(lines) + "\n"

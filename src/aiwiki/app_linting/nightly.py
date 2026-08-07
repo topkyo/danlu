@@ -44,11 +44,6 @@ from ..protocol.scaffold import ensure_layout
 from ..protocol.state import load_protocol_state
 from ..render.paths import (
     append_wiki_log,
-    concept_quality_path,
-    concept_rewrite_index_path,
-    machine_memory_actions_path,
-    machine_memory_repair_plan_path,
-    machine_memory_topology_path,
     repair_backlog_path,
 )
 from ..state.manifest import load_manifest
@@ -278,7 +273,6 @@ def write_nightly_health(
             "scheduled_pages": [page["path"] for page in aging["scheduled"]],
         },
         "concept_quality": {
-            "path": relative_path(root, concept_quality_path(root)),
             "weak_concept_slugs": [
                 concept["slug"]
                 for concept in memory.get("health", {}).get("concept_quality", {}).get("weak_concepts", [])
@@ -298,7 +292,6 @@ def write_nightly_health(
             "gap_signals": memory.get("health", {}).get("concept_quality", {}).get("counts", {}).get("gap_signals", 0),
         },
         "concept_rewrite": {
-            "path": relative_path(root, concept_rewrite_index_path(root)),
             "state_path": memory.get("health", {})
             .get("concept_rewrite", {})
             .get("state_path", ".aiwiki/state/concept-rewrite-proposals.json"),
@@ -320,9 +313,6 @@ def write_nightly_health(
             "transition": memory.get("transition", {}),
             "drift": memory.get("drift", {}),
             "health": memory.get("health", {}),
-            "topology_path": relative_path(root, machine_memory_topology_path(root)),
-            "actions_path": relative_path(root, machine_memory_actions_path(root)),
-            "repair_plan_path": relative_path(root, machine_memory_repair_plan_path(root)),
             "action_counts": memory.get("health", {}).get("action_counts", {}),
             "repair_plan_counts": memory.get("health", {}).get("repair_plan", {}).get("counts", {}),
             "overdue_action_ids": [action["id"] for action in memory.get("health", {}).get("overdue_actions", [])],
@@ -365,7 +355,6 @@ def write_nightly_health(
             "machine_memory_actions": [action["id"] for action in memory.get("health", {}).get("actions", [])],
             "overdue_action_ids": [action["id"] for action in memory.get("health", {}).get("overdue_actions", [])],
             "escalated_action_ids": [action["id"] for action in memory.get("health", {}).get("escalated_actions", [])],
-            "repair_plan_path": relative_path(root, machine_memory_repair_plan_path(root)),
             "ready_action_ids": [
                 action["id"] for action in memory.get("health", {}).get("repair_plan", {}).get("ready_actions", [])
             ],

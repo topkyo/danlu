@@ -580,8 +580,7 @@ class TestBuildPagePatchPlan:
         plan = build_page_patch_plan(tmp_path, action)
         assert [entry["path"] for entry in plan] == [
             "wiki/concepts/c.md",
-            "wiki/indexes/concept-quality.md",
-            "wiki/indexes/rewrite-proposals.md",
+            "wiki/indexes/repair-backlog.md",
         ]
         assert plan[1]["role"] == "index"
         assert plan[1]["mode"] == "review"

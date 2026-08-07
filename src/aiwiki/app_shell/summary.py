@@ -518,7 +518,7 @@ def thin_shell_summary_for_persist(summary: ShellSummary) -> ShellSummary:
     links = summary.get("links")
     thin_links: dict[str, str] = {}
     if isinstance(links, dict):
-        for key in ("summary_path", "furnace_center_html"):
+        for key in ("summary_path",):
             value = links.get(key)
             if value:
                 thin_links[key] = str(value)

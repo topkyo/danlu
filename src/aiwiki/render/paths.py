@@ -159,19 +159,7 @@ def resolve_execution_receipt_path(root: Path, action_id: str) -> Path:
     return primary
 
 
-# --- HTML / render output paths (extracted from aiwiki.app_state_paths) ---
-
-
-def machine_memory_graph_html_path(root: Path) -> Path:
-    return root / "output" / "graph" / "machine-memory.html"
-
-
-def review_center_html_path(root: Path) -> Path:
-    return root / "output" / "review" / "review-center.html"
-
-
-def furnace_center_html_path(root: Path) -> Path:
-    return root / "output" / "control" / "furnace-center.html"
+# --- Render output paths (extracted from aiwiki.app_state_paths) ---
 
 
 def shell_summary_path(root: Path) -> Path:
@@ -182,64 +170,8 @@ def product_shell_html_path(root: Path) -> Path:
     return root / "output" / "control" / "product-shell.html"
 
 
-def execution_center_html_path(root: Path) -> Path:
-    return root / "output" / "control" / "execution-center.html"
-
-
-def execution_audit_html_path(root: Path) -> Path:
-    return root / "output" / "control" / "execution-audit.html"
-
-
 def machine_memory_graph_path(root: Path) -> Path:
     return root / ".aiwiki" / "cache" / "machine-memory-graph.json"
-
-
-def machine_memory_drift_report_path(root: Path) -> Path:
-    return root / "wiki" / "indexes" / "drift-report.md"
-
-
-def graph_health_report_path(root: Path) -> Path:
-    return root / "wiki" / "indexes" / "graph-health.md"
-
-
-def machine_memory_topology_path(root: Path) -> Path:
-    return root / "wiki" / "indexes" / "machine-memory-topology.md"
-
-
-def machine_memory_actions_path(root: Path) -> Path:
-    return root / "wiki" / "indexes" / "machine-memory-actions.md"
-
-
-def machine_memory_repair_plan_path(root: Path) -> Path:
-    return root / "wiki" / "indexes" / "machine-memory-repair-plan.md"
-
-
-def execution_center_path(root: Path) -> Path:
-    return root / "wiki" / "indexes" / "execution-center.md"
-
-
-def execution_audit_path(root: Path) -> Path:
-    return root / "wiki" / "indexes" / "execution-audit.md"
-
-
-def agent_workbench_path(root: Path) -> Path:
-    return root / "wiki" / "indexes" / "agent-workbench.md"
-
-
-def output_packs_index_path(root: Path) -> Path:
-    return root / "wiki" / "indexes" / "output-packs.md"
-
-
-def domain_pilots_path(root: Path) -> Path:
-    return root / "wiki" / "indexes" / "domain-pilots.md"
-
-
-def concept_quality_path(root: Path) -> Path:
-    return root / "wiki" / "indexes" / "concept-quality.md"
-
-
-def concept_rewrite_index_path(root: Path) -> Path:
-    return root / "wiki" / "indexes" / "rewrite-proposals.md"
 
 
 def repair_backlog_path(root: Path) -> Path:
@@ -248,11 +180,3 @@ def repair_backlog_path(root: Path) -> Path:
 
 def judgment_assets_path(root: Path) -> Path:
     return root / "wiki" / "indexes" / "judgment-assets.md"
-
-
-def cognitive_history_path(root: Path) -> Path:
-    return root / "wiki" / "indexes" / "cognitive-history.md"
-
-
-def aging_report_path(root: Path) -> Path:
-    return root / "wiki" / "indexes" / "aging-report.md"

@@ -35,7 +35,6 @@ from ..memory.core import (
     reuse_machine_memory_core,
 )
 from ..memory.execution_surfaces import (
-    build_execution_audit_snapshot,
     reconcile_concept_rewrite_proposals,
 )
 from ..memory.graph_builder import build_machine_memory_graph
@@ -520,11 +519,6 @@ def compile_runtime_phase(context: CompileContext) -> None:
     context.write_index_artifact(
         context.root / "wiki" / "indexes" / "machine-memory.md",
         render_machine_memory_index(context.memory),
-    )
-    context.execution_audit = build_execution_audit_snapshot(
-        context.root,
-        context.memory,
-        active_protocol=context.protocol_state["active_protocol"],
     )
 
     ranking_build = build_ranking_state(

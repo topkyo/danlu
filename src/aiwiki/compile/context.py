@@ -59,7 +59,6 @@ class CompileContext:
     clean_machine_memory_concept_slugs: list[str] = field(default_factory=list)
     machine_memory_core_reused: bool = False
     memory: dict[str, Any] = field(default_factory=dict)
-    execution_audit: dict[str, Any] = field(default_factory=dict)
     transition: dict[str, Any] = field(default_factory=dict)
     dirty_ranking_source_ids: list[str] = field(default_factory=list)
     clean_ranking_source_ids: list[str] = field(default_factory=list)

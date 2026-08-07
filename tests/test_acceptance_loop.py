@@ -203,6 +203,15 @@ def test_w2_compounding_rank_and_suggest_acceptance(  # pragma: no cover - expli
     stdout_dir = case / "expected" / "stdout"
 
     _run_cli(vault, ["advanced", "compile"])
+
+    # Furnace-center first screen: slim three-section shape, live-page links only.
+    furnace_center = (vault / "wiki" / "indexes" / "furnace-center.md").read_text(encoding="utf-8")
+    assert "## 今天先做什么" in furnace_center
+    assert "## 最近输出" in furnace_center
+    assert "## 快速跳转" in furnace_center
+    for retired_page in ("output-packs", "domain-pilots", "execution-audit", "cognitive-history"):
+        assert retired_page not in furnace_center
+
     out1 = _run_cli(
         vault,
         ["run-ask", "compounding rank acceptance", "--format", "report"],

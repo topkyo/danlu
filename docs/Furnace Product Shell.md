@@ -159,6 +159,15 @@ updated_at: "2026-07-23"
 
 **结论**：**严格守住底线，无需扩展 runtime `shell-summary` 字段**，符合 KISS 原则。按日分组在插件内存闭环；外部通知由 Notifier 在 runtime 侧触发；**无**未读视觉态。
 
+### 6.1 Shell 视图与 Markdown 面板页的关系（2026-08-06）
+
+炼丹炉在 Obsidian 里有两类入口面，分工不同、互不替代：
+
+- **Product Shell 视图**：插件渲染的交互界面，数据源是 `output/control/shell-summary.json`（compile/nightly 写入）。负责输入（Ask / Drop / Capture Note）与通知式输出（Today / Today's Reports / Previous Reports）；治理与调试收在更多工具抽屉。
+- **Markdown 面板页**：`wiki/indexes/*.md`，由 `advanced compile` 生成为普通笔记，可在文件树/graph 里引用、搜索、回链。首屏是 `furnace-center.md` 炉心面板（今天做什么 / 最近输出 / 快速跳转三节）；治理细节去 `review-center.md`、`repair-backlog.md` 等专页。在生/退役页面清单见 `wiki/indexes/README.md`。
+
+Shell 的「Outputs Hub」按钮打开的是 `furnace-center.md`（不是旧 `Outputs.md`，已退役）。Shell 视图不写 `wiki/`，面板页不承载交互；两者都以 `raw/ → wiki/ → output/` 分层为事实源。
+
 ## 7. 迁移路径
 
 - **Phase A (纯 UI 改造)**：

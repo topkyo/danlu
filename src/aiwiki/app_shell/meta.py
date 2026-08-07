@@ -7,16 +7,8 @@ from ..protocol.scaffold import ensure_layout
 from ..protocol.state import load_protocol_state
 from ..protocol.types import ProtocolState
 from ..render.paths import (
-    agent_workbench_path,
-    domain_pilots_path,
-    execution_audit_html_path,
-    execution_audit_path,
-    furnace_center_html_path,
-    machine_memory_graph_html_path,
     machine_memory_graph_path,
-    output_packs_index_path,
     product_shell_html_path,
-    review_center_html_path,
     shell_summary_path,
 )
 from ..state.constants import DEFAULT_PROTOCOL
@@ -37,21 +29,9 @@ def shell_links(root: Path) -> dict[str, str]:
         "furnace_center_markdown": "wiki/indexes/furnace-center.md",
         "review_center_markdown": "wiki/indexes/review-center.md",
         "judgment_assets_markdown": "wiki/indexes/judgment-assets.md",
-        "cognitive_history_markdown": "wiki/indexes/cognitive-history.md",
-        "execution_audit_markdown": "wiki/indexes/execution-audit.md",
         "graph_view_markdown": "wiki/indexes/graph-view.md",
         "machine_memory_graph_json": relative_path(root, machine_memory_graph_path(root)),
         "protocols_markdown": "wiki/indexes/protocols.md",
-        "domain_pilots_markdown": "wiki/indexes/domain-pilots.md",
-        "output_packs_markdown": "wiki/indexes/output-packs.md",
-        "agent_workbench_markdown": "wiki/indexes/agent-workbench.md",
-        # Legacy HTML paths (stopped writing); Obsidian indexes + machine-memory-graph.json are primary.
-        "furnace_center_html": relative_path(root, furnace_center_html_path(root)),
-        "review_center_html": relative_path(root, review_center_html_path(root)),
-        "execution_audit_html": relative_path(root, execution_audit_html_path(root)),
-        "graph_html": relative_path(root, machine_memory_graph_html_path(root)),
-        "product_shell_design": "docs/Furnace Product Shell Plugin.md",
-        "product_shell_runtime_plan": "docs/Furnace Product Shell Runtime Plan.md",
     }
 
 
@@ -112,14 +92,6 @@ def shell_capabilities(root: Path) -> dict[str, Any]:
         "views": {
             "furnace_center_markdown": (root / "wiki" / "indexes" / "furnace-center.md").exists(),
             "review_center_markdown": (root / "wiki" / "indexes" / "review-center.md").exists(),
-            "execution_audit_markdown": execution_audit_path(root).exists(),
-            "domain_pilots_markdown": domain_pilots_path(root).exists(),
-            "output_packs_markdown": output_packs_index_path(root).exists(),
-            "agent_workbench_markdown": agent_workbench_path(root).exists(),
-            "furnace_center_html": furnace_center_html_path(root).exists(),
-            "review_center_html": review_center_html_path(root).exists(),
-            "execution_audit_html": execution_audit_html_path(root).exists(),
-            "graph_html": machine_memory_graph_html_path(root).exists(),
             "product_shell_html": product_shell_html_path(root).exists(),
         },
     }

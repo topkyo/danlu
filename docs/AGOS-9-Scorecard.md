@@ -25,7 +25,7 @@ updated_at: "2026-08-05"
 | 组件 | 数量 | 命令 |
 |---|---:|---|
 | Acceptance | **25** passed | `bash scripts/verify.sh acceptance` |
-| LLM integration | **85** passed | `bash scripts/verify.sh llm-integration` |
+| LLM integration | **84** passed | `bash scripts/verify.sh llm-integration` |
 | Unit（library 级） | **176** passed | `bash scripts/verify.sh unit` |
 | Product Shell Jest | **203** passed | `bash scripts/verify.sh product-shell-static` |
 | Bundle drift | gate（正反向实测） | 含于 `product-shell-static` |
@@ -97,7 +97,7 @@ updated_at: "2026-08-05"
 | Product Shell | 12% | 9.3 | yes | Jest **203** + bundle drift 硬门禁 + sync `run-ask` 单飞 + Today-first |
 | Runtime correctness | 15% | 9.4 | no | path harden + fail-closed LLM；无 background submit/resume |
 | Planner / signal | 10% | 8.7 | no | internal modules；CLI 已删；acceptance replay |
-| LLM reliability | 12% | 9.0 | no | llm-integration **85** + receipt 聚合 |
+| LLM reliability | 12% | 9.0 | no | llm-integration **84** + receipt 聚合 |
 | Governance | 13% | 9.1 | yes | review-page / alchemy-revert / gc-orphans / file-back receipts；无入口 mm_actions 治理簇 2026-08-04 已整簇删除 |
 | Maintainability | 8% | 9.0 | no | 顶层 `app_*.py` = 0；cli facade 归零；Ask 路径净删 background；治理孤儿簇 −4.6k 行 |
 | Docs SoT | 10% | 8.9† | yes | Local Eng frozen 8.9；工程实测文档尺 **8.6**（R8）；主链计数与 consistency 钉对齐 |
@@ -110,7 +110,7 @@ updated_at: "2026-08-05"
 |---|------|----------|
 | 1 | Full verify | `bash scripts/verify.sh all` |
 | 2 | Acceptance | **25** — `bash scripts/verify.sh acceptance` |
-| 3 | LLM integration | **85** — `bash scripts/verify.sh llm-integration` |
+| 3 | LLM integration | **84** — `bash scripts/verify.sh llm-integration` |
 | 4 | Product Shell | Jest **203** + bundle drift gate — `bash scripts/verify.sh product-shell-static` |
 | 5 | Unit | **176** — `bash scripts/verify.sh unit` |
 | 6 | Docs consistency | `bash scripts/docs_consistency_check.sh` |

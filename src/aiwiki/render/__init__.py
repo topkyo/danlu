@@ -7,8 +7,10 @@ external import sites and (lack of) test patch seams.
 
 Submodules:
 - paths: filesystem destinations + wiki log helpers
-- packs: output-pack helpers + builders + index
-- pilots: domain-pilot scorecards
 - furnace_center: markdown furnace-center dashboard
-- views: dashboard renderers (markdown surfaces + product shell)
+- compile_status: markdown compile-status dashboard
+- judgment_assets: judgment asset views
+- ask_report: ask report scaffold
+- protocols: protocol page renderers
+- views: dashboard renderers (curated / review-queue / master index)
 """

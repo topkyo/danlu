@@ -25,11 +25,11 @@ Targets:
   python-static         Run Python lint and bytecode compile checks.
   unit                  Run library-level unit tests (security / vault / library surfaces / repair / alchemy-revert).
   acceptance            Run acceptance replay checks.
-  llm-integration       Run LLM integration tests (85 tests, mock backends).
+  llm-integration       Run LLM integration tests (84 tests, mock backends).
   cli-smoke             Check aiwiki CLI startup/help.
   product-shell-static  Run Product Shell JS syntax + bundle drift gate + Jest.
   coverage              Print coverage report over all tests (informational, no gate).
-  all                   Run scripts + product-shell-static + cli-smoke + smoke + python-static + unit + acceptance (25) + llm-integration (85) + coverage report. Default.
+  all                   Run scripts + product-shell-static + cli-smoke + smoke + python-static + unit + acceptance (25) + llm-integration (84) + coverage report. Default.
 USAGE
 }
 

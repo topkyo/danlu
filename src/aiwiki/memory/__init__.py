@@ -2,6 +2,7 @@
 
 Submodules (EP-017B):
 - graph_builder / graph_query / graph_transition: machine-memory graph JSON / query / history
-- status: drift / health / index / actions / repair-plan renderers
-- execution_surfaces: execution audit markdown + concept rewrite surfaces
+- status: machine-memory index renderer (wiki/indexes/machine-memory.md)
+- execution_surfaces: concept rewrite surfaces (reconcile + proposal pages)
+- execution_audit_surfaces: execution consistency signals
 """

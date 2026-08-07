@@ -125,9 +125,9 @@ PATCH_PLAN_TEMPLATES: dict[str, dict[str, Any]] = {
 
 PATCH_PLAN_AUXILIARY_PATHS: dict[str, tuple[str, ...]] = {
     "connect-isolated-source": ("wiki/indexes/concepts.md",),
-    "expand-singleton-concept": ("wiki/indexes/concept-quality.md",),
-    "split-overloaded-concept": ("wiki/indexes/concept-quality.md", "wiki/indexes/rewrite-proposals.md"),
-    "monitor-bridge-concept": ("wiki/indexes/graph-health.md",),
+    "expand-singleton-concept": ("wiki/indexes/repair-backlog.md",),
+    "split-overloaded-concept": ("wiki/indexes/repair-backlog.md",),
+    "monitor-bridge-concept": ("wiki/indexes/repair-backlog.md",),
 }
 
 

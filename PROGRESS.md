@@ -15,6 +15,8 @@
 
 ## 当前动态
 
+- 2026-08-07 (**入口面清理收口**)：炉心面板瘦身三节首屏；`wiki/indexes` 14 个无 writer 页面连代码一起退役；README/HOME/Product Shell 文档叙事对齐；vault 删退役页+iCloud 冲突副本并重启旧代码 watcher。计划：`docs/plans/2026-08-06-entry-surfaces-cleanup.md`。verify **25/84/176/203** 全绿。
+
 - 2026-08-06 (**R8 P1 合入 main**)：PR #32 merged；verify **25/85/176/203**。P2 D-1（Scorecard Docs 双尺 †）落地；A-3 hub 盲拆 **暂缓**（R8 判多数为健康文件级 hub）。Commercial 三阻断仍开。
 
 - 2026-08-05 (**R8 P1 收口**)：agent 可做 P1 全关（S-1/T-1/A-1/A-2/Q-1/Q-2/G-1/G-2/G-1b）。计划：`docs/plans/2026-08-05-r8-p1-remediation.md`。

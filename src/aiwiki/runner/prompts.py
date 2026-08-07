@@ -391,18 +391,13 @@ def _select_ask_index_pages(
     machine_memory_query: dict[str, Any],
     output_format: str,
 ) -> list[tuple[str, str]]:
+    # machine_memory_query is accepted for caller compatibility; the retired
+    # telemetry index pages it used to prefer (machine-memory-actions /
+    # machine-memory-repair-plan / cognitive-history) no longer exist.
+    _ = machine_memory_query
     available = {relative: (relative, content) for relative, content in index_pages}
     preferred: list[str] = list(ASK_INDEX_PAGES_BASE)
     preferred.extend(ASK_INDEX_PAGES_BY_FORMAT.get(output_format, ()))
-    if machine_memory_query.get("relevant_actions"):
-        preferred.extend(
-            [
-                "wiki/indexes/machine-memory-actions.md",
-                "wiki/indexes/machine-memory-repair-plan.md",
-            ]
-        )
-    if machine_memory_query.get("archive_recall_hints"):
-        preferred.append("wiki/indexes/cognitive-history.md")
     selected: list[tuple[str, str]] = []
     for relative in preferred:
         item = available.get(relative)

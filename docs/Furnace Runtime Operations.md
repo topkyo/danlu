@@ -246,7 +246,6 @@ journalctl --user -u aiwiki-nightly.service --since "1 minute ago"
 | planner-log | `.aiwiki/state/planner-log.jsonl` | 保留；rollback marker 追加 |
 | LLM receipt | `.aiwiki/logs/llm-receipts.jsonl` | 保留；只读聚合走 `advanced llm-check` / acceptance（CLI `llm-telemetry`/`backend-telemetry` 已删） |
 | LLM raw response | receipt 内 `raw_response_path` | 按路径引用；清理需显式 operator 策略 |
-| maturity gate | `output/control/maturity-gate/run-*.json` | 保留；自然日去重 summarize |
 
 恢复原则：corrupt JSON/JSONL 由 acceptance fixture 锁定回归；**不**默认删除历史 receipt 解决磁盘膨胀。watcher 仍 deterministic-only。
 
@@ -301,4 +300,4 @@ AIWIKI_MODEL_FALLBACK="deepseek-chat" \
 - 安装初始化：见 `scripts/install_user_service.sh`
 - LLM provider 详细鉴权：见 README §LLM 后端
 - agent loop 内部决策：见 `docs/Furnace Agent Architecture.md` §4
-- 受控自主权红线：见 `docs/Furnace Agent Architecture.md` §8 与 `autonomy-status / autonomy-disable / autonomy-enable` CLI
+- 受控自主权红线：见 `docs/Furnace Agent Architecture.md` §8；策略事实源为 `.aiwiki/state/autonomy-policy.json` + `AIWIKI_DISABLE_AUTOMATION` / `AIWIKI_AUTONOMY_PROFILE` 环境变量（`autonomy-status/-disable/-enable` CLI 已删）

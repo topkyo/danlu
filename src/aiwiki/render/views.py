@@ -1,8 +1,7 @@
 """Dashboard view renderers extracted from app_render.
 
-Curated/review/aging + agent + furnace + master index + pilots index.
-Judgment asset views live in judgment_assets.py.
-Ask report scaffold lives in ask_report.py.
+Curated/review + furnace/master index. Judgment asset views live in
+judgment_assets.py. Ask report scaffold lives in ask_report.py.
 """
 
 from __future__ import annotations
@@ -12,7 +11,6 @@ from typing import Any
 from ..lifecycle.aging import collect_aging_signals
 from ..lifecycle.knowledge import (
     default_knowledge_lifecycle_state,
-    knowledge_lifecycle_governance_summary,
     render_knowledge_lifecycle_entry_summary,
     select_knowledge_lifecycle_entries,
     sort_knowledge_lifecycle_entries,
@@ -21,9 +19,6 @@ from ..lifecycle.status import display_curated_status, review_queue
 from ..protocol.descriptors import protocol_title
 from ..protocol.library import PROTOCOL_LIBRARY
 from ..state.constants import DEFAULT_PROTOCOL
-from ..utils.markdown import render_frontmatter
-from ..utils.text import slugify
-from .markdown_links import workspace_link
 
 
 def render_curated_page_summary(page: dict[str, str]) -> str:
@@ -114,182 +109,6 @@ def render_curated_index(
     else:
         for page in snapshot_gaps[:12]:
             lines.append(render_curated_page_summary(page))
-    return "\n".join(lines) + "\n"
-
-
-def render_domain_pilots_index(domain_pilots: dict[str, Any], compiled_at: str, active_protocol: str) -> str:
-    lines = [
-        "# 领域 Pilot 总览",
-        "",
-        f"- 最近编译时间：`{compiled_at}`",
-        f"- 当前协议：`{active_protocol}` ({protocol_title(active_protocol)})",
-        f"- 协议总数：`{len(domain_pilots.get('scorecards', []))}`",
-        "",
-        "## 协议 Scorecards",
-    ]
-    for scorecard in domain_pilots.get("scorecards", []):
-        metrics = scorecard.get("metrics", {})
-        lines.append(
-            f"- {workspace_link(scorecard['path'], scorecard['title'])}"
-            f" | stage `{scorecard.get('stage', 'seed')}`"
-            f" | curated `{int(metrics.get('decisions', 0)) + int(metrics.get('judgments', 0))}`"
-            f" | outputs `{metrics.get('outputs', 0)}`"
-            f" | receipts `{metrics.get('receipts', 0)}`"
-            f" | lifecycle backlog `{metrics.get('lifecycle_concept_backlog', 0)}`"
-            f" | retired `{metrics.get('lifecycle_retired_concepts', 0)}`"
-            f" | dominant/mixed/bridge `{metrics.get('lifecycle_dominant_concepts', 0)}/{metrics.get('lifecycle_mixed_concepts', 0)}/{metrics.get('lifecycle_bridge_concepts', 0)}`"
-        )
-        lines.append(f"  - {scorecard.get('summary', '')}")
-    lines.extend(
-        [
-            "",
-            "## 相关入口",
-            "- [协议总览](./protocols.md)",
-            "- [输出 Pack 总览](./output-packs.md)",
-            "- [炉心面板](./furnace-center.md)",
-            "- [审阅中心](./review-center.md)",
-        ]
-    )
-    return "\n".join(lines) + "\n"
-
-
-def render_agent_pack(
-    role: str,
-    title: str,
-    mission: str,
-    protocol: str,
-    compiled_at: str,
-    focus: list[str],
-    actions: list[str],
-    links: list[str],
-) -> str:
-    frontmatter = render_frontmatter(
-        {
-            "id": slugify(role),
-            "kind": "agent-pack",
-            "agent_role": role,
-            "title": title,
-            "protocol": protocol,
-            "generated_by": "aiwiki-compile",
-            "last_compiled_at": compiled_at,
-        }
-    )
-    lines = [
-        frontmatter,
-        "",
-        f"# {title}",
-        "",
-        f"- Agent role: `{role}`",
-        f"- Protocol: `{protocol}` ({protocol_title(protocol)})",
-        f"- Compiled at: `{compiled_at}`",
-        "",
-        "## Mission",
-        f"- {mission}",
-        "",
-        "## Current Focus",
-    ]
-    if not focus:
-        lines.append("- 当前没有额外焦点。")
-    else:
-        lines.extend(f"- {item}" for item in focus)
-    lines.extend(["", "## Suggested Actions"])
-    if not actions:
-        lines.append("- 当前没有新的建议动作。")
-    else:
-        lines.extend(f"- {item}" for item in actions)
-    lines.extend(["", "## Related Links"])
-    if not links:
-        lines.append("- 当前没有相关链接。")
-    else:
-        lines.extend(f"- {item}" for item in links)
-    return "\n".join(lines) + "\n"
-
-
-def render_agent_workbench(
-    packs: list[dict[str, str]],
-    compiled_at: str,
-    active_protocol: str,
-    *,
-    knowledge_lifecycle: dict[str, Any] | None = None,
-) -> str:
-    lifecycle_summary = knowledge_lifecycle_governance_summary(
-        knowledge_lifecycle,
-        active_protocol=active_protocol,
-    )
-    lifecycle_counts = lifecycle_summary.get("counts", {})
-    concept_backlog = lifecycle_summary.get("concept_backlog", [])
-    retired_concepts = lifecycle_summary.get("retired_concepts", [])
-    dispatch_hints: list[str] = []
-    if concept_backlog:
-        dispatch_hints.append(
-            f"先调 [Review Agent](../../.aiwiki/derived/agents/review-agent.md)，处理 `{len(concept_backlog)}` 个 lifecycle concept backlog。"
-        )
-    if lifecycle_counts.get("review_concepts", 0) or lifecycle_counts.get("revisit_concepts", 0):
-        dispatch_hints.append(
-            f"需要概念整理时，再调 [Concept Agent](../../.aiwiki/derived/agents/concept-agent.md)，消化 `{lifecycle_counts.get('review_concepts', 0) + lifecycle_counts.get('revisit_concepts', 0)}` 个 review / revisit concept。"
-        )
-    if retired_concepts:
-        dispatch_hints.append(
-            f"确认 `{min(len(retired_concepts), 3)}` 个 retired concept 是否要恢复进入工作面，优先走 [Review Agent](../../.aiwiki/derived/agents/review-agent.md)。"
-        )
-    if not dispatch_hints:
-        dispatch_hints.append("当前 lifecycle governance 较干净，按输出、执行或 ingest 压力决定要调度哪个角色。")
-    lines = [
-        "# Agent Workbench",
-        "",
-        f"- 最近编译时间：`{compiled_at}`",
-        f"- 当前协议：`{active_protocol}` ({protocol_title(active_protocol)})",
-        f"- Agent packs：`{len(packs)}`",
-        f"- lifecycle concept backlog / retired：`{lifecycle_counts.get('concept_backlog', len(concept_backlog))}` / `{lifecycle_counts.get('retired_concepts', len(retired_concepts))}`",
-        "",
-        "## 角色总览",
-    ]
-    if not packs:
-        lines.append("- 当前还没有 agent packs。")
-    else:
-        for pack in packs:
-            lines.append(f"- [{pack['title']}](../../{pack['path']}) | role `{pack['role']}` | {pack['mission']}")
-    lines.extend(
-        [
-            "",
-            "## Lifecycle Governance Summary",
-            f"- review concepts：`{lifecycle_counts.get('review_concepts', 0)}`",
-            f"- revisit concepts：`{lifecycle_counts.get('revisit_concepts', 0)}`",
-            f"- retired concepts：`{lifecycle_counts.get('retired_concepts', len(retired_concepts))}`",
-            f"- active concepts：`{lifecycle_counts.get('active_concepts', 0)}`",
-            "",
-            "## Lifecycle Dispatch Hints",
-        ]
-    )
-    lines.extend(f"- {hint}" for hint in dispatch_hints)
-    lines.extend(["", "## Lifecycle Concept Backlog"])
-    if not concept_backlog:
-        lines.append("- 当前没有 lifecycle-driven concept backlog。")
-    else:
-        for entry in concept_backlog[:10]:
-            lines.append(render_knowledge_lifecycle_entry_summary(entry))
-    lines.extend(["", "## Retired Concepts"])
-    if not retired_concepts:
-        lines.append("- 当前没有 retired concept。")
-    else:
-        for entry in retired_concepts[:10]:
-            lines.append(render_knowledge_lifecycle_entry_summary(entry))
-    lines.extend(
-        [
-            "",
-            "## 如何使用",
-            "1. Human Owner 先在炉心面板里决定今天要调度哪个角色。",
-            "2. 进入对应 agent pack，看当前焦点、建议动作和相关链接。",
-            "3. 角色之间共享同一个 `raw / wiki / machine memory / decision / judgment`，不维护私有真相。",
-            "",
-            "## 相关入口",
-            "- [炉心面板](./furnace-center.md)",
-            "- [审阅中心](./review-center.md)",
-            "- [执行审计](./execution-audit.md)",
-            "- [认知历史](./cognitive-history.md)",
-            "- [图谱视图](./graph-view.md)",
-        ]
-    )
     return "\n".join(lines) + "\n"
 
 
@@ -399,135 +218,6 @@ def render_review_queue(
     return "\n".join(lines) + "\n"
 
 
-def render_aging_report(
-    decisions: list[dict[str, str]],
-    judgments: list[dict[str, str]],
-    compiled_at: str,
-    *,
-    active_protocol: str = DEFAULT_PROTOCOL,
-    knowledge_lifecycle: dict[str, Any] | None = None,
-) -> str:
-    knowledge_lifecycle = knowledge_lifecycle or default_knowledge_lifecycle_state()
-    aging = collect_aging_signals(decisions, judgments, active_protocol=active_protocol)
-    pages = decisions + judgments
-    lifecycle_revisit_entries = sort_knowledge_lifecycle_entries(
-        select_knowledge_lifecycle_entries(
-            knowledge_lifecycle,
-            states={"revisit"},
-        ),
-        active_protocol=active_protocol,
-    )
-    retired_concepts = sort_knowledge_lifecycle_entries(
-        select_knowledge_lifecycle_entries(
-            knowledge_lifecycle,
-            kinds={"concept"},
-            states={"retired"},
-        ),
-        active_protocol=active_protocol,
-    )
-    lines = [
-        "# Aging 报告",
-        "",
-        f"- 最近编译时间：`{compiled_at}`",
-        f"- 当前协议焦点：`{active_protocol}` ({protocol_title(active_protocol)})",
-        f"- 已到期复审：`{len(aging['overdue'])}`",
-        f"- 需要升级处理：`{len(aging['escalated'])}`",
-        f"- 已排期复审：`{len(aging['scheduled'])}`",
-        f"- 生命周期待回看项：`{len(lifecycle_revisit_entries)}`",
-        f"- retired concepts：`{len(retired_concepts)}`",
-        "",
-        "## 需要升级处理",
-    ]
-    if not aging["escalated"]:
-        lines.append("- 当前没有升级处理项。")
-    else:
-        for page in aging["escalated"][:20]:
-            lines.append(render_curated_page_summary(page))
-    lines.extend(["", "## 已到期待复审"])
-    if not aging["overdue"]:
-        lines.append("- 当前没有已到期页面。")
-    else:
-        for page in aging["overdue"][:20]:
-            lines.append(render_curated_page_summary(page))
-    lines.extend(["", "## 已排期复审"])
-    if not aging["scheduled"]:
-        lines.append("- 当前没有已排期的复审页面。")
-    else:
-        for page in aging["scheduled"][:20]:
-            lines.append(render_curated_page_summary(page))
-    lines.extend(["", "## 生命周期待回看项"])
-    if not lifecycle_revisit_entries:
-        lines.append("- 当前没有 lifecycle state 标记为 `revisit` 的知识项。")
-    else:
-        for entry in lifecycle_revisit_entries[:20]:
-            lines.append(render_knowledge_lifecycle_entry_summary(entry))
-    lines.extend(["", "## 已退役概念"])
-    if not retired_concepts:
-        lines.append("- 当前没有 retired concept。")
-    else:
-        for entry in retired_concepts[:20]:
-            lines.append(render_knowledge_lifecycle_entry_summary(entry))
-    lines.extend(["", "## 建议动作"])
-    if aging["escalated"]:
-        lines.append("- 优先处理升级项，补证据、更新状态或明确下一次复审窗口。")
-    if aging["overdue"] and not aging["escalated"]:
-        lines.append("- 先清理已到期页面，避免 review queue 长期堆积。")
-    if lifecycle_revisit_entries:
-        lines.append("- 把 lifecycle `revisit` 项和时间窗口型 overdue 项一起看，避免只盯 review date 而忽略证据失效。")
-    if not aging["overdue"] and not aging["escalated"]:
-        lines.append("- 当前 aging 状态健康，继续通过 nightly 跟踪。")
-    stale_reviewed = [page for page in pages if page.get("pending_review") != "true" and page.get("revisit_after")]
-    if stale_reviewed:
-        lines.append("- 已审页面如仍保留复审窗口，必要时在下一次 review 中收紧或清空。")
-    return "\n".join(lines) + "\n"
-
-
-def protocol_execution_receipts(
-    execution_audit: dict[str, Any], protocol: str, *, limit: int = 8
-) -> list[dict[str, str]]:
-    rows: list[dict[str, str]] = []
-    protocol_buckets = execution_audit.get("recent_by_protocol", {})
-    for bucket_name, label in (("recent_apply", "apply"), ("recent_revert", "revert")):
-        bucket_rows = []
-        if isinstance(protocol_buckets, dict):
-            scoped = protocol_buckets.get(bucket_name, {})
-            if isinstance(scoped, dict):
-                protocol_rows = scoped.get(protocol, [])
-                if isinstance(protocol_rows, list):
-                    bucket_rows = protocol_rows
-        if not bucket_rows:
-            bucket_rows = execution_audit.get(bucket_name, [])
-        for record in bucket_rows:
-            if str(record.get("protocol") or DEFAULT_PROTOCOL) != protocol:
-                continue
-            rows.append(
-                {
-                    "kind": label,
-                    "title": str(record.get("title") or record.get("action_id") or "receipt"),
-                    "action_id": str(record.get("action_id") or ""),
-                    "receipt_path": str(record.get("receipt_path") or ""),
-                    "applied_at": str(record.get("applied_at") or ""),
-                }
-            )
-    rows.sort(key=lambda item: (item["applied_at"], item["title"].lower()), reverse=True)
-    return rows[:limit]
-
-
-def furnace_quick_commands(
-    active_protocol: str,
-    apply_ready_actions: list[dict[str, Any]],
-    apply_ready_rewrites: list[dict[str, Any]],
-) -> list[str]:
-    _ = (active_protocol, apply_ready_actions, apply_ready_rewrites)
-    commands = [
-        'PYTHONPATH=src python3 -m aiwiki.cli --root . advanced run-ask "对当前主题做协议化总结" --format report',
-        "PYTHONPATH=src python3 -m aiwiki.cli --root . advanced compile",
-        "PYTHONPATH=src python3 -m aiwiki.cli --root . advanced run-nightly",
-        "PYTHONPATH=src python3 -m aiwiki.cli --root . advanced review-queue --json",
-    ]
-    return commands[:6]
-
-
 def render_furnace_center(
     decisions: list[dict[str, str]],
     judgments: list[dict[str, str]],
@@ -535,9 +225,6 @@ def render_furnace_center(
     compiled_at: str,
     protocol_state: dict[str, Any],
     recent_outputs: list[dict[str, str]],
-    output_packs: dict[str, Any],
-    domain_pilots: dict[str, Any],
-    execution_audit: dict[str, Any],
     *,
     knowledge_lifecycle: dict[str, Any] | None = None,
 ) -> str:
@@ -550,9 +237,6 @@ def render_furnace_center(
         compiled_at,
         protocol_state,
         recent_outputs,
-        output_packs,
-        domain_pilots,
-        execution_audit,
         knowledge_lifecycle=knowledge_lifecycle,
     )
 
@@ -605,32 +289,19 @@ def render_master_index(
         f"- 证据漂移：`{sum(1 for page in decisions + judgments if page.get('citation_drift') == 'true')}`",
         "",
         "## 核心页面",
+        "- [炉心面板](./furnace-center.md)",
         "- [来源索引](./sources.md)",
         "- [概念索引](./concepts.md)",
-        "- [概念质量](./concept-quality.md)",
         "- [决策索引](./decisions.md)",
         "- [判断索引](./judgments.md)",
         "- [判断资产](./judgment-assets.md)",
-        "- [Agent Workbench](./agent-workbench.md)",
-        "- [认知历史](./cognitive-history.md)",
         "- [协议总览](./protocols.md)",
-        "- [炉心面板](./furnace-center.md)",
-        "- [输出 Pack 总览](./output-packs.md)",
-        "- [领域 Pilot 总览](./domain-pilots.md)",
         "- [审阅队列](./review-queue.md)",
         "- [审阅中心](./review-center.md)",
-        "- [Aging 报告](./aging-report.md)",
         "- [编译状态](./compile-status.md)",
         "- [机器记忆](./machine-memory.md)",
         "- [图谱视图](./graph-view.md)",
-        "- [机器记忆拓扑](./machine-memory-topology.md)",
-        "- [机器记忆动作队列](./machine-memory-actions.md)",
-        "- [机器记忆修复计划](./machine-memory-repair-plan.md)",
-        "- [Rewrite Proposals](./rewrite-proposals.md)",
-        "- [图谱健康](./graph-health.md)",
-        "- [漂移报告](./drift-report.md)",
         "- [修复待办](./repair-backlog.md)",
-        "- [操作日志](./log.md)",
         "- [运行时规则](../../schema/index.md)",
         "- [协议规则](../../schema/protocols/index.md)",
         "",
