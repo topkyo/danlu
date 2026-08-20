@@ -1,0 +1,36 @@
+{
+  "id": "elixir-d3-compounding-fcc6838c",
+  "kind": "elixir",
+  "label": "elixir-d3-compounding-fcc6838c",
+  "path": "wiki/elixirs/elixir-d3-compounding-fcc6838c.md",
+  "parents": [
+    {
+      "id": "derived-d3-new",
+      "kind": "derived",
+      "label": "derived-d3-new",
+      "path": "wiki/derived/derived-d3-new.md"
+    },
+    {
+      "id": "elixir-d3-old",
+      "kind": "elixir",
+      "label": "elixir-d3-old",
+      "path": "wiki/elixirs/elixir-d3-old.md",
+      "parents": [
+        {
+          "id": "derived-d3-old",
+          "kind": "derived",
+          "label": "derived-d3-old",
+          "path": "wiki/derived/derived-d3-old.md"
+        }
+      ],
+      "metadata": {
+        "plane": "settled",
+        "status": ""
+      }
+    }
+  ],
+  "metadata": {
+    "plane": "settled",
+    "status": ""
+  }
+}

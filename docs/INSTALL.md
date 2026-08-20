@@ -1,0 +1,264 @@
+# 炼丹炉安装指南
+
+本指南面向普通用户，目标是让你从零开始跑起一个可用的炼丹炉 vault。不需要先读代码结构或模块边界图。
+
+## 前置条件
+
+- **Python 3.10+**（macOS 和 Linux 通常自带；Windows 暂未正式支持）
+- **Obsidian Desktop**（macOS / Linux），用于日常 Product Shell 工作台
+- 一个愿意用来存放 vault 的本地目录（建议 SSD，因为会频繁读写 markdown / JSON）
+
+> 注意：炼丹炉是 local-first 系统，你的原料、wiki、输出和审计 receipt 全部落在本地文件里。LLM 调用、网页抓取、通知等才走网络。
+
+## 安装方式
+
+### 方式一：源码安装（完整 Product Shell，当前推荐）
+
+适合要跑 Obsidian Product Shell 的用户。需要克隆本仓库作为 **runtime root**（插件模板与 vault 脚手架从 checkout 同步）。
+
+```bash
+# 1. 克隆仓库
+git clone https://github.com/topkyo/danlu.git aiwiki
+cd aiwiki
+
+# 2. 确认 Python 版本
+python3 --version   # 需要 3.10 及以上
+
+# 3. editable 安装，获得 `aiwiki` console script（推荐；终端与自动化都用它）
+pip install -e ".[dev]" --break-system-packages   # 若无 PEP 668，可去掉 --break-system-packages
+```
+
+后续终端一律用 `aiwiki ...`；不装 console script 时也可用 `PYTHONPATH=src python3 -m aiwiki.cli ...` 等价执行。
+
+### 方式二：pip 预览安装（CLI 主路径已可用；PyPI 上架待定）
+
+**边界（诚实预览）**：
+
+- **可用**：在克隆仓库根执行 `pip install -e .`（或 `pip install .`）后，用 `aiwiki` 做 `new-vault` / `advanced compile` / `today` / `drop` 等 CLI。
+- **仍依赖 checkout**：创建带 Product Shell 的 vault 需要本仓库里的 `.obsidian/plugins/furnace-product-shell/` 三件套；**尚未**在 PyPI 运营上架，`pip install aiwiki` 目前不可用。
+- 版本与 CHANGELOG AgentOS gate 对齐为 **0.4.0**（见 `pyproject.toml` / `src/aiwiki/__init__.py`）。
+- **许可**：默认 AGPL-3.0-or-later；商业许可单独签署，见 [LICENSE](../LICENSE) 与 [docs/commercial/BOUNDARIES.md](./commercial/BOUNDARIES.md)。
+
+```bash
+git clone https://github.com/topkyo/danlu.git aiwiki
+cd aiwiki
+pip install -e . --break-system-packages   # 预览；PyPI 正式上架后改为 pip install aiwiki
+aiwiki --help
+```
+
+干净机最小验收（在仓库根执行；`--root` 指向 **runtime checkout**，vault 路径是 `new-vault` 参数）：
+
+```bash
+aiwiki advanced new-vault /tmp/furnace-preview-vault
+aiwiki --root /tmp/furnace-preview-vault advanced compile
+aiwiki --root /tmp/furnace-preview-vault today
+```
+
+### 方式三：本地 wheel 验收（发布工程；非 PyPI 上架）
+
+维护者与 CI 在 **upload 到 PyPI 之前**，用仓库脚本构建 wheel 并在干净 venv 里验收。本步骤**不宣称已上架**，也**不包含** `twine upload`。
+
+**前置**：Python 3.10+、`pip install build`（PEP 668 环境可加 `--break-system-packages`）。
+
+```bash
+# 1. 在仓库根构建 sdist + wheel → dist/
+python3 -m pip install build --break-system-packages   # 若无 PEP 668 可省略 flag
+bash scripts/build_release_wheel.sh
+
+# 2. 干净 venv 安装 wheel（不要用 editable）
+python3 -m venv /tmp/aiwiki-wheel-test
+/tmp/aiwiki-wheel-test/bin/pip install dist/aiwiki-*.whl
+
+# 3. CLI 与包内资源（default_prompts）验收
+/tmp/aiwiki-wheel-test/bin/aiwiki --help
+/tmp/aiwiki-wheel-test/bin/python -c "import aiwiki, pathlib; assert list(pathlib.Path(aiwiki.__file__).parent.glob('default_prompts/*.md'))"
+
+# 4. 可选：vault 最小链路（--root 仍指向 runtime checkout）
+/tmp/aiwiki-wheel-test/bin/aiwiki advanced new-vault /tmp/furnace-wheel-vault
+/tmp/aiwiki-wheel-test/bin/aiwiki --root /tmp/furnace-wheel-vault advanced compile
+```
+
+**PyPI 运营边界**：`scripts/build_release_wheel.sh` 只产出 `dist/` 产物；实际上传 PyPI（`twine upload`、账号、project 占位）由运营另行开启，不在本仓库默认 workflow 中执行。
+
+## 首次创建 vault
+
+vault 是你的炼丹炉工作区，里面包含 `raw/`、`wiki/`、`output/`、`.aiwiki/` 状态目录和 Obsidian 配置。
+
+```bash
+# 在已安装 `aiwiki` 或源码目录下执行（推荐 console script）
+aiwiki --root . advanced new-vault /path/to/your-vault
+# 等价：PYTHONPATH=src python3 -m aiwiki.cli --root . advanced new-vault /path/to/your-vault
+```
+
+把 `/path/to/your-vault` 换成你想要的路径，例如 `~/炼丹炉` 或 `~/Documents/furnace-vault`。
+
+创建完成后进入 vault：
+
+```bash
+cd /path/to/your-vault
+```
+
+你会看到：
+
+- `raw/`：放原料
+- `wiki/`：炼化后的知识
+- `output/`：报告、仪表盘、审计 receipt
+- `.aiwiki/`：状态、缓存、机器记忆
+- `HOME.md`：Obsidian 首页
+- `.obsidian/`：Obsidian 配置和 Furnace Product Shell 插件
+
+## 启动 Obsidian
+
+1. 用 Obsidian 打开你的 vault 目录。
+2. 在 Obsidian 左侧边栏找到 **Furnace Product Shell**，这是日常工作台。
+3. 终端里（在 vault 根目录，`--root` 默认取当前目录）同样可用：
+
+```bash
+aiwiki advanced shell-status
+aiwiki advanced compile
+aiwiki today
+```
+
+> 规则：同一个 vault 同时只能有一个写入命令在跑（`single writer, many readers`）。不要在 Obsidian Product Shell 和终端两边同时执行 `advanced compile`、`advanced run-nightly`、`advanced file-back` 等写入型命令。
+
+## 配置 LLM 后端
+
+炼丹炉的确定性链路（投料、编译、本地 lint、nightly）可以离线跑；只有 `advanced run-ask` 等显式 LLM 命令需要后端配置。
+
+当前支持的后端：
+
+- `deepseek-api`（**产品默认**主路由，DeepSeek 官方 API 直连，模型 `deepseek-v4-flash`；Ask 可走 Responses `web_search`）
+- `opencode-api`
+- `openai-api`（兼容 OpenAI 协议）
+- `anthropic-api`
+
+### 产品默认 LLM 路由（product lock）
+
+炼丹炉产品面只锁定一条默认 LLM 路由：`deepseek-api` + `deepseek-v4-flash`。Product Shell、CLI、`llm-check` 以此为准；systemd/launchd 安装脚本**不写** `AIWIKI_LLM_BACKEND`，沿用 runtime 默认。**不会**在 `advanced run-ask` 中自动 fallback 到其他 backend。`deepseek-v4-pro` 可在 Shell/设置中手动选择（V1 无提供商 `web_search`，Ask 退回 vault-only）。`advanced run-nightly` / watcher 默认只做确定性 `advanced compile` + `advanced lint`。
+
+`opencode-api`、`openai-api`、`anthropic-api` 仍作为开发者/专家 escape hatch 保留在代码中，需显式设置 `AIWIKI_LLM_BACKEND` 切换；这不属于默认产品路径。
+
+最简配置示例：
+
+```bash
+# 默认：DeepSeek 官方 API 直连
+export AIWIKI_LLM_BACKEND=deepseek-api   # 可省略，这就是默认值
+export AIWIKI_DEEPSEEK_API_KEY=sk-...
+
+# escape hatch：OpenCode
+export AIWIKI_LLM_BACKEND=opencode-api
+export AIWIKI_OPENCODE_API_KEY=opencode-...
+```
+
+检查配置是否生效（在 vault 根目录执行）：
+
+```bash
+aiwiki advanced llm-check
+```
+
+加 `--probe` 会发一个极小真实请求，验证账号是否真的能跑：
+
+```bash
+aiwiki advanced llm-check --probe
+```
+
+**安全提示**：不要把 key 写进 git 跟踪的文件。Product Shell 里填写的 key 只保存在本机未跟踪的插件 `data.json` 中；CLI 使用推荐放到 `~/.aiwiki-secrets/<provider>.env`（文件权限 600，目录权限 700）。
+
+> 后台服务（systemd / launchd）运行时没有交互环境：CLI 会自动读取 vault 插件 `data.json` 里的 backend / model / key 来补空位（process env 优先，已设置的值不会被覆盖）。
+
+## 安装自动化服务（可选）
+
+如果你希望炼丹炉在后台自动处理投料和 nightly 巡检，可以安装 systemd（Linux）或 launchd（macOS）服务。安装脚本会在安装时解析一次 Python ≥3.10 并写入服务环境（可用 `AIWIKI_PYTHON` 覆盖）。
+
+### systemd（Linux）
+
+```bash
+# 必须显式指定 vault 路径
+AIWIKI_VAULT=/path/to/your-vault scripts/install_user_service.sh
+```
+
+安装后会创建两条服务：
+
+- `aiwiki-watch.service`：常驻等待投料
+- `aiwiki-nightly.timer`：每晚自动炼化
+
+### launchd（macOS）
+
+```bash
+AIWIKI_VAULT=/path/to/your-vault scripts/install_launchd_service.sh
+```
+
+卸载：
+
+```bash
+scripts/uninstall_user_service.sh
+# 或 macOS
+scripts/uninstall_launchd_service.sh
+```
+
+> 默认服务只跑确定性链路，不会自动执行 LLM 或无人值守修改核心策略。需要开启更高自治级别时，请阅读 `docs/Furnace Runtime Operations.md` 中的 autonomy 配置说明。
+
+## 5 分钟验证
+
+按顺序执行下面命令，确认炼丹炉基本链路可用：
+
+```bash
+cd /path/to/your-vault
+
+# 1. 投料：丢一段 markdown 进 raw/inbox/
+aiwiki drop markdown --title "验证材料" --text "这是一段用于验证的原材料。"
+
+# 2. 编译：把原料炼化成 wiki
+aiwiki advanced compile
+
+# 3. 看 Today（CLI：today）
+aiwiki today
+
+# 4. 提问（需要 LLM 配置）
+aiwiki advanced run-ask "总结今天投入的材料" --format report
+
+# 5. 回流高价值结论到 wiki
+aiwiki advanced file-back output/reports/<刚才生成的报告>.md
+```
+
+如果前 3 步都能跑通，说明离线确定性链路没问题。第 4 步失败通常只是 LLM key 没配或网络不通，不会破坏 vault。
+
+## 常见问题
+
+### 没有 Python 环境怎么办？
+
+macOS 和大多数 Linux 发行版都自带 Python 3。如果提示没有，建议用系统包管理器安装：
+
+```bash
+# macOS（Homebrew）
+brew install python@3.12
+
+# Ubuntu / Debian
+sudo apt update && sudo apt install python3 python3-pip
+```
+
+### 没有 API key 能跑吗？
+
+可以。投料、编译、本地 lint、Today、`advanced run-nightly` 等确定性链路完全离线可用。只有 `advanced run-ask` 等显式 LLM 命令需要后端配置。
+
+### Obsidian 打不开 vault？
+
+1. 确认你打开的是 vault 目录本身，而不是 `aiwiki` 源码目录。
+2. 首次打开后，在 Obsidian 设置 → 社区插件 → 打开 `Furnace Product Shell`。
+3. 如果界面显示异常，尝试重新加载 Obsidian（`Cmd/Ctrl + P` → `Reload app without saving`）。
+
+### 怎么升级炼丹炉？
+
+当前方式：在 `aiwiki` 源码目录 `git pull`，然后把 Product Shell 三件套同步到 vault。vault 数据与源码分离，升级不会覆盖你的 `raw/`、`wiki/`、`output/`。
+
+```bash
+cd /path/to/aiwiki
+git pull
+aiwiki --root . advanced sync-product-shell /path/to/your-vault
+```
+
+### 遇到问题怎么排查？
+
+1. 先看 `output/control/shell-summary.json` 里的状态摘要。
+2. 再跑 `aiwiki advanced lint`，看是否有健康度问题。
+3. 最后看 `.aiwiki/state/execution-receipts/` 下的 receipt，定位最近失败的命令。

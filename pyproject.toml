@@ -1,0 +1,73 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aiwiki"
+version = "0.4.0"
+description = "Local-first knowledge compiler for 炼丹炉 (aiwiki runtime). Dual-licensed: AGPL-3.0-or-later by default; commercial license available — see LICENSE and docs/commercial/BOUNDARIES.md."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [
+    { name = "炼丹炉 authors", email = "topkyoxp@gmail.com" },
+]
+keywords = ["knowledge-management", "local-first", "wiki", "obsidian"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Operating System :: POSIX",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Text Processing :: Markup :: Markdown",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/topkyo/danlu"
+Documentation = "https://github.com/topkyo/danlu/blob/main/docs/INSTALL.md"
+Changelog = "https://github.com/topkyo/danlu/blob/main/CHANGELOG.md"
+"Issue Tracker" = "https://github.com/topkyo/danlu/issues"
+"Commercial License" = "https://github.com/topkyo/danlu/blob/main/docs/commercial/BOUNDARIES.md"
+
+[project.optional-dependencies]
+dev = [
+    "beautifulsoup4>=4.12,<5",
+    "coverage>=7,<8",
+    "pytest>=8,<9",
+    "ruff>=0.11,<1",
+]
+
+[project.scripts]
+aiwiki = "aiwiki.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+aiwiki = ["default_prompts/*.md"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "W", "I", "B", "F401", "F541", "F821", "F822", "F823", "F841"]
+# B905 wants zip(..., strict=); that keyword is Python ≥3.10-only. Obsidian GUI
+# PATH often resolves to Apple /usr/bin/python3 (3.9), so we keep plain zip +
+# explicit length checks where equality matters.
+ignore = ["B905"]
+
+[tool.ruff.lint.per-file-ignores]
+# Package __init__ re-export seams (app_shell / app_linting / cli compat modules)
+# intentionally import symbols they do not use directly.
+"**/__init__.py" = ["F401"]

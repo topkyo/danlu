@@ -1,0 +1,120 @@
+"""Compile context and bootstrap helpers."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from ..content.io import sync_manifest_with_raw
+from ..protocol.scaffold import ensure_layout
+from ..protocol.state import load_protocol_state
+from ..state.io import load_json_document_strict
+from ..state.manifest import load_manifest
+from ..state.paths import machine_memory_state_path
+from ..utils.io import (
+    write_if_changed_ignoring_timestamps,
+    write_json_document_if_changed_ignoring_generated_timestamps,
+)
+from ..utils.path import relative_path
+from .state import load_compile_state
+
+
+@dataclass
+class CompileContext:
+    root: Path
+    previous_manifest: dict[str, Any]
+    manifest: dict[str, Any]
+    entries: list[dict[str, Any]]
+    compiled_at: str
+    protocol_state: dict[str, Any]
+    previous_compile_state: dict[str, Any]
+    previous_memory: dict[str, Any]
+    changed_pages: int = 0
+    source_changed_pages: int = 0
+    concept_changed_pages: int = 0
+    index_changed_pages: int = 0
+    maintenance_changed_pages: int = 0
+    removed_pages: int = 0
+    dirty_index_artifacts: list[str] = field(default_factory=list)
+    clean_index_artifacts: list[str] = field(default_factory=list)
+    dirty_maintenance_artifacts: list[str] = field(default_factory=list)
+    clean_maintenance_artifacts: list[str] = field(default_factory=list)
+    previews: dict[str, str] = field(default_factory=dict)
+    concepts: list[dict[str, Any]] = field(default_factory=list)
+    entry_terms: dict[str, list[str]] = field(default_factory=dict)
+    decision_pages: list[dict[str, Any]] = field(default_factory=list)
+    judgment_pages: list[dict[str, Any]] = field(default_factory=list)
+    dirty_concept_source_ids: list[str] = field(default_factory=list)
+    clean_concept_source_ids: list[str] = field(default_factory=list)
+    dirty_source_ids: list[str] = field(default_factory=list)
+    clean_source_ids: list[str] = field(default_factory=list)
+    dirty_concept_slugs: list[str] = field(default_factory=list)
+    clean_concept_slugs: list[str] = field(default_factory=list)
+    dirty_machine_memory_source_ids: list[str] = field(default_factory=list)
+    clean_machine_memory_source_ids: list[str] = field(default_factory=list)
+    dirty_machine_memory_concept_slugs: list[str] = field(default_factory=list)
+    clean_machine_memory_concept_slugs: list[str] = field(default_factory=list)
+    machine_memory_core_reused: bool = False
+    memory: dict[str, Any] = field(default_factory=dict)
+    transition: dict[str, Any] = field(default_factory=dict)
+    dirty_ranking_source_ids: list[str] = field(default_factory=list)
+    clean_ranking_source_ids: list[str] = field(default_factory=list)
+    dirty_ranking_concept_slugs: list[str] = field(default_factory=list)
+    clean_ranking_concept_slugs: list[str] = field(default_factory=list)
+    all_outputs: list[dict[str, Any]] = field(default_factory=list)
+    recent_outputs: list[dict[str, Any]] = field(default_factory=list)
+    active_corpora_state: dict[str, Any] = field(default_factory=dict)
+    material_state: dict[str, Any] = field(default_factory=dict)
+    material_routing: dict[str, Any] = field(default_factory=dict)
+    archive_candidates: dict[str, Any] = field(default_factory=dict)
+    knowledge_lifecycle: dict[str, Any] = field(default_factory=dict)
+    cache_status: dict[str, Any] = field(default_factory=dict)
+    provenance_degraded: int = 0
+    provenance_broken: int = 0
+    provenance_dead_report_refs_stripped: int = 0
+
+    def write_index_artifact(self, destination: Path, content: str) -> int:
+        wrote, dirty = write_if_changed_ignoring_timestamps(destination, content)
+        relative = relative_path(self.root, destination)
+        if dirty:
+            self.dirty_index_artifacts.append(relative)
+        else:
+            self.clean_index_artifacts.append(relative)
+        self.changed_pages += int(wrote)
+        self.index_changed_pages += int(wrote)
+        return int(wrote)
+
+    def write_maintenance_artifact(self, destination: Path, document: dict[str, Any]) -> int:
+        wrote, dirty = write_json_document_if_changed_ignoring_generated_timestamps(destination, document)
+        relative = relative_path(self.root, destination)
+        if dirty:
+            self.dirty_maintenance_artifacts.append(relative)
+        else:
+            self.clean_maintenance_artifacts.append(relative)
+        self.changed_pages += int(wrote)
+        self.maintenance_changed_pages += int(wrote)
+        return int(wrote)
+
+
+def start_compile_context(root: Path) -> CompileContext:
+    ensure_layout(root)
+    previous_manifest = load_manifest(root)
+    manifest = sync_manifest_with_raw(root)
+    entries: list[dict[str, Any]] = manifest["entries"]
+    # Preserve the long-lived test seam that patches `aiwiki.utils.time.utc_now`.
+    from ..utils.time import utc_now
+
+    return CompileContext(
+        root=root,
+        previous_manifest=previous_manifest,
+        manifest=manifest,
+        entries=entries,
+        compiled_at=utc_now(),
+        protocol_state=load_protocol_state(root),
+        previous_compile_state=load_compile_state(root),
+        previous_memory=load_json_document_strict(machine_memory_state_path(root)),
+    )
+
+
+__all__ = ["CompileContext", "start_compile_context"]

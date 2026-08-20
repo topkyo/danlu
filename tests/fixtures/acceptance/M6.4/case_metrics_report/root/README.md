@@ -1,0 +1,3 @@
+# M6.4 metrics report acceptance
+
+Minimal empty vault fixture for `aiwiki advanced metrics` smoke coverage.

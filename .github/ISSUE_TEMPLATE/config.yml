@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 安全披露
+    url: https://github.com/topkyo/danlu/blob/main/SECURITY.md
+    about: 不要在公开 issue 里贴密钥或可利用细节
+  - name: 商业许可
+    url: https://github.com/topkyo/danlu/blob/main/docs/commercial/BOUNDARIES.md
+    about: AGPL 以外的闭源使用；询价邮件见该页

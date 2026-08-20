@@ -1,0 +1,9 @@
+{
+  "id": "furnace-product-shell",
+  "name": "Furnace Product Shell",
+  "version": "0.4.0",
+  "minAppVersion": "1.8.0",
+  "description": "Desktop-only Product Shell for 炼丹炉. Spawns python -m aiwiki.cli from settings.runtimeRoot; reads vault-local shell-summary.json.",
+  "author": "炼丹炉",
+  "isDesktopOnly": true
+}

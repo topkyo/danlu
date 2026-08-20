@@ -1,0 +1,188 @@
+{
+  "active_corpus_id": "general-deterministic-source-a-b78c37f7",
+  "backend_effective": "opencode-api",
+  "backend_requested": "opencode-api",
+  "contract_validated": true,
+  "delivery_mode": "llm-success",
+  "fallback_used": false,
+  "format": "report",
+  "graph_anchor_node_ids": [
+    "source:source-a"
+  ],
+  "index_pages": [
+    "wiki/indexes/index.md",
+    "wiki/indexes/sources.md",
+    "wiki/indexes/concepts.md",
+    "wiki/indexes/decisions.md",
+    "wiki/indexes/judgments.md",
+    "wiki/indexes/judgment-assets.md",
+    "wiki/indexes/protocols.md",
+    "wiki/indexes/review-queue.md",
+    "wiki/indexes/review-center.md",
+    "wiki/indexes/compile-status.md",
+    "wiki/indexes/machine-memory.md",
+    "wiki/indexes/graph-view.md",
+    "wiki/indexes/repair-backlog.md",
+    "schema/index.md",
+    "schema/protocols/index.md"
+  ],
+  "machine_memory_query": {
+    "archive_recall_hints": [],
+    "bridge_concept_slugs": [],
+    "direct_concept_slugs": [],
+    "direct_elixir_ids": [],
+    "direct_judgment_ids": [],
+    "direct_source_ids": [
+      "source-a"
+    ],
+    "matched_graph_markers": [],
+    "matched_source_markers": [
+      "source"
+    ],
+    "matched_terms": [
+      "deterministic"
+    ],
+    "planner_priority_queue": [],
+    "protocol_shard_source_ids": [
+      "source-a"
+    ],
+    "query_routes": [],
+    "query_subgraph": {
+      "concepts": [],
+      "edges": [],
+      "elixirs": [],
+      "judgments": [],
+      "sources": [
+        {
+          "id": "source-a",
+          "path": "wiki/sources/source-a.md",
+          "title": "Source A"
+        }
+      ]
+    },
+    "ranked_concept_slugs": [],
+    "ranked_elixir_ids": [],
+    "ranked_judgment_ids": [],
+    "ranked_source_ids": [
+      "source-a"
+    ],
+    "relevant_actions": [
+      {
+        "command_hint": "PYTHONPATH=src python3 -m aiwiki.cli --root . advanced review-queue --bucket machine_memory_actions --json",
+        "execution_policy": "triage",
+        "focus_score": 0,
+        "id": "isolated-source-source-a",
+        "kind": "connect-isolated-source",
+        "next_step": "\u628a\u5b64\u7acb\u6765\u6e90\u63a5\u5165\u81f3\u5c11\u4e00\u4e2a\u7a33\u5b9a\u6982\u5ff5\u3002",
+        "primary_path": "wiki/sources/source-a.md",
+        "priority": "medium",
+        "reason": "\u6765\u6e90\u8282\u70b9\u5f53\u524d\u6ca1\u6709\u63a5\u5165\u4efb\u4f55\u6982\u5ff5\u3002",
+        "secondary_path": "",
+        "status": "proposed",
+        "title": "\u8fde\u63a5\u5b64\u7acb\u6765\u6e90 Source A"
+      }
+    ],
+    "route_config": {
+      "default_strategy": "concept-first",
+      "graph_markers": [
+        "why",
+        "how",
+        "impact",
+        "dependency",
+        "relationship",
+        "root cause",
+        "\u4e3a\u4ec0\u4e48",
+        "\u56e0\u679c",
+        "\u5173\u7cfb",
+        "\u6839\u56e0"
+      ],
+      "source_markers": [
+        "source",
+        "citation",
+        "quote",
+        "file",
+        "raw",
+        "\u8bc1\u636e",
+        "\u5f15\u7528",
+        "\u6765\u6e90",
+        "\u539f\u6587"
+      ],
+      "strategy_order": [
+        "concept-first",
+        "graph-walk",
+        "source-first"
+      ]
+    },
+    "route_telemetry": {
+      "matched_graph_markers": [],
+      "matched_source_markers": [
+        "source"
+      ],
+      "matched_terms": [
+        "deterministic"
+      ],
+      "protocol": "general",
+      "query_signature": "sha256:b78c37f7f322b689dfc4c93133c504b1dacd6ca78996165d6bcf5c4195af5430",
+      "ranked_concept_slugs": [],
+      "ranked_elixir_ids": [],
+      "ranked_judgment_ids": [],
+      "ranked_source_ids": [
+        "source-a"
+      ],
+      "route_count": 0,
+      "selected_strategy": "source-first",
+      "selection_reason": "source-markers",
+      "touched_component_ids": [
+        "component-1"
+      ]
+    },
+    "selected_strategy": "source-first",
+    "selection_reason": "source-markers",
+    "supporting_edges": [],
+    "time_focus": "",
+    "time_focus_markers": [],
+    "time_shard_source_ids": [],
+    "touched_component_ids": [
+      "component-1"
+    ],
+    "touched_components": [
+      {
+        "concept_slugs": [],
+        "id": "component-1",
+        "judgment_ids": [],
+        "size": 1,
+        "source_ids": [
+          "source-a"
+        ]
+      }
+    ]
+  },
+  "model_final": "stub-model",
+  "model_selected": "stub-model",
+  "no_cache": false,
+  "path": "output/reports/deterministic-source-a.md",
+  "primary_attempt_status": "",
+  "primary_error": "",
+  "prompt_profile": "balanced",
+  "protocol": "general",
+  "protocol_pages": [
+    "schema/protocols/general/index.md",
+    "schema/protocols/general/taxonomy.md",
+    "schema/protocols/general/decision.md",
+    "schema/protocols/general/judgment.md",
+    "schema/protocols/general/review.md",
+    "schema/protocols/general/nightly.md",
+    "schema/protocols/general/query.md"
+  ],
+  "ranked_concepts": [],
+  "ranked_sources": [
+    "source-a"
+  ],
+  "retry_prompt_profile": "",
+  "run_id": "ask-output-reports-deterministic-source-a",
+  "run_notes_path": "",
+  "timeout_seconds": 120,
+  "used_refs": [
+    "wiki/sources/source-a.md"
+  ]
+}

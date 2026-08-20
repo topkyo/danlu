@@ -1,0 +1,43 @@
+name: Bug
+description: 运行时或 Product Shell 缺陷
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        确定性路径（compile / today）不需要 API key。Ask 失败请先跑 `aiwiki advanced llm-check`。
+        不要在此贴 API key 或未脱敏的 vault 路径。
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么
+      placeholder: 实际行为 vs 期望行为
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现
+      placeholder: |
+        aiwiki advanced new-vault /tmp/furnace-repro
+        aiwiki --root /tmp/furnace-repro advanced compile
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      placeholder: "0.4.0 或 git SHA"
+  - type: input
+    id: os
+    attributes:
+      label: 系统
+      placeholder: "macOS 12 / Ubuntu 22.04；Python 3.11；Obsidian 1.8+"
+  - type: checkboxes
+    id: llm
+    attributes:
+      label: 是否涉及 LLM
+      options:
+        - label: 仅确定性路径（无 key）
+        - label: Ask / drop planner（已配置 key，未把 key 贴到 issue）

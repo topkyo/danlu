@@ -1,0 +1,76 @@
+
+# Add these to your project's .gitignore
+
+# Agent local settings
+.claude/*.local.json
+CLAUDE.local.md
+AGENTS.local.md
+PROGRESS.md
+
+# Local secrets and environment overrides
+.env
+.env.*
+.envrc
+.envrc.*
+!.env.example
+
+# Local agent scratch
+.codegraph/
+
+# Runtime state and generated outputs
+.aiwiki/state/*.json
+.aiwiki/state/*.jsonl
+.aiwiki/state/runtime.lock
+.aiwiki/cache.db
+.aiwiki/cache.db-wal
+.aiwiki/cache.db-shm
+.aiwiki/cache/
+.aiwiki/logs/*.jsonl
+.aiwiki/llm-responses/
+output/
+
+# wiki/indexes generated files (compile output, not source of truth)
+wiki/indexes/*.md
+!wiki/indexes/README.md
+
+!tests/fixtures/acceptance/M6.1b/case_heavy_after_llm/root/output/
+!tests/fixtures/acceptance/M6.1b/case_heavy_after_llm/root/output/_candidates/
+!tests/fixtures/acceptance/M6.1b/case_heavy_after_llm/root/output/_candidates/elixirs/
+!tests/fixtures/acceptance/M6.1b/case_heavy_after_llm/root/output/_candidates/elixirs/elixir-b3.md
+!demos/investing-demo-pack/vault/output/
+!demos/investing-demo-pack/vault/output/**
+
+
+# Python
+__pycache__/
+*.pyc
+*.swp
+.venv/
+dist/
+build/
+*.egg-info/
+.coverage
+
+# Obsidian user-local (themes, community plugin list, plugin runtime state)
+.obsidian/community-plugins.json
+.obsidian/themes/
+.obsidian/plugins/*/data.json
+
+# Plugin dev scaffolding (rebuild via `npm install` + jest; not for redistribution)
+.obsidian/plugins/*/node_modules/
+.obsidian/plugins/*/package.json
+.obsidian/plugins/*/package-lock.json
+.obsidian/plugins/*/__mocks__/
+# Track Product Shell Jest harness so CI can hard-gate when required
+!.obsidian/plugins/furnace-product-shell/package.json
+!.obsidian/plugins/furnace-product-shell/package-lock.json
+
+# Probe/scratch files
+probe_*.md
+
+# Local multi-agent / audit scratch (not SoT; regenerate under .aiwiki-audit/)
+.aiwiki-audit/
+
+# Local design reference material (embedded git repo, not for redistribution)
+awesome-design-md/
+.worktrees/

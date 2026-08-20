@@ -1,0 +1,13 @@
+{
+  "derived_from": [
+    "wiki/derived/derived-d3-new.md",
+    "wiki/elixirs/elixir-d3-old.md"
+  ],
+  "elixir_id": "elixir-d3-compounding-fcc6838c",
+  "elixir_state": "distilling",
+  "generation_mode": "deterministic_seed",
+  "iteration": 1,
+  "llm_invoked": false,
+  "path": ".aiwiki/staging/elixirs/elixir-d3-compounding-fcc6838c.md",
+  "semantic_content_generated_by_runtime": false
+}

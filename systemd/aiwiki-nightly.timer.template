@@ -1,0 +1,10 @@
+[Unit]
+Description=aiwiki nightly timer
+
+[Timer]
+OnCalendar=__ON_CALENDAR__
+Persistent=__PERSISTENT__
+Unit=aiwiki-nightly.service
+
+[Install]
+WantedBy=timers.target

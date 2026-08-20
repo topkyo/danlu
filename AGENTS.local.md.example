@@ -1,0 +1,20 @@
+# AGENTS.local.md（维护者本机，gitignored）
+
+从本文件复制为 `AGENTS.local.md`。**不要**把真实家目录路径提交进 git。
+
+填写后，agent 在分析真实 dogfood vault / 同步 Product Shell 时读 `AGENTS.local.md`，而不是把本仓库 `output/` 当用户证据。
+
+```text
+Runtime checkout: /path/to/this/clone
+Dogfood vault:    /path/to/your/obsidian-vault
+```
+
+环境变量（两处语义不同，不要混）：
+
+```bash
+# sync_product_shell_to_vault.sh：插件目录
+export FURNACE_DOGFOOD_VAULT="/path/to/your/obsidian-vault/.obsidian/plugins/furnace-product-shell"
+
+# relocate_aiwiki_state_out_of_icloud.sh：vault 根
+export FURNACE_DOGFOOD_VAULT="/path/to/your/obsidian-vault"
+```

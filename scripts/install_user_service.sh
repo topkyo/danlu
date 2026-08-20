@@ -1,0 +1,172 @@
+#!/usr/bin/env bash
+# Install aiwiki user-level systemd services: watcher + nightly timer.
+# Note: dogfood maturity validation harness has been removed in scripts cleanup.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+if [[ -z "${AIWIKI_VAULT:-}" ]]; then
+  echo "error: AIWIKI_VAULT is not set" >&2
+  echo "  install_user_service.sh requires an explicit vault path; it will not default to the project root." >&2
+  echo "  Example: AIWIKI_VAULT=/path/to/vault scripts/install_user_service.sh" >&2
+  exit 1
+fi
+VAULT_ROOT="$AIWIKI_VAULT"
+
+# Resolve a Python >=3.10 once at install time and bake it into the env files;
+# systemd user services get a minimal PATH where `python3` may be too old.
+# pick_python.sh honors AIWIKI_PYTHON as its first candidate AND version-checks it.
+RESOLVED_PYTHON_BIN="$(bash "$SCRIPT_DIR/pick_python.sh")"
+PYTHON_BIN="$RESOLVED_PYTHON_BIN"
+
+WATCH_SERVICE_NAME="aiwiki-watch.service"
+NIGHTLY_SERVICE_NAME="aiwiki-nightly.service"
+NIGHTLY_TIMER_NAME="aiwiki-nightly.timer"
+SYSTEMD_USER_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+AIWIKI_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/aiwiki"
+WATCH_UNIT_PATH="$SYSTEMD_USER_DIR/$WATCH_SERVICE_NAME"
+NIGHTLY_SERVICE_PATH="$SYSTEMD_USER_DIR/$NIGHTLY_SERVICE_NAME"
+NIGHTLY_TIMER_PATH="$SYSTEMD_USER_DIR/$NIGHTLY_TIMER_NAME"
+WATCH_ENV_PATH="$AIWIKI_CONFIG_DIR/aiwiki-watch.env"
+NIGHTLY_ENV_PATH="$AIWIKI_CONFIG_DIR/aiwiki-nightly.env"
+WATCH_TEMPLATE_PATH="$PROJECT_ROOT/systemd/aiwiki-watch.service.template"
+NIGHTLY_SERVICE_TEMPLATE_PATH="$PROJECT_ROOT/systemd/aiwiki-nightly.service.template"
+NIGHTLY_TIMER_TEMPLATE_PATH="$PROJECT_ROOT/systemd/aiwiki-nightly.timer.template"
+NIGHTLY_ON_CALENDAR="${AIWIKI_NIGHTLY_ON_CALENDAR:-daily}"
+NIGHTLY_PERSISTENT="${AIWIKI_NIGHTLY_PERSISTENT:-true}"
+
+ensure_env_key() {
+  local file="$1"
+  local key="$2"
+  local value="$3"
+  if ! grep -q "^${key}=" "$file"; then
+    printf '%s=%s\n' "$key" "$value" >>"$file"
+  fi
+}
+
+set_env_key() {
+  local file="$1"
+  local key="$2"
+  local value="$3"
+  local tmp
+  tmp="$(mktemp "${file}.tmp.XXXXXX")"
+  awk -v key="$key" -v value="$value" '
+    BEGIN { updated = 0 }
+    index($0, key "=") == 1 { print key "=" value; updated = 1; next }
+    { print }
+    END { if (!updated) print key "=" value }
+  ' "$file" >"$tmp"
+  mv "$tmp" "$file"
+}
+
+env_key_value() {
+  local file="$1"
+  local key="$2"
+  local default="$3"
+  local line
+  line="$(grep -m 1 "^${key}=" "$file" || true)"
+  if [[ -n "$line" ]]; then
+    printf '%s\n' "${line#*=}"
+  else
+    printf '%s\n' "$default"
+  fi
+}
+
+mkdir -p "$SYSTEMD_USER_DIR" "$AIWIKI_CONFIG_DIR"
+
+PYTHONPATH="$PROJECT_ROOT/src${PYTHONPATH:+:$PYTHONPATH}" "$PYTHON_BIN" -m aiwiki.cli \
+  --root "$PROJECT_ROOT" advanced sync-product-shell "$VAULT_ROOT" >/dev/null
+
+if [[ ! -f "$WATCH_ENV_PATH" ]]; then
+  cat >"$WATCH_ENV_PATH" <<EOF
+AIWIKI_VAULT=$VAULT_ROOT
+AIWIKI_PYTHON=$RESOLVED_PYTHON_BIN
+AIWIKI_LLM_TIMEOUT=120
+AIWIKI_LLM_MAX_CONTEXT_CHARS=24000
+AIWIKI_WATCH_INTERVAL=5
+AIWIKI_WATCH_COMPILE_LIMIT=5
+AIWIKI_WATCH_SKIP_INITIAL=0
+EOF
+fi
+
+if [[ ! -f "$NIGHTLY_ENV_PATH" ]]; then
+  cat >"$NIGHTLY_ENV_PATH" <<EOF
+AIWIKI_VAULT=$VAULT_ROOT
+AIWIKI_PYTHON=$RESOLVED_PYTHON_BIN
+AIWIKI_LLM_TIMEOUT=120
+AIWIKI_LLM_MAX_CONTEXT_CHARS=24000
+AIWIKI_NIGHTLY_COMPILE_LIMIT=5
+AIWIKI_AUTONOMY_PROFILE=${AIWIKI_AUTONOMY_PROFILE:-agentic}
+EOF
+fi
+
+ensure_env_key "$WATCH_ENV_PATH" "AIWIKI_VAULT" "$VAULT_ROOT"
+ensure_env_key "$WATCH_ENV_PATH" "AIWIKI_PYTHON" "$RESOLVED_PYTHON_BIN"
+ensure_env_key "$NIGHTLY_ENV_PATH" "AIWIKI_VAULT" "$VAULT_ROOT"
+ensure_env_key "$NIGHTLY_ENV_PATH" "AIWIKI_PYTHON" "$RESOLVED_PYTHON_BIN"
+ensure_env_key "$NIGHTLY_ENV_PATH" "AIWIKI_AUTONOMY_PROFILE" "${AIWIKI_AUTONOMY_PROFILE:-agentic}"
+
+WATCH_VAULT_ROOT="$(env_key_value "$WATCH_ENV_PATH" "AIWIKI_VAULT" "$VAULT_ROOT")"
+NIGHTLY_VAULT_ROOT="$(env_key_value "$NIGHTLY_ENV_PATH" "AIWIKI_VAULT" "$VAULT_ROOT")"
+
+render_template() {
+  local template="$1"
+  local dest="$2"
+  shift 2
+  "$PYTHON_BIN" - "$template" "$dest" "$@" <<'PY'
+from pathlib import Path
+import sys
+
+template = Path(sys.argv[1])
+dest = Path(sys.argv[2])
+text = template.read_text(encoding="utf-8")
+args = sys.argv[3:]
+if len(args) % 2 != 0:
+    raise SystemExit("render_template expects KEY VALUE pairs")
+for i in range(0, len(args), 2):
+    text = text.replace(args[i], args[i + 1])
+dest.write_text(text, encoding="utf-8")
+PY
+}
+
+render_template "$WATCH_TEMPLATE_PATH" "$WATCH_UNIT_PATH" \
+  __PROJECT_ROOT__ "$PROJECT_ROOT" \
+  __ENV_FILE__ "$WATCH_ENV_PATH" \
+  __VAULT__ "$WATCH_VAULT_ROOT"
+
+render_template "$NIGHTLY_SERVICE_TEMPLATE_PATH" "$NIGHTLY_SERVICE_PATH" \
+  __PROJECT_ROOT__ "$PROJECT_ROOT" \
+  __ENV_FILE__ "$NIGHTLY_ENV_PATH" \
+  __VAULT__ "$NIGHTLY_VAULT_ROOT"
+
+render_template "$NIGHTLY_TIMER_TEMPLATE_PATH" "$NIGHTLY_TIMER_PATH" \
+  __ON_CALENDAR__ "$NIGHTLY_ON_CALENDAR" \
+  __PERSISTENT__ "$NIGHTLY_PERSISTENT"
+
+# Belt-and-braces: clean up any previously-installed dogfood maturity units so an
+# existing user who upgrades doesn't keep the obsolete validation harness.
+systemctl --user disable --now "aiwiki-dogfood-maturity.timer" >/dev/null 2>&1 || true
+systemctl --user stop "aiwiki-dogfood-maturity.service" >/dev/null 2>&1 || true
+rm -f "$SYSTEMD_USER_DIR/aiwiki-dogfood-maturity.service" "$SYSTEMD_USER_DIR/aiwiki-dogfood-maturity.timer"
+
+systemctl --user daemon-reload
+systemctl --user enable --now "$WATCH_SERVICE_NAME"
+if ! systemctl --user is-active --quiet "$WATCH_SERVICE_NAME"; then
+  systemctl --user start "$WATCH_SERVICE_NAME"
+fi
+systemctl --user is-active --quiet "$WATCH_SERVICE_NAME"
+systemctl --user enable --now "$NIGHTLY_TIMER_NAME"
+systemctl --user is-enabled --quiet "$NIGHTLY_TIMER_NAME"
+
+echo "[OK] Installed $WATCH_SERVICE_NAME and $NIGHTLY_TIMER_NAME"
+echo "      watch unit:    $WATCH_UNIT_PATH"
+echo "      watch env:     $WATCH_ENV_PATH"
+echo "      nightly svc:   $NIGHTLY_SERVICE_PATH"
+echo "      nightly timer: $NIGHTLY_TIMER_PATH"
+echo "      nightly env:   $NIGHTLY_ENV_PATH"
+echo "      python:        $RESOLVED_PYTHON_BIN"
+echo "      on-calendar:   $NIGHTLY_ON_CALENDAR"
+echo "      plugin:        synced Product Shell release files (data.json preserved)"
+echo "      note:          change AIWIKI_NIGHTLY_ON_CALENDAR / AIWIKI_NIGHTLY_PERSISTENT and rerun this script to rewrite the timer"
+echo "Note: nightly is deterministic compile+lint only."
+echo "      LLM backend/key are read by the CLI from the vault Product Shell data.json (empty env slots only)."

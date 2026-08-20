@@ -1,0 +1,32 @@
+name: Display-only
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+jobs:
+  close:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const body = [
+              "本仓库是定期导出的展示树，不接受外部 Pull Request。",
+              "安全披露见 SECURITY.md。",
+            ].join("\n");
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+            await github.rest.pulls.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              state: "closed",
+            });
